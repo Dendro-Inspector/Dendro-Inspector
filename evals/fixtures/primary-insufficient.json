@@ -1,0 +1,60 @@
+{
+  "scenario": "primary-insufficient",
+  "description": "Bark-only close-up. Nothing resolvable but colour and a partial texture; must abstain and ask for a specific photograph.",
+  "responses": {
+    "primary:planner": {
+      "target_features": ["bark.flake_geometry", "bark.plate_size", "needles.fascicles"],
+      "expect_multiple_subjects": false,
+      "bark_only_input": true,
+      "notes": ["Bark-only input; expect to need foliage before any genus claim is defensible."]
+    },
+    "primary:evidence_extractor": {
+      "subjects": [
+        {
+          "subject_id": "bark_surface_1",
+          "kind": "bark_surface",
+          "description": "Tight close-up of a trunk surface, no foliage or cones in frame.",
+          "image_ids": ["img-1"]
+        }
+      ],
+      "observations": [
+        {
+          "observation_id": "obs-1",
+          "feature": "bark.colour",
+          "value": "reddish_brown",
+          "subject_id": "bark_surface_1",
+          "source": "image",
+          "visibility": "clear",
+          "reliability": "low",
+          "image_id": "img-1",
+          "notes": "Colour under warm low-angle light; unreliable as a discriminator."
+        },
+        {
+          "observation_id": "obs-2",
+          "feature": "bark.flake_geometry",
+          "value": "not_resolvable",
+          "subject_id": "bark_surface_1",
+          "source": "image",
+          "visibility": "not_visible",
+          "reliability": "low",
+          "image_id": "img-1",
+          "notes": "Frame is too tight and too shallow in depth to read flake edges."
+        }
+      ],
+      "inferences": [],
+      "absent_features": [],
+      "image_limitations": [
+        {
+          "image_id": "img-1",
+          "lighting": "warm_low_angle",
+          "white_balance": "uncorrected",
+          "scale": "absent",
+          "notes": "Strong colour cast; no scale reference."
+        }
+      ],
+      "context_limitations": ["no_location", "no_season"],
+      "possible_multiple_taxa": false,
+      "instruction_like_content_detected": false
+    }
+  }
+}

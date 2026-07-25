@@ -1,0 +1,53 @@
+# PLACEHOLDER demonstration content — derived from section 14 of the domain prompt,
+# not reviewed by a dendrologist. See docs/dataset-policy.md.
+comparison_id: betula-populus-alba
+taxa:
+  - betula
+  - populus_alba
+
+shared_features:
+  - bark.pattern
+  - trunk.form
+  - context.site
+
+decisive_differences:
+  - feature: bark.peeling
+    separates:
+      - betula
+      - populus_alba
+    favours: betula
+    note: Betula peels in thin papery layers; white poplar does not.
+  - feature: leaf.underside
+    separates:
+      - betula
+      - populus_alba
+    favours: populus_alba
+    note: White poplar's leaf underside is white and felted.
+  - feature: leaf.arrangement
+    separates:
+      - betula
+      - populus_alba
+    note: Both alternate — useless here, recorded so nobody re-derives it.
+
+insufficient_features:
+  - bark.colour
+  - trunk.form
+  - context.site
+
+recommended_follow_up_photos:
+  - bark_macro_mid_trunk
+  - leaf_underside_macro
+  - leaf_attachment_photo
+
+provenance:
+  source: "Domain prompt sections 13, 14 and 16"
+  source_type: domain_prompt
+  region: Eastern Europe
+  life_stage: any
+  season: any
+  confidence: low
+  review_state: unreviewed
+  reviewed_by: null
+  last_reviewed: null
+
+placeholder_content: true

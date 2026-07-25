@@ -1,0 +1,34 @@
+# Case 3 — mixed taxa in one frame.
+# Two logs, two genera, one photograph. The failure this case guards against is subtle and
+# common: a system that averages both subjects into one confident answer, or that supports
+# a claim about the far log with a feature it can only see on the near one.
+case_id: mixed-taxa-001
+title: Two logs of different genera in a single frame
+description: >-
+  A stacked pair of felled logs. The near log shows fascicled needles; the far one shows
+  single needles on woody pegs. Conclusions must be scoped per subject, evidence must not
+  leak between them, and the possibility of mixed taxa must force escalation.
+scenario: primary-mixed-taxa
+
+input:
+  case_id: mixed-taxa-001
+  images:
+    - image_id: img-1
+      path: examples/mixed-taxa-001.jpg
+      media_type: image/jpeg
+      caption: Two logs stacked at a forest track
+  user_text: Are these the same tree?
+  location: Lviv Oblast, Ukraine
+  season: summer
+  declared_object_type: log
+
+expect:
+  expected_taxon: pinus
+  expected_resolution: genus
+  max_confidence: medium
+  min_subjects: 2
+  forbid_evidence_leak_between_subjects: true
+  require_escalation: true
+  max_retries: 0
+
+placeholder_content: true

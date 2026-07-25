@@ -1,0 +1,126 @@
+name: CI
+
+# Runs on every push and pull request, including pull requests from forks.
+#
+# Fork PRs get no repository secrets and a read-only token, by GitHub's design. Every gate
+# below is built to need neither: the whole suite runs against the deterministic fake
+# provider, so an external contributor's PR is checked exactly as thoroughly as a
+# maintainer's.
+#
+# Do NOT add `pull_request_target` here. It runs with a writable token, and combined with a
+# checkout of untrusted PR code it hands repository write scope to a stranger's branch.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Belt and braces: even if a credential were present, the adapters would not be selected.
+  EVIL_DUCK_PRIMARY_PROVIDER: fake
+  EVIL_DUCK_ARBITER_PROVIDER: fake
+
+jobs:
+  quality:
+    name: Lint, types and tests (py${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Ruff format check
+        run: ruff format --check .
+
+      - name: Ruff lint
+        run: ruff check --output-format=github .
+
+      - name: Static type check
+        run: mypy
+
+      - name: Unit tests
+        run: pytest tests/unit -q
+
+      - name: Contract tests
+        run: pytest tests/contract -q
+
+      # Two copies of the domain prompt is a split brain waiting to happen: one gets
+      # updated, the other does not, and the trace hash now attests to a stale file.
+      - name: One canonical domain prompt
+        run: pytest tests/contract/test_prompt_uniqueness.py -q
+
+      - name: Integration tests (fake provider)
+        run: pytest tests/integration -q
+
+      - name: Evaluation tests
+        run: pytest tests/evaluation -q
+
+      - name: Public evaluation suite
+        run: evil-duck eval --suite public --verbose
+
+      - name: Graph renders
+        run: evil-duck graph
+
+      - name: Domain prompt loads and hashes
+        run: evil-duck prompt-info
+
+      - name: Upload evaluation report
+        if: always() && matrix.python-version == '3.12'
+        run: evil-duck eval --suite public --json --out eval-report.json || true
+
+      - uses: actions/upload-artifact@v4
+        if: always() && matrix.python-version == '3.12'
+        with:
+          name: eval-report
+          path: eval-report.json
+          if-no-files-found: ignore
+
+  secrets:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # A leaked credential in a public repository is public the instant it is pushed, and
+      # deleting the commit does not unpublish it. This gate blocks rather than warns.
+      - name: Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build:
+    name: Package builds
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install --upgrade pip build twine
+      - run: python -m build
+      - run: python -m twine check dist/*

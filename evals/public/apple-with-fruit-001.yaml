@@ -1,0 +1,34 @@
+# Case 9 — section 17: "Це яблуня. Плід закриває дискусію."
+# The counterweight to every restraint case in this suite. When a fruit is on the branch,
+# the system must actually commit — a machine that hedges everything is as useless as one
+# that hedges nothing.
+case_id: apple-with-fruit-001
+title: Apple on the branch settles the genus
+description: >-
+  Fruit attached to the branch, clear foliage, garden context. This is the one evidence
+  tier that unlocks the top confidence band, and the answer should be identified rather
+  than merely probable.
+scenario: fruit-decisive
+
+input:
+  case_id: apple-with-fruit-001
+  images:
+    - image_id: img-1
+      path: examples/apple-001.jpg
+      media_type: image/jpeg
+  user_text: Яблуня?
+  user_claim: яблуня
+  location: Kyiv Oblast, Ukraine
+  season: autumn
+  declared_object_type: fruit
+
+expect:
+  expected_taxon: malus
+  expected_resolution: genus
+  expected_status: identified
+  expected_evidence_tier: 7
+  expected_user_claim_verdict: accepted
+  require_escalation: false
+  max_retries: 0
+
+placeholder_content: true

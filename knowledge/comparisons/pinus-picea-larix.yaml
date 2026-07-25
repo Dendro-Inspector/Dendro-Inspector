@@ -1,0 +1,58 @@
+# PLACEHOLDER demonstration content — derived from section 14 of the domain prompt,
+# not reviewed by a dendrologist. See docs/dataset-policy.md.
+comparison_id: pinus-picea-larix
+taxa:
+  - pinus
+  - picea
+  - larix
+
+shared_features:
+  - bark.flake_geometry
+  - bark.texture
+  - wood.resin_canals
+  - trunk.form
+
+decisive_differences:
+  - feature: needles.attachment
+    separates:
+      - pinus
+      - picea
+      - larix
+    note: Fascicled and sheathed (Pinus) vs single on a woody peg (Picea) vs clustered on short shoots (Larix).
+  - feature: needles.fascicles
+    separates:
+      - pinus
+      - picea
+    favours: pinus
+    note: A counted fascicle of 2, 3 or 5 rules out Picea outright.
+  - feature: needles.persistence
+    separates:
+      - larix
+      - pinus
+      - picea
+    favours: larix
+    note: Deciduous separates Larix from both evergreen genera.
+
+insufficient_features:
+  - bark.colour
+  - wood.colour
+  - bark.texture
+  - trunk.form
+
+recommended_follow_up_photos:
+  - needle_fascicle_macro
+  - needle_attachment_macro
+  - cone_photo
+
+provenance:
+  source: "Domain prompt sections 13, 14 and 16"
+  source_type: domain_prompt
+  region: Eastern Europe
+  life_stage: any
+  season: any
+  confidence: low
+  review_state: unreviewed
+  reviewed_by: null
+  last_reviewed: null
+
+placeholder_content: true

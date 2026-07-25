@@ -1,0 +1,38 @@
+# Normalise everything to LF in the repository.
+#
+# Without this, a Windows checkout commits CRLF and every Linux contributor and CI run sees
+# a whole-file diff on files nobody touched. It also keeps the tree consistent with
+# .editorconfig, which already declares end_of_line = lf.
+#
+# This matters more than usual here: the domain prompt's SHA-256 appears in every execution
+# trace, and a line-ending rewrite would silently change that hash without changing a word.
+* text=auto eol=lf
+
+# Data files stay LF regardless of platform.
+*.py    text eol=lf
+*.md    text eol=lf
+*.yaml  text eol=lf
+*.yml   text eol=lf
+*.json  text eol=lf
+*.toml  text eol=lf
+
+# Windows-only scripts keep CRLF so they run when checked out there.
+*.bat   text eol=crlf
+*.ps1   text eol=crlf
+
+# Binary: never diffed, never normalised.
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.webp  binary
+*.whl   binary
+
+# ---------------------------------------------------------------------------------------
+# MUST BE LAST: in .gitattributes the last matching rule wins, and `*.md text eol=lf` above
+# would otherwise normalise this file.
+#
+# The domain prompt is a byte-exact, user-managed artifact whose SHA-256 is recorded in
+# every execution trace. Normalising its line endings would change that hash without
+# changing a single word, silently invalidating every prior trace and breaking the contract
+# test that asserts the loaded bytes equal the bytes on disk.
+prompts/domain/system-prompt.md -text -diff

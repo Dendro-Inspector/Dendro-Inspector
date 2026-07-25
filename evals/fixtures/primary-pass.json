@@ -1,0 +1,155 @@
+{
+  "scenario": "primary-pass",
+  "description": "Clean conifer log. Genus-level Pinus, medium confidence, no species claim, no escalation.",
+  "responses": {
+    "primary:planner": {
+      "target_features": [
+        "needles.fascicles",
+        "cones.scale_shape",
+        "bark.flake_geometry"
+      ],
+      "expect_multiple_subjects": false,
+      "bark_only_input": false,
+      "notes": [
+        "Cut log with attached foliage; prioritise fascicle count over bark texture."
+      ]
+    },
+    "primary:evidence_extractor": {
+      "subjects": [
+        {
+          "subject_id": "foreground_log_1",
+          "kind": "log",
+          "description": "Single felled log, cut end toward camera, foliage attached at upper edge.",
+          "image_ids": [
+            "img-1"
+          ]
+        }
+      ],
+      "observations": [
+        {
+          "observation_id": "obs-1",
+          "feature": "bark.flake_geometry",
+          "value": "thin_irregular_edge_lifting",
+          "subject_id": "foreground_log_1",
+          "source": "image",
+          "visibility": "clear",
+          "reliability": "medium",
+          "image_id": "img-1"
+        },
+        {
+          "observation_id": "obs-2",
+          "feature": "needles.fascicles",
+          "value": "two",
+          "subject_id": "foreground_log_1",
+          "source": "image",
+          "visibility": "partial",
+          "reliability": "medium",
+          "image_id": "img-1",
+          "notes": "Two needles per sheath countable on three separate bundles.",
+          "attachment": "confirmed_attached"
+        },
+        {
+          "observation_id": "obs-3",
+          "feature": "wood.resin_canals",
+          "value": "not_resolvable",
+          "subject_id": "foreground_log_1",
+          "source": "image",
+          "visibility": "not_visible",
+          "reliability": "low",
+          "image_id": "img-1",
+          "notes": "Cut face is rough-sawn; anatomy cannot be resolved at this magnification."
+        }
+      ],
+      "inferences": [
+        {
+          "inference_id": "inf-1",
+          "claim": "morphology_is_compatible_with_pinus",
+          "derived_from": [
+            "obs-1",
+            "obs-2"
+          ],
+          "strength": "medium",
+          "limitations": [
+            "overlaps_with_picea",
+            "single_viewpoint"
+          ]
+        }
+      ],
+      "absent_features": [],
+      "image_limitations": [
+        {
+          "image_id": "img-1",
+          "lighting": "overcast_flat",
+          "white_balance": "uncorrected",
+          "scale": "absent",
+          "notes": "No scale reference in frame; needle length cannot be measured."
+        }
+      ],
+      "context_limitations": [
+        "season_unknown"
+      ],
+      "possible_multiple_taxa": false,
+      "instruction_like_content_detected": false
+    },
+    "primary:candidate_generator": {
+      "sets": [
+        {
+          "subject_id": "foreground_log_1",
+          "candidates": [
+            {
+              "taxon": "pinus",
+              "resolution": "genus",
+              "supporting_evidence_ids": [
+                "obs-1",
+                "obs-2",
+                "inf-1"
+              ],
+              "contradicting_evidence_ids": [],
+              "missing_decisive_features": [],
+              "score": "moderate",
+              "rank": 1
+            },
+            {
+              "taxon": "picea",
+              "resolution": "genus",
+              "supporting_evidence_ids": [
+                "obs-1"
+              ],
+              "contradicting_evidence_ids": [
+                "obs-2"
+              ],
+              "missing_decisive_features": [
+                "needle_attachment_macro"
+              ],
+              "score": "weak",
+              "rank": 2
+            }
+          ]
+        }
+      ]
+    },
+    "primary:botanical_reviewer": {
+      "reviewer": "botanical",
+      "status": "pass",
+      "findings": [],
+      "recommended_candidates": [],
+      "recommended_resolution": "genus"
+    },
+    "primary:confusion_reviewer": {
+      "reviewer": "confusion",
+      "status": "pass",
+      "findings": [],
+      "recommended_candidates": [],
+      "recommended_resolution": "genus"
+    },
+    "primary:confidence_reviewer": {
+      "reviewer": "confidence",
+      "status": "pass",
+      "findings": [],
+      "recommended_candidates": [],
+      "recommended_resolution": "genus",
+      "recommended_confidence": "medium"
+    }
+  }
+}
+

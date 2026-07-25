@@ -1,0 +1,130 @@
+{
+  "scenario": "bark-rough-oak-claim",
+  "description": "FAILURE 2 and 3 — rough bark, no foliage, and the user says oak while the model leans ash. The user's version must not be thrown out on one patch of bark.",
+  "note_for_maintainers": "The point is the restraint rule, not the ranking. Fraxinus leading is deliberate: it makes the user's oak a competing claim that bark alone cannot settle.",
+  "responses": {
+    "primary:planner": {
+      "target_features": ["leaf.type", "leaf.arrangement", "acorn.presence"],
+      "expect_multiple_subjects": false,
+      "bark_only_input": true,
+      "notes": ["Rough-barked broadleaf; bark alone will not separate the candidates."]
+    },
+    "primary:evidence_extractor": {
+      "subjects": [
+        {
+          "subject_id": "standing_tree",
+          "kind": "standing_tree",
+          "description": "Mature broadleaf trunk with deep longitudinal fissures.",
+          "image_ids": ["img-1"]
+        }
+      ],
+      "observations": [
+        {
+          "observation_id": "obs-1",
+          "feature": "bark.texture",
+          "value": "deep_longitudinal_fissures",
+          "subject_id": "standing_tree",
+          "source": "image",
+          "visibility": "clear",
+          "reliability": "medium",
+          "image_id": "img-1"
+        },
+        {
+          "observation_id": "obs-2",
+          "feature": "bark.pattern",
+          "value": "weathered_grey_uneven",
+          "subject_id": "standing_tree",
+          "source": "image",
+          "visibility": "clear",
+          "reliability": "medium",
+          "image_id": "img-1",
+          "notes": "Surface is grey and weathered; one patch does not represent the trunk."
+        },
+        {
+          "observation_id": "obs-3",
+          "feature": "trunk.form",
+          "value": "massive",
+          "subject_id": "standing_tree",
+          "source": "image",
+          "visibility": "clear",
+          "reliability": "medium",
+          "image_id": "img-1"
+        }
+      ],
+      "inferences": [
+        {
+          "inference_id": "inf-1",
+          "claim": "bark_is_compatible_with_several_old_broadleaves",
+          "derived_from": ["obs-1", "obs-2"],
+          "strength": "weak",
+          "limitations": ["bark_only", "shared_by_many_genera"]
+        }
+      ],
+      "absent_features": [],
+      "image_limitations": [
+        {
+          "image_id": "img-1",
+          "lighting": "even_shade",
+          "white_balance": "neutral",
+          "scale": "absent"
+        }
+      ],
+      "context_limitations": ["no_foliage_in_frame"],
+      "possible_multiple_taxa": false,
+      "instruction_like_content_detected": false
+    },
+    "primary:candidate_generator": {
+      "sets": [
+        {
+          "subject_id": "standing_tree",
+          "candidates": [
+            {
+              "taxon": "fraxinus",
+              "resolution": "genus",
+              "supporting_evidence_ids": ["obs-1", "inf-1"],
+              "contradicting_evidence_ids": [],
+              "missing_decisive_features": [],
+              "score": "moderate",
+              "rank": 1
+            },
+            {
+              "taxon": "quercus",
+              "resolution": "genus",
+              "supporting_evidence_ids": ["obs-1", "obs-3"],
+              "contradicting_evidence_ids": [],
+              "missing_decisive_features": [],
+              "score": "moderate",
+              "rank": 2
+            }
+          ]
+        }
+      ]
+    },
+    "primary:botanical_reviewer": {
+      "reviewer": "botanical",
+      "status": "pass",
+      "findings": [],
+      "recommended_resolution": "genus"
+    },
+    "primary:confusion_reviewer": {
+      "reviewer": "confusion",
+      "status": "pass",
+      "findings": [],
+      "recommended_resolution": "genus"
+    },
+    "primary:confidence_reviewer": {
+      "reviewer": "confidence",
+      "status": "pass",
+      "findings": [],
+      "recommended_resolution": "genus",
+      "recommended_confidence": "low"
+    },
+    "arbiter:arbiter": {
+      "reviewer": "arbiter",
+      "status": "pass",
+      "findings": [],
+      "recommended_resolution": "genus",
+      "recommended_confidence": "low"
+    }
+  }
+}

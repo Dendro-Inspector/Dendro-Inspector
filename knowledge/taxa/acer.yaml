@@ -1,0 +1,55 @@
+# PLACEHOLDER demonstration content — derived from section 14 of the domain prompt,
+# not reviewed by a dendrologist. See docs/dataset-policy.md.
+taxon_id: acer
+display_name: Acer (клен)
+aliases:
+  - клен
+  - maple
+  - acer
+supported_resolution:
+  - genus
+
+strong_positive_features:
+  - feature: leaf.shape
+    values:
+      - palmate_lobed
+  - feature: samara.presence
+    values:
+      - paired
+
+supporting_features:
+  - feature: leaf.arrangement
+    values:
+      - opposite
+
+contradictions:
+  - feature: leaf.arrangement
+    values:
+      - alternate
+
+common_confusions:
+  - acer_pseudoplatanus
+  - acer_saccharinum
+  - morus
+  - populus_alba
+
+required_for_high_confidence:
+  - leaf_or_samara
+
+follow_up_evidence:
+  - leaf_upper_macro
+  - leaf_attachment_photo
+  - samara_photo
+
+provenance:
+  source: "Domain prompt section 14 (БАЗОВІ ПОРОДИ)"
+  source_type: domain_prompt
+  region: Eastern Europe
+  life_stage: any
+  season: any
+  confidence: low
+  review_state: unreviewed
+  reviewed_by: null
+  last_reviewed: null
+
+placeholder_content: true

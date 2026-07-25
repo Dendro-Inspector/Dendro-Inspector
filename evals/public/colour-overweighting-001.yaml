@@ -1,0 +1,33 @@
+# Case 4 — colour-overweighting regression.
+# Every model reviewer in this fixture returns "pass". The deterministic colour check has to
+# catch it on its own. If someone deletes that check because "the reviewers handle it", this
+# case goes red immediately — which is the entire point of keeping it.
+case_id: colour-overweighting-001
+title: Identification leaning on bark colour under a warm light
+description: >-
+  A trunk photographed in late afternoon light with an uncorrected white balance. Most of
+  the resolvable evidence is colour. The reviewers pass; the system must flag colour
+  dependence anyway and lower confidence accordingly.
+scenario: primary-conflict
+
+input:
+  case_id: colour-overweighting-001
+  images:
+    - image_id: img-1
+      path: examples/colour-overweighting-001.jpg
+      media_type: image/jpeg
+  user_text: Reddish bark, so it is a pine, right?
+  location: Zhytomyr Oblast, Ukraine
+  season: summer
+  declared_object_type: bark
+
+expect:
+  expected_taxon: pinus
+  expected_resolution: genus
+  max_resolution: genus
+  max_confidence: low
+  require_finding_category: colour_overweighting
+  require_escalation: true
+  max_retries: 0
+
+placeholder_content: true

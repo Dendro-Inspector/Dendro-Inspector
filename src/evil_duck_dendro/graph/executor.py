@@ -1,0 +1,150 @@
+"""A small, explicit graph executor.
+
+Deliberately not a framework. It does four things: walk the routing function, run nodes
+(concurrently where the graph declares a fan-out), record an event per node, and refuse
+to run forever. Nodes know nothing about it — they are ``(state, ctx) -> state`` coroutines,
+which is why they are testable on their own.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import time
+from collections.abc import Mapping
+from dataclasses import dataclass
+from typing import Protocol
+
+from evil_duck_dendro.config import AppConfig
+from evil_duck_dendro.graph.definition import (
+    ENTRY_NODE,
+    REVIEW_FANOUT,
+    TERMINAL_NODE,
+    NodeName,
+)
+from evil_duck_dendro.graph.routing import next_step
+from evil_duck_dendro.graph.state import GraphState
+from evil_duck_dendro.knowledge.loader import KnowledgeBase
+from evil_duck_dendro.observability.events import NodeStatus, RunTrace
+from evil_duck_dendro.observability.logging import get_logger
+from evil_duck_dendro.observability.trace import TraceRecorder
+from evil_duck_dendro.prompts.library import PromptLibrary
+from evil_duck_dendro.providers.registry import ProviderRegistry
+from evil_duck_dendro.schemas.input import CaseInput
+
+
+class GraphExecutionError(RuntimeError):
+    """Raised when the graph cannot continue safely."""
+
+
+@dataclass(frozen=True, slots=True)
+class NodeContext:
+    """Everything a node is allowed to reach for. Passed in, never imported globally."""
+
+    config: AppConfig
+    providers: ProviderRegistry
+    knowledge: KnowledgeBase
+    prompts: PromptLibrary
+    recorder: TraceRecorder
+
+
+class NodeRunner(Protocol):
+    """A graph node: typed state in, typed state out, no side channel."""
+
+    async def __call__(self, state: GraphState, ctx: NodeContext) -> GraphState: ...
+
+
+@dataclass(frozen=True, slots=True)
+class GraphRunResult:
+    state: GraphState
+    trace: RunTrace
+
+
+async def _run_fanout(
+    members: tuple[NodeName, ...],
+    registry: Mapping[NodeName, NodeRunner],
+    state: GraphState,
+    ctx: NodeContext,
+) -> GraphState:
+    """Run independent reviewers concurrently and merge only what each of them added.
+
+    Merging by "new reviews appended by this member" keeps the concurrency honest: a
+    reviewer that tried to change anything else would have its change discarded here,
+    which is the intended contract rather than a silent race.
+    """
+    baseline = len(state.reviews)
+
+    async def _run(member: NodeName) -> tuple[NodeName, GraphState, float]:
+        started = time.perf_counter()
+        produced = await registry[member](state, ctx)
+        return member, produced, (time.perf_counter() - started) * 1000.0
+
+    outcomes = await asyncio.gather(*(_run(member) for member in members))
+
+    # Events are recorded after the gather so trace order follows the declared fan-out
+    # order rather than whichever coroutine happened to finish first.
+    merged = state.reviews
+    for member, produced, duration_ms in outcomes:
+        ctx.recorder.record_node(member.value, duration_ms=duration_ms)
+        merged = merged + produced.reviews[baseline:]
+    return state.evolve(reviews=merged)
+
+
+async def run_graph(
+    case: CaseInput,
+    ctx: NodeContext,
+    registry: Mapping[NodeName, NodeRunner],
+) -> GraphRunResult:
+    """Execute the graph for one case."""
+    logger = get_logger("graph")
+    state = GraphState(case=case)
+    current = ENTRY_NODE
+    steps = 0
+    max_steps = ctx.config.graph.max_steps
+
+    while current is not TERMINAL_NODE:
+        if steps >= max_steps:
+            msg = (
+                f"graph exceeded max_steps={max_steps} at node {current.value!r}; "
+                "this indicates a routing bug, not a slow model"
+            )
+            raise GraphExecutionError(msg)
+        steps += 1
+
+        if current in REVIEW_FANOUT:
+            state = await _run_fanout(REVIEW_FANOUT, registry, state, ctx)
+            current = next_step(REVIEW_FANOUT[0], state, ctx.config.graph)
+            continue
+
+        runner = registry.get(current)
+        if runner is None:
+            msg = f"no implementation registered for node {current.value!r}"
+            raise GraphExecutionError(msg)
+
+        started = time.perf_counter()
+        try:
+            state = await runner(state, ctx)
+        except Exception:
+            ctx.recorder.record_node(current.value, status=NodeStatus.FAILED)
+            logger.exception("node_failed", extra={"node": current.value, "case_id": case.case_id})
+            raise
+        ctx.recorder.record_node(
+            current.value,
+            duration_ms=(time.perf_counter() - started) * 1000.0,
+        )
+        current = next_step(current, state, ctx.config.graph)
+
+    decision = state.decisions[0] if state.decisions else None
+    trace = ctx.recorder.build(
+        final_resolution=decision.resolution if decision else None,
+        final_confidence=decision.confidence if decision else None,
+    )
+    logger.info(
+        "graph_complete",
+        extra={
+            "case_id": case.case_id,
+            "nodes": len(trace.events),
+            "retries": trace.retries,
+            "arbiter_used": trace.arbiter_used,
+        },
+    )
+    return GraphRunResult(state=state, trace=trace)

@@ -1,0 +1,130 @@
+{
+  "scenario": "primary-conflict",
+  "description": "Colour-overweighting regression. The model reviewers all pass; the deterministic colour check must catch it anyway and confidence must fall.",
+  "note_for_maintainers": "All three model reviewers deliberately return 'pass'. The point of this case is that the code-side check fires without model help. Do not add findings to the reviewer responses.",
+  "responses": {
+    "primary:planner": {
+      "target_features": ["bark.flake_geometry", "needles.fascicles", "cones.scale_shape"],
+      "expect_multiple_subjects": false,
+      "bark_only_input": true,
+      "notes": ["Trunk and cut face only; no foliage in frame."]
+    },
+    "primary:evidence_extractor": {
+      "subjects": [
+        {
+          "subject_id": "standing_tree",
+          "kind": "standing_tree",
+          "description": "Trunk of a standing conifer with a fresh saw cut at chest height.",
+          "image_ids": ["img-1"]
+        }
+      ],
+      "observations": [
+        {
+          "observation_id": "obs-1",
+          "feature": "bark.colour",
+          "value": "reddish_orange",
+          "subject_id": "standing_tree",
+          "source": "image",
+          "visibility": "clear",
+          "reliability": "low",
+          "image_id": "img-1",
+          "notes": "Warm cast from late afternoon light; not colour-corrected."
+        },
+        {
+          "observation_id": "obs-2",
+          "feature": "wood.colour",
+          "value": "pale_yellow",
+          "subject_id": "standing_tree",
+          "source": "image",
+          "visibility": "clear",
+          "reliability": "low",
+          "image_id": "img-1"
+        },
+        {
+          "observation_id": "obs-3",
+          "feature": "bark.flake_geometry",
+          "value": "thin_irregular_edge_lifting",
+          "subject_id": "standing_tree",
+          "source": "image",
+          "visibility": "partial",
+          "reliability": "medium",
+          "image_id": "img-1"
+        }
+      ],
+      "inferences": [
+        {
+          "inference_id": "inf-1",
+          "claim": "upper_trunk_colour_suggests_pinus",
+          "derived_from": ["obs-1"],
+          "strength": "weak",
+          "limitations": ["colour_is_not_decisive", "uncorrected_white_balance"]
+        }
+      ],
+      "absent_features": [],
+      "image_limitations": [
+        {
+          "image_id": "img-1",
+          "lighting": "late_afternoon_warm",
+          "white_balance": "uncorrected",
+          "scale": "absent"
+        }
+      ],
+      "context_limitations": ["no_foliage_in_frame"],
+      "possible_multiple_taxa": false,
+      "instruction_like_content_detected": false
+    },
+    "primary:candidate_generator": {
+      "sets": [
+        {
+          "subject_id": "standing_tree",
+          "candidates": [
+            {
+              "taxon": "pinus",
+              "resolution": "genus",
+              "supporting_evidence_ids": ["obs-1", "obs-3", "inf-1"],
+              "contradicting_evidence_ids": [],
+              "missing_decisive_features": [],
+              "score": "moderate",
+              "rank": 1
+            },
+            {
+              "taxon": "picea",
+              "resolution": "genus",
+              "supporting_evidence_ids": ["obs-3"],
+              "contradicting_evidence_ids": [],
+              "missing_decisive_features": ["needle_attachment_macro"],
+              "score": "weak",
+              "rank": 2
+            }
+          ]
+        }
+      ]
+    },
+    "primary:botanical_reviewer": {
+      "reviewer": "botanical",
+      "status": "pass",
+      "findings": [],
+      "recommended_resolution": "genus"
+    },
+    "primary:confusion_reviewer": {
+      "reviewer": "confusion",
+      "status": "pass",
+      "findings": [],
+      "recommended_resolution": "genus"
+    },
+    "primary:confidence_reviewer": {
+      "reviewer": "confidence",
+      "status": "pass",
+      "findings": [],
+      "recommended_resolution": "genus",
+      "recommended_confidence": "low"
+    },
+    "arbiter:arbiter": {
+      "reviewer": "arbiter",
+      "status": "pass",
+      "findings": [],
+      "recommended_resolution": "genus",
+      "recommended_confidence": "low"
+    }
+  }
+}

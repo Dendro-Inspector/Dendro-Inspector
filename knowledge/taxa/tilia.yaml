@@ -1,0 +1,53 @@
+# PLACEHOLDER demonstration content — derived from section 14 of the domain prompt,
+# not reviewed by a dendrologist. See docs/dataset-policy.md.
+taxon_id: tilia
+display_name: Tilia (липа)
+aliases:
+  - липа
+  - lime
+  - linden
+  - tilia
+supported_resolution:
+  - genus
+
+strong_positive_features:
+  - feature: leaf.shape
+    values:
+      - cordate_serrate
+
+supporting_features:
+  - feature: crown.shape
+    values:
+      - dense
+  - feature: bark.texture
+    values:
+      - grey_brown_fissured
+  - feature: fruit.type
+    values:
+      - nutlet_with_bract
+
+contradictions: []
+
+common_confusions:
+  - populus
+
+required_for_high_confidence:
+  - leaf_or_fruit
+
+follow_up_evidence:
+  - leaf_upper_macro
+  - fruit_photo
+  - leaf_attachment_photo
+
+provenance:
+  source: "Domain prompt section 14 (БАЗОВІ ПОРОДИ)"
+  source_type: domain_prompt
+  region: Eastern Europe
+  life_stage: any
+  season: any
+  confidence: low
+  review_state: unreviewed
+  reviewed_by: null
+  last_reviewed: null
+
+placeholder_content: true

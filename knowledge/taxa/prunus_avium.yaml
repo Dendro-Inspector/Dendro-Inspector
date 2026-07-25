@@ -1,0 +1,53 @@
+# PLACEHOLDER demonstration content — derived from section 14 of the domain prompt,
+# not reviewed by a dendrologist. See docs/dataset-policy.md.
+taxon_id: prunus_avium
+display_name: Prunus avium (черешня)
+aliases:
+  - черешня
+  - wild cherry
+  - prunus avium
+supported_resolution:
+  - species
+
+strong_positive_features:
+  - feature: lenticels.orientation
+    values:
+      - prominent_horizontal
+
+supporting_features:
+  - feature: bark.pattern
+    values:
+      - grey_reddish_banded
+  - feature: bark.peeling
+    values:
+      - plates_old
+  - feature: leaf.shape
+    values:
+      - oval_serrate
+
+contradictions: []
+
+common_confusions:
+  - prunus
+  - prunus_cerasifera
+
+required_for_high_confidence:
+  - fruit_or_leaf
+
+follow_up_evidence:
+  - fruit_photo
+  - bark_macro_mid_trunk
+  - leaf_upper_macro
+
+provenance:
+  source: "Domain prompt section 14 (БАЗОВІ ПОРОДИ)"
+  source_type: domain_prompt
+  region: Eastern Europe
+  life_stage: any
+  season: any
+  confidence: low
+  review_state: unreviewed
+  reviewed_by: null
+  last_reviewed: null
+
+placeholder_content: true

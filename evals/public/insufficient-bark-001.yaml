@@ -1,0 +1,30 @@
+# Case 2 — insufficient bark-only image.
+# The most important case in the suite. A system that cannot return "I do not know, and
+# here is the photograph that would tell us" will invent an answer instead, and a plausible
+# invented genus is worse than no answer at all.
+case_id: insufficient-bark-001
+title: Bark-only close-up with nothing decisive resolvable
+description: >-
+  A tight, warm-lit bark close-up. Only colour is clearly resolvable and the flake geometry
+  cannot be read. No genus may be forced, a targeted photo request is required, and the
+  graph must not retry its way around the problem.
+scenario: primary-insufficient
+
+input:
+  case_id: insufficient-bark-001
+  images:
+    - image_id: img-1
+      path: examples/insufficient-bark-001.jpg
+      media_type: image/jpeg
+  user_text: What tree is this?
+  season: unknown
+  declared_object_type: bark
+
+expect:
+  max_resolution: unknown
+  expected_status: insufficient_evidence
+  require_next_photo: true
+  require_escalation: false
+  max_retries: 0
+
+placeholder_content: true

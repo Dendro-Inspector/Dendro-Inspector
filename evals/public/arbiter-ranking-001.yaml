@@ -1,0 +1,35 @@
+# Case 5 — the arbiter changes the ranking.
+# Proves the escalation path does real work: a species-level overclaim triggers the gate,
+# the independent arbiter's finding is accepted on its merits, the ranking actually changes,
+# and the candidate delta lands in the trace.
+case_id: arbiter-ranking-001
+title: Species-level overclaim inverted by the independent arbiter
+description: >-
+  The primary model proposes Pinus at species level while the evidence shows single needles
+  on persistent woody pegs — a Picea character. The card cap must remove the species claim,
+  escalation must fire, and the arbiter's rerank must be adopted.
+scenario: arbiter-review
+
+input:
+  case_id: arbiter-ranking-001
+  images:
+    - image_id: img-1
+      path: examples/arbiter-ranking-001.jpg
+      media_type: image/jpeg
+      caption: Log with a retained leafy branch
+  user_text: Pretty sure this is Scots pine.
+  location: Kyiv Oblast, Ukraine
+  season: summer
+  declared_object_type: log
+
+expect:
+  expected_taxon: picea
+  expected_taxon_in_top_3: picea
+  expected_resolution: genus
+  max_resolution: genus
+  max_confidence: medium
+  require_escalation: true
+  require_candidate_delta: true
+  max_retries: 0
+
+placeholder_content: true

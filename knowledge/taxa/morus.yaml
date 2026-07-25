@@ -1,0 +1,55 @@
+# PLACEHOLDER demonstration content — derived from section 14 of the domain prompt,
+# not reviewed by a dendrologist. See docs/dataset-policy.md.
+taxon_id: morus
+display_name: Morus (шовковиця)
+aliases:
+  - шовковиця
+  - тутовник
+  - mulberry
+  - morus
+supported_resolution:
+  - genus
+
+strong_positive_features:
+  - feature: fruit.type
+    values:
+      - elongate_berry
+
+supporting_features:
+  - feature: leaf.variability
+    values:
+      - entire_and_lobed_on_same_tree
+  - feature: bark.texture
+    values:
+      - coarse_old
+  - feature: wood.tone
+    values:
+      - yellowish
+
+contradictions: []
+
+common_confusions:
+  - acer
+  - prunus
+  - robinia_pseudoacacia
+
+required_for_high_confidence:
+  - fruit_or_leaf
+
+follow_up_evidence:
+  - fruit_photo
+  - leaf_upper_macro
+  - prepared_end_grain_macro
+
+provenance:
+  source: "Domain prompt section 14 (БАЗОВІ ПОРОДИ)"
+  source_type: domain_prompt
+  region: Eastern Europe
+  life_stage: any
+  season: any
+  confidence: low
+  review_state: unreviewed
+  reviewed_by: null
+  last_reviewed: null
+
+placeholder_content: true

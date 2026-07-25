@@ -1,0 +1,53 @@
+# PLACEHOLDER demonstration content — derived from section 14 of the domain prompt,
+# not reviewed by a dendrologist. See docs/dataset-policy.md.
+taxon_id: populus_tremula
+display_name: Populus tremula (осика)
+aliases:
+  - осика
+  - aspen
+  - populus tremula
+supported_resolution:
+  - species
+
+strong_positive_features:
+  - feature: leaf.petiole
+    values:
+      - long_flattened
+
+supporting_features:
+  - feature: leaf.shape
+    values:
+      - rounded
+  - feature: bark.pattern
+    values:
+      - grey_green_smooth_young
+  - feature: wood.tone
+    values:
+      - pale_soft
+
+contradictions: []
+
+common_confusions:
+  - populus
+  - populus_alba
+
+required_for_high_confidence:
+  - leaf_or_petiole
+
+follow_up_evidence:
+  - leaf_petiole_macro
+  - leaf_upper_macro
+  - bark_macro_mid_trunk
+
+provenance:
+  source: "Domain prompt section 14 (БАЗОВІ ПОРОДИ)"
+  source_type: domain_prompt
+  region: Eastern Europe
+  life_stage: any
+  season: any
+  confidence: low
+  review_state: unreviewed
+  reviewed_by: null
+  last_reviewed: null
+
+placeholder_content: true

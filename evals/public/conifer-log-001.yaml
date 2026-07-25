@@ -1,0 +1,34 @@
+# Case 1 — probable Pinus log.
+# The happy path. It exists to pin down what "good" looks like: a genus-level answer with
+# an honest confidence and no species claim, reached without paying for an arbiter call.
+case_id: conifer-log-001
+title: Probable Pinus log with attached foliage
+description: >-
+  A felled conifer log photographed with foliage attached. Fascicled needles are countable,
+  so genus is defensible. Species is not, and must not appear.
+scenario: primary-pass
+
+input:
+  case_id: conifer-log-001
+  images:
+    - image_id: img-1
+      path: examples/conifer-log-001.jpg
+      media_type: image/jpeg
+      caption: Felled log at the edge of a clearing
+  user_text: Cut this one last autumn, what is it?
+  location: Kyiv Oblast, Ukraine
+  season: autumn
+  habitat: mixed woodland edge
+  declared_object_type: log
+
+expect:
+  expected_taxon: pinus
+  expected_taxon_in_top_3: pinus
+  expected_resolution: genus
+  max_resolution: genus
+  max_confidence: medium
+  expected_status: probable
+  require_escalation: false
+  max_retries: 0
+
+placeholder_content: true

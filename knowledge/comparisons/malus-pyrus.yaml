@@ -1,0 +1,47 @@
+# PLACEHOLDER demonstration content — derived from section 14 of the domain prompt,
+# not reviewed by a dendrologist. See docs/dataset-policy.md.
+comparison_id: malus-pyrus
+taxa:
+  - malus
+  - pyrus
+
+shared_features:
+  - bark.texture
+  - leaf.shape
+  - context.site
+  - trunk.form
+
+decisive_differences:
+  - feature: fruit.type
+    separates:
+      - malus
+      - pyrus
+    note: The fruit closes the discussion. Nothing else here does.
+  - feature: branch.arrangement
+    separates:
+      - malus
+      - pyrus
+    note: Pear branches tend more vertical; apple spreads and crooks.
+
+insufficient_features:
+  - bark.texture
+  - trunk.form
+  - context.site
+
+recommended_follow_up_photos:
+  - fruit_photo
+  - leaf_upper_macro
+  - crown_photo
+
+provenance:
+  source: "Domain prompt sections 13, 14 and 16"
+  source_type: domain_prompt
+  region: Eastern Europe
+  life_stage: any
+  season: any
+  confidence: low
+  review_state: unreviewed
+  reviewed_by: null
+  last_reviewed: null
+
+placeholder_content: true

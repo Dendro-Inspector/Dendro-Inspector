@@ -1,0 +1,69 @@
+# PLACEHOLDER demonstration content — derived from section 14 of the domain prompt,
+# not reviewed by a dendrologist. See docs/dataset-policy.md.
+comparison_id: rough-bark-broadleaves
+taxa:
+  - quercus
+  - fraxinus
+  - juglans_regia
+  - populus
+  - alnus
+  - acer_pseudoplatanus
+  - robinia_pseudoacacia
+  - malus
+
+shared_features:
+  - bark.texture
+  - trunk.form
+  - crown.shape
+
+decisive_differences:
+  - feature: leaf.type
+    separates:
+      - quercus
+      - fraxinus
+      - juglans_regia
+    note: Simple lobed (oak) vs compound pinnate (ash, walnut) settles it; bark does not.
+  - feature: leaf.arrangement
+    separates:
+      - fraxinus
+      - juglans_regia
+    note: Ash is opposite, walnut alternate.
+  - feature: acorn.presence
+    separates:
+      - quercus
+      - fraxinus
+      - populus
+      - alnus
+    favours: quercus
+    note: An acorn ends the discussion in Quercus' favour.
+  - feature: pores.arrangement
+    separates:
+      - quercus
+      - populus
+    favours: quercus
+    note: Ring-porous with prominent rays points to Quercus on a cut face.
+
+insufficient_features:
+  - bark.texture
+  - bark.colour
+  - trunk.form
+  - crown.shape
+
+recommended_follow_up_photos:
+  - leaf_attachment_photo
+  - leaf_upper_macro
+  - acorn_photo
+  - prepared_end_grain_macro
+
+provenance:
+  source: "Domain prompt sections 13, 14 and 16"
+  source_type: domain_prompt
+  region: Eastern Europe
+  life_stage: any
+  season: any
+  confidence: low
+  review_state: unreviewed
+  reviewed_by: null
+  last_reviewed: null
+
+placeholder_content: true

@@ -1,0 +1,132 @@
+{
+  "scenario": "foliage-unattached",
+  "description": "FAILURE 6 — pinnate foliage at the edge of the frame that cannot be traced to this trunk. It must not turn the tree into an ash.",
+  "note_for_maintainers": "obs-2 has attachment_confirmed=false on purpose. The evidence hierarchy demotes it to context and the claim falls back to what the bark alone supports.",
+  "responses": {
+    "primary:planner": {
+      "target_features": ["leaf.type", "leaf.arrangement", "bark.pattern"],
+      "expect_multiple_subjects": false,
+      "bark_only_input": false,
+      "notes": ["Foliage visible at frame edge; confirm the branch reaches this trunk."]
+    },
+    "primary:evidence_extractor": {
+      "subjects": [
+        {
+          "subject_id": "standing_tree",
+          "kind": "standing_tree",
+          "description": "Trunk in the foreground with foliage entering the top corner of the frame.",
+          "image_ids": ["img-1"]
+        }
+      ],
+      "observations": [
+        {
+          "observation_id": "obs-1",
+          "feature": "bark.texture",
+          "value": "grey_furrowed_old",
+          "subject_id": "standing_tree",
+          "source": "image",
+          "visibility": "clear",
+          "reliability": "medium",
+          "image_id": "img-1"
+        },
+        {
+          "observation_id": "obs-2",
+          "feature": "leaf.type",
+          "value": "compound_pinnate",
+          "subject_id": "standing_tree",
+          "source": "image",
+          "visibility": "partial",
+          "reliability": "low",
+          "image_id": "img-1",
+          "attachment": "unknown",
+          "notes": "Pinnate foliage in the upper corner; no branch is traceable back to this trunk."
+        },
+        {
+          "observation_id": "obs-3",
+          "feature": "trunk.form",
+          "value": "massive",
+          "subject_id": "standing_tree",
+          "source": "image",
+          "visibility": "clear",
+          "reliability": "medium",
+          "image_id": "img-1"
+        }
+      ],
+      "inferences": [
+        {
+          "inference_id": "inf-1",
+          "claim": "corner_foliage_resembles_fraxinus",
+          "derived_from": ["obs-2"],
+          "strength": "weak",
+          "limitations": ["attachment_unconfirmed", "may_belong_to_neighbouring_tree"]
+        }
+      ],
+      "absent_features": [],
+      "image_limitations": [
+        {
+          "image_id": "img-1",
+          "lighting": "dappled",
+          "white_balance": "uncorrected",
+          "scale": "absent"
+        }
+      ],
+      "context_limitations": ["dense_stand"],
+      "possible_multiple_taxa": false,
+      "instruction_like_content_detected": false
+    },
+    "primary:candidate_generator": {
+      "sets": [
+        {
+          "subject_id": "standing_tree",
+          "candidates": [
+            {
+              "taxon": "fraxinus",
+              "resolution": "genus",
+              "supporting_evidence_ids": ["obs-1", "obs-2", "inf-1"],
+              "contradicting_evidence_ids": [],
+              "missing_decisive_features": [],
+              "score": "strong",
+              "rank": 1
+            },
+            {
+              "taxon": "quercus",
+              "resolution": "genus",
+              "supporting_evidence_ids": ["obs-1", "obs-3"],
+              "contradicting_evidence_ids": [],
+              "missing_decisive_features": [],
+              "score": "weak",
+              "rank": 2
+            }
+          ]
+        }
+      ]
+    },
+    "primary:botanical_reviewer": {
+      "reviewer": "botanical",
+      "status": "pass",
+      "findings": [],
+      "recommended_resolution": "genus"
+    },
+    "primary:confusion_reviewer": {
+      "reviewer": "confusion",
+      "status": "pass",
+      "findings": [],
+      "recommended_resolution": "genus"
+    },
+    "primary:confidence_reviewer": {
+      "reviewer": "confidence",
+      "status": "pass",
+      "findings": [],
+      "recommended_resolution": "genus",
+      "recommended_confidence": "high"
+    },
+    "arbiter:arbiter": {
+      "reviewer": "arbiter",
+      "status": "pass",
+      "findings": [],
+      "recommended_resolution": "genus",
+      "recommended_confidence": "low"
+    }
+  }
+}
+

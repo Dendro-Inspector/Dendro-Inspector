@@ -1,0 +1,59 @@
+# PLACEHOLDER demonstration content — derived from section 14 of the domain prompt,
+# not reviewed by a dendrologist. See docs/dataset-policy.md.
+taxon_id: larix
+display_name: Larix (модрина)
+aliases:
+  - модрина
+  - лиственница
+  - larch
+  - larix
+supported_resolution:
+  - genus
+
+strong_positive_features:
+  - feature: needles.arrangement
+    values:
+      - clustered_on_short_shoots
+  - feature: needles.persistence
+    values:
+      - deciduous
+
+supporting_features:
+  - feature: branch.short_shoots
+    values:
+      - prominent
+  - feature: cones.size
+    values:
+      - small_upright
+
+contradictions:
+  - feature: needles.fascicles
+    values:
+      - two
+      - three
+      - five
+
+common_confusions:
+  - picea
+  - pinus
+
+required_for_high_confidence:
+  - needles_or_cones
+
+follow_up_evidence:
+  - short_shoot_macro
+  - cone_photo
+  - winter_twig_photo
+
+provenance:
+  source: "Domain prompt section 14 (БАЗОВІ ПОРОДИ)"
+  source_type: domain_prompt
+  region: Eastern Europe
+  life_stage: any
+  season: any
+  confidence: low
+  review_state: unreviewed
+  reviewed_by: null
+  last_reviewed: null
+
+placeholder_content: true

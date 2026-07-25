@@ -1,0 +1,232 @@
+{
+  "scenario": "primary-mixed-taxa",
+  "description": "Two logs of different taxa in one frame. Conclusions must be scoped per subject, evidence must not leak, and escalation is mandatory.",
+  "note_for_maintainers": "The background_log_1 candidate deliberately cites obs-1, which belongs to foreground_log_1. The candidate generator must strip it. Do not 'fix' this fixture.",
+  "responses": {
+    "primary:planner": {
+      "target_features": [
+        "needles.fascicles",
+        "needles.attachment",
+        "bark.flake_geometry"
+      ],
+      "expect_multiple_subjects": true,
+      "bark_only_input": false,
+      "notes": [
+        "Two distinct logs visible; scope every conclusion per subject."
+      ]
+    },
+    "primary:evidence_extractor": {
+      "subjects": [
+        {
+          "subject_id": "foreground_log_1",
+          "kind": "log",
+          "description": "Nearest log, cut end and attached foliage clearly visible.",
+          "image_ids": [
+            "img-1"
+          ]
+        },
+        {
+          "subject_id": "background_log_1",
+          "kind": "log",
+          "description": "Second log behind the first, foliage visible at the far end.",
+          "image_ids": [
+            "img-1"
+          ]
+        }
+      ],
+      "observations": [
+        {
+          "observation_id": "obs-1",
+          "feature": "needles.fascicles",
+          "value": "two",
+          "subject_id": "foreground_log_1",
+          "source": "image",
+          "visibility": "clear",
+          "reliability": "high",
+          "image_id": "img-1",
+          "attachment": "confirmed_attached"
+        },
+        {
+          "observation_id": "obs-2",
+          "feature": "bark.flake_geometry",
+          "value": "thin_irregular_edge_lifting",
+          "subject_id": "foreground_log_1",
+          "source": "image",
+          "visibility": "clear",
+          "reliability": "medium",
+          "image_id": "img-1"
+        },
+        {
+          "observation_id": "obs-3",
+          "feature": "needles.attachment",
+          "value": "single_on_woody_peg",
+          "subject_id": "background_log_1",
+          "source": "image",
+          "visibility": "partial",
+          "reliability": "medium",
+          "image_id": "img-1",
+          "attachment": "confirmed_attached"
+        },
+        {
+          "observation_id": "obs-4",
+          "feature": "bark.flake_geometry",
+          "value": "small_thin_scales",
+          "subject_id": "background_log_1",
+          "source": "image",
+          "visibility": "partial",
+          "reliability": "medium",
+          "image_id": "img-1"
+        }
+      ],
+      "inferences": [
+        {
+          "inference_id": "inf-1",
+          "claim": "foreground_morphology_is_compatible_with_pinus",
+          "derived_from": [
+            "obs-1",
+            "obs-2"
+          ],
+          "strength": "strong",
+          "limitations": []
+        },
+        {
+          "inference_id": "inf-2",
+          "claim": "background_morphology_is_compatible_with_picea",
+          "derived_from": [
+            "obs-3",
+            "obs-4"
+          ],
+          "strength": "medium",
+          "limitations": [
+            "partial_visibility"
+          ]
+        }
+      ],
+      "absent_features": [],
+      "image_limitations": [
+        {
+          "image_id": "img-1",
+          "lighting": "dappled",
+          "white_balance": "uncorrected",
+          "scale": "approximate",
+          "notes": "Background log is further from the lens; feature reliability is lower there."
+        }
+      ],
+      "context_limitations": [],
+      "possible_multiple_taxa": true,
+      "instruction_like_content_detected": false
+    },
+    "primary:candidate_generator": {
+      "sets": [
+        {
+          "subject_id": "foreground_log_1",
+          "candidates": [
+            {
+              "taxon": "pinus",
+              "resolution": "genus",
+              "supporting_evidence_ids": [
+                "obs-1",
+                "obs-2",
+                "inf-1"
+              ],
+              "contradicting_evidence_ids": [],
+              "missing_decisive_features": [],
+              "score": "moderate",
+              "rank": 1
+            },
+            {
+              "taxon": "larix",
+              "resolution": "genus",
+              "supporting_evidence_ids": [
+                "obs-2"
+              ],
+              "contradicting_evidence_ids": [
+                "obs-1"
+              ],
+              "missing_decisive_features": [
+                "short_shoot_macro"
+              ],
+              "score": "weak",
+              "rank": 2
+            }
+          ]
+        },
+        {
+          "subject_id": "background_log_1",
+          "candidates": [
+            {
+              "taxon": "picea",
+              "resolution": "genus",
+              "supporting_evidence_ids": [
+                "obs-3",
+                "obs-4",
+                "inf-2",
+                "obs-1"
+              ],
+              "contradicting_evidence_ids": [],
+              "missing_decisive_features": [],
+              "score": "moderate",
+              "rank": 1
+            },
+            {
+              "taxon": "pinus",
+              "resolution": "genus",
+              "supporting_evidence_ids": [
+                "obs-4"
+              ],
+              "contradicting_evidence_ids": [
+                "obs-3"
+              ],
+              "missing_decisive_features": [
+                "needle_fascicle_macro"
+              ],
+              "score": "weak",
+              "rank": 2
+            }
+          ]
+        }
+      ]
+    },
+    "primary:botanical_reviewer": {
+      "reviewer": "botanical",
+      "status": "pass",
+      "findings": [],
+      "recommended_resolution": "genus"
+    },
+    "primary:confusion_reviewer": {
+      "reviewer": "confusion",
+      "status": "pass",
+      "findings": [],
+      "recommended_resolution": "genus"
+    },
+    "primary:confidence_reviewer": {
+      "reviewer": "confidence",
+      "status": "pass",
+      "findings": [],
+      "recommended_resolution": "genus",
+      "recommended_confidence": "medium"
+    },
+    "arbiter:arbiter": {
+      "reviewer": "arbiter",
+      "status": "pass_with_findings",
+      "findings": [
+        {
+          "finding_id": "arb-mixed-1",
+          "category": "subject_contamination",
+          "severity": "minor",
+          "summary": "Both logs were photographed at different distances; treat background reliability as lower.",
+          "evidence_ids": [
+            "obs-3",
+            "obs-4"
+          ],
+          "subject_id": "background_log_1",
+          "required_action": "lower_confidence",
+          "impact": "confidence_change"
+        }
+      ],
+      "recommended_resolution": "genus",
+      "recommended_confidence": "medium"
+    }
+  }
+}
+

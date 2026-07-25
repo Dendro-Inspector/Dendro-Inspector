@@ -1,0 +1,117 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "evil-duck-dendro-inspector"
+version = "0.2.1"
+description = "Eval-driven, evidence-based multimodal agent for identifying trees, logs, bark, leaves, fruit, cones and wood from photographs."
+readme = "README.md"
+requires-python = ">=3.12"
+license = { file = "LICENSE" }
+authors = [{ name = "Evil Duck Dendro Inspector maintainers" }]
+keywords = ["dendrology", "agents", "evaluation", "multimodal", "identification"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "Intended Audience :: Science/Research",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Scientific/Engineering :: Bio-Informatics",
+  "Typing :: Typed",
+]
+dependencies = [
+  "pydantic>=2.7",
+  "typer>=0.12",
+  "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+openai = ["openai>=1.40"]
+anthropic = ["anthropic>=0.34"]
+dev = [
+  "pytest>=8.0",
+  "ruff>=0.6",
+  "mypy>=1.11",
+  "types-PyYAML>=6.0",
+]
+
+[project.scripts]
+evil-duck = "evil_duck_dendro.cli:app"
+
+[project.urls]
+Homepage = "https://github.com/OWNER/evil-duck-dendro-inspector"
+Issues = "https://github.com/OWNER/evil-duck-dendro-inspector/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/evil_duck_dendro"]
+
+# prompts/, knowledge/ and evals/ are resolved relative to the working directory, not
+# bundled into the wheel. The domain prompt is user-managed and the knowledge cards are
+# meant to be edited; vendoring either into site-packages would make both harder to change
+# than they should be. See docs/architecture.md.
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+  "E", "F", "W",    # pycodestyle / pyflakes
+  "I",              # isort
+  "B",              # bugbear
+  "UP",             # pyupgrade
+  "N",              # pep8-naming
+  "SIM",            # flake8-simplify
+  "RUF",            # ruff-specific
+  "ANN",            # annotations
+  "TID",            # tidy imports
+]
+ignore = [
+  "ANN401",  # allow Any in explicitly untyped provider metadata boundaries
+  "B008",    # typer uses function calls in argument defaults by design
+  "UP047",   # ResponseT is shared across the provider Protocol and its adapters; a
+             # module-level TypeVar keeps those signatures identical, and mixing PEP 695
+             # syntax with it in the same module reads worse than consistency.
+  "RUF001",  # Ukrainian is this project's default output language and the domain prompt is
+  "RUF002",  # written in it. Cyrillic characters and en dashes in user-facing strings are
+  "RUF003",  # deliberate, not homoglyph accidents.
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["ANN001", "ANN002", "ANN003", "ANN201", "ANN202"]
+"src/evil_duck_dendro/cli.py" = ["B006"]  # typer expresses repeatable options as list defaults
+
+[tool.ruff.lint.flake8-tidy-imports]
+ban-relative-imports = "parents"
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_unreachable = true
+disallow_any_generics = true
+files = ["src", "tests"]
+plugins = []
+
+[[tool.mypy.overrides]]
+module = ["openai.*", "anthropic.*"]
+ignore_missing_imports = true
+
+# Strict typing is a production-code discipline. Requiring `-> None` on several hundred
+# test functions buys nothing: a test that returns the wrong type fails as a test.
+# Everything else strict mode checks still applies here.
+[[tool.mypy.overrides]]
+module = ["tests.*"]
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+disallow_untyped_calls = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q --strict-markers"
+markers = [
+  "contract: typed-contract conformance tests",
+  "evaluation: evaluation-suite tests",
+]
+
+

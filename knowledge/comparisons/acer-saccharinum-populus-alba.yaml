@@ -1,0 +1,48 @@
+# PLACEHOLDER demonstration content — derived from section 14 of the domain prompt,
+# not reviewed by a dendrologist. See docs/dataset-policy.md.
+comparison_id: acer-saccharinum-populus-alba
+taxa:
+  - acer_saccharinum
+  - populus_alba
+  - acer
+
+shared_features:
+  - leaf.shape
+  - context.site
+  - bark.texture
+
+decisive_differences:
+  - feature: leaf.arrangement
+    separates:
+      - acer_saccharinum
+      - populus_alba
+    note: Maple leaves are opposite; poplar leaves are alternate.
+  - feature: leaf.underside
+    separates:
+      - acer_saccharinum
+      - populus_alba
+    favours: populus_alba
+    note: White poplar is white-felted beneath; silver maple is merely paler.
+
+insufficient_features:
+  - leaf.shape
+  - bark.colour
+  - context.site
+
+recommended_follow_up_photos:
+  - leaf_underside_macro
+  - leaf_attachment_photo
+  - samara_photo
+
+provenance:
+  source: "Domain prompt sections 13, 14 and 16"
+  source_type: domain_prompt
+  region: Eastern Europe
+  life_stage: any
+  season: any
+  confidence: low
+  review_state: unreviewed
+  reviewed_by: null
+  last_reviewed: null
+
+placeholder_content: true

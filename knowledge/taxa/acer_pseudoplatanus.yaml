@@ -1,0 +1,60 @@
+# PLACEHOLDER demonstration content — derived from section 14 of the domain prompt,
+# not reviewed by a dendrologist. See docs/dataset-policy.md.
+taxon_id: acer_pseudoplatanus
+display_name: Acer pseudoplatanus (явір)
+aliases:
+  - явір
+  - sycamore maple
+  - acer pseudoplatanus
+supported_resolution:
+  - species
+
+strong_positive_features:
+  - feature: leaf.shape
+    values:
+      - broad_palmate_five_lobed
+
+supporting_features:
+  - feature: leaf.arrangement
+    values:
+      - opposite
+  - feature: samara.presence
+    values:
+      - paired
+  - feature: bark.peeling
+    values:
+      - irregular_plates
+  - feature: bark.pattern
+    values:
+      - mosaic_patchwork
+
+contradictions:
+  - feature: leaf.arrangement
+    values:
+      - alternate
+
+common_confusions:
+  - acer
+  - acer_saccharinum
+  - quercus
+
+required_for_high_confidence:
+  - leaf_or_samara
+
+follow_up_evidence:
+  - leaf_upper_macro
+  - leaf_attachment_photo
+  - bark_macro_mid_trunk
+
+provenance:
+  source: "Domain prompt section 14 (БАЗОВІ ПОРОДИ)"
+  source_type: domain_prompt
+  region: Eastern Europe
+  life_stage: any
+  season: any
+  confidence: low
+  review_state: unreviewed
+  reviewed_by: null
+  last_reviewed: null
+
+placeholder_content: true

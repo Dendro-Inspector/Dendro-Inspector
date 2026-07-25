@@ -1,0 +1,52 @@
+# PLACEHOLDER demonstration content — derived from section 14 of the domain prompt,
+# not reviewed by a dendrologist. See docs/dataset-policy.md.
+taxon_id: betula
+display_name: Betula (береза)
+aliases:
+  - береза
+  - birch
+  - betula
+supported_resolution:
+  - genus
+
+strong_positive_features:
+  - feature: bark.pattern
+    values:
+      - white_papery_with_black_marks
+
+supporting_features:
+  - feature: bark.peeling
+    values:
+      - thin_layers
+  - feature: lenticels.orientation
+    values:
+      - horizontal
+  - feature: leaf.shape
+    values:
+      - small_triangular_serrate
+
+contradictions: []
+
+common_confusions:
+  - populus_alba
+
+required_for_high_confidence:
+  - bark_pattern_or_leaf
+
+follow_up_evidence:
+  - bark_macro_mid_trunk
+  - leaf_upper_macro
+  - twig_photo
+
+provenance:
+  source: "Domain prompt section 14 (БАЗОВІ ПОРОДИ)"
+  source_type: domain_prompt
+  region: Eastern Europe
+  life_stage: any
+  season: any
+  confidence: low
+  review_state: unreviewed
+  reviewed_by: null
+  last_reviewed: null
+
+placeholder_content: true

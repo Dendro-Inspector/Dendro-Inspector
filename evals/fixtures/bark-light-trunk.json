@@ -1,0 +1,123 @@
+{
+  "scenario": "bark-light-trunk",
+  "description": "FAILURE 1 — a pale trunk photographed from a distance. The model proposes Betula and names no alternative; white poplar must be surfaced anyway.",
+  "note_for_maintainers": "The candidate set deliberately contains ONLY betula. The confusion reviewer's card-driven check has to produce populus_alba on its own. Do not add it to the fixture.",
+  "responses": {
+    "primary:planner": {
+      "target_features": ["bark.pattern", "leaf.underside", "leaf.arrangement"],
+      "expect_multiple_subjects": false,
+      "bark_only_input": true,
+      "notes": ["Distant trunk; nothing above bark level is likely to resolve."]
+    },
+    "primary:evidence_extractor": {
+      "subjects": [
+        {
+          "subject_id": "standing_tree",
+          "kind": "standing_tree",
+          "description": "Pale-barked tree photographed from across a clearing.",
+          "image_ids": ["img-1"]
+        }
+      ],
+      "observations": [
+        {
+          "observation_id": "obs-1",
+          "feature": "bark.pattern",
+          "value": "pale_with_dark_marks",
+          "subject_id": "standing_tree",
+          "source": "image",
+          "visibility": "partial",
+          "reliability": "low",
+          "image_id": "img-1",
+          "notes": "Marks are visible but the distance prevents reading their structure."
+        },
+        {
+          "observation_id": "obs-2",
+          "feature": "trunk.form",
+          "value": "slender_upright",
+          "subject_id": "standing_tree",
+          "source": "image",
+          "visibility": "clear",
+          "reliability": "low",
+          "image_id": "img-1"
+        },
+        {
+          "observation_id": "obs-3",
+          "feature": "bark.peeling",
+          "value": "not_resolvable",
+          "subject_id": "standing_tree",
+          "source": "image",
+          "visibility": "not_visible",
+          "reliability": "low",
+          "image_id": "img-1",
+          "notes": "Cannot tell whether the bark peels in papery layers at this range."
+        }
+      ],
+      "inferences": [
+        {
+          "inference_id": "inf-1",
+          "claim": "pale_bark_is_compatible_with_betula",
+          "derived_from": ["obs-1"],
+          "strength": "weak",
+          "limitations": ["distant_photograph", "bark_only"]
+        }
+      ],
+      "absent_features": [],
+      "image_limitations": [
+        {
+          "image_id": "img-1",
+          "lighting": "bright_backlit",
+          "white_balance": "uncorrected",
+          "scale": "absent",
+          "notes": "Subject is far from the lens; fine bark structure is below resolution."
+        }
+      ],
+      "context_limitations": ["no_foliage_resolvable"],
+      "possible_multiple_taxa": false,
+      "instruction_like_content_detected": false
+    },
+    "primary:candidate_generator": {
+      "sets": [
+        {
+          "subject_id": "standing_tree",
+          "candidates": [
+            {
+              "taxon": "betula",
+              "resolution": "genus",
+              "supporting_evidence_ids": ["obs-1", "inf-1"],
+              "contradicting_evidence_ids": [],
+              "missing_decisive_features": [],
+              "score": "moderate",
+              "rank": 1
+            }
+          ]
+        }
+      ]
+    },
+    "primary:botanical_reviewer": {
+      "reviewer": "botanical",
+      "status": "pass",
+      "findings": [],
+      "recommended_resolution": "genus"
+    },
+    "primary:confusion_reviewer": {
+      "reviewer": "confusion",
+      "status": "pass",
+      "findings": [],
+      "recommended_resolution": "genus"
+    },
+    "primary:confidence_reviewer": {
+      "reviewer": "confidence",
+      "status": "pass",
+      "findings": [],
+      "recommended_resolution": "genus",
+      "recommended_confidence": "medium"
+    },
+    "arbiter:arbiter": {
+      "reviewer": "arbiter",
+      "status": "pass",
+      "findings": [],
+      "recommended_resolution": "genus",
+      "recommended_confidence": "low"
+    }
+  }
+}

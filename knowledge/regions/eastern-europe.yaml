@@ -1,0 +1,43 @@
+# PLACEHOLDER demonstration content — derived from section 14 of the domain prompt,
+# not reviewed by a dendrologist. See docs/dataset-policy.md.
+region_id: eastern-europe
+display_name: "Eastern Europe"
+
+likely_taxa:
+  - acer
+  - acer_pseudoplatanus
+  - acer_saccharinum
+  - alnus
+  - betula
+  - carpinus
+  - fagus
+  - fraxinus
+  - juglans_regia
+  - larix
+  - malus
+  - morus
+  - picea
+  - pinus
+  - populus
+  - populus_alba
+  - populus_tremula
+  - prunus
+  - prunus_armeniaca
+  - prunus_avium
+  - prunus_cerasifera
+  - pyrus
+  - quercus
+  - robinia_pseudoacacia
+  - tilia
+
+unlikely_taxa: []
+
+notes:
+  - A regional pack is a prior, never a verdict. It may lower confidence in a
+    candidate; it may never delete one.
+  - Planted, ornamental and introduced trees are common in parks, estates,
+    shelterbelts and gardens. Range maps describe wild populations; the photographs
+    people actually send are disproportionately of planted trees.
+  - This pack must not be applied when the case carries no location.
+
+placeholder_content: true

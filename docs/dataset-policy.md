@@ -1,0 +1,134 @@
+# Dataset and content policy
+
+- **Status:** Current
+- **Owner:** Evil Duck Dendro Inspector maintainers
+- **Date:** 2026-07-25
+- **Last-verified:** 2026-07-25
+
+This is a **public repository**. Everything committed is world-readable, permanently
+archived by third parties, and mirrored within minutes. Deleting a commit does not unpublish
+it.
+
+## Knowledge cards are placeholder content
+
+Every card under `knowledge/` carries `placeholder_content: true`, and a contract test
+enforces it.
+
+They were authored for this project as a wiring demonstration. **No dendrologist has
+reviewed them.** They are not derived from a third-party dataset, a field guide, or a
+taxonomic database. The three-genus conifer pack (Pinus, Picea, Larix) exists to exercise
+the graph, not to identify trees.
+
+The flag is load-bearing: the response composer appends a placeholder warning to any answer
+backed by a card carrying it. Removing the flag without a real review would silently upgrade
+demonstration content into apparent authority.
+
+### Provenance is mandatory
+
+Every card carries a `provenance` block, and any individual feature rule may override it:
+
+```yaml
+provenance:
+  source: "Domain prompt section 14 (БАЗОВІ ПОРОДИ)"
+  source_type: domain_prompt      # field_guide | literature | expert_review | inferred
+  region: Eastern Europe
+  life_stage: any                 # young | mature | old
+  season: any                     # deciduous characters do not survive January
+  confidence: low
+  review_state: unreviewed        # reviewed | disputed
+  reviewed_by: null
+  last_reviewed: null
+```
+
+This does not make a rule true. It makes a rule **attributable** — which is the only thing
+that scales. The failure it guards against is quiet and expensive: someone adds a plausible,
+well-written, wrong feature; every test still passes, because the tests check the code and
+not the botany. With provenance, a later reviewer can list every rule nobody has ever
+verified. Without it, that list cannot be produced at all.
+
+The contract enforces one rule: `review_state: reviewed` requires both `reviewed_by` and
+`last_reviewed`. A card cannot claim review without saying who and when.
+
+### Promoting a card
+
+1. have someone who actually knows the taxon review the features, contradictions and
+   high-confidence requirements;
+2. set `review_state: reviewed` with `reviewed_by` and `last_reviewed`;
+3. set `placeholder_content: false`;
+4. update the comparison cards that mention it.
+
+Do not promote a card because it "looks right". The failure mode this project is built
+around is confident content that nobody checked.
+
+## Photographs
+
+**Do not commit photographs of trees to this repository.**
+
+- Most photographs are someone else's copyright, and "found on the internet" is not a
+  licence.
+- Image files carry EXIF: GPS coordinates, timestamps, camera serial numbers. A tree photo
+  can disclose where a person was on a particular afternoon.
+- Binary blobs in git history are permanent and cannot be pruned without rewriting history
+  for everyone.
+
+`examples/*.jpg|jpeg|png|webp` is git-ignored. Put your own photographs there locally.
+
+Fake mode does not need a real file — the fixture supplies the evidence, and a missing file
+is recorded as a limitation rather than crashing the run.
+
+## Evaluation material
+
+| Location | Committed? | Contains |
+| --- | --- | --- |
+| `evals/public/` | yes | Case declarations. Synthetic input, no real photographs |
+| `evals/fixtures/` | yes | Recorded provider responses. Hand-authored, synthetic |
+| `evals/golden/` | **no** (git-ignored) | Your private material with real photographs |
+
+Fixtures are hand-written, not captured from live model calls. Captured output can contain
+anything the model happened to say, including reconstructed fragments of its input.
+
+## Personal data
+
+Never commit:
+
+- real names, email addresses, phone numbers;
+- GPS coordinates or addresses precise enough to locate a person or a property;
+- user-submitted photographs, text or metadata from any real deployment;
+- API keys, tokens, connection strings, `.env` files.
+
+Use synthetic values: `user@example.com`, region-level locations only ("Kyiv Oblast,
+Ukraine", not a street), obviously fake identifiers. A contract test checks fixtures for
+email addresses outside `example.com`.
+
+If a secret is committed, treat it as compromised the moment it is pushed. **Rotate first,
+scrub second.** History rewriting is cleanup, never remediation.
+
+## Location data in the running system
+
+The graph accepts `location` as free text and uses it only as a regional prior. It is
+recorded in the trace. If you run this as a service:
+
+- do not persist traces containing user locations longer than you need them;
+- strip EXIF from uploads before processing;
+- remember that `region_assumption_risk` deliberately fires when a pack is loaded and no
+  location was supplied — the system is designed not to guess a location it was not given.
+
+## What the system must not be used for
+
+Nothing here is validated against real photographs at scale, and the knowledge is
+placeholder content. Do not use it to decide:
+
+- whether a tree is structurally safe or should be felled;
+- whether timber is the species a seller claims;
+- whether a plant or fruit is edible;
+- anything with a legal, financial or safety consequence.
+
+The `identified` status means "the evidence supports this claim at the stated level". It
+does not mean "verified".
+
+## Implementation references
+
+- [`knowledge/`](../knowledge)
+- [`tests/contract/test_data_contract.py`](../tests/contract/test_data_contract.py)
+- [`.gitignore`](../.gitignore)
+- [`SECURITY.md`](../SECURITY.md)

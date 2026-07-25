@@ -1,0 +1,60 @@
+# PLACEHOLDER demonstration content — derived from section 14 of the domain prompt,
+# not reviewed by a dendrologist. See docs/dataset-policy.md.
+taxon_id: populus_alba
+display_name: Populus alba (тополя біла)
+aliases:
+  - тополя біла
+  - біла тополя
+  - white poplar
+  - populus alba
+supported_resolution:
+  - species
+
+strong_positive_features:
+  - feature: leaf.underside
+    values:
+      - white_tomentose
+
+supporting_features:
+  - feature: leaf.shape
+    values:
+      - rounded_or_triangular_lobed
+  - feature: leaf.arrangement
+    values:
+      - alternate
+  - feature: bark.pattern
+    values:
+      - pale_upper_dark_rough_base
+
+contradictions:
+  - feature: leaf.arrangement
+    values:
+      - opposite
+
+common_confusions:
+  - acer
+  - acer_saccharinum
+  - betula
+  - populus
+  - populus_tremula
+
+required_for_high_confidence:
+  - leaf_underside_and_arrangement
+
+follow_up_evidence:
+  - leaf_underside_macro
+  - leaf_attachment_photo
+  - bark_macro_mid_trunk
+
+provenance:
+  source: "Domain prompt section 14 (БАЗОВІ ПОРОДИ)"
+  source_type: domain_prompt
+  region: Eastern Europe
+  life_stage: any
+  season: any
+  confidence: low
+  review_state: unreviewed
+  reviewed_by: null
+  last_reviewed: null
+
+placeholder_content: true

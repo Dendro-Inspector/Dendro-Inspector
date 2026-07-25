@@ -1,0 +1,132 @@
+{
+  "scenario": "fruit-decisive",
+  "description": "Section 17 — an apple on the branch. The fruit closes the discussion, and this is the one case allowed into the top confidence band.",
+  "responses": {
+    "primary:planner": {
+      "target_features": ["fruit.type", "leaf.shape", "bark.texture"],
+      "expect_multiple_subjects": false,
+      "bark_only_input": false,
+      "notes": ["Fruit visible on the branch; this settles the genus immediately."]
+    },
+    "primary:evidence_extractor": {
+      "subjects": [
+        {
+          "subject_id": "standing_tree",
+          "kind": "standing_tree",
+          "description": "Low-branching garden tree with fruit hanging on the branch.",
+          "image_ids": ["img-1"]
+        }
+      ],
+      "observations": [
+        {
+          "observation_id": "obs-1",
+          "feature": "fruit.type",
+          "value": "apple",
+          "subject_id": "standing_tree",
+          "source": "image",
+          "visibility": "clear",
+          "reliability": "high",
+          "image_id": "img-1",
+          "attachment": "confirmed_attached",
+          "notes": "Fruit is on the branch, not on the ground."
+        },
+        {
+          "observation_id": "obs-2",
+          "feature": "leaf.shape",
+          "value": "oval_serrate",
+          "subject_id": "standing_tree",
+          "source": "image",
+          "visibility": "clear",
+          "reliability": "high",
+          "image_id": "img-1",
+          "attachment": "confirmed_attached"
+        },
+        {
+          "observation_id": "obs-3",
+          "feature": "trunk.form",
+          "value": "crooked_low_branching",
+          "subject_id": "standing_tree",
+          "source": "image",
+          "visibility": "clear",
+          "reliability": "medium",
+          "image_id": "img-1"
+        }
+      ],
+      "inferences": [
+        {
+          "inference_id": "inf-1",
+          "claim": "fruit_settles_the_genus",
+          "derived_from": ["obs-1", "obs-2"],
+          "strength": "strong",
+          "limitations": ["cultivar_not_determinable_from_photograph"]
+        }
+      ],
+      "absent_features": [],
+      "image_limitations": [
+        {
+          "image_id": "img-1",
+          "lighting": "even_shade",
+          "white_balance": "neutral",
+          "scale": "approximate"
+        }
+      ],
+      "context_limitations": [],
+      "possible_multiple_taxa": false,
+      "instruction_like_content_detected": false
+    },
+    "primary:candidate_generator": {
+      "sets": [
+        {
+          "subject_id": "standing_tree",
+          "candidates": [
+            {
+              "taxon": "malus",
+              "resolution": "genus",
+              "supporting_evidence_ids": ["obs-1", "obs-2", "inf-1"],
+              "contradicting_evidence_ids": [],
+              "missing_decisive_features": [],
+              "score": "strong",
+              "rank": 1
+            },
+            {
+              "taxon": "pyrus",
+              "resolution": "genus",
+              "supporting_evidence_ids": ["obs-3"],
+              "contradicting_evidence_ids": ["obs-1"],
+              "missing_decisive_features": ["fruit_photo"],
+              "score": "weak",
+              "rank": 2
+            }
+          ]
+        }
+      ]
+    },
+    "primary:botanical_reviewer": {
+      "reviewer": "botanical",
+      "status": "pass",
+      "findings": [],
+      "recommended_resolution": "genus"
+    },
+    "primary:confusion_reviewer": {
+      "reviewer": "confusion",
+      "status": "pass",
+      "findings": [],
+      "recommended_resolution": "genus"
+    },
+    "primary:confidence_reviewer": {
+      "reviewer": "confidence",
+      "status": "pass",
+      "findings": [],
+      "recommended_resolution": "genus",
+      "recommended_confidence": "high"
+    },
+    "arbiter:arbiter": {
+      "reviewer": "arbiter",
+      "status": "pass",
+      "findings": [],
+      "recommended_resolution": "genus",
+      "recommended_confidence": "high"
+    }
+  }
+}
+

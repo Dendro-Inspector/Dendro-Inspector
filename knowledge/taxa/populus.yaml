@@ -1,0 +1,58 @@
+# PLACEHOLDER demonstration content — derived from section 14 of the domain prompt,
+# not reviewed by a dendrologist. See docs/dataset-policy.md.
+taxon_id: populus
+display_name: Populus (тополя)
+aliases:
+  - тополя
+  - poplar
+  - populus
+supported_resolution:
+  - genus
+
+strong_positive_features:
+  - feature: leaf.shape
+    values:
+      - triangular
+      - rounded
+      - cordate
+
+supporting_features:
+  - feature: trunk.form
+    values:
+      - massive
+  - feature: bark.texture
+    values:
+      - coarse_furrowed
+  - feature: context.site
+    values:
+      - urban_park
+
+contradictions: []
+
+common_confusions:
+  - alnus
+  - populus_alba
+  - populus_tremula
+  - quercus
+  - tilia
+
+required_for_high_confidence:
+  - leaf_or_fruit
+
+follow_up_evidence:
+  - leaf_upper_macro
+  - leaf_attachment_photo
+  - crown_photo
+
+provenance:
+  source: "Domain prompt section 14 (БАЗОВІ ПОРОДИ)"
+  source_type: domain_prompt
+  region: Eastern Europe
+  life_stage: any
+  season: any
+  confidence: low
+  review_state: unreviewed
+  reviewed_by: null
+  last_reviewed: null
+
+placeholder_content: true

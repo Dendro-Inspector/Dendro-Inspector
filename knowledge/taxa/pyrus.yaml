@@ -1,0 +1,53 @@
+# PLACEHOLDER demonstration content — derived from section 14 of the domain prompt,
+# not reviewed by a dendrologist. See docs/dataset-policy.md.
+taxon_id: pyrus
+display_name: Pyrus (груша)
+aliases:
+  - груша
+  - pear
+  - pyrus
+supported_resolution:
+  - genus
+
+strong_positive_features:
+  - feature: fruit.type
+    values:
+      - pear
+
+supporting_features:
+  - feature: bark.texture
+    values:
+      - dark_small_blocks
+  - feature: leaf.shape
+    values:
+      - oval_glossy
+  - feature: branch.arrangement
+    values:
+      - vertical
+
+contradictions: []
+
+common_confusions:
+  - malus
+  - prunus
+
+required_for_high_confidence:
+  - fruit_or_leaf
+
+follow_up_evidence:
+  - fruit_photo
+  - leaf_upper_macro
+  - bark_macro_mid_trunk
+
+provenance:
+  source: "Domain prompt section 14 (БАЗОВІ ПОРОДИ)"
+  source_type: domain_prompt
+  region: Eastern Europe
+  life_stage: any
+  season: any
+  confidence: low
+  review_state: unreviewed
+  reviewed_by: null
+  last_reviewed: null
+
+placeholder_content: true

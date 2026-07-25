@@ -1,0 +1,35 @@
+# Case 8 — FAILURE 6: "листя в куті кадру належить стовбуру".
+# Pinnate foliage enters the top corner of the frame. No branch can be traced back to the
+# trunk being analysed, so it may belong to the neighbouring tree. The model treats it as
+# decisive and proposes Fraxinus with strong support; the attachment rule must demote it.
+case_id: edge-foliage-001
+title: Unattached foliage at the frame edge must not decide the answer
+description: >-
+  The only thing above bark level is foliage that cannot be shown to grow on this trunk.
+  The evidence hierarchy demotes it to context, the claim falls back to what bark supports,
+  and the system asks for the photograph that would settle it.
+scenario: foliage-unattached
+
+input:
+  case_id: edge-foliage-001
+  images:
+    - image_id: img-1
+      path: examples/edge-foliage-001.jpg
+      media_type: image/jpeg
+  user_text: Ясен?
+  location: Lviv Oblast, Ukraine
+  season: summer
+  declared_object_type: standing_tree
+
+expect:
+  expected_resolution: genus
+  max_resolution: genus
+  max_confidence: low
+  expected_evidence_tier: 3
+  require_finding_category: unsupported_claim
+  require_escalation: true
+  require_next_photo: true
+  max_retries: 0
+
+placeholder_content: true
+

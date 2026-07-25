@@ -1,0 +1,36 @@
+# Case 6 — FAILURE 1: "світлий стовбур = береза".
+# A pale trunk at distance. The model proposes Betula and names nothing else. White poplar
+# has pale bark too, and the photograph cannot separate them — so the system must surface
+# that alternative on its own, from the comparison cards, and refuse a strong claim.
+case_id: light-trunk-birch-001
+title: Pale trunk at distance proposed as Betula with no alternative named
+description: >-
+  Distant, backlit, bark-only. Betula is a reasonable candidate and white poplar is an
+  equally reasonable one. The claim must be capped at what bark supports and the unnamed
+  look-alike must reach the user.
+scenario: bark-light-trunk
+
+input:
+  case_id: light-trunk-birch-001
+  images:
+    - image_id: img-1
+      path: examples/light-trunk-001.jpg
+      media_type: image/jpeg
+  user_text: Береза?
+  location: Kyiv Oblast, Ukraine
+  season: summer
+  declared_object_type: standing_tree
+
+expect:
+  expected_taxon: betula
+  expected_resolution: genus
+  max_resolution: genus
+  max_confidence: low
+  expected_evidence_tier: 3
+  require_alternative_named: true
+  require_escalation: true
+  require_next_photo: true
+  max_retries: 0
+
+placeholder_content: true
+

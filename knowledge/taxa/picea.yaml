@@ -1,0 +1,63 @@
+# PLACEHOLDER demonstration content — derived from section 14 of the domain prompt,
+# not reviewed by a dendrologist. See docs/dataset-policy.md.
+taxon_id: picea
+display_name: Picea (ялина, смерека)
+aliases:
+  - ялина
+  - смерека
+  - ель
+  - spruce
+  - picea
+supported_resolution:
+  - genus
+
+strong_positive_features:
+  - feature: needles.attachment
+    values:
+      - single_on_woody_peg
+
+supporting_features:
+  - feature: crown.shape
+    values:
+      - conical
+  - feature: bark.texture
+    values:
+      - fine_scales
+  - feature: wood.tone
+    values:
+      - light
+
+contradictions:
+  - feature: needles.fascicles
+    values:
+      - two
+      - three
+      - five
+  - feature: needles.persistence
+    values:
+      - deciduous
+
+common_confusions:
+  - larix
+  - pinus
+
+required_for_high_confidence:
+  - needles_or_cones
+
+follow_up_evidence:
+  - needle_attachment_macro
+  - cone_photo
+  - twig_surface_macro
+
+provenance:
+  source: "Domain prompt section 14 (БАЗОВІ ПОРОДИ)"
+  source_type: domain_prompt
+  region: Eastern Europe
+  life_stage: any
+  season: any
+  confidence: low
+  review_state: unreviewed
+  reviewed_by: null
+  last_reviewed: null
+
+placeholder_content: true

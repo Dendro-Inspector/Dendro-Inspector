@@ -1,0 +1,37 @@
+# Case 7 — FAILURE 2 and FAILURE 3: rough bark, and the user says oak.
+# The model leans ash. Bark alone cannot settle it, and the domain prompt is explicit:
+# "Я не маю права агресивно відкидати твою версію по одній ділянці кори."
+# This case fails if the system ever rejects the user's version from this photograph.
+case_id: rough-bark-oak-claim-001
+title: User claims oak from rough bark while the model leans ash
+description: >-
+  Deep longitudinal fissures on a massive weathered trunk, no foliage. Oak, ash, walnut,
+  poplar and old apple all share this bark. The verdict on the user's version must be
+  "possible", never "rejected", and confidence must sit in the bark band.
+scenario: bark-rough-oak-claim
+
+input:
+  case_id: rough-bark-oak-claim-001
+  images:
+    - image_id: img-1
+      path: examples/rough-bark-001.jpg
+      media_type: image/jpeg
+  user_text: Це старий дуб, я його знаю багато років.
+  user_claim: дуб
+  location: Kyiv Oblast, Ukraine
+  season: winter
+  declared_object_type: bark
+
+expect:
+  expected_resolution: genus
+  max_resolution: genus
+  max_confidence: low
+  expected_evidence_tier: 3
+  expected_user_claim_verdict: possible
+  forbid_user_claim_rejection: true
+  require_escalation: true
+  require_next_photo: true
+  max_retries: 0
+
+placeholder_content: true
+

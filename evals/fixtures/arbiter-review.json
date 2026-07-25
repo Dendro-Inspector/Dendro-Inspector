@@ -1,0 +1,207 @@
+{
+  "scenario": "arbiter-review",
+  "description": "Primary overclaims Pinus at species level against Picea-shaped evidence. Escalation is mandatory, the arbiter reranks, and the trace records the candidate delta.",
+  "note_for_maintainers": "The primary deliberately proposes species-level Pinus while the evidence shows single needles on woody pegs. Both the card cap and the arbiter rerank must fire.",
+  "responses": {
+    "primary:planner": {
+      "target_features": [
+        "needles.attachment",
+        "needles.fascicles",
+        "cones.scale_shape"
+      ],
+      "expect_multiple_subjects": false,
+      "bark_only_input": false,
+      "notes": [
+        "Foliage is in frame; attachment is the decisive character here."
+      ]
+    },
+    "primary:evidence_extractor": {
+      "subjects": [
+        {
+          "subject_id": "foreground_log_1",
+          "kind": "log",
+          "description": "Felled log with a retained leafy branch across the cut end.",
+          "image_ids": [
+            "img-1"
+          ]
+        }
+      ],
+      "observations": [
+        {
+          "observation_id": "obs-1",
+          "feature": "needles.attachment",
+          "value": "single_on_woody_peg",
+          "subject_id": "foreground_log_1",
+          "source": "image",
+          "visibility": "clear",
+          "reliability": "high",
+          "image_id": "img-1",
+          "notes": "Persistent pegs clearly visible where needles have been shed.",
+          "attachment": "confirmed_attached"
+        },
+        {
+          "observation_id": "obs-2",
+          "feature": "bark.flake_geometry",
+          "value": "small_thin_scales",
+          "subject_id": "foreground_log_1",
+          "source": "image",
+          "visibility": "clear",
+          "reliability": "medium",
+          "image_id": "img-1"
+        },
+        {
+          "observation_id": "obs-3",
+          "feature": "bark.colour",
+          "value": "greyish_brown",
+          "subject_id": "foreground_log_1",
+          "source": "image",
+          "visibility": "clear",
+          "reliability": "low",
+          "image_id": "img-1"
+        }
+      ],
+      "inferences": [
+        {
+          "inference_id": "inf-1",
+          "claim": "needle_attachment_is_peg_like",
+          "derived_from": [
+            "obs-1"
+          ],
+          "strength": "strong",
+          "limitations": []
+        }
+      ],
+      "absent_features": [],
+      "image_limitations": [
+        {
+          "image_id": "img-1",
+          "lighting": "even_shade",
+          "white_balance": "neutral",
+          "scale": "approximate"
+        }
+      ],
+      "context_limitations": [],
+      "possible_multiple_taxa": false,
+      "instruction_like_content_detected": false
+    },
+    "primary:candidate_generator": {
+      "sets": [
+        {
+          "subject_id": "foreground_log_1",
+          "candidates": [
+            {
+              "taxon": "pinus",
+              "resolution": "species",
+              "supporting_evidence_ids": [
+                "obs-2",
+                "obs-3"
+              ],
+              "contradicting_evidence_ids": [],
+              "missing_decisive_features": [],
+              "score": "moderate",
+              "rank": 1
+            },
+            {
+              "taxon": "picea",
+              "resolution": "genus",
+              "supporting_evidence_ids": [
+                "obs-1",
+                "inf-1"
+              ],
+              "contradicting_evidence_ids": [],
+              "missing_decisive_features": [],
+              "score": "moderate",
+              "rank": 2
+            }
+          ]
+        }
+      ]
+    },
+    "primary:botanical_reviewer": {
+      "reviewer": "botanical",
+      "status": "pass",
+      "findings": [],
+      "recommended_resolution": "genus"
+    },
+    "primary:confusion_reviewer": {
+      "reviewer": "confusion",
+      "status": "pass",
+      "findings": [],
+      "recommended_resolution": "genus"
+    },
+    "primary:confidence_reviewer": {
+      "reviewer": "confidence",
+      "status": "pass",
+      "findings": [],
+      "recommended_resolution": "genus",
+      "recommended_confidence": "medium"
+    },
+    "arbiter:arbiter": {
+      "reviewer": "arbiter",
+      "subject_id": "foreground_log_1",
+      "status": "fail_correctable",
+      "findings": [
+        {
+          "finding_id": "arb-rerank-1",
+          "category": "overlooked_alternative",
+          "severity": "major",
+          "summary": "Single needles on persistent woody pegs is a Picea character and disqualifies Pinus; the ranking is inverted.",
+          "evidence_ids": [
+            "obs-1",
+            "inf-1"
+          ],
+          "subject_id": "foreground_log_1",
+          "required_action": "rerank_candidates",
+          "impact": "candidate_change"
+        },
+        {
+          "finding_id": "arb-colour-1",
+          "category": "unsupported_claim",
+          "severity": "minor",
+          "summary": "Bark colour was cited in support of the leading candidate and carries no weight here.",
+          "evidence_ids": [
+            "obs-3"
+          ],
+          "subject_id": "foreground_log_1",
+          "required_action": "none",
+          "impact": "no_material_change"
+        }
+      ],
+      "recommended_candidates": [
+        {
+          "taxon": "picea",
+          "resolution": "genus",
+          "supporting_evidence_ids": [
+            "obs-1",
+            "obs-2",
+            "inf-1"
+          ],
+          "contradicting_evidence_ids": [],
+          "missing_decisive_features": [
+            "cone_photo"
+          ],
+          "score": "moderate",
+          "rank": 1
+        },
+        {
+          "taxon": "pinus",
+          "resolution": "genus",
+          "supporting_evidence_ids": [
+            "obs-2"
+          ],
+          "contradicting_evidence_ids": [
+            "obs-1"
+          ],
+          "missing_decisive_features": [
+            "needle_fascicle_macro"
+          ],
+          "score": "weak",
+          "rank": 2
+        }
+      ],
+      "recommended_resolution": "genus",
+      "recommended_confidence": "medium"
+    }
+  }
+}
+

@@ -1,0 +1,51 @@
+# PLACEHOLDER demonstration content — derived from section 14 of the domain prompt,
+# not reviewed by a dendrologist. See docs/dataset-policy.md.
+comparison_id: prunus-group
+taxa:
+  - prunus
+  - prunus_cerasifera
+  - prunus_avium
+  - prunus_armeniaca
+
+shared_features:
+  - lenticels.orientation
+  - heartwood.tone
+  - context.site
+  - leaf.shape
+
+decisive_differences:
+  - feature: fruit.type
+    separates:
+      - prunus_cerasifera
+      - prunus_avium
+      - prunus_armeniaca
+    note: Without the fruit, cherry plum, plum and blackthorn are near twins.
+  - feature: bark.pattern
+    separates:
+      - prunus_avium
+      - prunus_cerasifera
+    note: Prunus avium shows banded, strongly lenticelled bark peeling in plates.
+
+insufficient_features:
+  - heartwood.tone
+  - wood.colour
+  - bark.texture
+  - context.site
+
+recommended_follow_up_photos:
+  - fruit_photo
+  - bark_macro_mid_trunk
+  - prepared_end_grain_macro
+
+provenance:
+  source: "Domain prompt sections 13, 14 and 16"
+  source_type: domain_prompt
+  region: Eastern Europe
+  life_stage: any
+  season: any
+  confidence: low
+  review_state: unreviewed
+  reviewed_by: null
+  last_reviewed: null
+
+placeholder_content: true

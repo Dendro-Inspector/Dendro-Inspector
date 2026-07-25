@@ -1,0 +1,20 @@
+# Prompt version metadata.
+# The domain prompt hash is computed at runtime and recorded in every trace; it is not
+# pinned here because the file is user-managed and expected to differ per deployment.
+
+domain_prompt:
+  path: prompts/domain/system-prompt.md
+  version: user-managed
+  sha256: calculated-at-runtime
+
+node_prompts:
+  revision: "0.1.0"
+  files:
+    - planner.md
+    - evidence-extractor.md
+    - candidate-generator.md
+    - botanical-reviewer.md
+    - confusion-reviewer.md
+    - confidence-reviewer.md
+    - arbiter.md
+    - response-composer.md

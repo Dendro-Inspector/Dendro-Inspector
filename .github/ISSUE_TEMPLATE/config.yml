@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/OWNER/evil-duck-dendro-inspector/security/advisories/new
+    about: Report privately. Never open a public issue for a vulnerability.
+  - name: Question or idea
+    url: https://github.com/OWNER/evil-duck-dendro-inspector/discussions
+    about: Ask here before opening an issue for anything structural.
