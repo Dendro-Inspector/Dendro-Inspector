@@ -548,6 +548,72 @@ Rules:
 2. ~~Issue tracker layout~~ — bug / feature templates and a config with a private security
    link are in `.github/ISSUE_TEMPLATE/`; a PR template enforces the gate checklist.
 
+---
+
+## 16. Benchmark Governance
+
+Applies from the moment the first real photograph enters `evals/golden/`. Written before
+that happened, deliberately: a rule against overfitting is worthless if it arrives after
+the first tempting failure.
+
+### Benchmark cases are immutable evaluation assets
+
+Taxon cards, comparison cards, prompts, thresholds and routing rules **must not be tuned
+against individual golden cases**.
+
+> A benchmark failure may reveal a defect.
+> It may not, by itself, define the fix.
+
+The distinction is the whole point. "Case 47 says Picea and we say Pinus" is an
+observation. It is not a specification, it is not a botanical source, and it is not
+permission to edit `picea.yaml` until case 47 goes green. That edit costs nothing today and
+destroys the benchmark's meaning permanently — after it, the suite measures how well the
+cards were fitted to the suite.
+
+### Any change motivated by a benchmark failure carries a justification
+
+Record it in the pull request, using this block:
+
+```yaml
+change_justification:
+  observed_failure:            # the specific case and what it got wrong
+  generalized_failure_class:   # the class of error, stated without reference to the case
+  independent_domain_source:   # a source that is NOT the benchmark: prompt section,
+                               # field guide, literature, expert review
+  new_non_golden_tests:        # unit/contract/public-eval tests that fail before the fix
+  affected_rules:              # cards, thresholds or routing touched
+  benchmark_cases_rechecked:   # cases re-run afterwards, including ones that were passing
+```
+
+A change that cannot fill `independent_domain_source` and `new_non_golden_tests` is
+overfitting, whatever else it is called. Send it back.
+
+### Separation of concerns
+
+- **Golden material never informs card authoring.** The 25 shipped cards derive from the
+  domain prompt's section 14 and nothing else. That provenance is recorded per card and is
+  what makes the first benchmark run a genuine measurement rather than a self-assessment.
+- **Public fixtures and golden cases stay apart.** `evals/fixtures/` scripts provider
+  responses to exercise the machinery; `evals/golden/` measures botanical correctness.
+  Fixture wording must never be copied from a golden case, and no card may contain a value
+  token that exists only to satisfy one.
+- **Blind by default.** The graph never receives the expected answer. Anyone adding a
+  benchmark runner must keep it that way.
+- **Report the denominator.** Accuracy over 60 hand-picked cases is a statement about those
+  60 cases. Say so, every time.
+
+### What the public evaluation suite is for
+
+`evals/public/` is a **conformance and regression** suite, not an accuracy benchmark. It
+proves the machinery behaves as specified on constructed situations. It is legitimate — and
+expected — to add a public case for a newly-understood failure class. That is not
+overfitting, because the fixtures are synthetic and the case documents a rule, not an
+answer.
+
+---
+
+## 17. Open Decisions
+
 **Still open, blocking the first public push:**
 
 3. DCO sign-off, CLA, or neither. Until decided, `CONTRIBUTING.md` asserts only that a

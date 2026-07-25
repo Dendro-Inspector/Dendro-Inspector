@@ -10,6 +10,19 @@ get entries.
 
 ## [Unreleased]
 
+First piece of scientific benchmark governance, landed before any real photograph exists —
+a rule against overfitting is worthless if it arrives after the first tempting failure.
+
+### Added
+
+- `AGENTS.md` §16 **Benchmark Governance**: golden cases are immutable evaluation assets.
+  Cards, prompts, thresholds and routing rules must not be tuned against an individual case.
+  A benchmark failure may reveal a defect; it may not by itself define the fix. Changes
+  motivated by one carry a `change_justification` block naming an independent domain source
+  and new non-golden tests.
+- Stated separation between `evals/public/` (conformance and regression, synthetic) and
+  `evals/golden/` (botanical correctness, private), and the blind-evaluation requirement.
+
 ## [0.2.1] — 2026-07-25
 
 Hardening pass before public push. No new capability; several things that were nearly right

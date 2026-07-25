@@ -179,6 +179,16 @@ test enforces that every case declares at least one expectation.
 not redistributable and often carry location metadata. See
 [`docs/dataset-policy.md`](dataset-policy.md).
 
+**Golden cases are immutable evaluation assets.** Cards, prompts, thresholds and routing
+rules must not be tuned against an individual case — a benchmark failure may reveal a
+defect, but it may not by itself define the fix. Any change motivated by one carries a
+justification block naming an independent domain source and new non-golden tests. The rule,
+and the block, are in [`AGENTS.md` §16](../AGENTS.md#16-benchmark-governance).
+
+This suite (`evals/public/`) is a **conformance and regression** suite, not an accuracy
+benchmark. Adding a public case for a newly-understood failure class is expected and is not
+overfitting: the fixtures are synthetic and the case documents a rule rather than an answer.
+
 ## Implementation references
 
 - [`src/evil_duck_dendro/evaluation/`](../src/evil_duck_dendro/evaluation)
