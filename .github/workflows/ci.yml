@@ -108,10 +108,28 @@ jobs:
 
       # A leaked credential in a public repository is public the instant it is pushed, and
       # deleting the commit does not unpublish it. This gate blocks rather than warns.
+      #
+      # We invoke the gitleaks binary directly rather than gitleaks/gitleaks-action@v2. The
+      # action refuses to run for organization-owned repositories without a paid licence key
+      # in a GITHUB_LICENSE secret; the CLI it wraps is MIT-licensed and unrestricted. Taking
+      # the licence route would also break the no-secrets guarantee at the top of this file,
+      # because fork PRs receive no secrets and the scan would fail for every outside
+      # contributor. The binary needs no token at all.
       - name: Gitleaks
-        uses: gitleaks/gitleaks-action@v2
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_VERSION: 8.30.1
+          GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+        run: |
+          set -euo pipefail
+          archive="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          curl -sSfL --retry 3 -o "$archive" \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/${archive}"
+          # A scanner fetched over the network is itself a supply-chain edge: pin the digest
+          # so a swapped release asset fails the build instead of silently scanning nothing.
+          echo "${GITLEAKS_SHA256}  ${archive}" | sha256sum --check --strict -
+          tar -xzf "$archive" gitleaks
+          # Exit 1 on findings, so a leak fails the job rather than being reported and passed.
+          ./gitleaks git . --redact --verbose --exit-code 1
 
   build:
     name: Package builds
