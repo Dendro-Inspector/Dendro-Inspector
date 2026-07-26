@@ -24,12 +24,15 @@ input:
 
 expect:
   expected_taxon: picea
+  expected_taxon_display_name: Picea (ялина, смерека)
   expected_taxon_in_top_3: picea
   expected_resolution: genus
   max_resolution: genus
   max_confidence: medium
   require_escalation: true
   require_candidate_delta: true
+  expected_admitted_rerank_finding_id: arb-rerank-1
+  expected_evidence_tier: 6
   max_retries: 0
 
 placeholder_content: true

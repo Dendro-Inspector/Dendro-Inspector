@@ -17,6 +17,7 @@ from evil_duck_dendro.knowledge.taxon_cards import match_card
 from evil_duck_dendro.nodes._support import merge_findings, review_call
 from evil_duck_dendro.schemas.reviews import (
     FindingCategory,
+    FindingOrigin,
     Impact,
     RequiredAction,
     Reviewer,
@@ -64,6 +65,7 @@ def card_contradiction_findings(state: GraphState, ctx: NodeContext) -> tuple[Re
         if bark_only_contradiction:
             findings.append(
                 ReviewFinding(
+                    origin=FindingOrigin.DETERMINISTIC,
                     finding_id=f"auto-bark-atypical-{candidate_set.subject_id}",
                     category=FindingCategory.MISSING_DECISIVE_FEATURE,
                     severity=Severity.MINOR,
@@ -82,6 +84,7 @@ def card_contradiction_findings(state: GraphState, ctx: NodeContext) -> tuple[Re
 
         findings.append(
             ReviewFinding(
+                origin=FindingOrigin.DETERMINISTIC,
                 finding_id=f"auto-botanical-{candidate_set.subject_id}",
                 category=FindingCategory.BOTANICAL_CONTRADICTION,
                 severity=Severity.MAJOR,
@@ -91,8 +94,8 @@ def card_contradiction_findings(state: GraphState, ctx: NodeContext) -> tuple[Re
                 ),
                 evidence_ids=match.contradiction_hits,
                 subject_id=candidate_set.subject_id,
-                required_action=RequiredAction.RERANK_CANDIDATES,
-                impact=Impact.CANDIDATE_CHANGE,
+                required_action=RequiredAction.LOWER_CONFIDENCE,
+                impact=Impact.CONFIDENCE_CHANGE,
             )
         )
     return tuple(findings)

@@ -17,6 +17,7 @@ from evil_duck_dendro.knowledge.taxon_cards import match_card
 from evil_duck_dendro.nodes._support import merge_findings, review_call
 from evil_duck_dendro.schemas.reviews import (
     FindingCategory,
+    FindingOrigin,
     Impact,
     RequiredAction,
     Reviewer,
@@ -46,6 +47,7 @@ def unsupported_resolution_findings(
             if leader.resolution is Resolution.SPECIES:
                 findings.append(
                     ReviewFinding(
+                        origin=FindingOrigin.DETERMINISTIC,
                         finding_id=f"auto-resolution-unknown-card-{candidate_set.subject_id}",
                         category=FindingCategory.RESOLUTION_TOO_SPECIFIC,
                         severity=Severity.CRITICAL,
@@ -66,6 +68,7 @@ def unsupported_resolution_findings(
             # would apply the same correction twice and bury a genus in family.
             findings.append(
                 ReviewFinding(
+                    origin=FindingOrigin.DETERMINISTIC,
                     finding_id=f"auto-resolution-{candidate_set.subject_id}",
                     category=FindingCategory.RESOLUTION_TOO_SPECIFIC,
                     severity=Severity.CRITICAL,
@@ -86,6 +89,7 @@ def unsupported_resolution_findings(
         if match.missing_for_high_confidence:
             findings.append(
                 ReviewFinding(
+                    origin=FindingOrigin.DETERMINISTIC,
                     finding_id=f"auto-missing-decisive-{candidate_set.subject_id}",
                     category=FindingCategory.MISSING_DECISIVE_FEATURE,
                     severity=Severity.MAJOR,
@@ -128,6 +132,7 @@ def evidence_tier_findings(state: GraphState) -> tuple[ReviewFinding, ...]:
             continue
         findings.append(
             ReviewFinding(
+                origin=FindingOrigin.DETERMINISTIC,
                 finding_id=f"auto-tier-{subject_id}",
                 category=FindingCategory.RESOLUTION_TOO_SPECIFIC,
                 severity=Severity.MAJOR,
@@ -164,6 +169,7 @@ def invalid_negative_evidence_findings(state: GraphState) -> tuple[ReviewFinding
         return ()
     return (
         ReviewFinding(
+            origin=FindingOrigin.DETERMINISTIC,
             finding_id="auto-invalid-negative",
             category=FindingCategory.INVALID_NEGATIVE_EVIDENCE,
             severity=Severity.MAJOR,

@@ -1,0 +1,35 @@
+case_id: unbound-rerank-001
+title: Rejected rerank recommendation cannot change the primary ranking
+description: >-
+  Both initial candidates have exact bark support. A reviewer recommends Picea first using
+  evidence that does not match Picea, so validation removes the proposed taxon and rejects the
+  rerank finding. The raw recommendation must remain inert.
+scenario: unbound-rerank
+
+input:
+  case_id: unbound-rerank-001
+  images:
+    - image_id: img-1
+      path: examples/unbound-rerank-001.jpg
+      media_type: image/jpeg
+  user_text: Which conifer is this bark from?
+  location: Kyiv Oblast, Ukraine
+  season: winter
+  declared_object_type: bark
+
+expect:
+  expected_taxon: pinus
+  expected_taxon_display_name: Pinus (сосна)
+  expected_candidate_taxa:
+    - pinus
+    - picea
+  expected_resolution: genus
+  max_resolution: genus
+  max_confidence: low
+  expected_evidence_tier: 3
+  require_escalation: true
+  expected_rejected_finding_id: model-rejected-rerank
+  forbid_admitted_reranks: true
+  max_retries: 0
+
+placeholder_content: true

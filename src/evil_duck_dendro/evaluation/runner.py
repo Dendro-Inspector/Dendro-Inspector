@@ -19,6 +19,7 @@ from evil_duck_dendro.config import Adapter, AppConfig, ProviderConfig, Role, lo
 from evil_duck_dendro.evaluation.assertions import evaluate
 from evil_duck_dendro.evaluation.metrics import ScoredCase, compute
 from evil_duck_dendro.graph.state import GraphState
+from evil_duck_dendro.prompts.library import PromptPolicyError
 from evil_duck_dendro.runner import run_case
 from evil_duck_dendro.schemas.evaluation import (
     AssertionOutcome,
@@ -91,6 +92,9 @@ async def score_case(
             config=_scenario_config(config, case.scenario),
             root=root,
         )
+    except PromptPolicyError:
+        # Deployment-wide incompatibility, not a case-specific fixture failure.
+        raise
     except Exception as exc:  # broad by design - see docstring
         return (
             CaseOutcome(
@@ -113,6 +117,16 @@ async def score_case(
             resolution=decision.resolution if decision else None,
             confidence=decision.confidence if decision else None,
             selected_taxon=decision.selected_taxon if decision else None,
+            selected_taxon_display_name=(
+                decision.selected_taxon_display_name if decision else None
+            ),
+            evidence_tier=decision.evidence_tier if decision else None,
+            admitted_rerank_finding_ids=tuple(
+                rerank.finding_id
+                for synthesis in (state.synthesis, state.arbiter_synthesis)
+                if synthesis is not None
+                for rerank in synthesis.admitted_reranks
+            ),
             arbiter_used=state.arbiter_used,
             retries=state.retries,
         ),

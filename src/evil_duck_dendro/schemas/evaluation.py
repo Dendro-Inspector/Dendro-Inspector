@@ -14,7 +14,7 @@ from pydantic import Field
 from evil_duck_dendro.schemas.base import Contract, Identifier, ShortText, ValueToken
 from evil_duck_dendro.schemas.decisions import DecisionStatus, UserClaimVerdict
 from evil_duck_dendro.schemas.input import CaseInput
-from evil_duck_dendro.schemas.reviews import FindingCategory
+from evil_duck_dendro.schemas.reviews import FindingCategory, FindingOrigin
 from evil_duck_dendro.schemas.taxon import Confidence, Resolution
 
 
@@ -22,7 +22,9 @@ class EvalExpectation(Contract):
     """Assertions for one case. Every field is optional; only stated ones are checked."""
 
     expected_taxon: Identifier | None = None
+    expected_taxon_display_name: str | None = Field(default=None, min_length=1, max_length=120)
     expected_taxon_in_top_3: Identifier | None = None
+    expected_candidate_taxa: tuple[Identifier, ...] | None = None
     expected_resolution: Resolution | None = None
     max_resolution: Resolution | None = Field(
         default=None,
@@ -34,7 +36,11 @@ class EvalExpectation(Contract):
     require_next_photo: bool = False
     require_escalation: bool | None = None
     require_finding_category: FindingCategory | None = None
+    require_accepted_finding_origin: FindingOrigin | None = None
     require_candidate_delta: bool = False
+    expected_admitted_rerank_finding_id: Identifier | None = None
+    forbid_admitted_reranks: bool = False
+    expected_rejected_finding_id: Identifier | None = None
     forbid_evidence_leak_between_subjects: bool = False
     max_retries: int | None = Field(default=None, ge=0)
     expected_user_claim_verdict: UserClaimVerdict | None = Field(
@@ -94,6 +100,9 @@ class CaseOutcome(Contract):
     resolution: Resolution | None = None
     confidence: Confidence | None = None
     selected_taxon: Identifier | None = None
+    selected_taxon_display_name: str | None = Field(default=None, max_length=120)
+    evidence_tier: int | None = Field(default=None, ge=1, le=7)
+    admitted_rerank_finding_ids: tuple[Identifier, ...] = ()
     arbiter_used: bool = False
     retries: int = 0
     schema_valid: bool = True

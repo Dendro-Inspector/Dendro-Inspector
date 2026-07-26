@@ -20,6 +20,8 @@ from evil_duck_dendro.knowledge.comparison_cards import (
 from evil_duck_dendro.knowledge.evidence_hierarchy import (
     EvidenceTier,
     best_tier,
+    contextual_observations_for,
+    positive_observations_for,
     unattached_observations,
 )
 from evil_duck_dendro.schemas.evidence import EvidencePacket
@@ -32,7 +34,7 @@ COLOUR_DEPENDENCE_RATIO = 0.5
 
 
 def _colour_dependent(evidence: EvidencePacket, subject_id: str) -> bool:
-    observations = evidence.visible_observations_for(subject_id)
+    observations = contextual_observations_for(evidence, subject_id)
     if not observations:
         return False
     weak = sum(1 for o in observations if o.feature in INSUFFICIENT_ALONE)
@@ -60,7 +62,7 @@ def assess(
 
     for subject in evidence.subjects:
         subject_id = subject.subject_id
-        visible = evidence.visible_observations_for(subject_id)
+        visible = positive_observations_for(evidence, subject_id)
         tier = best_tier(evidence, subject_id)
         tiers[subject_id] = int(tier)
         unattached.extend(o.observation_id for o in unattached_observations(evidence, subject_id))
@@ -68,19 +70,21 @@ def assess(
         if _colour_dependent(evidence, subject_id):
             colour_dependence = True
 
+        subject_usable = True
         if len(visible) < min_observations:
             reasons.append("too_few_resolvable_observations")
-            continue
+            subject_usable = False
         if require_non_colour and relies_only_on_insufficient_features(evidence, subject_id):
             reasons.append("only_insufficient_features_visible")
-            continue
+            subject_usable = False
         # Nothing above context survived. Either everything was unresolvable, or the only
         # foliage in frame could not be shown to grow on this trunk — which the domain
         # prompt treats as no foliage at all.
         if tier <= EvidenceTier.CONTEXT:
             reasons.append("no_evidence_above_context")
-            continue
-        usable.append(subject_id)
+            subject_usable = False
+        if subject_usable:
+            usable.append(subject_id)
 
     if not usable and "no_usable_subject" not in reasons:
         reasons.append("no_usable_subject")

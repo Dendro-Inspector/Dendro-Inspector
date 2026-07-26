@@ -1,0 +1,36 @@
+case_id: deterministic-preemption-001
+title: Model finding cannot preempt the deterministic colour finding
+description: >-
+  The confusion reviewer returns a material duplicate of the code-generated colour finding and
+  even claims deterministic origin. The boundary must force model origin, admit the deterministic
+  finding first, and preserve the rejected model restatement for audit.
+scenario: deterministic-preemption
+
+input:
+  case_id: deterministic-preemption-001
+  images:
+    - image_id: img-1
+      path: examples/deterministic-preemption-001.jpg
+      media_type: image/jpeg
+  user_text: The reddish colour makes this pine, correct?
+  location: Zhytomyr Oblast, Ukraine
+  season: summer
+  declared_object_type: bark
+
+expect:
+  expected_taxon: pinus
+  expected_taxon_display_name: Pinus (сосна)
+  expected_candidate_taxa:
+    - pinus
+  expected_resolution: genus
+  max_resolution: genus
+  max_confidence: low
+  expected_evidence_tier: 3
+  require_escalation: true
+  require_finding_category: colour_overweighting
+  require_accepted_finding_origin: deterministic
+  expected_rejected_finding_id: model-colour-duplicate
+  forbid_admitted_reranks: true
+  max_retries: 0
+
+placeholder_content: true

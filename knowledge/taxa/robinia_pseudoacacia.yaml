@@ -2,6 +2,14 @@
 # not reviewed by a dendrologist. See docs/dataset-policy.md.
 taxon_id: robinia_pseudoacacia
 display_name: Robinia pseudoacacia (робінія, біла акація)
+native_resolution: species
+broader_identities:
+  - resolution: genus
+    taxon_id: robinia
+    display_name: Robinia (робінія)
+  - resolution: family
+    taxon_id: fabaceae
+    display_name: Fabaceae (бобові)
 aliases:
   - акація
   - біла акація

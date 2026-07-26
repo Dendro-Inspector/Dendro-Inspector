@@ -4,7 +4,7 @@
   "note_for_maintainers": "All three model reviewers deliberately return 'pass'. The point of this case is that the code-side check fires without model help. Do not add findings to the reviewer responses.",
   "responses": {
     "primary:planner": {
-      "target_features": ["bark.flake_geometry", "needles.fascicles", "cones.scale_shape"],
+      "target_features": ["bark.texture", "needles.fascicles", "cones.scale_shape"],
       "expect_multiple_subjects": false,
       "bark_only_input": true,
       "notes": ["Trunk and cut face only; no foliage in frame."]
@@ -42,8 +42,8 @@
         },
         {
           "observation_id": "obs-3",
-          "feature": "bark.flake_geometry",
-          "value": "thin_irregular_edge_lifting",
+          "feature": "bark.texture",
+          "value": "scaly_plates",
           "subject_id": "standing_tree",
           "source": "image",
           "visibility": "partial",

@@ -102,6 +102,23 @@ class TestCardMatching:
         assert match.strong_hits == ("obs-1",)
         assert not match.has_contradiction
 
+    def test_partial_strong_feature_cannot_unlock_high_confidence(self, knowledge):
+        match = match_card(
+            knowledge.taxon("pinus"),
+            _packet(
+                _obs(
+                    "obs-1",
+                    "needles.fascicles",
+                    "two",
+                    visibility=Visibility.PARTIAL,
+                )
+            ),
+            "log_1",
+        )
+        assert match.strong_hits == ("obs-1",)
+        assert match.full_strong_hits == ()
+        assert not match.high_confidence_supported
+
     def test_declared_contradiction_is_detected(self, knowledge):
         """Single needles on a woody peg disqualify Pinus, per its own card."""
         match = match_card(

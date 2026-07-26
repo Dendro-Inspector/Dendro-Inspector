@@ -2,8 +2,8 @@
 
 - **Status:** Current
 - **Owner:** Evil Duck Dendro Inspector maintainers
-- **Date:** 2026-07-25
-- **Last-verified:** 2026-07-25
+- **Date:** 2026-07-26
+- **Last-verified:** 2026-07-26
 
 ## The rule
 
@@ -13,7 +13,13 @@ Three reviewers plus an arbiter emit findings. Every one of them faces the same
 deterministic admissibility test in
 [`nodes/review_synthesizer.py:adjudicate`](../src/evil_duck_dendro/nodes/review_synthesizer.py).
 Findings that pass are applied. Findings that fail are **kept**, marked rejected, with a
-reason code.
+reason code. `ReviewFinding.origin` records `model` or `deterministic`; provider-returned
+findings are forced to model origin at the reviewer boundary, while code-generated findings
+are explicitly deterministic.
+
+Deterministic findings are adjudicated first. This precedence is non-preemptible: a model
+cannot suppress a deterministic colour, attachment or contract finding by emitting a similar
+category earlier in its response.
 
 Rejections are retained deliberately. "The reviewer said X, we did not act on it, because Y"
 is the trail that makes a disputed answer defensible three months later. A pipeline that
@@ -70,28 +76,49 @@ requirements are not visible, and `invalid_negative_evidence` when a feature app
 
 ## Admissibility
 
+Synthesis first resolves one effective subject from the finding, review result and referenced
+evidence. Unknown/ambiguous ids fail with `evidence_id_unknown`; evidence whose source
+observations belong to another subject fails with `out_of_scope`. An inference is checked
+through every source observation, so it cannot hide a cross-subject citation.
+
 A finding is **accepted** when one of these holds, in order:
 
 | Test | Reason code |
 | --- | --- |
-| Cites evidence ids that all exist in the packet | `references_visible_evidence` |
+| Cites evidence ids that exist and belong to the effective subject | `references_visible_evidence` |
 | Category is `contract_violation` | `identifies_contract_violation` |
 | Category is a contradiction class | `identifies_contradiction` |
 | Category is a calibration class | `improves_calibration` |
-| `overlooked_alternative` **with** a recommended candidate the project has a card for | `plausible_omitted_alternative` |
+| `overlooked_alternative` names a known, actionable taxon | `plausible_omitted_alternative` |
 
 **Rejected** otherwise:
 
 | Cause | Reason code |
 | --- | --- |
-| Cites an evidence id that does not exist | `evidence_id_unknown` |
-| Same category and subject as an already-accepted finding | `restates_existing_finding` |
-| An alternative with nothing concrete behind it | `not_actionable` |
+| Unknown or ambiguous evidence id | `evidence_id_unknown` |
+| Evidence/result/finding subjects conflict | `out_of_scope` |
+| Materially duplicates an already-adjudicated finding | `restates_existing_finding` |
+| An alternative or rerank with nothing admissible behind it | `not_actionable` |
 | No evidence reference and no qualifying category | `no_evidence_reference` |
 
-`evidence_id_unknown` is the important one. A model that invents an evidence id to support a
-finding does not get to change the answer — and inventing ids is exactly what a model does
-when it is arguing rather than observing.
+Duplicate detection uses a material signature: category, effective subject, required action,
+impact, sorted evidence ids and proposed taxon. Finding id, prose and severity do not decide
+whether two findings are the same. Combined with deterministic-first ordering, this prevents a
+model restatement from occupying a category/subject slot before the deterministic finding.
+
+## Finding-bound reranks
+
+A recommendation is not a free-floating instruction. For a finding with
+`required_action: rerank_candidates`, synthesis requires `recommended_candidates` in that same
+`ReviewResult`, resolves the same subject, and passes the proposed ranking through the shared
+candidate validator. Unknown taxa, unsupported support ids and candidates with no surviving
+candidate-specific evidence are removed. If `proposed_taxon` is present, it must survive.
+
+An accepted finding and its validated ranking are stored together as one `AdmittedRerank`.
+Final decision reads only those artifacts, preferring one unambiguous arbiter rerank over
+internal reranks. Multiple conflicting rankings at the same level leave the current order
+unchanged and recommend escalation; a recommendation behind an absent or rejected finding is
+inert.
 
 ## Derived actions
 
@@ -101,7 +128,7 @@ when it is arguing rather than observing.
 | `unresolvable` | any accepted **critical** finding with `abstain` |
 | `confidence_delta` | the **lowest** confidence any reviewer recommended |
 | `resolution_delta` | the **broadest** resolution any reviewer recommended |
-| `candidate_delta` | accepted findings with `rerank_candidates` |
+| `candidate_delta` | exact accepted finding-bound `AdmittedRerank` artifacts |
 | `escalation_recommended` | reviewer disagreement, or any accepted critical finding |
 
 Deltas take the most conservative recommendation. Downgrades compose; nothing here raises a
@@ -123,10 +150,11 @@ moved the claim.
 
 ## Status reflects the answer, not the history
 
-`decide_status` recomputes contradictions against the **selected** taxon rather than reading
-the accepted findings. After an arbiter rerank, a finding raised against the candidate that
-lost says nothing about the one that won; reporting the winner as `conflicting_evidence`
-because its predecessor was contradicted is simply wrong.
+`decide_status` recomputes contradictions against the **selected final identity** rather than
+reading accepted findings against the original narrow candidate. After an arbiter rerank, a
+finding raised against the candidate that lost says nothing about the one that won. Likewise,
+a species-specific contradiction does not automatically contradict a genus/family identity
+unless that broader card declares it. Status describes the answer returned, not its history.
 
 ## Implementation references
 

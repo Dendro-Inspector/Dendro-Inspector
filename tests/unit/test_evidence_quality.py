@@ -23,14 +23,15 @@ def _obs(
     *,
     visibility: Visibility = Visibility.CLEAR,
     attached: bool = True,
+    source: ObservationSource = ObservationSource.IMAGE,
 ) -> Observation:
     return Observation(
         observation_id=observation_id,
         feature=feature,
         value="some_value",
         subject_id="log_1",
-        source=ObservationSource.IMAGE,
-        image_id="img-1",
+        source=source,
+        image_id="img-1" if source is ObservationSource.IMAGE else None,
         visibility=visibility,
         attachment=_attachment(feature, attached),
     )
@@ -71,6 +72,18 @@ def test_not_visible_observations_do_not_count_towards_sufficiency():
 def test_colour_only_evidence_is_insufficient():
     report = assess(
         _packet(_obs("obs-1", "bark.colour"), _obs("obs-2", "wood.colour")),
+    )
+    assert not report.sufficient
+    assert "only_insufficient_features_visible" in report.insufficient_reasons
+
+
+def test_contextual_structural_evidence_cannot_rescue_colour_only_image_support():
+    report = assess(
+        _packet(
+            _obs("obs-1", "bark.colour"),
+            _obs("obs-2", "wood.colour"),
+            _obs("obs-3", "bark.flake_geometry", source=ObservationSource.USER),
+        ),
     )
     assert not report.sufficient
     assert "only_insufficient_features_visible" in report.insufficient_reasons

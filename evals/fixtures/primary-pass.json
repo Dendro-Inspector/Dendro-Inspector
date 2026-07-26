@@ -42,10 +42,10 @@
           "value": "two",
           "subject_id": "foreground_log_1",
           "source": "image",
-          "visibility": "partial",
+          "visibility": "clear",
           "reliability": "medium",
           "image_id": "img-1",
-          "notes": "Two needles per sheath countable on three separate bundles.",
+          "notes": "Two needles per sheath countable on three separate, sharply resolved bundles.",
           "attachment": "confirmed_attached"
         },
         {

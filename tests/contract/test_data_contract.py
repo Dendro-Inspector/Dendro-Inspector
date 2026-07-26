@@ -12,7 +12,13 @@ import pytest
 import yaml
 
 from evil_duck_dendro.evaluation.runner import load_cases
-from evil_duck_dendro.schemas.taxon import ComparisonCard, RegionalPack, TaxonCard
+from evil_duck_dendro.schemas.taxon import (
+    ComparisonCard,
+    RegionalPack,
+    Resolution,
+    TaxonCard,
+    resolution_rank,
+)
 
 pytestmark = pytest.mark.contract
 
@@ -28,6 +34,42 @@ class TestKnowledgeCards:
         for path in paths:
             card = TaxonCard.model_validate(yaml.safe_load(path.read_text(encoding="utf-8")))
             assert card.taxon_id == path.stem
+
+    def test_taxon_cards_declare_coherent_native_and_broader_identities(self, repo_root):
+        for path in _yaml_files(repo_root, "taxa"):
+            card = TaxonCard.model_validate(yaml.safe_load(path.read_text(encoding="utf-8")))
+            assert card.native_identity.taxon_id == card.taxon_id
+            assert card.native_identity.display_name == card.display_name
+            assert card.native_identity.resolution is card.native_resolution
+
+            resolutions = [identity.resolution for identity in card.broader_identities]
+            assert len(resolutions) == len(set(resolutions))
+            assert all(
+                resolution_rank(identity.resolution) < resolution_rank(card.native_resolution)
+                for identity in card.broader_identities
+            )
+            assert any(
+                identity.resolution is Resolution.FAMILY for identity in card.broader_identities
+            )
+            if card.native_resolution is Resolution.SPECIES:
+                assert any(
+                    identity.resolution is Resolution.GENUS for identity in card.broader_identities
+                )
+
+    def test_repeated_genus_and_family_identities_are_consistent(self, repo_root):
+        identities: dict[tuple[Resolution, str], str] = {}
+        taxon_resolutions: dict[str, Resolution] = {}
+        for path in _yaml_files(repo_root, "taxa"):
+            card = TaxonCard.model_validate(yaml.safe_load(path.read_text(encoding="utf-8")))
+            for identity in (card.native_identity, *card.broader_identities):
+                key = (identity.resolution, identity.taxon_id)
+                previous_name = identities.setdefault(key, identity.display_name)
+                assert previous_name == identity.display_name
+
+                previous_resolution = taxon_resolutions.setdefault(
+                    identity.taxon_id, identity.resolution
+                )
+                assert previous_resolution is identity.resolution
 
     def test_every_comparison_card_validates(self, repo_root):
         paths = _yaml_files(repo_root, "comparisons")

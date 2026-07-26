@@ -9,10 +9,10 @@ from __future__ import annotations
 
 from enum import StrEnum
 
-from pydantic import Field
+from pydantic import Field, model_validator
 
 from evil_duck_dendro.schemas.base import Contract, Identifier, ShortText, ValueToken
-from evil_duck_dendro.schemas.candidates import Candidate
+from evil_duck_dendro.schemas.candidates import Candidate, CandidateSet
 from evil_duck_dendro.schemas.taxon import Confidence, Resolution
 
 
@@ -47,6 +47,11 @@ class FindingStatus(StrEnum):
     OPEN = "open"
     ACCEPTED = "accepted"
     REJECTED = "rejected"
+
+
+class FindingOrigin(StrEnum):
+    MODEL = "model"
+    DETERMINISTIC = "deterministic"
 
 
 class Impact(StrEnum):
@@ -96,6 +101,7 @@ class ReviewFinding(Contract):
     category: FindingCategory
     severity: Severity
     status: FindingStatus = FindingStatus.OPEN
+    origin: FindingOrigin = FindingOrigin.MODEL
     reason_code: ReasonCode | None = None
     summary: ShortText
     evidence_ids: tuple[Identifier, ...] = ()
@@ -133,11 +139,37 @@ class CorrectionDirective(Contract):
     rationale: ShortText
 
 
+class AdmittedRerank(Contract):
+    """One validated ranking bound to the exact finding that admitted it."""
+
+    finding: ReviewFinding
+    reviewer: Reviewer
+    candidate_set: CandidateSet
+
+    @model_validator(mode="after")
+    def _finding_and_ranking_are_bound(self) -> AdmittedRerank:
+        if self.finding.status is not FindingStatus.ACCEPTED:
+            msg = "admitted rerank finding must have status=accepted"
+            raise ValueError(msg)
+        if self.finding.required_action is not RequiredAction.RERANK_CANDIDATES:
+            msg = "admitted rerank finding must require rerank_candidates"
+            raise ValueError(msg)
+        if self.finding.subject_id != self.candidate_set.subject_id:
+            msg = "admitted rerank finding and candidate set must name the same subject"
+            raise ValueError(msg)
+        return self
+
+    @property
+    def finding_id(self) -> str:
+        return self.finding.finding_id
+
+
 class ReviewSynthesis(Contract):
     """The adjudicated result of all reviewer findings for one pass."""
 
     accepted_findings: tuple[ReviewFinding, ...] = ()
     rejected_findings: tuple[ReviewFinding, ...] = ()
+    admitted_reranks: tuple[AdmittedRerank, ...] = ()
     required_corrections: tuple[CorrectionDirective, ...] = ()
     candidate_delta: tuple[ShortText, ...] = ()
     confidence_delta: Confidence | None = None

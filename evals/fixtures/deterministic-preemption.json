@@ -1,0 +1,124 @@
+{
+  "scenario": "deterministic-preemption",
+  "description": "A model finding duplicates the deterministic colour finding and cannot preempt it.",
+  "responses": {
+    "primary:planner": {
+      "target_features": ["bark.texture", "bark.colour", "wood.colour"],
+      "expect_multiple_subjects": false,
+      "bark_only_input": true,
+      "notes": ["Colour dominates the image, but structural bark support remains weak."]
+    },
+    "primary:evidence_extractor": {
+      "subjects": [
+        {
+          "subject_id": "standing_tree",
+          "kind": "standing_tree",
+          "description": "A scaly-barked conifer trunk under warm, uncorrected light.",
+          "image_ids": ["img-1"]
+        }
+      ],
+      "observations": [
+        {
+          "observation_id": "colour-bark",
+          "feature": "bark.colour",
+          "value": "reddish_orange",
+          "subject_id": "standing_tree",
+          "source": "image",
+          "visibility": "clear",
+          "reliability": "low",
+          "image_id": "img-1"
+        },
+        {
+          "observation_id": "colour-wood",
+          "feature": "wood.colour",
+          "value": "pale_yellow",
+          "subject_id": "standing_tree",
+          "source": "image",
+          "visibility": "clear",
+          "reliability": "low",
+          "image_id": "img-1"
+        },
+        {
+          "observation_id": "pinus-bark",
+          "feature": "bark.texture",
+          "value": "scaly_plates",
+          "subject_id": "standing_tree",
+          "source": "image",
+          "visibility": "partial",
+          "reliability": "medium",
+          "image_id": "img-1"
+        }
+      ],
+      "inferences": [],
+      "absent_features": [],
+      "image_limitations": [
+        {
+          "image_id": "img-1",
+          "lighting": "late_afternoon_warm",
+          "white_balance": "uncorrected",
+          "scale": "absent"
+        }
+      ],
+      "context_limitations": [],
+      "possible_multiple_taxa": false,
+      "instruction_like_content_detected": false
+    },
+    "primary:candidate_generator": {
+      "sets": [
+        {
+          "subject_id": "standing_tree",
+          "candidates": [
+            {
+              "taxon": "pinus",
+              "resolution": "genus",
+              "supporting_evidence_ids": ["pinus-bark", "colour-bark", "colour-wood"],
+              "contradicting_evidence_ids": [],
+              "missing_decisive_features": [],
+              "score": "moderate",
+              "rank": 1
+            }
+          ]
+        }
+      ]
+    },
+    "primary:botanical_reviewer": {
+      "reviewer": "botanical",
+      "status": "pass",
+      "findings": [],
+      "recommended_resolution": "genus"
+    },
+    "primary:confusion_reviewer": {
+      "reviewer": "confusion",
+      "status": "pass_with_findings",
+      "findings": [
+        {
+          "finding_id": "model-colour-duplicate",
+          "category": "colour_overweighting",
+          "severity": "minor",
+          "origin": "deterministic",
+          "summary": "Model restatement of the colour-overweighting defect.",
+          "evidence_ids": ["colour-bark", "colour-wood"],
+          "subject_id": "standing_tree",
+          "required_action": "lower_confidence",
+          "impact": "confidence_change"
+        }
+      ],
+      "recommended_resolution": "genus"
+    },
+    "primary:confidence_reviewer": {
+      "reviewer": "confidence",
+      "status": "pass",
+      "findings": [],
+      "recommended_resolution": "genus",
+      "recommended_confidence": "low"
+    },
+    "arbiter:arbiter": {
+      "reviewer": "arbiter",
+      "status": "pass",
+      "findings": [],
+      "recommended_resolution": "genus",
+      "recommended_confidence": "low",
+      "subject_id": "standing_tree"
+    }
+  }
+}

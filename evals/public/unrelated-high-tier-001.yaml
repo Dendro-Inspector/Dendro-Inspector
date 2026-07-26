@@ -1,0 +1,33 @@
+case_id: unrelated-high-tier-001
+title: Unrelated high-tier evidence cannot raise a bark-supported candidate
+description: >-
+  An attached apple-like fruit is high-tier evidence for some taxa, but it does not match the
+  Pinus card. Only the exact bark feature may support Pinus, so its tier and confidence remain
+  in the bark band.
+scenario: unrelated-high-tier
+
+input:
+  case_id: unrelated-high-tier-001
+  images:
+    - image_id: img-1
+      path: examples/unrelated-high-tier-001.jpg
+      media_type: image/jpeg
+  user_text: The bark looks like pine, but there is fruit in the frame.
+  location: Kyiv Oblast, Ukraine
+  season: autumn
+  declared_object_type: standing_tree
+
+expect:
+  expected_taxon: pinus
+  expected_taxon_display_name: Pinus (сосна)
+  expected_candidate_taxa:
+    - pinus
+  expected_resolution: genus
+  max_resolution: genus
+  max_confidence: low
+  expected_evidence_tier: 3
+  require_escalation: false
+  forbid_admitted_reranks: true
+  max_retries: 0
+
+placeholder_content: true

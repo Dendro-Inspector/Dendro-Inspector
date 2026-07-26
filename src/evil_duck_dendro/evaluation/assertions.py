@@ -42,6 +42,42 @@ def check_expected_taxon(state: GraphState, expect: EvalExpectation) -> Assertio
     return _failed("expected_taxon", f"expected {expect.expected_taxon!r}, got {actual!r}")
 
 
+def check_expected_taxon_display_name(
+    state: GraphState, expect: EvalExpectation
+) -> AssertionResult | None:
+    if expect.expected_taxon_display_name is None:
+        return None
+    actual = {
+        decision.selected_taxon_display_name
+        for decision in state.decisions
+        if decision.selected_taxon_display_name is not None
+    }
+    if expect.expected_taxon_display_name in actual:
+        return _passed("expected_taxon_display_name", expect.expected_taxon_display_name)
+    return _failed(
+        "expected_taxon_display_name",
+        f"expected {expect.expected_taxon_display_name!r}, got {sorted(actual)}",
+    )
+
+
+def check_expected_candidate_taxa(
+    state: GraphState, expect: EvalExpectation
+) -> AssertionResult | None:
+    if expect.expected_candidate_taxa is None:
+        return None
+    actual = tuple(
+        candidate.taxon
+        for candidate_set in state.candidate_sets
+        for candidate in candidate_set.ordered
+    )
+    if actual == expect.expected_candidate_taxa:
+        return _passed("expected_candidate_taxa", repr(actual))
+    return _failed(
+        "expected_candidate_taxa",
+        f"expected {expect.expected_candidate_taxa!r}, got {actual!r}",
+    )
+
+
 def check_top_3(state: GraphState, expect: EvalExpectation) -> AssertionResult | None:
     if expect.expected_taxon_in_top_3 is None:
         return None
@@ -160,6 +196,32 @@ def check_finding_category(state: GraphState, expect: EvalExpectation) -> Assert
     )
 
 
+def check_accepted_finding_origin(
+    state: GraphState, expect: EvalExpectation
+) -> AssertionResult | None:
+    if expect.require_accepted_finding_origin is None:
+        return None
+    matching = [
+        finding
+        for synthesis in (state.synthesis, state.arbiter_synthesis)
+        if synthesis is not None
+        for finding in synthesis.accepted_findings
+        if (
+            expect.require_finding_category is None
+            or finding.category is expect.require_finding_category
+        )
+    ]
+    if any(finding.origin is expect.require_accepted_finding_origin for finding in matching):
+        return _passed(
+            "require_accepted_finding_origin",
+            expect.require_accepted_finding_origin.value,
+        )
+    return _failed(
+        "require_accepted_finding_origin",
+        f"no matching accepted finding had origin {expect.require_accepted_finding_origin.value}",
+    )
+
+
 def check_candidate_delta(state: GraphState, expect: EvalExpectation) -> AssertionResult | None:
     if not expect.require_candidate_delta:
         return None
@@ -172,6 +234,46 @@ def check_candidate_delta(state: GraphState, expect: EvalExpectation) -> Asserti
     if deltas:
         return _passed("require_candidate_delta", f"{len(deltas)} delta(s)")
     return _failed("require_candidate_delta", "no candidate delta was recorded")
+
+
+def check_admitted_reranks(state: GraphState, expect: EvalExpectation) -> AssertionResult | None:
+    expected_id = expect.expected_admitted_rerank_finding_id
+    if expected_id is None and not expect.forbid_admitted_reranks:
+        return None
+    admitted = tuple(
+        rerank.finding_id
+        for synthesis in (state.synthesis, state.arbiter_synthesis)
+        if synthesis is not None
+        for rerank in synthesis.admitted_reranks
+    )
+    if expect.forbid_admitted_reranks:
+        if not admitted:
+            return _passed("forbid_admitted_reranks")
+        return _failed("forbid_admitted_reranks", f"admitted reranks: {admitted!r}")
+    if expected_id in admitted:
+        return _passed("expected_admitted_rerank_finding_id", expected_id)
+    return _failed(
+        "expected_admitted_rerank_finding_id",
+        f"expected {expected_id!r}, got {admitted!r}",
+    )
+
+
+def check_rejected_finding(state: GraphState, expect: EvalExpectation) -> AssertionResult | None:
+    expected_id = expect.expected_rejected_finding_id
+    if expected_id is None:
+        return None
+    rejected = {
+        finding.finding_id: finding.reason_code.value if finding.reason_code else None
+        for synthesis in (state.synthesis, state.arbiter_synthesis)
+        if synthesis is not None
+        for finding in synthesis.rejected_findings
+    }
+    if expected_id in rejected:
+        return _passed("expected_rejected_finding_id", f"{expected_id}: {rejected[expected_id]}")
+    return _failed(
+        "expected_rejected_finding_id",
+        f"expected {expected_id!r}, got {sorted(rejected)}",
+    )
 
 
 def check_no_evidence_leak(state: GraphState, expect: EvalExpectation) -> AssertionResult | None:
@@ -267,6 +369,8 @@ def check_alternative_named(state: GraphState, expect: EvalExpectation) -> Asser
 
 ALL_ASSERTIONS: tuple[Assertion, ...] = (
     check_expected_taxon,
+    check_expected_taxon_display_name,
+    check_expected_candidate_taxa,
     check_top_3,
     check_resolution,
     check_max_resolution,
@@ -276,7 +380,10 @@ ALL_ASSERTIONS: tuple[Assertion, ...] = (
     check_next_photo,
     check_escalation,
     check_finding_category,
+    check_accepted_finding_origin,
     check_candidate_delta,
+    check_admitted_reranks,
+    check_rejected_finding,
     check_no_evidence_leak,
     check_max_retries,
     check_user_claim_verdict,

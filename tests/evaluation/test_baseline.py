@@ -1,7 +1,7 @@
 """Regression guard against a frozen evaluation baseline.
 
 The suite passing is not the same as the suite behaving the same way. A change can keep all
-nine cases green while quietly moving a genus, spending an arbiter call it did not need, or
+all cases green while quietly moving a genus, spending an arbiter call it did not need, or
 raising a confidence nobody authorised. The baseline catches that drift.
 
 It is deliberately not a golden-file equality check: metrics that should only improve are
@@ -27,7 +27,7 @@ from evil_duck_dendro.evaluation.runner import run_suite
 
 pytestmark = pytest.mark.evaluation
 
-BASELINE = Path("evals/baselines/public-v0.2.1.json")
+BASELINE = Path("evals/baselines/public-v0.2.2.json")
 
 #: Metrics that must never get worse. True means higher is better.
 _DIRECTION: dict[str, bool] = {
@@ -56,8 +56,8 @@ def current(request):
 
 
 def test_the_baseline_artifact_is_present(baseline):
-    assert baseline["baseline_version"]
-    assert baseline["cases"]
+    assert baseline["baseline_version"] == "0.2.2"
+    assert len(baseline["cases"]) == 14
 
 
 def test_no_case_disappeared(baseline, current):
@@ -88,8 +88,11 @@ def test_no_decision_changed_silently(baseline, current):
             continue
         observed = {
             "selected_taxon": outcome.selected_taxon,
+            "selected_taxon_display_name": outcome.selected_taxon_display_name,
             "resolution": outcome.resolution.value if outcome.resolution else None,
             "confidence": outcome.confidence.value if outcome.confidence else None,
+            "evidence_tier": outcome.evidence_tier,
+            "admitted_rerank_finding_ids": list(outcome.admitted_rerank_finding_ids),
             "arbiter_used": outcome.arbiter_used,
             "retries": outcome.retries,
         }

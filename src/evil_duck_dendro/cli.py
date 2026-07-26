@@ -19,7 +19,7 @@ from evil_duck_dendro.evaluation.runner import run_suite
 from evil_duck_dendro.graph.definition import render_mermaid
 from evil_duck_dendro.observability.logging import configure_logging
 from evil_duck_dendro.observability.trace import write_trace
-from evil_duck_dendro.prompts.library import DomainPromptMissingError
+from evil_duck_dendro.prompts.library import DomainPromptMissingError, PromptPolicyError
 from evil_duck_dendro.runner import run_case
 from evil_duck_dendro.schemas.input import CaseInput, DeclaredObjectType, ImageRef, Season
 
@@ -146,7 +146,7 @@ def inspect(
 
     try:
         result = asyncio.run(run_case(case, config=config))
-    except DomainPromptMissingError as exc:
+    except (DomainPromptMissingError, PromptPolicyError) as exc:
         typer.secho(str(exc), fg=typer.colors.RED, err=True)
         raise typer.Exit(code=3) from exc
 
@@ -189,7 +189,11 @@ def evaluate_suite(
     ] = None,
 ) -> None:
     """Run an evaluation suite against deterministic fixtures."""
-    report = run_suite(suite)
+    try:
+        report = run_suite(suite)
+    except PromptPolicyError as exc:
+        typer.secho(str(exc), fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=3) from exc
     if out:
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_text(render_json(report), encoding="utf-8")
@@ -215,14 +219,14 @@ def graph(
 
 @app.command()
 def prompt_info() -> None:
-    """Show which domain prompt is loaded, and its hash."""
+    """Show the validated prompt bundle identity and policy compatibility."""
     from evil_duck_dendro.prompts.library import PromptLibrary
 
     config = load_config()
     library = PromptLibrary(config.prompts)
     try:
-        metadata = library.domain.metadata()
-    except DomainPromptMissingError as exc:
+        metadata = library.metadata()
+    except (DomainPromptMissingError, PromptPolicyError) as exc:
         typer.secho(str(exc), fg=typer.colors.RED, err=True)
         raise typer.Exit(code=3) from exc
     typer.echo(json.dumps(metadata.model_dump(mode="json"), indent=2))

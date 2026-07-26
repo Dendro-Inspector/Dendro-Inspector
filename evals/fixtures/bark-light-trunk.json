@@ -22,13 +22,13 @@
         {
           "observation_id": "obs-1",
           "feature": "bark.pattern",
-          "value": "pale_with_dark_marks",
+          "value": "white_papery_with_black_marks",
           "subject_id": "standing_tree",
           "source": "image",
           "visibility": "partial",
           "reliability": "low",
           "image_id": "img-1",
-          "notes": "Marks are visible but the distance prevents reading their structure."
+          "notes": "A white papery pattern with dark marks is visible, but low detail prevents reading the peeling structure."
         },
         {
           "observation_id": "obs-2",

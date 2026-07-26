@@ -2,8 +2,8 @@
 
 - **Status:** Current
 - **Owner:** Evil Duck Dendro Inspector maintainers
-- **Date:** 2026-07-25
-- **Last-verified:** 2026-07-25
+- **Date:** 2026-07-26
+- **Last-verified:** 2026-07-26
 
 ## The problem this shape solves
 
@@ -92,25 +92,44 @@ the ordering. `knowledge/evidence_hierarchy.py` encodes it:
 | 2 | silhouette, crown form | family | low |
 | 1 | context | family | low |
 
-**The best available tier caps the claim**, and the cap is applied in `final_decision.py`
-before anything else. This is what makes "по корі точно яблуня / горіх / дуб / ясен"
-structurally impossible rather than merely discouraged: bark tops out at low confidence
-however characteristic it looks.
+The raw subject-wide maximum is not enough: an unrelated fruit on another branch must not
+raise a bark-supported candidate. `project_evidence()` first assigns every observation or
+inference a deterministic trust level. Only same-subject image evidence is positive support;
+clear medium/high-reliability evidence carries its normal tier, while partial or
+low-reliability evidence is capped to bark-equivalent authority. Obscured, not-visible,
+user/metadata/external and unattached evidence is context only. An inference inherits the
+weakest trust and tier of every source observation.
 
-Bark is capped in *confidence*, not silenced. An oak candidate from bark remains an oak
-candidate at genus level — the prompt is equally clear that a weathered, damaged or urban
-trunk must not be used to *reject* a taxon either (FAILURE 3).
+The final cap comes from the selected candidate's already-admitted support ids. This makes
+"по корі точно яблуня / горіх / дуб / ясен" structurally impossible and prevents unrelated
+high-tier evidence elsewhere in the frame from widening the claim. Bark is capped in
+*confidence*, not silenced: a bark-supported candidate may remain at genus and low confidence,
+and weak/contextual evidence remains available for finding flaws without earning a taxon.
 
 ### Attachment provenance
 
-A leaf at the edge of the frame may belong to the tree next door. `Observation` therefore
-requires `attachment_confirmed` on every detachable family (fruit, seed, cone, leaf, needle,
-bud, branch) and forbids it elsewhere — an unanswered question defaults to a hopeful yes in
-practice, so the contract will not let it go unanswered.
+A leaf at the edge of the frame may belong to the tree next door. `Observation.attachment`
+therefore uses `confirmed_attached | confirmed_detached | unknown` on every detachable family
+(fruit, seed, cone, leaf, needle, bud, branch) and is forbidden elsewhere — an unanswered
+question defaults to a hopeful yes in practice, so the contract will not let it go unanswered.
 
-Unconfirmed detachable evidence demotes to tier 1. It stays in the packet, it appears in the
-report, and it raises a finding asking for the photograph that would settle it — but it
-cannot move the verdict.
+Only `confirmed_attached` evidence may support identification. The other states remain in the
+packet, appear in the report, and can justify a finding or photo request, but project to
+context and cannot move the verdict.
+
+### Candidate admission
+
+`knowledge/candidate_validation.py` is the shared boundary for primary candidates and
+reviewer/arbiter recommendations. For each candidate it requires a known taxon card, resolves
+cited observations and inferences to exactly the candidate set's subject, and keeps only
+trusted ids whose source observations exactly match that card's strong or supporting
+feature/value expectations. Contradiction ids survive only when they match the card's declared
+contradictions.
+
+Candidates with no surviving positive support are removed. Survivors preserve order but are
+renumbered densely; when none survive, the explicit empty `CandidateSet` drives abstention.
+This same validated support determines evidence tier, confidence and resolution, so a model
+cannot cite unrelated evidence to make a plausible name look earned.
 
 ### Ordinal scores, not percentages
 
@@ -124,6 +143,7 @@ Each taxon is a YAML card, not a class, a function or a sub-agent:
 
 ```yaml
 taxon_id: pinus
+native_resolution: genus
 supported_resolution: [genus]
 strong_positive_features:
   - feature: needles.fascicles
@@ -139,9 +159,11 @@ Why data:
 * **it is inspectable.** A dendrologist can review `pinus.yaml` without reading Python.
 * **it is checkable.** `match_card()` answers "does the evidence contradict this taxon?"
   deterministically. A per-taxon agent would answer it differently every run.
-* **it caps the claim.** `supported_resolution: [genus]` is why no amount of model
-  confidence produces a species-level Pinus answer. The cap is applied in
-  `nodes/final_decision.py:cap_resolution`, tested in `tests/unit/test_final_decision.py`.
+* **it caps and names the claim.** `supported_resolution` limits authority, while
+  `native_resolution` plus `broader_identities` declare the canonical id/display name to use
+  at each broader level. Final decision composes the candidate, card, trusted-support and
+  review bounds first, then selects an identity at or broader than that bound. If none exists,
+  it returns `unknown`; a species name can never survive under a genus or family resolution.
 * **it scales down.** The loader is lazy and per-taxon. A thousand cards would not enlarge
   a single prompt, because a request only ever loads the handful of taxa in play.
 
@@ -165,19 +187,26 @@ rather than degrading to a low-confidence guess.
 
 ## Domain prompt handling
 
-The dendrology prompt is an **opaque, user-managed artifact**:
+The dendrology prompt is an **opaque, user-managed artifact**, but it is not admitted alone.
+`prompts/versions.yaml` is a frozen compatibility manifest that binds schema `1`, deterministic
+policy revision `0.2.2`, the canonical domain path/hash, node-prompt root/revision, and the
+exact node-prompt file set and hashes.
 
-* read from disk at runtime, never embedded in Python;
-* SHA-256 hashed, with the hash in every trace;
-* passed to models byte-for-byte — no normalisation, no line-ending rewriting, no templating;
-* a missing file raises `DomainPromptMissingError` naming the path and the override variable;
-* node prompts live separately, so tuning a reviewer never changes the domain prompt's hash.
+`runner.build_context()` validates the complete bundle before constructing
+`ProviderRegistry`. A missing file, unexpected manifest field, incompatible revision, path
+mismatch, file-set mismatch, hash mismatch or non-UTF-8 prompt raises `PromptPolicyError`
+before any provider can be called. `PromptLibrary.compose()` uses the cached admitted bytes,
+so a file modified after validation cannot enter the request.
 
-Backed by `tests/contract/test_domain_prompt_contract.py`, which asserts the bytes reaching
-the composed prompt are identical to the bytes on disk.
+The default domain prompt is still passed byte-for-byte — no normalisation, line-ending
+rewriting or templating. A custom `EVIL_DUCK_DOMAIN_PROMPT_PATH` requires a non-default
+`EVIL_DUCK_PROMPT_MANIFEST_PATH` whose path and hash match. That manifest is an explicit
+operator attestation of compatibility, not a proof of natural-language semantic equivalence.
 
-Composition order is fixed: domain prompt, node prompt, then case context — fenced and
-labelled as untrusted. Untrusted material is always last and always labelled.
+Prompt trace metadata and `evil-duck prompt-info` record the domain and manifest hashes,
+manifest schema, policy revision, node revision and compatibility status. Composition order is
+fixed: domain prompt, optional response-register note, node prompt, then case context fenced as
+untrusted data.
 
 ## Determinism boundary
 
@@ -200,9 +229,16 @@ without a provider, and identical across runs.
 
 The reviewers are hybrid on purpose. The model brings judgement; a deterministic layer in
 each reviewer adds the findings that are cheap to check and expensive to miss (card
-contradictions, colour dependence, unsupported resolution, invalid negative evidence). The
-colour-overweighting evaluation case has all three model reviewers return `pass`, and still
-goes red if that deterministic layer is removed.
+contradictions, colour dependence, unsupported resolution, invalid negative evidence).
+`FindingOrigin` makes the source explicit, and synthesis always adjudicates deterministic
+findings first. Material duplicate detection includes subject, action, impact, evidence ids and
+proposed taxon, so a model restatement cannot preempt a deterministic finding by sharing only
+its category.
+
+Candidate changes cross an additional boundary: the exact `rerank_candidates` finding and its
+same-result recommendation are validated and stored together as `AdmittedRerank`. Final
+decision never scans raw recommendations. An absent, rejected, unsupported or conflicting
+ranking cannot move the answer.
 
 ## State and execution
 
@@ -232,6 +268,8 @@ a backstop against a routing bug, not the primary guarantee.
 - [`src/evil_duck_dendro/schemas/`](../src/evil_duck_dendro/schemas) — contracts
 - [`src/evil_duck_dendro/graph/definition.py`](../src/evil_duck_dendro/graph/definition.py) — graph declaration
 - [`src/evil_duck_dendro/graph/routing.py`](../src/evil_duck_dendro/graph/routing.py) — termination argument
-- [`src/evil_duck_dendro/nodes/final_decision.py`](../src/evil_duck_dendro/nodes/final_decision.py) — the cap
-- [`src/evil_duck_dendro/prompts/library.py`](../src/evil_duck_dendro/prompts/library.py) — domain prompt handling
+- [`src/evil_duck_dendro/knowledge/candidate_validation.py`](../src/evil_duck_dendro/knowledge/candidate_validation.py) — candidate admission
+- [`src/evil_duck_dendro/nodes/final_decision.py`](../src/evil_duck_dendro/nodes/final_decision.py) — resolution, identity and confidence bounds
+- [`src/evil_duck_dendro/nodes/review_synthesizer.py`](../src/evil_duck_dendro/nodes/review_synthesizer.py) — finding and rerank admission
+- [`src/evil_duck_dendro/prompts/library.py`](../src/evil_duck_dendro/prompts/library.py) — prompt-policy compatibility
 - [`docs/agent-graph.md`](agent-graph.md), [`docs/review-pipeline.md`](review-pipeline.md), [`docs/model-roles.md`](model-roles.md)

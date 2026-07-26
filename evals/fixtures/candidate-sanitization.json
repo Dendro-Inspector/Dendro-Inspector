@@ -1,0 +1,99 @@
+{
+  "scenario": "candidate-sanitization",
+  "description": "The model proposes one unknown taxon and one known taxon with unrelated support; validation removes both.",
+  "responses": {
+    "primary:planner": {
+      "target_features": ["bark.texture", "trunk.form"],
+      "expect_multiple_subjects": false,
+      "bark_only_input": false,
+      "notes": ["Generate alternatives only when the observed values match their cards."]
+    },
+    "primary:evidence_extractor": {
+      "subjects": [
+        {
+          "subject_id": "standing_tree",
+          "kind": "standing_tree",
+          "description": "A straight conifer trunk with scaly plated bark.",
+          "image_ids": ["img-1"]
+        }
+      ],
+      "observations": [
+        {
+          "observation_id": "obs-bark",
+          "feature": "bark.texture",
+          "value": "scaly_plates",
+          "subject_id": "standing_tree",
+          "source": "image",
+          "visibility": "clear",
+          "reliability": "medium",
+          "image_id": "img-1"
+        },
+        {
+          "observation_id": "obs-trunk",
+          "feature": "trunk.form",
+          "value": "straight_long",
+          "subject_id": "standing_tree",
+          "source": "image",
+          "visibility": "clear",
+          "reliability": "medium",
+          "image_id": "img-1"
+        }
+      ],
+      "inferences": [],
+      "absent_features": [],
+      "image_limitations": [
+        {
+          "image_id": "img-1",
+          "lighting": "overcast",
+          "white_balance": "neutral",
+          "scale": "absent"
+        }
+      ],
+      "context_limitations": [],
+      "possible_multiple_taxa": false,
+      "instruction_like_content_detected": false
+    },
+    "primary:candidate_generator": {
+      "sets": [
+        {
+          "subject_id": "standing_tree",
+          "candidates": [
+            {
+              "taxon": "eucalyptus",
+              "resolution": "genus",
+              "supporting_evidence_ids": ["obs-bark"],
+              "contradicting_evidence_ids": [],
+              "missing_decisive_features": [],
+              "score": "moderate",
+              "rank": 1
+            },
+            {
+              "taxon": "picea",
+              "resolution": "genus",
+              "supporting_evidence_ids": ["obs-bark", "obs-trunk"],
+              "contradicting_evidence_ids": [],
+              "missing_decisive_features": [],
+              "score": "weak",
+              "rank": 2
+            }
+          ]
+        }
+      ]
+    },
+    "primary:botanical_reviewer": {
+      "reviewer": "botanical",
+      "status": "pass",
+      "findings": []
+    },
+    "primary:confusion_reviewer": {
+      "reviewer": "confusion",
+      "status": "pass",
+      "findings": []
+    },
+    "primary:confidence_reviewer": {
+      "reviewer": "confidence",
+      "status": "pass",
+      "findings": []
+    }
+  }
+}

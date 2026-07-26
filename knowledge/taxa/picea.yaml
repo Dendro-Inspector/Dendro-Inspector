@@ -2,6 +2,11 @@
 # not reviewed by a dendrologist. See docs/dataset-policy.md.
 taxon_id: picea
 display_name: Picea (ялина, смерека)
+native_resolution: genus
+broader_identities:
+  - resolution: family
+    taxon_id: pinaceae
+    display_name: Pinaceae (соснові)
 aliases:
   - ялина
   - смерека

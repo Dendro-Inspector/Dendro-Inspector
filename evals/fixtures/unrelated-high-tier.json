@@ -1,0 +1,96 @@
+{
+  "scenario": "unrelated-high-tier",
+  "description": "Attached high-tier fruit is visible but does not match the Pinus card; only bark supports the candidate.",
+  "responses": {
+    "primary:planner": {
+      "target_features": ["bark.texture", "fruit.type", "needles.fascicles"],
+      "expect_multiple_subjects": false,
+      "bark_only_input": false,
+      "notes": ["Check whether the visible fruit supports the same taxon as the trunk."]
+    },
+    "primary:evidence_extractor": {
+      "subjects": [
+        {
+          "subject_id": "standing_tree",
+          "kind": "standing_tree",
+          "description": "A scaly-barked conifer trunk with an attached apple-like fruit visible on a crossing branch.",
+          "image_ids": ["img-1"]
+        }
+      ],
+      "observations": [
+        {
+          "observation_id": "pinus-bark",
+          "feature": "bark.texture",
+          "value": "scaly_plates",
+          "subject_id": "standing_tree",
+          "source": "image",
+          "visibility": "clear",
+          "reliability": "medium",
+          "image_id": "img-1"
+        },
+        {
+          "observation_id": "unrelated-fruit",
+          "feature": "fruit.type",
+          "value": "apple",
+          "subject_id": "standing_tree",
+          "source": "image",
+          "visibility": "clear",
+          "reliability": "high",
+          "image_id": "img-1",
+          "attachment": "confirmed_attached",
+          "notes": "The fruit is attached to a crossing branch, but its value is not a Pinus feature."
+        }
+      ],
+      "inferences": [],
+      "absent_features": [],
+      "image_limitations": [
+        {
+          "image_id": "img-1",
+          "lighting": "even_daylight",
+          "white_balance": "neutral",
+          "scale": "absent"
+        }
+      ],
+      "context_limitations": ["crossing_branch_identity_uncertain"],
+      "possible_multiple_taxa": false,
+      "instruction_like_content_detected": false
+    },
+    "primary:candidate_generator": {
+      "sets": [
+        {
+          "subject_id": "standing_tree",
+          "candidates": [
+            {
+              "taxon": "pinus",
+              "resolution": "genus",
+              "supporting_evidence_ids": ["pinus-bark", "unrelated-fruit"],
+              "contradicting_evidence_ids": [],
+              "missing_decisive_features": [],
+              "score": "strong",
+              "rank": 1
+            }
+          ]
+        }
+      ]
+    },
+    "primary:botanical_reviewer": {
+      "reviewer": "botanical",
+      "status": "pass",
+      "findings": [],
+      "recommended_resolution": "genus"
+    },
+    "primary:confusion_reviewer": {
+      "reviewer": "confusion",
+      "status": "pass",
+      "findings": [],
+      "recommended_resolution": "genus"
+    },
+    "primary:confidence_reviewer": {
+      "reviewer": "confidence",
+      "status": "pass",
+      "findings": [],
+      "recommended_resolution": "genus",
+      "recommended_confidence": "low"
+    }
+  }
+}

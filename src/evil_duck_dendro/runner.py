@@ -43,11 +43,12 @@ def build_context(
     """Assemble a node context. ``root`` is the repository root for relative paths."""
     resolved_config = load_config(config)
     base = root or Path.cwd()
+    prompts = PromptLibrary(resolved_config.prompts, root=base)
+    prompts.validate_policy()
     providers = ProviderRegistry.from_config(resolved_config, root=base)
     recorder = TraceRecorder(case_id)
-    prompts = PromptLibrary(resolved_config.prompts, root=base)
 
-    recorder.set_prompt_metadata(prompts.domain.metadata())
+    recorder.set_prompt_metadata(prompts.metadata())
     for role in (Role.PRIMARY, Role.ARBITER):
         provider = providers.get(role)
         recorder.set_provider(role.value, provider.adapter_name, provider.model)

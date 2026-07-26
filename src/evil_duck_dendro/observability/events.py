@@ -16,7 +16,7 @@ from pydantic import Field
 from evil_duck_dendro.schemas.base import Contract, ShortText
 from evil_duck_dendro.schemas.taxon import Confidence, Resolution
 
-GRAPH_VERSION = "0.2.1"
+GRAPH_VERSION = "0.2.2"
 
 
 class NodeStatus(StrEnum):
@@ -24,6 +24,13 @@ class NodeStatus(StrEnum):
     SKIPPED = "skipped"
     RETRIED = "retried"
     FAILED = "failed"
+
+
+class PromptCompatibilityStatus(StrEnum):
+    """Whether prompt-policy compatibility has been established."""
+
+    UNVALIDATED = "unvalidated"
+    COMPATIBLE = "compatible"
 
 
 class ProviderCallRecord(Contract):
@@ -51,13 +58,19 @@ class NodeEvent(Contract):
 
 
 class PromptMetadata(Contract):
-    """Identity of the opaque, user-managed domain prompt in force for this run."""
+    """Identity and policy compatibility of the prompt bundle in force."""
 
     path: str = Field(max_length=400)
     version: str = Field(default="user-managed", max_length=80)
     sha256: str = Field(min_length=64, max_length=64)
     bytes: int = Field(ge=0)
     is_placeholder: bool = False
+    manifest_schema_version: str | None = Field(default=None, max_length=40)
+    policy_revision: str | None = Field(default=None, max_length=80)
+    node_prompt_revision: str | None = Field(default=None, max_length=80)
+    manifest_path: str | None = Field(default=None, max_length=400)
+    manifest_sha256: str | None = Field(default=None, min_length=64, max_length=64)
+    compatibility_status: PromptCompatibilityStatus = PromptCompatibilityStatus.UNVALIDATED
 
 
 class RunTrace(Contract):

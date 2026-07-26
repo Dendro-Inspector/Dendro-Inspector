@@ -19,9 +19,16 @@ Two rules follow, both enforced deterministically rather than left to a model:
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from enum import IntEnum
 
-from evil_duck_dendro.schemas.evidence import EvidencePacket, Observation, Visibility
+from evil_duck_dendro.schemas.evidence import (
+    EvidencePacket,
+    Observation,
+    ObservationSource,
+    Reliability,
+    Visibility,
+)
 from evil_duck_dendro.schemas.taxon import Confidence, Resolution
 
 
@@ -40,6 +47,28 @@ class EvidenceTier(IntEnum):
     LEAF_ARRANGEMENT = 5
     FOLIAGE = 6
     FRUIT_SEED = 7
+
+
+class EvidenceTrust(IntEnum):
+    """Whether model-produced evidence may positively support an identification."""
+
+    CONTEXT_ONLY = 0
+    CAPPED_POSITIVE = 1
+    FULL_POSITIVE = 2
+
+
+@dataclass(frozen=True, slots=True)
+class EvidenceProjection:
+    """Deterministic trust projection for one observation or inference id."""
+
+    evidence_id: str
+    source_observations: tuple[Observation, ...]
+    trust: EvidenceTrust
+    tier: EvidenceTier
+
+    @property
+    def supports_identification(self) -> bool:
+        return self.trust is not EvidenceTrust.CONTEXT_ONLY
 
 
 #: Feature-family prefix -> tier. Longest prefix wins, so `leaf.arrangement` is a distinct
@@ -164,22 +193,143 @@ def requires_attachment(feature: str) -> bool:
     return family_of(feature) in DETACHABLE_FAMILIES
 
 
-def effective_tier(observation: Observation) -> EvidenceTier:
-    """The tier an observation actually counts at.
+def observation_trust(observation: Observation) -> EvidenceTrust:
+    """Project one observation onto the deterministic identification trust boundary.
 
-    Unresolvable observations count for nothing. Detachable evidence demotes to context
-    unless attachment was **positively confirmed** — ``UNKNOWN`` is not a pass. Demoted
-    evidence stays recorded and visible in the report; it simply cannot carry a verdict.
+    Only image observations can support a taxon. Clear, medium-or-high reliability evidence
+    carries its normal feature tier. Partial or low-reliability evidence remains usable but
+    is capped to bark-equivalent authority. Obscured, unresolvable, contextual-source, and
+    unconfirmed detachable observations remain available as context but cannot raise a claim.
     """
-    if observation.visibility is Visibility.NOT_VISIBLE:
-        return EvidenceTier.CONTEXT
+    if observation.source is not ObservationSource.IMAGE:
+        return EvidenceTrust.CONTEXT_ONLY
+    if observation.visibility in (Visibility.OBSCURED, Visibility.NOT_VISIBLE):
+        return EvidenceTrust.CONTEXT_ONLY
     if requires_attachment(observation.feature) and not observation.is_attached:
+        return EvidenceTrust.CONTEXT_ONLY
+    if observation.visibility is Visibility.PARTIAL or observation.reliability is Reliability.LOW:
+        return EvidenceTrust.CAPPED_POSITIVE
+    return EvidenceTrust.FULL_POSITIVE
+
+
+def _tier_at_trust(tier: EvidenceTier, trust: EvidenceTrust) -> EvidenceTier:
+    if trust is EvidenceTrust.CONTEXT_ONLY:
         return EvidenceTier.CONTEXT
-    return tier_of_feature(observation.feature)
+    if trust is EvidenceTrust.CAPPED_POSITIVE:
+        return min(tier, EvidenceTier.BARK)
+    return tier
+
+
+def project_observation(observation: Observation) -> EvidenceProjection:
+    """Return the trust and effective tier of one observation."""
+    trust = observation_trust(observation)
+    return EvidenceProjection(
+        evidence_id=observation.observation_id,
+        source_observations=(observation,),
+        trust=trust,
+        tier=_tier_at_trust(tier_of_feature(observation.feature), trust),
+    )
+
+
+def resolve_evidence_observations(
+    evidence: EvidencePacket,
+    evidence_id: str,
+    subject_id: str,
+) -> tuple[Observation, ...]:
+    """Resolve an observation/inference id to source observations for exactly one subject.
+
+    Unknown ids, cross-subject inferences, and the ambiguous case where an observation and an
+    inference reuse the same id all fail closed to an empty tuple.
+    """
+    observations = tuple(o for o in evidence.observations if o.observation_id == evidence_id)
+    inferences = tuple(i for i in evidence.inferences if i.inference_id == evidence_id)
+    if len(observations) + len(inferences) != 1:
+        return ()
+
+    if observations:
+        sources = observations
+    else:
+        by_id = {observation.observation_id: observation for observation in evidence.observations}
+        sources = tuple(
+            by_id[source_id] for source_id in inferences[0].derived_from if source_id in by_id
+        )
+        if len(sources) != len(inferences[0].derived_from):
+            return ()
+
+    if not sources or any(source.subject_id != subject_id for source in sources):
+        return ()
+    return sources
+
+
+def project_evidence(
+    evidence: EvidencePacket,
+    evidence_id: str,
+    subject_id: str,
+) -> EvidenceProjection:
+    """Project an observation or inference without trusting model-authored support labels.
+
+    An inference inherits the weakest trust of every source observation. Its tier is never
+    stronger than those sources could carry directly, and one contextual source makes the
+    entire inference contextual.
+    """
+    sources = resolve_evidence_observations(evidence, evidence_id, subject_id)
+    if not sources:
+        return EvidenceProjection(
+            evidence_id=evidence_id,
+            source_observations=(),
+            trust=EvidenceTrust.CONTEXT_ONLY,
+            tier=EvidenceTier.CONTEXT,
+        )
+
+    source_projections = tuple(project_observation(source) for source in sources)
+    trust = min(projection.trust for projection in source_projections)
+    tier = min(projection.tier for projection in source_projections)
+    return EvidenceProjection(
+        evidence_id=evidence_id,
+        source_observations=sources,
+        trust=trust,
+        tier=tier,
+    )
+
+
+def positive_observations_for(evidence: EvidencePacket, subject_id: str) -> tuple[Observation, ...]:
+    """Same-subject observations allowed to carry positive identification support."""
+    return tuple(
+        observation
+        for observation in evidence.observations_for(subject_id)
+        if observation_trust(observation) is not EvidenceTrust.CONTEXT_ONLY
+    )
+
+
+def full_positive_observations_for(
+    evidence: EvidencePacket, subject_id: str
+) -> tuple[Observation, ...]:
+    """Same-subject observations allowed to carry their feature family's normal tier."""
+    return tuple(
+        observation
+        for observation in evidence.observations_for(subject_id)
+        if observation_trust(observation) is EvidenceTrust.FULL_POSITIVE
+    )
+
+
+def contextual_observations_for(
+    evidence: EvidencePacket, subject_id: str
+) -> tuple[Observation, ...]:
+    """Resolvable observations retained for flaw and contradiction detection."""
+    return tuple(
+        observation
+        for observation in evidence.observations_for(subject_id)
+        if observation.visibility is not Visibility.NOT_VISIBLE
+    )
+
+
+def effective_tier(observation: Observation) -> EvidenceTier:
+    """The tier an observation carries after the shared trust projection."""
+    return project_observation(observation).tier
 
 
 def best_tier(evidence: EvidencePacket, subject_id: str) -> EvidenceTier:
-    """The strongest tier available for one subject."""
+    """The strongest trusted positive tier available for one subject."""
     tiers = [effective_tier(o) for o in evidence.observations_for(subject_id)]
     return max(tiers, default=EvidenceTier.CONTEXT)
 
@@ -193,7 +343,7 @@ def unattached_observations(evidence: EvidencePacket, subject_id: str) -> tuple[
     """
     return tuple(
         o
-        for o in evidence.visible_observations_for(subject_id)
+        for o in contextual_observations_for(evidence, subject_id)
         if requires_attachment(o.feature) and not o.is_attached
     )
 

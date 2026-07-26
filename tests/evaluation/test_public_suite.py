@@ -48,7 +48,13 @@ class TestSuiteHealth:
             "edge-foliage-001",
             # The counterweight: when evidence is decisive, commit.
             "apple-with-fruit-001",
-        } <= ids
+            # Correctness-boundary regressions added in v0.2.2.
+            "unrelated-high-tier-001",
+            "candidate-sanitization-001",
+            "broadened-species-identity-001",
+            "deterministic-preemption-001",
+            "unbound-rerank-001",
+        } == ids
 
     def test_no_case_crashed(self, report):
         assert [outcome.case_id for outcome in report.outcomes if outcome.error] == []

@@ -1,0 +1,104 @@
+{
+  "scenario": "broadened-species-identity",
+  "description": "A species hypothesis supported by foliage is capped below species and rendered as the declared genus identity.",
+  "responses": {
+    "primary:planner": {
+      "target_features": ["leaf.dissection", "leaf.arrangement", "samara.presence"],
+      "expect_multiple_subjects": false,
+      "bark_only_input": false,
+      "notes": ["Foliage supports Acer, but no species-decisive fruit or complete character set is visible."]
+    },
+    "primary:evidence_extractor": {
+      "subjects": [
+        {
+          "subject_id": "standing_tree",
+          "kind": "standing_tree",
+          "description": "A maple crown with deeply dissected leaves on attached twigs.",
+          "image_ids": ["img-1"]
+        }
+      ],
+      "observations": [
+        {
+          "observation_id": "leaf-shape",
+          "feature": "leaf.dissection",
+          "value": "deeply_dissected_narrow_lobes",
+          "subject_id": "standing_tree",
+          "source": "image",
+          "visibility": "clear",
+          "reliability": "high",
+          "image_id": "img-1",
+          "attachment": "confirmed_attached"
+        },
+        {
+          "observation_id": "leaf-arrangement",
+          "feature": "leaf.arrangement",
+          "value": "opposite",
+          "subject_id": "standing_tree",
+          "source": "image",
+          "visibility": "clear",
+          "reliability": "medium",
+          "image_id": "img-1",
+          "attachment": "confirmed_attached"
+        }
+      ],
+      "inferences": [],
+      "absent_features": [],
+      "image_limitations": [
+        {
+          "image_id": "img-1",
+          "lighting": "even_daylight",
+          "white_balance": "neutral",
+          "scale": "approximate"
+        }
+      ],
+      "context_limitations": ["leaf_underside_not_shown"],
+      "possible_multiple_taxa": false,
+      "instruction_like_content_detected": false
+    },
+    "primary:candidate_generator": {
+      "sets": [
+        {
+          "subject_id": "standing_tree",
+          "candidates": [
+            {
+              "taxon": "acer_saccharinum",
+              "resolution": "species",
+              "supporting_evidence_ids": ["leaf-shape", "leaf-arrangement"],
+              "contradicting_evidence_ids": [],
+              "missing_decisive_features": [],
+              "score": "strong",
+              "rank": 1
+            }
+          ]
+        }
+      ]
+    },
+    "primary:botanical_reviewer": {
+      "reviewer": "botanical",
+      "status": "pass",
+      "findings": [],
+      "recommended_resolution": "species"
+    },
+    "primary:confusion_reviewer": {
+      "reviewer": "confusion",
+      "status": "pass",
+      "findings": [],
+      "recommended_resolution": "species"
+    },
+    "primary:confidence_reviewer": {
+      "reviewer": "confidence",
+      "status": "pass",
+      "findings": [],
+      "recommended_resolution": "species",
+      "recommended_confidence": "medium"
+    },
+    "arbiter:arbiter": {
+      "reviewer": "arbiter",
+      "status": "pass",
+      "findings": [],
+      "recommended_resolution": "species",
+      "recommended_confidence": "medium",
+      "subject_id": "standing_tree"
+    }
+  }
+}

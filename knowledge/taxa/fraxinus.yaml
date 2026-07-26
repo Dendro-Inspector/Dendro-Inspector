@@ -2,6 +2,11 @@
 # not reviewed by a dendrologist. See docs/dataset-policy.md.
 taxon_id: fraxinus
 display_name: Fraxinus (ясен)
+native_resolution: genus
+broader_identities:
+  - resolution: family
+    taxon_id: oleaceae
+    display_name: Oleaceae (маслинові)
 aliases:
   - ясен
   - ash

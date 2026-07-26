@@ -9,6 +9,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from evil_duck_dendro.knowledge.evidence_hierarchy import (
+    contextual_observations_for,
+    full_positive_observations_for,
+    positive_observations_for,
+)
 from evil_duck_dendro.schemas.evidence import EvidencePacket, Observation
 from evil_duck_dendro.schemas.taxon import FeatureExpectation, TaxonCard
 
@@ -22,6 +27,7 @@ class CardMatch:
     supporting_hits: tuple[str, ...]
     contradiction_hits: tuple[str, ...]
     missing_for_high_confidence: tuple[str, ...]
+    full_strong_hits: tuple[str, ...]
 
     @property
     def has_contradiction(self) -> bool:
@@ -29,7 +35,7 @@ class CardMatch:
 
     @property
     def high_confidence_supported(self) -> bool:
-        return not self.missing_for_high_confidence and bool(self.strong_hits)
+        return not self.missing_for_high_confidence and bool(self.full_strong_hits)
 
 
 def _matches(
@@ -51,30 +57,38 @@ def match_card(
     evidence: EvidencePacket,
     subject_id: str,
 ) -> CardMatch:
-    """Match one subject's *resolvable* observations against a taxon card.
+    """Match one subject's evidence against a taxon card at the shared trust boundary.
 
-    Only visible observations count. A feature that could not be resolved in the frame is
-    not evidence for the taxon and is not evidence against it.
+    Positive hits must be trusted image evidence. Contextual observations stay available for
+    contradiction detection, while high-confidence requirements require full (not capped)
+    positive support.
     """
-    observations = evidence.visible_observations_for(subject_id)
+    positive = positive_observations_for(evidence, subject_id)
+    full_positive = full_positive_observations_for(evidence, subject_id)
     missing = tuple(
         requirement
         for requirement in card.required_for_high_confidence
-        if not _requirement_satisfied(requirement, evidence, subject_id)
+        if not _requirement_satisfied(requirement, full_positive)
     )
     return CardMatch(
         taxon_id=card.taxon_id,
-        strong_hits=_matches(card.strong_positive_features, observations),
-        supporting_hits=_matches(card.supporting_features, observations),
-        contradiction_hits=_matches(card.contradictions, observations),
+        strong_hits=_matches(card.strong_positive_features, positive),
+        supporting_hits=_matches(card.supporting_features, positive),
+        contradiction_hits=_matches(
+            card.contradictions, contextual_observations_for(evidence, subject_id)
+        ),
         missing_for_high_confidence=missing,
+        full_strong_hits=_matches(card.strong_positive_features, full_positive),
     )
 
 
-def _requirement_satisfied(requirement: str, evidence: EvidencePacket, subject_id: str) -> bool:
-    """A requirement token like ``needles_or_cones`` is satisfied by any named feature group."""
+def _requirement_satisfied(requirement: str, observations: tuple[Observation, ...]) -> bool:
+    """A token like ``needles_or_cones`` needs a full-trust named feature group."""
     for alternative in requirement.split("_or_"):
-        if evidence.has_feature(subject_id, alternative):
+        if any(
+            observation.feature == alternative or observation.feature.startswith(f"{alternative}.")
+            for observation in observations
+        ):
             return True
     return False
 

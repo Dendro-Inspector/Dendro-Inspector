@@ -2,6 +2,14 @@
 # not reviewed by a dendrologist. See docs/dataset-policy.md.
 taxon_id: populus_alba
 display_name: Populus alba (тополя біла)
+native_resolution: species
+broader_identities:
+  - resolution: genus
+    taxon_id: populus
+    display_name: Populus (тополя)
+  - resolution: family
+    taxon_id: salicaceae
+    display_name: Salicaceae (вербові)
 aliases:
   - тополя біла
   - біла тополя

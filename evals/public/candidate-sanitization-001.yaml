@@ -1,0 +1,32 @@
+case_id: candidate-sanitization-001
+title: Unknown and unsupported candidates are removed before decision
+description: >-
+  The model proposes an unknown taxon and a known taxon whose cited observations do not match
+  its card. Both candidates must be removed, leaving an explicit empty candidate set and an
+  insufficient-evidence decision.
+scenario: candidate-sanitization
+
+input:
+  case_id: candidate-sanitization-001
+  images:
+    - image_id: img-1
+      path: examples/candidate-sanitization-001.jpg
+      media_type: image/jpeg
+  user_text: What conifer is this?
+  location: Kyiv Oblast, Ukraine
+  season: winter
+  declared_object_type: standing_tree
+
+expect:
+  expected_candidate_taxa: []
+  expected_resolution: unknown
+  max_resolution: unknown
+  max_confidence: low
+  expected_status: insufficient_evidence
+  expected_evidence_tier: 1
+  require_next_photo: true
+  require_escalation: false
+  forbid_admitted_reranks: true
+  max_retries: 0
+
+placeholder_content: true

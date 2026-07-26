@@ -2,6 +2,11 @@
 # not reviewed by a dendrologist. See docs/dataset-policy.md.
 taxon_id: betula
 display_name: Betula (береза)
+native_resolution: genus
+broader_identities:
+  - resolution: family
+    taxon_id: betulaceae
+    display_name: Betulaceae (березові)
 aliases:
   - береза
   - birch

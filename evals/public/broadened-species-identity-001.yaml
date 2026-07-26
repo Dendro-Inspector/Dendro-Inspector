@@ -1,0 +1,33 @@
+case_id: broadened-species-identity-001
+title: Species hypothesis broadened to genus renders only the genus identity
+description: >-
+  Clear foliage supports an Acer species hypothesis but cannot carry a species answer. Because
+  no species-group identity is declared, the final decision must use the canonical Acer genus
+  ID and display name, never the original species name.
+scenario: broadened-species-identity
+
+input:
+  case_id: broadened-species-identity-001
+  images:
+    - image_id: img-1
+      path: examples/broadened-species-identity-001.jpg
+      media_type: image/jpeg
+  user_text: Is this silver maple?
+  location: Kyiv Oblast, Ukraine
+  season: summer
+  declared_object_type: standing_tree
+
+expect:
+  expected_taxon: acer
+  expected_taxon_display_name: Acer (клен)
+  expected_candidate_taxa:
+    - acer_saccharinum
+  expected_resolution: genus
+  max_resolution: genus
+  max_confidence: medium
+  expected_evidence_tier: 6
+  require_escalation: true
+  forbid_admitted_reranks: true
+  max_retries: 0
+
+placeholder_content: true

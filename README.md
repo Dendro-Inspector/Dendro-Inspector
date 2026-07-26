@@ -29,18 +29,17 @@ directly.
 1. **Observations and inferences are different types.** "Bark flakes lift at thin irregular
    edges" and "this is compatible with Pinus" cannot be stored in the same field. An
    inference must name the observation ids it rests on, and those ids must exist.
-2. **Evidence is ranked, and the best available rank caps the answer.** Fruit beats foliage
-   beats bark. Bark tops out at *low* confidence however characteristic it looks — which
-   makes the most common failure in this domain structurally impossible rather than merely
-   discouraged.
-3. **Detachable evidence must be shown to be attached.** A leaf at the edge of the frame may
-   belong to the tree next door, so every leaf, fruit and cone observation answers that
-   question explicitly — `confirmed_attached`, `confirmed_detached` or `unknown`. Only the
-   first counts; the other two are recorded, reported, and cannot move the verdict.
-   Three states rather than two, because a boolean turns "I could not tell" into "definitely
-   not attached", which is a different and stronger claim.
-4. **The claim is capped by the data, not by the model's tone.** A taxon card that supports
-   only genus cannot produce a species answer, no matter how certain the model sounded.
+2. **Evidence authority is projected before it is used.** Only same-subject image evidence
+   can positively support identification. Fruit beats foliage beats bark, but partial or
+   low-reliability evidence is capped, and contextual, obscured or unattached evidence cannot
+   raise a claim. Inferences inherit the weakest trust of every source observation.
+3. **Candidates must earn admission against their own card.** Unknown taxa, cross-subject
+   citations and evidence that does not exactly match the proposed taxon's declared features
+   are removed. If every candidate fails, the result is an explicit abstention rather than a
+   best-effort guess.
+4. **Resolution and identity move together.** A species proposal broadened to genus or family
+   returns that declared broader id and display name, never the original species name under a
+   broader resolution label. Missing broader identity means `unknown`.
 5. **The personality layer cannot touch the verdict.** The factual answer is composed first;
    the Evil Duck voice is applied afterwards, and a contract check fails the run if the
    taxon, resolution, confidence — or the tone layer's own permission to be sharp — moved.
@@ -49,6 +48,11 @@ The last one has teeth: sharpness is a conjunction of conditions computed from t
 (a rejected user version, high confidence, foliage-or-better, no restraint findings, no close
 alternatives, no field context from the user). Being corrected outranks all of them. Angry,
 but not stupid.
+
+Review follows the same boundary. Deterministic findings are adjudicated before model findings,
+so a model cannot preempt a check by restating its category. A rerank changes the answer only
+when its exact `rerank_candidates` finding is accepted together with a validated same-subject
+ranking; recommendations floating elsewhere in a review are inert.
 
 ## Quickstart — no API key required
 
@@ -59,7 +63,7 @@ pip install -e ".[dev]"
 
 evil-duck graph                                    # print the executable agent graph
 evil-duck inspect --fake primary-pass --image examples/log.jpg --location "Kyiv Oblast, Ukraine"
-evil-duck eval --suite public                      # run the nine public evaluation cases
+evil-duck eval --suite public                      # run the fourteen public conformance cases
 pytest                                             # full test suite, offline
 ```
 
@@ -107,24 +111,31 @@ user-managed artifact**. This project loads it, hashes it, and passes it to mode
 bytes reaching the composed prompt equal the bytes on disk, whitespace and line endings
 included.
 
-It is also the **primary knowledge source** for everything else here. The evidence
-hierarchy, the taxon cards, the tone gating and four of the nine evaluation cases are
-derived from it. When it changes, those derivations should be revisited — but the file
-itself is edited only by its owner.
+It is also the **primary knowledge source** for everything else here. The evidence hierarchy,
+taxon cards, tone gating and public conformance cases are derived from it. When it changes,
+those derivations should be revisited — but the file itself is edited only by its owner.
 
 ```bash
-evil-duck prompt-info      # path, byte count and sha256 of what is actually loaded
+evil-duck prompt-info      # prompt/manifest hashes, policy revision and compatibility status
 ```
 
-Point somewhere else to run against your own:
+The runtime validates `prompts/versions.yaml` before constructing any provider. That manifest
+pins policy revision `0.2.2`, the canonical domain prompt path and hash, the node-prompt root
+and revision, and the exact node-prompt file set and hashes. Composition uses the cached
+validated bytes, so a prompt changed after validation cannot silently enter a request.
+
+Point somewhere else only with a matching deployment manifest:
 
 ```bash
 export EVIL_DUCK_DOMAIN_PROMPT_PATH=/path/to/your/prompt.md
+export EVIL_DUCK_PROMPT_MANIFEST_PATH=/path/to/your/versions.yaml
 ```
 
-A missing file is a loud, specific error — never a silent default. A file carrying the
-placeholder marker makes the CLI and every trace say so. The SHA-256 appears in every
-execution trace, so any answer can be tied back to the exact prompt bytes that produced it.
+The external manifest is an explicit compatibility attestation, not a mechanical proof that
+two natural-language prompts mean the same thing. A missing file, path mismatch, hash mismatch
+or incompatible policy revision is a loud `PromptPolicyError`, never a silent default. Prompt
+and manifest hashes appear in every execution trace, tying an answer to the exact admitted
+bundle.
 
 ## The graph
 
@@ -174,7 +185,9 @@ A run returns one of five things, per subject in the frame:
 | `unsupported_user_claim` | What you said it is does not match what the image shows |
 
 Resolution is one of `family`, `genus`, `species_group`, `species`, `unknown`. **It is never
-forced to species.** For bark, genus is the ceiling and low confidence is the cap.
+forced to species.** For bark, genus is the ceiling and low confidence is the cap. The selected
+taxon id and display name always identify a taxon at that final resolution; when a card has no
+declared identity broad enough for the bound, the result is `unknown`.
 
 If you supplied your own version, it gets its own ruling: `accepted`, `possible`, `doubtful`
 or `rejected`. Rejection is deliberately hard to reach — it needs contrary evidence above
@@ -187,7 +200,7 @@ bark level and no field context from you.
 | [docs/architecture.md](docs/architecture.md) | Contracts, layering, why taxon cards are data |
 | [docs/agent-graph.md](docs/agent-graph.md) | Node responsibilities, routing, retry and stop conditions |
 | [docs/model-roles.md](docs/model-roles.md) | Primary vs arbiter, escalation policy |
-| [docs/evaluation.md](docs/evaluation.md) | Metrics, the five cases, how to add one |
+| [docs/evaluation.md](docs/evaluation.md) | Public conformance cases, metrics, how to add one |
 | [docs/review-pipeline.md](docs/review-pipeline.md) | Finding admissibility and reason codes |
 | [docs/regional-packs.md](docs/regional-packs.md) | Regional priors and how they are constrained |
 | [docs/dataset-policy.md](docs/dataset-policy.md) | Placeholder content, images, licensing, PII |
@@ -197,10 +210,13 @@ bark level and no field context from you.
 
 ## Status
 
-v0.2.1 — a working vertical slice, not a production system. The graph runs end to end, the
-contracts are enforced, the nine-case evaluation suite is deterministic and frozen against a
-baseline, and CI is green. The knowledge pack is 25 taxa of demonstration content that no
-dendrologist has reviewed — every card says so in its `provenance` block.
+v0.2.2 — a correctness-hardened vertical slice, not a production system. The graph runs end
+to end; trusted candidate-specific evidence, resolution-consistent identity, deterministic
+finding precedence, finding-bound reranks and prompt-policy compatibility are enforced in
+code. The public suite now defines fourteen deterministic conformance cases; release requires
+all fourteen to pass with zero overconfidence and a reviewed frozen v0.2.2 baseline. The
+knowledge pack is 25 taxa of demonstration content that no dendrologist has reviewed — every
+card says so in its `provenance` block.
 
 What the numbers do and do not prove:
 

@@ -1,23 +1,23 @@
-"""Review synthesis — the adjudication core.
-
-A finding is **not** accepted because a model produced it. It is accepted when it meets one
-of five admissibility tests (spec section 13), and rejected with a reason code otherwise.
-Rejections are kept, not discarded: "the reviewer said X and we did not act on it, because
-Y" is exactly the trail that makes a disputed answer defensible later.
-
-This module is deterministic and shared with the arbiter synthesizer, so a second model's
-findings face precisely the same bar as the first model's.
-"""
+"""Deterministic review admissibility and exact finding-bound rerank synthesis."""
 
 from __future__ import annotations
 
 from evil_duck_dendro.graph.executor import NodeContext
 from evil_duck_dendro.graph.state import GraphState
-from evil_duck_dendro.schemas.evidence import EvidencePacket
+from evil_duck_dendro.knowledge.candidate_validation import (
+    candidate_ranking_signature,
+    validate_candidate_set,
+)
+from evil_duck_dendro.knowledge.loader import KnowledgeBase
+from evil_duck_dendro.schemas.candidates import Candidate, CandidateSet
+from evil_duck_dendro.schemas.evidence import EvidencePacket, Observation
 from evil_duck_dendro.schemas.reviews import (
+    AdmittedRerank,
     CorrectionDirective,
     FindingCategory,
+    FindingOrigin,
     FindingStatus,
+    Impact,
     ReasonCode,
     RequiredAction,
     ReviewFinding,
@@ -48,33 +48,124 @@ _CALIBRATION_CATEGORIES = frozenset(
     }
 )
 
+MaterialSignature = tuple[
+    FindingCategory,
+    str | None,
+    RequiredAction,
+    Impact,
+    tuple[str, ...],
+    str | None,
+]
 
-def _known_evidence_ids(evidence: EvidencePacket | None) -> frozenset[str]:
+
+def _evidence_sources(
+    evidence: EvidencePacket | None, evidence_id: str
+) -> tuple[Observation, ...] | None:
+    """Resolve one evidence id; ambiguous or unknown ids fail closed."""
     if evidence is None:
-        return frozenset()
-    return frozenset(
-        {observation.observation_id for observation in evidence.observations}
-        | {inference.inference_id for inference in evidence.inferences}
+        return None
+    observations = tuple(o for o in evidence.observations if o.observation_id == evidence_id)
+    inferences = tuple(i for i in evidence.inferences if i.inference_id == evidence_id)
+    if len(observations) + len(inferences) != 1:
+        return None
+    if observations:
+        return observations
+
+    by_id = {observation.observation_id: observation for observation in evidence.observations}
+    sources = tuple(
+        by_id[source_id] for source_id in inferences[0].derived_from if source_id in by_id
     )
+    if len(sources) != len(inferences[0].derived_from):
+        return None
+    return sources or None
+
+
+def _effective_subject(
+    finding: ReviewFinding,
+    result: ReviewResult,
+    evidence: EvidencePacket | None,
+) -> tuple[str | None, ReasonCode | None]:
+    """Resolve one unambiguous subject and reject foreign evidence references."""
+    if (
+        finding.subject_id is not None
+        and result.subject_id is not None
+        and finding.subject_id != result.subject_id
+    ):
+        return None, ReasonCode.OUT_OF_SCOPE
+
+    subject_id = finding.subject_id or result.subject_id
+    referenced_subjects: set[str] = set()
+    for evidence_id in finding.evidence_ids:
+        sources = _evidence_sources(evidence, evidence_id)
+        if sources is None:
+            return subject_id, ReasonCode.EVIDENCE_ID_UNKNOWN
+        referenced_subjects.update(source.subject_id for source in sources)
+
+    if subject_id is not None and referenced_subjects - {subject_id}:
+        return subject_id, ReasonCode.OUT_OF_SCOPE
+    if subject_id is None:
+        if len(referenced_subjects) == 1:
+            subject_id = next(iter(referenced_subjects))
+        elif len(referenced_subjects) > 1:
+            return None, ReasonCode.OUT_OF_SCOPE
+        elif evidence is not None and len(evidence.subjects) == 1:
+            subject_id = evidence.subjects[0].subject_id
+    return subject_id, None
+
+
+def _material_signature(finding: ReviewFinding) -> MaterialSignature:
+    return (
+        finding.category,
+        finding.subject_id,
+        finding.required_action,
+        finding.impact,
+        tuple(sorted(set(finding.evidence_ids))),
+        finding.proposed_taxon,
+    )
+
+
+def _validated_recommendation(
+    result: ReviewResult,
+    subject_id: str | None,
+    evidence: EvidencePacket | None,
+    knowledge: KnowledgeBase,
+) -> CandidateSet | None:
+    if subject_id is None or evidence is None or not result.recommended_candidates:
+        return None
+
+    ordered = sorted(result.recommended_candidates, key=lambda candidate: candidate.rank)
+    unique: list[Candidate] = []
+    seen_taxa: set[str] = set()
+    for candidate in ordered:
+        if candidate.taxon in seen_taxa:
+            continue
+        seen_taxa.add(candidate.taxon)
+        unique.append(candidate.model_copy(update={"rank": len(unique) + 1}))
+
+    proposed = CandidateSet(subject_id=subject_id, candidates=tuple(unique))
+    validated = validate_candidate_set(proposed, evidence, knowledge)
+    return validated if validated.candidates else None
 
 
 def judge_finding(
     finding: ReviewFinding,
     *,
-    evidence: EvidencePacket | None,
-    result: ReviewResult,
     known_taxa: frozenset[str],
-    seen: set[tuple[FindingCategory, str | None]],
+    seen: set[MaterialSignature],
+    rerank: CandidateSet | None,
 ) -> tuple[bool, ReasonCode]:
-    """Decide whether one finding is admissible, and say why."""
-    signature = (finding.category, finding.subject_id)
-    if signature in seen:
+    """Decide whether one already-subject-validated finding is admissible."""
+    if _material_signature(finding) in seen:
         return False, ReasonCode.RESTATES_EXISTING_FINDING
 
+    if finding.required_action is RequiredAction.RERANK_CANDIDATES:
+        if rerank is None:
+            return False, ReasonCode.NOT_ACTIONABLE
+        surviving_taxa = {candidate.taxon for candidate in rerank.candidates}
+        if finding.proposed_taxon is not None and finding.proposed_taxon not in surviving_taxa:
+            return False, ReasonCode.NOT_ACTIONABLE
+
     if finding.evidence_ids:
-        known = _known_evidence_ids(evidence)
-        if not set(finding.evidence_ids) <= known:
-            return False, ReasonCode.EVIDENCE_ID_UNKNOWN
         return True, ReasonCode.REFERENCES_VISIBLE_EVIDENCE
 
     if finding.category is FindingCategory.CONTRACT_VIOLATION:
@@ -87,11 +178,9 @@ def judge_finding(
         return True, ReasonCode.IMPROVES_CALIBRATION
 
     if finding.category is FindingCategory.OVERLOOKED_ALTERNATIVE:
-        # Either the finding names the alternative itself, or the reviewer supplied a
-        # concrete ranking. Prose describing an alternative counts as neither.
-        proposed = {candidate.taxon for candidate in result.recommended_candidates}
-        if finding.proposed_taxon is not None:
-            proposed.add(finding.proposed_taxon)
+        proposed = {finding.proposed_taxon} if finding.proposed_taxon is not None else set()
+        if rerank is not None:
+            proposed.update(candidate.taxon for candidate in rerank.candidates)
         if proposed & known_taxa:
             return True, ReasonCode.PLAUSIBLE_OMITTED_ALTERNATIVE
         return False, ReasonCode.NOT_ACTIONABLE
@@ -131,37 +220,78 @@ def _directive(finding: ReviewFinding) -> CorrectionDirective:
     )
 
 
+def _reranks_conflict(reranks: list[AdmittedRerank]) -> bool:
+    by_subject: dict[str, set[tuple[tuple[object, ...], ...]]] = {}
+    for rerank in reranks:
+        by_subject.setdefault(rerank.candidate_set.subject_id, set()).add(
+            candidate_ranking_signature(rerank.candidate_set)
+        )
+    return any(len(rankings) > 1 for rankings in by_subject.values())
+
+
 def adjudicate(
     results: tuple[ReviewResult, ...],
     *,
     evidence: EvidencePacket | None,
-    known_taxa: frozenset[str],
+    knowledge: KnowledgeBase,
 ) -> ReviewSynthesis:
-    """Apply admissibility rules to every finding and derive the resulting actions."""
+    """Adjudicate deterministic findings first and bind only valid exact reranks."""
     accepted: list[ReviewFinding] = []
     rejected: list[ReviewFinding] = []
-    seen: set[tuple[FindingCategory, str | None]] = set()
+    admitted_reranks: list[AdmittedRerank] = []
+    seen: set[MaterialSignature] = set()
+    known_taxa = frozenset(knowledge.available_taxon_ids())
 
-    for result in results:
-        for finding in result.findings:
+    entries = [
+        (result_index, finding_index, result, finding)
+        for result_index, result in enumerate(results)
+        for finding_index, finding in enumerate(result.findings)
+    ]
+    entries.sort(
+        key=lambda entry: (
+            0 if entry[3].origin is FindingOrigin.DETERMINISTIC else 1,
+            entry[0],
+            entry[1],
+        )
+    )
+
+    for _, _, result, finding in entries:
+        subject_id, subject_error = _effective_subject(finding, result, evidence)
+        effective = finding.model_copy(update={"subject_id": subject_id})
+        rerank = (
+            _validated_recommendation(result, subject_id, evidence, knowledge)
+            if finding.required_action is RequiredAction.RERANK_CANDIDATES
+            else None
+        )
+        if subject_error is None:
             admitted, reason = judge_finding(
-                finding,
-                evidence=evidence,
-                result=result,
+                effective,
                 known_taxa=known_taxa,
                 seen=seen,
+                rerank=rerank,
             )
-            decided = finding.model_copy(
-                update={
-                    "status": FindingStatus.ACCEPTED if admitted else FindingStatus.REJECTED,
-                    "reason_code": reason,
-                }
-            )
-            if admitted:
-                seen.add((finding.category, finding.subject_id))
-                accepted.append(decided)
-            else:
-                rejected.append(decided)
+        else:
+            admitted, reason = False, subject_error
+
+        decided = effective.model_copy(
+            update={
+                "status": FindingStatus.ACCEPTED if admitted else FindingStatus.REJECTED,
+                "reason_code": reason,
+            }
+        )
+        if admitted:
+            seen.add(_material_signature(effective))
+            accepted.append(decided)
+            if rerank is not None:
+                admitted_reranks.append(
+                    AdmittedRerank(
+                        finding=decided,
+                        reviewer=result.reviewer,
+                        candidate_set=rerank,
+                    )
+                )
+        else:
+            rejected.append(decided)
 
     retry_required = any(
         finding.required_action is RequiredAction.RE_EXTRACT_EVIDENCE for finding in accepted
@@ -176,14 +306,14 @@ def adjudicate(
         if finding.required_action is not RequiredAction.NONE
     )
     candidate_delta = tuple(
-        f"{finding.subject_id or 'case'}: {finding.summary}"
-        for finding in accepted
-        if finding.required_action is RequiredAction.RERANK_CANDIDATES
+        f"{rerank.candidate_set.subject_id}: finding {rerank.finding_id} admitted rerank"
+        for rerank in admitted_reranks
     )
 
     return ReviewSynthesis(
         accepted_findings=tuple(accepted),
         rejected_findings=tuple(rejected),
+        admitted_reranks=tuple(admitted_reranks),
         required_corrections=corrections,
         candidate_delta=candidate_delta,
         confidence_delta=_lowest(
@@ -195,6 +325,7 @@ def adjudicate(
         retry_required=retry_required,
         escalation_recommended=(
             _reviewers_disagree(results)
+            or _reranks_conflict(admitted_reranks)
             or any(finding.severity is Severity.CRITICAL for finding in accepted)
         ),
         unresolvable=unresolvable,
@@ -205,6 +336,6 @@ async def run(state: GraphState, ctx: NodeContext) -> GraphState:
     synthesis = adjudicate(
         state.reviews,
         evidence=state.evidence,
-        known_taxa=frozenset(ctx.knowledge.available_taxon_ids()),
+        knowledge=ctx.knowledge,
     )
     return state.evolve(synthesis=synthesis)

@@ -32,13 +32,13 @@
         {
           "observation_id": "obs-2",
           "feature": "bark.pattern",
-          "value": "weathered_grey_uneven",
+          "value": "diamond_fissures",
           "subject_id": "standing_tree",
           "source": "image",
           "visibility": "clear",
           "reliability": "medium",
           "image_id": "img-1",
-          "notes": "Surface is grey and weathered; one patch does not represent the trunk."
+          "notes": "Diamond-like fissures are visible on one weathered patch; that patch does not represent the whole trunk."
         },
         {
           "observation_id": "obs-3",
@@ -81,7 +81,7 @@
             {
               "taxon": "fraxinus",
               "resolution": "genus",
-              "supporting_evidence_ids": ["obs-1", "inf-1"],
+              "supporting_evidence_ids": ["obs-2"],
               "contradicting_evidence_ids": [],
               "missing_decisive_features": [],
               "score": "moderate",

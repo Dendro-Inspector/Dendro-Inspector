@@ -201,30 +201,28 @@ def decide_tone(state: GraphState) -> tuple[ToneMode, bool]:
     return (ToneMode.CAUTIOUS if cautious else ToneMode.MEASURED), False
 
 
-def verdict_line(decision: FinalDecision, display_name: str | None, locale: str) -> str:
-    """One sentence that never overstates the taxonomic level."""
+def verdict_line(decision: FinalDecision, locale: str) -> str:
+    """One sentence that renders the exact identity selected by the decision engine."""
     labels = _LABELS[locale]
     phrase = _STATUS_PHRASE[locale][decision.status]
     if decision.selected_taxon is None or decision.resolution is Resolution.UNKNOWN:
         return f"{phrase} — {labels['no_taxon']}."
-    name = display_name or decision.selected_taxon
+    name = decision.selected_taxon_display_name or decision.selected_taxon
     level = _RESOLUTION_PHRASE[locale][decision.resolution]
     return f"{phrase}: {name} ({level}), {labels['confidence'].lower()} {decision.confidence_band}."
 
 
 def build_result(
     decision: FinalDecision,
-    ctx: NodeContext,
     locale: str,
 ) -> StructuredFinalResult:
-    card = ctx.knowledge.try_taxon(decision.selected_taxon) if decision.selected_taxon else None
     supporting = (decision.strongest_support,) if decision.strongest_support else ()
     ruled_out: tuple[str, ...] = ()
     if decision.nearest_alternative:
         reason = decision.strongest_contradiction or _LABELS[locale]["none_recorded"]
         ruled_out = (f"{decision.nearest_alternative}: {reason}",)
     return StructuredFinalResult(
-        verdict=verdict_line(decision, card.display_name if card else None, locale),
+        verdict=verdict_line(decision, locale),
         subject=decision.subject_id,
         taxonomic_resolution=decision.resolution,
         confidence=decision.confidence,
@@ -318,7 +316,7 @@ def render_human_readable(
 async def run(state: GraphState, ctx: NodeContext) -> GraphState:
     locale = locale_of(state)
     tone, joke_allowed = decide_tone(state)
-    results = tuple(build_result(decision, ctx, locale) for decision in state.decisions)
+    results = tuple(build_result(decision, locale) for decision in state.decisions)
     response_format = (
         select_format(state.decisions[0], tone) if state.decisions else ResponseFormat.NO_VERSION
     )
@@ -327,6 +325,12 @@ async def run(state: GraphState, ctx: NodeContext) -> GraphState:
         and card.placeholder_content
         for decision in state.decisions
         if decision.selected_taxon
+    ) or any(
+        leader is not None
+        and (card := ctx.knowledge.try_taxon(leader.taxon)) is not None
+        and card.placeholder_content
+        for candidate_set in state.candidate_sets
+        if (leader := candidate_set.leader) is not None
     )
     response = CaseResponse(
         case_id=state.case.case_id,

@@ -20,12 +20,18 @@ from evil_duck_dendro.knowledge.comparison_cards import (
     INSUFFICIENT_ALONE,
     decisive_features_between,
 )
-from evil_duck_dendro.knowledge.evidence_hierarchy import bark_only, unattached_observations
+from evil_duck_dendro.knowledge.evidence_hierarchy import (
+    bark_only,
+    contextual_observations_for,
+    positive_observations_for,
+    unattached_observations,
+)
 from evil_duck_dendro.knowledge.regional_packs import region_assumption_risk
 from evil_duck_dendro.nodes._support import merge_findings, review_call
 from evil_duck_dendro.schemas.evidence import AttachmentStatus
 from evil_duck_dendro.schemas.reviews import (
     FindingCategory,
+    FindingOrigin,
     Impact,
     RequiredAction,
     Reviewer,
@@ -47,13 +53,14 @@ def colour_findings(state: GraphState) -> tuple[ReviewFinding, ...]:
     for subject in evidence.subjects:
         colour_ids = tuple(
             observation.observation_id
-            for observation in evidence.visible_observations_for(subject.subject_id)
+            for observation in contextual_observations_for(evidence, subject.subject_id)
             if observation.feature in INSUFFICIENT_ALONE
         )
         if not colour_ids:
             continue
         findings.append(
             ReviewFinding(
+                origin=FindingOrigin.DETERMINISTIC,
                 finding_id=f"auto-colour-{subject.subject_id}",
                 category=FindingCategory.COLOUR_OVERWEIGHTING,
                 severity=Severity.MAJOR,
@@ -99,6 +106,7 @@ def unattached_evidence_findings(state: GraphState) -> tuple[ReviewFinding, ...]
         )
         findings.append(
             ReviewFinding(
+                origin=FindingOrigin.DETERMINISTIC,
                 finding_id=f"auto-unattached-{subject.subject_id}",
                 category=FindingCategory.UNSUPPORTED_CLAIM,
                 severity=Severity.MAJOR,
@@ -129,6 +137,7 @@ def bark_only_findings(state: GraphState) -> tuple[ReviewFinding, ...]:
             continue
         findings.append(
             ReviewFinding(
+                origin=FindingOrigin.DETERMINISTIC,
                 finding_id=f"auto-bark-only-{subject_id}",
                 category=FindingCategory.UNSUPPORTED_CLAIM,
                 severity=Severity.MAJOR,
@@ -181,16 +190,17 @@ def look_alike_findings(state: GraphState, ctx: NodeContext) -> tuple[ReviewFind
         decisive = decisive_features_between(cards, frozenset({leader.taxon, *unnamed}))
         # Match the exact discriminator, not its family. `bark.pattern` is not `bark.peeling`,
         # and treating them as equivalent silently dismisses a live alternative.
-        resolved = [
-            feature
-            for feature in decisive
-            if evidence.has_feature(candidate_set.subject_id, feature)
-        ]
+        trusted_features = {
+            observation.feature
+            for observation in positive_observations_for(evidence, candidate_set.subject_id)
+        }
+        resolved = [feature for feature in decisive if feature in trusted_features]
         if resolved:
             continue
 
         findings.append(
             ReviewFinding(
+                origin=FindingOrigin.DETERMINISTIC,
                 finding_id=f"auto-lookalike-{candidate_set.subject_id}",
                 category=FindingCategory.OVERLOOKED_ALTERNATIVE,
                 severity=Severity.MAJOR,
@@ -214,6 +224,7 @@ def region_findings(state: GraphState, ctx: NodeContext) -> tuple[ReviewFinding,
         return ()
     return (
         ReviewFinding(
+            origin=FindingOrigin.DETERMINISTIC,
             finding_id="auto-region-unknown",
             category=FindingCategory.REGION_ASSUMPTION,
             severity=Severity.MINOR,

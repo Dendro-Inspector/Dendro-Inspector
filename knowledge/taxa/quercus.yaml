@@ -2,6 +2,11 @@
 # not reviewed by a dendrologist. See docs/dataset-policy.md.
 taxon_id: quercus
 display_name: Quercus (дуб)
+native_resolution: genus
+broader_identities:
+  - resolution: family
+    taxon_id: fagaceae
+    display_name: Fagaceae (букові)
 aliases:
   - дуб
   - дубок

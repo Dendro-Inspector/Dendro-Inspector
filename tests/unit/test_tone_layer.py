@@ -41,6 +41,7 @@ def _response() -> CaseResponse:
     decision = FinalDecision(
         subject_id="log_1",
         selected_taxon="pinus",
+        selected_taxon_display_name="Pinus (сосна)",
         resolution=Resolution.GENUS,
         confidence=Confidence.MEDIUM,
         status=DecisionStatus.PROBABLE,

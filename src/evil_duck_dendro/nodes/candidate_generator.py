@@ -1,12 +1,8 @@
 """Candidate generator.
 
-The model proposes ranked hypotheses; this node then enforces two invariants in code,
-because both are cheap to check and expensive to get wrong:
-
-* **no evidence leakage between subjects** — a candidate for ``foreground_log_1`` may only
-  cite evidence belonging to ``foreground_log_1``. Foreign ids are stripped and recorded;
-* **missing decisive features come from the cards**, not from the model's recollection of
-  what it would need.
+The model proposes ranked hypotheses; the shared deterministic admission boundary then
+keeps only known taxa with exact, same-subject, trusted card support. It also derives missing
+decisive features from the cards rather than the model's recollection of what it would need.
 """
 
 from __future__ import annotations
@@ -14,7 +10,7 @@ from __future__ import annotations
 from evil_duck_dendro.config import Role
 from evil_duck_dendro.graph.executor import NodeContext
 from evil_duck_dendro.graph.state import GraphState
-from evil_duck_dendro.knowledge.taxon_cards import missing_decisive_features
+from evil_duck_dendro.knowledge.candidate_validation import validate_candidate_set_with_report
 from evil_duck_dendro.nodes._support import (
     case_context,
     evidence_context,
@@ -24,67 +20,9 @@ from evil_duck_dendro.nodes._support import (
 )
 from evil_duck_dendro.observability.logging import get_logger
 from evil_duck_dendro.providers.base import request_structured
-from evil_duck_dendro.schemas.candidates import Candidate, CandidateProposal, CandidateSet
-from evil_duck_dendro.schemas.evidence import EvidencePacket
+from evil_duck_dendro.schemas.candidates import CandidateProposal, CandidateSet
 
 NODE = "candidate_generator"
-
-
-def allowed_evidence_ids(evidence: EvidencePacket, subject_id: str) -> frozenset[str]:
-    """Evidence ids a candidate for ``subject_id`` may legitimately cite."""
-    observation_ids = {o.observation_id for o in evidence.observations_for(subject_id)}
-    inference_ids = {
-        inference.inference_id
-        for inference in evidence.inferences
-        if set(inference.derived_from) <= observation_ids and inference.derived_from
-    }
-    return frozenset(observation_ids | inference_ids)
-
-
-def strip_foreign_evidence(
-    candidate_set: CandidateSet,
-    evidence: EvidencePacket,
-) -> tuple[CandidateSet, tuple[str, ...]]:
-    """Remove evidence ids that do not belong to this subject. Returns what was stripped."""
-    allowed = allowed_evidence_ids(evidence, candidate_set.subject_id)
-    stripped: list[str] = []
-    cleaned: list[Candidate] = []
-
-    for candidate in candidate_set.ordered:
-        supporting = tuple(i for i in candidate.supporting_evidence_ids if i in allowed)
-        contradicting = tuple(i for i in candidate.contradicting_evidence_ids if i in allowed)
-        stripped.extend(
-            i
-            for i in (*candidate.supporting_evidence_ids, *candidate.contradicting_evidence_ids)
-            if i not in allowed
-        )
-        cleaned.append(
-            candidate.model_copy(
-                update={
-                    "supporting_evidence_ids": supporting,
-                    "contradicting_evidence_ids": contradicting,
-                }
-            )
-        )
-    return candidate_set.model_copy(update={"candidates": tuple(cleaned)}), tuple(stripped)
-
-
-def enrich_missing_features(
-    candidate_set: CandidateSet,
-    evidence: EvidencePacket,
-    ctx: NodeContext,
-) -> CandidateSet:
-    """Fill ``missing_decisive_features`` from the taxon card, when the project has one."""
-    enriched: list[Candidate] = []
-    for candidate in candidate_set.ordered:
-        card = ctx.knowledge.try_taxon(candidate.taxon)
-        if card is None:
-            enriched.append(candidate)
-            continue
-        missing = missing_decisive_features(card, evidence, candidate_set.subject_id)
-        merged = tuple(dict.fromkeys((*candidate.missing_decisive_features, *missing)))
-        enriched.append(candidate.model_copy(update={"missing_decisive_features": merged}))
-    return candidate_set.model_copy(update={"candidates": tuple(enriched)})
 
 
 async def run(state: GraphState, ctx: NodeContext) -> GraphState:
@@ -121,16 +59,17 @@ async def run(state: GraphState, ctx: NodeContext) -> GraphState:
     for candidate_set in proposal.sets:
         if candidate_set.subject_id not in usable:
             continue
-        cleaned, stripped = strip_foreign_evidence(candidate_set, evidence)
-        if stripped:
+        validation = validate_candidate_set_with_report(candidate_set, evidence, ctx.knowledge)
+        if validation.dropped_evidence_ids or validation.rejected_taxa:
             logger.warning(
-                "evidence_leak_stripped",
+                "candidate_validation_filtered",
                 extra={
                     "case_id": state.case.case_id,
                     "subject_id": candidate_set.subject_id,
-                    "stripped_ids": list(stripped),
+                    "dropped_evidence_ids": list(validation.dropped_evidence_ids),
+                    "rejected_taxa": list(validation.rejected_taxa),
                 },
             )
-        final_sets.append(enrich_missing_features(cleaned, evidence, ctx))
+        final_sets.append(validation.candidate_set)
 
     return state.evolve(candidate_sets=tuple(final_sets))

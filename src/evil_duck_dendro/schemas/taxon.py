@@ -170,11 +170,28 @@ class FeatureExpectation(Contract):
     )
 
 
+class TaxonIdentity(Contract):
+    """Canonical identity used when a card's native taxon must be broadened."""
+
+    resolution: Resolution
+    taxon_id: Identifier
+    display_name: str = Field(min_length=1, max_length=120)
+
+    @model_validator(mode="after")
+    def _identity_must_be_taxonomic(self) -> TaxonIdentity:
+        if self.resolution is Resolution.UNKNOWN:
+            msg = "a taxon identity cannot use resolution=unknown"
+            raise ValueError(msg)
+        return self
+
+
 class TaxonCard(Contract):
     """Structured, declarative knowledge about one taxon."""
 
     taxon_id: Identifier
     display_name: str = Field(min_length=1, max_length=120)
+    native_resolution: Resolution
+    broader_identities: tuple[TaxonIdentity, ...] = ()
     aliases: tuple[str, ...] = Field(
         default=(),
         max_length=24,
@@ -199,8 +216,61 @@ class TaxonCard(Contract):
         ),
     )
 
+    @model_validator(mode="after")
+    def _identities_are_coherent(self) -> TaxonCard:
+        if self.native_resolution is Resolution.UNKNOWN:
+            msg = "taxon card native_resolution cannot be unknown"
+            raise ValueError(msg)
+        if Resolution.UNKNOWN in self.supported_resolution:
+            msg = "taxon card supported_resolution cannot include unknown"
+            raise ValueError(msg)
+        if len(set(self.supported_resolution)) != len(self.supported_resolution):
+            msg = f"duplicate supported resolution for {self.taxon_id!r}"
+            raise ValueError(msg)
+
+        resolutions = [identity.resolution for identity in self.broader_identities]
+        if len(set(resolutions)) != len(resolutions):
+            msg = f"duplicate broader identity resolution for {self.taxon_id!r}"
+            raise ValueError(msg)
+        if any(
+            resolution_rank(identity.resolution) >= resolution_rank(self.native_resolution)
+            for identity in self.broader_identities
+        ):
+            msg = (
+                f"broader identities for {self.taxon_id!r} must be broader than its native identity"
+            )
+            raise ValueError(msg)
+
+        taxon_ids = [self.taxon_id, *(identity.taxon_id for identity in self.broader_identities)]
+        if len(set(taxon_ids)) != len(taxon_ids):
+            msg = f"native and broader taxon ids for {self.taxon_id!r} must be unique"
+            raise ValueError(msg)
+        return self
+
+    @property
+    def native_identity(self) -> TaxonIdentity:
+        return TaxonIdentity(
+            resolution=self.native_resolution,
+            taxon_id=self.taxon_id,
+            display_name=self.display_name,
+        )
+
+    def identity_at_or_broader(self, resolution: Resolution) -> TaxonIdentity | None:
+        """Narrowest declared identity no narrower than ``resolution`` permits."""
+        if resolution is Resolution.UNKNOWN:
+            return None
+        identities = (self.native_identity, *self.broader_identities)
+        eligible = [
+            identity
+            for identity in identities
+            if resolution_rank(identity.resolution) <= resolution_rank(resolution)
+        ]
+        if not eligible:
+            return None
+        return max(eligible, key=lambda identity: resolution_rank(identity.resolution))
+
     def supports(self, resolution: Resolution) -> bool:
-        """Return whether this card may be used to justify ``resolution``."""
+        """Return whether this card explicitly supports ``resolution``."""
         return resolution in self.supported_resolution
 
 

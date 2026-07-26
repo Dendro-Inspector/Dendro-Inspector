@@ -2,6 +2,14 @@
 # not reviewed by a dendrologist. See docs/dataset-policy.md.
 taxon_id: juglans_regia
 display_name: Juglans regia (горіх волоський)
+native_resolution: species
+broader_identities:
+  - resolution: genus
+    taxon_id: juglans
+    display_name: Juglans (горіх)
+  - resolution: family
+    taxon_id: juglandaceae
+    display_name: Juglandaceae (горіхові)
 aliases:
   - горіх
   - волоський горіх

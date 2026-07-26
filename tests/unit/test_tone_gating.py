@@ -37,6 +37,7 @@ def _decision(**changes) -> FinalDecision:
     base: dict[str, Any] = {
         "subject_id": "log_1",
         "selected_taxon": "betula",
+        "selected_taxon_display_name": "Betula (береза)",
         "resolution": Resolution.GENUS,
         "confidence": Confidence.HIGH,
         "status": DecisionStatus.IDENTIFIED,

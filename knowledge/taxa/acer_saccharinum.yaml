@@ -2,6 +2,14 @@
 # not reviewed by a dendrologist. See docs/dataset-policy.md.
 taxon_id: acer_saccharinum
 display_name: Acer saccharinum (клен сріблястий)
+native_resolution: species
+broader_identities:
+  - resolution: genus
+    taxon_id: acer
+    display_name: Acer (клен)
+  - resolution: family
+    taxon_id: sapindaceae
+    display_name: Sapindaceae (сапіндові)
 aliases:
   - клен сріблястий
   - сріблястий клен

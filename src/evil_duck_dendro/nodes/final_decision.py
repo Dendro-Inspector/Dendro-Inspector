@@ -18,16 +18,20 @@ from __future__ import annotations
 
 from evil_duck_dendro.graph.executor import NodeContext
 from evil_duck_dendro.graph.state import GraphState
+from evil_duck_dendro.knowledge.candidate_validation import (
+    candidate_ranking_signature,
+    candidate_support_tier,
+)
 from evil_duck_dendro.knowledge.comparison_cards import recommended_photos
 from evil_duck_dendro.knowledge.evidence_hierarchy import (
     EvidenceTier,
     bark_only,
-    best_tier,
     confidence_band,
     confidence_ceiling,
     resolution_ceiling,
 )
 from evil_duck_dendro.knowledge.taxon_cards import match_card
+from evil_duck_dendro.nodes.photo_planner import choose_request
 from evil_duck_dendro.schemas.candidates import Candidate, CandidateSet, SupportStrength
 from evil_duck_dendro.schemas.decisions import (
     DecisionStatus,
@@ -47,6 +51,7 @@ from evil_duck_dendro.schemas.taxon import (
     Confidence,
     Resolution,
     TaxonCard,
+    TaxonIdentity,
     confidence_rank,
     lower_confidence,
     lower_resolution,
@@ -96,51 +101,58 @@ def _actions_for(state: GraphState, subject_id: str) -> tuple[RequiredAction, ..
     )
 
 
-def apply_reranking(state: GraphState, candidate_set: CandidateSet) -> CandidateSet:
-    """Adopt a reviewer's recommended ranking when a rerank finding was accepted.
-
-    The arbiter changes an answer *only* through this path: an accepted finding plus a
-    concrete recommended ordering. A recommendation without an accepted finding is noise.
-    """
-    rerank_accepted = any(
-        finding.required_action is RequiredAction.RERANK_CANDIDATES
-        and finding.subject_id in (None, candidate_set.subject_id)
-        for synthesis in _syntheses(state)
-        for finding in synthesis.accepted_findings
+def _single_admitted_rerank(
+    synthesis: ReviewSynthesis,
+    subject_id: str,
+) -> CandidateSet | None:
+    rankings = tuple(
+        rerank.candidate_set
+        for rerank in synthesis.admitted_reranks
+        if rerank.candidate_set.subject_id == subject_id
     )
-    if not rerank_accepted:
-        return candidate_set
+    if not rankings:
+        return None
+    signatures = {candidate_ranking_signature(ranking) for ranking in rankings}
+    return rankings[0] if len(signatures) == 1 else None
 
-    for review in (*state.arbiter_reviews, *state.reviews):
-        recommended = review.recommended_candidates
-        if not recommended:
-            continue
-        if review.subject_id not in (None, candidate_set.subject_id):
-            continue
-        renumbered = tuple(
-            candidate.model_copy(update={"rank": index})
-            for index, candidate in enumerate(
-                sorted(recommended, key=lambda item: item.rank), start=1
-            )
+
+def apply_reranking(state: GraphState, candidate_set: CandidateSet) -> CandidateSet:
+    """Consume finding-bound validated reranks only, preferring an unambiguous arbiter."""
+    arbiter = state.arbiter_synthesis
+    if arbiter is not None:
+        arbiter_for_subject = tuple(
+            rerank
+            for rerank in arbiter.admitted_reranks
+            if rerank.candidate_set.subject_id == candidate_set.subject_id
         )
-        return candidate_set.model_copy(update={"candidates": renumbered})
+        if arbiter_for_subject:
+            return _single_admitted_rerank(arbiter, candidate_set.subject_id) or candidate_set
+
+    internal = state.synthesis
+    if internal is not None:
+        internal_for_subject = tuple(
+            rerank
+            for rerank in internal.admitted_reranks
+            if rerank.candidate_set.subject_id == candidate_set.subject_id
+        )
+        if internal_for_subject:
+            return _single_admitted_rerank(internal, candidate_set.subject_id) or candidate_set
     return candidate_set
 
 
 def cap_resolution(claimed: Resolution, card: TaxonCard | None) -> Resolution:
-    """Narrow a claim down to what the card actually supports."""
-    if card is None:
-        return Resolution.GENUS if claimed is Resolution.SPECIES else claimed
-    if card.supports(claimed):
+    """Apply the card's authority ceiling without ever narrowing the model's claim.
+
+    A species-capable card also permits a broader genus or family answer. The old exact-list
+    fallback could turn a family proposal into a species result when the card listed only
+    species, which was an upgrade disguised as validation.
+    """
+    if claimed is Resolution.UNKNOWN or card is None:
+        return Resolution.UNKNOWN
+    card_ceiling = max(card.supported_resolution, key=resolution_rank)
+    if resolution_rank(claimed) <= resolution_rank(card_ceiling):
         return claimed
-    supported = [
-        resolution
-        for resolution in card.supported_resolution
-        if resolution_rank(resolution) <= resolution_rank(claimed)
-    ]
-    if supported:
-        return max(supported, key=resolution_rank)
-    return min(card.supported_resolution, key=resolution_rank)
+    return card_ceiling
 
 
 def normalise_claim(text: str) -> str:
@@ -224,28 +236,48 @@ def resolve_resolution(
     card: TaxonCard | None,
     tier: EvidenceTier,
 ) -> Resolution:
-    resolution = cap_resolution(leader.resolution, card)
-    capped_by_card = resolution is not leader.resolution
+    """Compose every upper bound first, then apply at most one explicit downgrade."""
+    bounds = [
+        leader.resolution,
+        cap_resolution(leader.resolution, card),
+        resolution_ceiling(tier),
+    ]
+    bounds.extend(
+        synthesis.resolution_delta
+        for synthesis in _syntheses(state)
+        if synthesis.resolution_delta is not None
+    )
+    resolution = min(bounds, key=resolution_rank)
+    already_broadened = resolution_rank(resolution) < resolution_rank(leader.resolution)
 
-    # The evidence hierarchy caps the claim independently of the card: a genus card cannot
-    # rescue a genus claim made from a silhouette.
-    tier_ceiling = resolution_ceiling(tier)
-    if resolution_rank(tier_ceiling) < resolution_rank(resolution):
-        resolution = tier_ceiling
-        capped_by_card = True
-
-    for synthesis in _syntheses(state):
-        if synthesis.resolution_delta is not None and resolution_rank(
-            synthesis.resolution_delta
-        ) < resolution_rank(resolution):
-            resolution = synthesis.resolution_delta
-
-    # A "lower the resolution" finding is usually raised *because* the model overclaimed
-    # past what the card supports. Capping already applied that correction, so applying the
-    # finding as well would punish the same mistake twice and bury a genus in family.
-    if not capped_by_card and RequiredAction.LOWER_RESOLUTION in _actions_for(state, subject_id):
+    # A lower-resolution finding commonly records the same overclaim already represented by
+    # a card, evidence, or synthesis bound. Do not apply the same correction twice.
+    if not already_broadened and RequiredAction.LOWER_RESOLUTION in _actions_for(state, subject_id):
         resolution = lower_resolution(resolution)
     return resolution
+
+
+def resolve_identity(card: TaxonCard | None, resolution: Resolution) -> TaxonIdentity | None:
+    """Select a declared identity at or broader than the composed resolution bound."""
+    if card is None:
+        return None
+    return card.identity_at_or_broader(resolution)
+
+
+def _nearest_alternative(
+    ctx: NodeContext,
+    runner_up: Candidate | None,
+    resolution: Resolution,
+    selected: TaxonIdentity,
+) -> str | None:
+    if runner_up is None:
+        return None
+    alternative = resolve_identity(ctx.knowledge.try_taxon(runner_up.taxon), resolution)
+    if alternative is None or alternative.resolution is not resolution:
+        return None
+    if alternative.taxon_id == selected.taxon_id:
+        return None
+    return alternative.taxon_id
 
 
 def resolve_confidence(
@@ -336,15 +368,29 @@ def _support_summary(evidence: EvidencePacket, candidate: Candidate) -> str | No
 
 
 def _contradiction_summary(
-    state: GraphState, subject_id: str, evidence: EvidencePacket, candidate: Candidate
+    state: GraphState,
+    ctx: NodeContext,
+    subject_id: str,
+    evidence: EvidencePacket,
+    selected: TaxonIdentity,
+    source_taxon: str,
 ) -> str | None:
-    by_id = {o.observation_id: o for o in evidence.observations}
-    for evidence_id in candidate.contradicting_evidence_ids:
-        observation = by_id.get(evidence_id)
-        if observation is not None:
-            return f"{observation.feature} = {observation.value}"
+    """Summarise contradictions against the selected identity, not its narrower source card."""
+    card = ctx.knowledge.try_taxon(selected.taxon_id)
+    if card is not None:
+        by_id = {observation.observation_id: observation for observation in evidence.observations}
+        for evidence_id in match_card(card, evidence, subject_id).contradiction_hits:
+            observation = by_id.get(evidence_id)
+            if observation is not None:
+                return f"{observation.feature} = {observation.value}"
+
     for synthesis in _syntheses(state):
         for finding in synthesis.accepted_findings:
+            if (
+                selected.taxon_id != source_taxon
+                and finding.category is FindingCategory.BOTANICAL_CONTRADICTION
+            ):
+                continue
             if finding.subject_id in (None, subject_id) and finding.severity in (
                 Severity.CRITICAL,
                 Severity.MAJOR,
@@ -410,26 +456,50 @@ def decide_subject(
         return FinalDecision(
             subject_id=subject_id,
             status=DecisionStatus.INSUFFICIENT_EVIDENCE,
+            best_next_photo=choose_request(state, ctx),
             arbiter_used=state.arbiter_used,
         )
 
     card = ctx.knowledge.try_taxon(leader.taxon)
-    tier = best_tier(evidence, subject_id)
-    resolution = resolve_resolution(state, subject_id, leader, card, tier)
-    confidence = resolve_confidence(state, subject_id, leader, card, evidence, tier)
-    runner_up = reranked.runner_up
+    tier = candidate_support_tier(leader, evidence, subject_id)
+    resolution_bound = resolve_resolution(state, subject_id, leader, card, tier)
+    selected = resolve_identity(card, resolution_bound)
+    if selected is None:
+        verdict = rule_on_user_claim(state, ctx, subject_id, reranked, evidence, None)
+        return FinalDecision(
+            subject_id=subject_id,
+            status=DecisionStatus.INSUFFICIENT_EVIDENCE,
+            strongest_support=_support_summary(evidence, leader),
+            unresolved_questions=_unresolved(state, subject_id, leader),
+            best_next_photo=_next_photo(ctx, reranked, leader, tier, Confidence.LOW),
+            arbiter_used=state.arbiter_used,
+            user_claim_verdict=verdict,
+            evidence_tier=int(tier),
+        )
 
-    taxon = leader.taxon if resolution is not Resolution.UNKNOWN else None
-    verdict = rule_on_user_claim(state, ctx, subject_id, reranked, evidence, taxon)
+    resolution = selected.resolution
+    confidence = resolve_confidence(state, subject_id, leader, card, evidence, tier)
+    verdict = rule_on_user_claim(state, ctx, subject_id, reranked, evidence, selected.taxon_id)
     return FinalDecision(
         subject_id=subject_id,
-        selected_taxon=taxon,
+        selected_taxon=selected.taxon_id,
+        selected_taxon_display_name=selected.display_name,
         resolution=resolution,
         confidence=confidence,
-        status=decide_status(state, ctx, subject_id, evidence, resolution, confidence, taxon),
+        status=decide_status(
+            state,
+            ctx,
+            subject_id,
+            evidence,
+            resolution,
+            confidence,
+            selected.taxon_id,
+        ),
         strongest_support=_support_summary(evidence, leader),
-        strongest_contradiction=_contradiction_summary(state, subject_id, evidence, leader),
-        nearest_alternative=runner_up.taxon if runner_up else None,
+        strongest_contradiction=_contradiction_summary(
+            state, ctx, subject_id, evidence, selected, leader.taxon
+        ),
+        nearest_alternative=_nearest_alternative(ctx, reranked.runner_up, resolution, selected),
         unresolved_questions=_unresolved(state, subject_id, leader),
         best_next_photo=_next_photo(ctx, reranked, leader, tier, confidence),
         arbiter_used=state.arbiter_used,

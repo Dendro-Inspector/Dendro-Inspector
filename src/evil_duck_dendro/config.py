@@ -16,6 +16,7 @@ from pydantic import Field
 from evil_duck_dendro.schemas.base import Contract
 
 DEFAULT_DOMAIN_PROMPT_PATH = Path("prompts/domain/system-prompt.md")
+DEFAULT_PROMPT_MANIFEST_PATH = Path("prompts/versions.yaml")
 DEFAULT_KNOWLEDGE_ROOT = Path("knowledge")
 DEFAULT_NODE_PROMPT_ROOT = Path("prompts/nodes")
 DEFAULT_PERSONALITY_ROOT = Path("prompts/personality")
@@ -106,6 +107,7 @@ class ToneProfile(StrEnum):
 
 class PromptConfig(Contract):
     domain_prompt_path: Path = DEFAULT_DOMAIN_PROMPT_PATH
+    manifest_path: Path = DEFAULT_PROMPT_MANIFEST_PATH
     node_prompt_root: Path = DEFAULT_NODE_PROMPT_ROOT
     personality_root: Path = DEFAULT_PERSONALITY_ROOT
     tone_profile: ToneProfile = ToneProfile.EVIL_DUCK_PUBLIC
@@ -181,6 +183,10 @@ def load_config(overrides: AppConfig | None = None) -> AppConfig:
             domain_prompt_path=Path(
                 _env("EVIL_DUCK_DOMAIN_PROMPT_PATH", str(DEFAULT_DOMAIN_PROMPT_PATH))
                 or str(DEFAULT_DOMAIN_PROMPT_PATH)
+            ),
+            manifest_path=Path(
+                _env("EVIL_DUCK_PROMPT_MANIFEST_PATH", str(DEFAULT_PROMPT_MANIFEST_PATH))
+                or str(DEFAULT_PROMPT_MANIFEST_PATH)
             ),
             tone_profile=ToneProfile(
                 _env("EVIL_DUCK_TONE_PROFILE", ToneProfile.EVIL_DUCK_PUBLIC.value)

@@ -21,8 +21,8 @@
       "observations": [
         {
           "observation_id": "obs-1",
-          "feature": "bark.texture",
-          "value": "grey_furrowed_old",
+          "feature": "bark.pattern",
+          "value": "diamond_fissures",
           "subject_id": "standing_tree",
           "source": "image",
           "visibility": "clear",

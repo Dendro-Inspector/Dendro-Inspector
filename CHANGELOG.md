@@ -23,6 +23,57 @@ a rule against overfitting is worthless if it arrives after the first tempting f
 - Stated separation between `evals/public/` (conformance and regression, synthetic) and
   `evals/golden/` (botanical correctness, private), and the blind-evaluation requirement.
 
+## [0.2.2] — 2026-07-26
+
+Fail-closed correctness hardening. Model-proposed evidence, candidates, findings and reranks
+can no longer widen a claim unless deterministic code admits the exact supporting artifact.
+
+### Changed
+
+**Evidence authority is candidate-specific and trust-projected.** Only same-subject image
+evidence can positively support identification. Clear medium/high-reliability observations
+carry their normal tier; partial or low-reliability evidence is capped to bark-equivalent
+authority; obscured, not-visible, contextual-source and unattached evidence remains available
+for review but cannot raise a taxonomic claim. Inferences inherit the weakest trust of every
+source observation.
+
+**Candidates fail closed at one shared admission boundary.** Primary and reviewer/arbiter
+rankings now retain only known taxa with exact taxon-card matches backed by trusted evidence.
+Unsupported evidence ids are removed, survivors are densely reranked, and an all-rejected set
+produces an explicit abstention rather than a best-effort guess. Confidence, evidence tier and
+resolution are computed from the selected candidate's admitted support, not unrelated evidence
+elsewhere in the frame.
+
+**Taxon identity follows final resolution.** Cards declare canonical broader identities. When
+an upper bound broadens a species proposal to genus or family, the selected id and display name
+broaden with it; if no compatible identity is declared, the result is `unknown`. Alternatives
+are broadened to the same level and omitted when both candidates collapse to the same identity.
+
+**Deterministic findings cannot be preempted by model restatements.** Findings carry an origin,
+deterministic findings are adjudicated first, and duplicate detection uses material fields
+rather than category/subject alone. Evidence-backed findings with foreign-subject sources are
+rejected and retained with their reason code.
+
+**Reranks are bound to the finding that admitted them.** A `rerank_candidates` finding must
+have a same-result recommendation for the same subject, and that ranking passes the shared
+candidate validator. Final decision consumes only `AdmittedRerank` artifacts; absent, rejected,
+unsupported or conflicting recommendations leave the current ranking unchanged.
+
+**Prompt and deterministic policy compatibility is fail-closed.** `prompts/versions.yaml` now
+pins schema `1`, policy revision `0.2.2`, the canonical domain prompt path/hash, node-prompt
+root/revision, exact file set and per-file hashes. Validation occurs before provider
+construction. Custom `EVIL_DUCK_DOMAIN_PROMPT_PATH` deployments must also set
+`EVIL_DUCK_PROMPT_MANIFEST_PATH` to a matching external compatibility attestation.
+
+### Added
+
+- Prompt trace and `evil-duck prompt-info` metadata now include manifest schema, manifest path
+  and hash, policy revision, node-prompt revision and compatibility status.
+- The public conformance suite expands from nine to fourteen cases with focused regressions for
+  unrelated high-tier evidence, all-candidates-removed abstention, resolution-consistent
+  identity, deterministic-finding precedence and finding-bound reranks. Release requires all
+  fourteen to pass with zero overconfidence and a reviewed frozen v0.2.2 baseline.
+
 ## [0.2.1] — 2026-07-25
 
 Hardening pass before public push. No new capability; several things that were nearly right
@@ -230,5 +281,6 @@ documents, GitHub Actions CI with a blocking secret scan.
   currently carries a previous result into a new case).
 - A hosted API surface.
 
-[Unreleased]: https://github.com/OWNER/evil-duck-dendro-inspector/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/OWNER/evil-duck-dendro-inspector/compare/v0.2.2...HEAD
+[0.2.2]: https://github.com/OWNER/evil-duck-dendro-inspector/compare/v0.2.1...v0.2.2
 [0.1.0]: https://github.com/OWNER/evil-duck-dendro-inspector/releases/tag/v0.1.0

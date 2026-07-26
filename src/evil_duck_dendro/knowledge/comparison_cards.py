@@ -6,6 +6,7 @@ observations?" — is answered here from declared data rather than from a model'
 
 from __future__ import annotations
 
+from evil_duck_dendro.knowledge.evidence_hierarchy import positive_observations_for
 from evil_duck_dendro.schemas.evidence import EvidencePacket
 from evil_duck_dendro.schemas.taxon import ComparisonCard
 
@@ -31,7 +32,7 @@ def relies_only_on_insufficient_features(
     the subject is on the insufficient list — one colour observation alongside real
     structural evidence is fine.
     """
-    observations = evidence.visible_observations_for(subject_id)
+    observations = positive_observations_for(evidence, subject_id)
     if not observations:
         return False
     weak = insufficient_features(cards)

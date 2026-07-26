@@ -41,8 +41,8 @@
         },
         {
           "observation_id": "obs-2",
-          "feature": "bark.flake_geometry",
-          "value": "small_thin_scales",
+          "feature": "bark.texture",
+          "value": "scaly_plates",
           "subject_id": "foreground_log_1",
           "source": "image",
           "visibility": "clear",

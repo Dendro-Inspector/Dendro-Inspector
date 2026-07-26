@@ -2,6 +2,11 @@
 # not reviewed by a dendrologist. See docs/dataset-policy.md.
 taxon_id: morus
 display_name: Morus (шовковиця)
+native_resolution: genus
+broader_identities:
+  - resolution: family
+    taxon_id: moraceae
+    display_name: Moraceae (шовковицеві)
 aliases:
   - шовковиця
   - тутовник

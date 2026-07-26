@@ -2,8 +2,8 @@
 
 - **Status:** Current
 - **Owner:** Evil Duck Dendro Inspector maintainers
-- **Date:** 2026-07-25
-- **Last-verified:** 2026-07-25
+- **Date:** 2026-07-26
+- **Last-verified:** 2026-07-26
 
 The graph is declared once in
 [`graph/definition.py`](../src/evil_duck_dendro/graph/definition.py). The diagram below,
@@ -54,22 +54,28 @@ node with side effects.
 | `evidence_extractor` | primary | Enumerate subjects, observations, inferences, limitations | `EvidencePacket` |
 | `evidence_quality` | no | Decide whether any claim is possible | `EvidenceQualityReport` |
 | `photo_planner` | no | Convert "not enough" into a specific photo request | `FinalDecision[]` |
-| `candidate_generator` | primary | Ranked hypotheses per subject; strip evidence leaks | `CandidateSet[]` |
+| `candidate_generator` | primary | Propose rankings; admit only known, same-subject, card-matched support | `CandidateSet[]` |
 | `botanical_reviewer` | primary | Botany; card-declared contradictions | `ReviewResult` |
 | `confusion_reviewer` | primary | Look-alikes, colour dependence, region assumptions | `ReviewResult` |
 | `confidence_reviewer` | primary | Calibration, earned resolution, invalid negatives | `ReviewResult` |
-| `review_synthesizer` | no | Adjudicate findings against admissibility rules | `ReviewSynthesis` |
+| `review_synthesizer` | no | Deterministic-first finding admission; bind validated reranks | `ReviewSynthesis` |
 | `correction_worker` | no | Spend one retry, clear derived state | state |
 | `abstain` | no | Lower the claim, mark the run abstained | state |
 | `escalation_gate` | no | Decide whether the arbiter is worth calling | `EscalationDecision` |
 | `arbiter` | **arbiter** | Independent challenge | `ReviewResult` |
 | `arbiter_synthesizer` | no | Same admissibility bar as internal review | `ReviewSynthesis` |
-| `final_decision` | no | Cap, downgrade, classify | `FinalDecision[]` |
+| `final_decision` | no | Compose bounds; select resolution-consistent identity | `FinalDecision[]` |
 | `response_composer` | no | Structured result plus the five-part text | `CaseResponse` |
 | `tone_layer` | no | Voice only; contract-checked | `CaseResponse` |
 
 Every node has one responsibility, takes typed input, returns typed output, writes an
 execution event, and is testable on its own without a provider.
+
+The candidate and rerank boundaries are deliberately inside deterministic nodes. Candidate
+proposals lose unknown taxa, foreign evidence and card-unmatched support before entering state.
+Review synthesis stores only exact accepted finding/ranking pairs in `admitted_reranks`, and
+final decision derives confidence, evidence tier, resolution and identity from admitted
+candidate-specific support. The graph topology did not need a new node to enforce these rules.
 
 ## Routing rules
 

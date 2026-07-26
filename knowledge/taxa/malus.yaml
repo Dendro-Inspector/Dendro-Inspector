@@ -2,6 +2,11 @@
 # not reviewed by a dendrologist. See docs/dataset-policy.md.
 taxon_id: malus
 display_name: Malus (яблуня)
+native_resolution: genus
+broader_identities:
+  - resolution: family
+    taxon_id: rosaceae
+    display_name: Rosaceae (розові)
 aliases:
   - яблуня
   - apple

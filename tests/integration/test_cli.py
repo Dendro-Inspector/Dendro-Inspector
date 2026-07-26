@@ -58,7 +58,11 @@ class TestInspectCommand:
         assert result.exit_code == 0
         payload = json.loads(result.stdout)
         assert payload["response"]["results"][0]["taxonomic_resolution"] == "genus"
-        assert payload["trace"]["domain_prompt"]["sha256"]
+        prompt = payload["trace"]["domain_prompt"]
+        assert prompt["sha256"]
+        assert prompt["policy_revision"] == "0.2.2"
+        assert prompt["manifest_sha256"]
+        assert prompt["compatibility_status"] == "compatible"
 
     def test_missing_input_is_rejected_with_a_usage_error(self):
         assert runner.invoke(app, ["inspect"]).exit_code == 2
@@ -90,6 +94,23 @@ class TestInspectCommand:
         trace = json.loads((tmp_path / "trace-test.trace.json").read_text(encoding="utf-8"))
         assert trace["case_id"] == "trace-test"
         assert trace["graph_version"]
+        assert trace["domain_prompt"]["compatibility_status"] == "compatible"
+
+    def test_incompatible_prompt_policy_exits_cleanly(self, tmp_path, monkeypatch):
+        manifest = tmp_path / "incompatible.yaml"
+        manifest.write_text(
+            'schema_version: "1"\npolicy_revision: "0.2.1"\n',
+            encoding="utf-8",
+        )
+        monkeypatch.setenv("EVIL_DUCK_PROMPT_MANIFEST_PATH", str(manifest))
+
+        result = runner.invoke(
+            app,
+            ["inspect", "--fake", "primary-pass", "--image", "examples/log.jpg"],
+        )
+
+        assert result.exit_code == 3
+        assert "policy_revision" in result.stderr
 
 
 class TestEvalCommand:
@@ -119,3 +140,22 @@ class TestPromptInfoCommand:
         assert len(payload["sha256"]) == 64
         assert payload["is_placeholder"] is False
         assert payload["version"] == "user-managed"
+        assert payload["manifest_schema_version"] == "1"
+        assert payload["policy_revision"] == "0.2.2"
+        assert payload["node_prompt_revision"] == "0.1.0"
+        assert len(payload["manifest_sha256"]) == 64
+        assert payload["compatibility_status"] == "compatible"
+
+    def test_incompatible_manifest_fails_cleanly(self, tmp_path, monkeypatch):
+        manifest = tmp_path / "incompatible.yaml"
+        manifest.write_text(
+            'schema_version: "1"\npolicy_revision: "0.2.1"\n',
+            encoding="utf-8",
+        )
+        monkeypatch.setenv("EVIL_DUCK_PROMPT_MANIFEST_PATH", str(manifest))
+
+        result = runner.invoke(app, ["prompt-info"])
+
+        assert result.exit_code == 3
+        assert "incompatible" in result.stderr.lower()
+        assert "policy_revision" in result.stderr

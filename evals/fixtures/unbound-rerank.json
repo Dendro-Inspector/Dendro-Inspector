@@ -1,0 +1,142 @@
+{
+  "scenario": "unbound-rerank",
+  "description": "A rejected rerank recommendation cannot change the validated primary ranking.",
+  "responses": {
+    "primary:planner": {
+      "target_features": ["bark.texture", "needles.attachment"],
+      "expect_multiple_subjects": false,
+      "bark_only_input": true,
+      "notes": ["Two bark textures support alternatives; preserve the primary ranking unless a valid rerank is admitted."]
+    },
+    "primary:evidence_extractor": {
+      "subjects": [
+        {
+          "subject_id": "standing_tree",
+          "kind": "standing_tree",
+          "description": "A conifer trunk with mixed scaly bark patches.",
+          "image_ids": ["img-1"]
+        }
+      ],
+      "observations": [
+        {
+          "observation_id": "pinus-support",
+          "feature": "bark.texture",
+          "value": "scaly_plates",
+          "subject_id": "standing_tree",
+          "source": "image",
+          "visibility": "clear",
+          "reliability": "medium",
+          "image_id": "img-1"
+        },
+        {
+          "observation_id": "picea-support",
+          "feature": "bark.texture",
+          "value": "fine_scales",
+          "subject_id": "standing_tree",
+          "source": "image",
+          "visibility": "clear",
+          "reliability": "medium",
+          "image_id": "img-1"
+        }
+      ],
+      "inferences": [],
+      "absent_features": [],
+      "image_limitations": [
+        {
+          "image_id": "img-1",
+          "lighting": "even_shade",
+          "white_balance": "neutral",
+          "scale": "absent"
+        }
+      ],
+      "context_limitations": ["bark_features_overlap"],
+      "possible_multiple_taxa": false,
+      "instruction_like_content_detected": false
+    },
+    "primary:candidate_generator": {
+      "sets": [
+        {
+          "subject_id": "standing_tree",
+          "candidates": [
+            {
+              "taxon": "pinus",
+              "resolution": "genus",
+              "supporting_evidence_ids": ["pinus-support"],
+              "contradicting_evidence_ids": [],
+              "missing_decisive_features": [],
+              "score": "strong",
+              "rank": 1
+            },
+            {
+              "taxon": "picea",
+              "resolution": "genus",
+              "supporting_evidence_ids": ["picea-support"],
+              "contradicting_evidence_ids": [],
+              "missing_decisive_features": [],
+              "score": "weak",
+              "rank": 2
+            }
+          ]
+        }
+      ]
+    },
+    "primary:botanical_reviewer": {
+      "reviewer": "botanical",
+      "status": "pass",
+      "findings": [],
+      "recommended_resolution": "genus"
+    },
+    "primary:confusion_reviewer": {
+      "reviewer": "confusion",
+      "status": "pass_with_findings",
+      "findings": [
+        {
+          "finding_id": "model-rejected-rerank",
+          "category": "overlooked_alternative",
+          "severity": "major",
+          "summary": "Move Picea to rank one.",
+          "subject_id": "standing_tree",
+          "proposed_taxon": "picea",
+          "required_action": "rerank_candidates",
+          "impact": "candidate_change"
+        }
+      ],
+      "recommended_candidates": [
+        {
+          "taxon": "picea",
+          "resolution": "genus",
+          "supporting_evidence_ids": ["pinus-support"],
+          "contradicting_evidence_ids": [],
+          "missing_decisive_features": [],
+          "score": "moderate",
+          "rank": 1
+        },
+        {
+          "taxon": "pinus",
+          "resolution": "genus",
+          "supporting_evidence_ids": ["pinus-support"],
+          "contradicting_evidence_ids": [],
+          "missing_decisive_features": [],
+          "score": "weak",
+          "rank": 2
+        }
+      ],
+      "recommended_resolution": "genus"
+    },
+    "primary:confidence_reviewer": {
+      "reviewer": "confidence",
+      "status": "pass",
+      "findings": [],
+      "recommended_resolution": "genus",
+      "recommended_confidence": "low"
+    },
+    "arbiter:arbiter": {
+      "reviewer": "arbiter",
+      "status": "pass",
+      "findings": [],
+      "recommended_resolution": "genus",
+      "recommended_confidence": "low",
+      "subject_id": "standing_tree"
+    }
+  }
+}

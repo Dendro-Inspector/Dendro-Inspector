@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from enum import StrEnum
 
-from pydantic import Field
+from pydantic import Field, model_validator
 
 from evil_duck_dendro.schemas.base import Contract, Identifier, ShortText, ValueToken
 from evil_duck_dendro.schemas.taxon import Confidence, Resolution
@@ -60,6 +60,7 @@ class FinalDecision(Contract):
 
     subject_id: Identifier
     selected_taxon: Identifier | None = None
+    selected_taxon_display_name: str | None = Field(default=None, min_length=1, max_length=120)
     resolution: Resolution = Resolution.UNKNOWN
     confidence: Confidence = Confidence.LOW
     status: DecisionStatus = DecisionStatus.INSUFFICIENT_EVIDENCE
@@ -81,6 +82,21 @@ class FinalDecision(Contract):
         max_length=16,
         description="Confidence on the domain prompt's X/100 scale, as a band never a point.",
     )
+
+    @model_validator(mode="after")
+    def _taxon_identity_matches_resolution(self) -> FinalDecision:
+        has_taxon = self.selected_taxon is not None
+        has_display_name = self.selected_taxon_display_name is not None
+        if has_taxon != has_display_name:
+            msg = "selected_taxon and selected_taxon_display_name must be set together"
+            raise ValueError(msg)
+        if self.resolution is Resolution.UNKNOWN and has_taxon:
+            msg = "resolution=unknown requires selected_taxon=None"
+            raise ValueError(msg)
+        if self.resolution is not Resolution.UNKNOWN and not has_taxon:
+            msg = "a non-unknown resolution requires a selected taxon identity"
+            raise ValueError(msg)
+        return self
 
     @property
     def claims_species(self) -> bool:

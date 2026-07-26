@@ -2,8 +2,8 @@
 
 - **Status:** Current
 - **Owner:** Evil Duck Dendro Inspector maintainers
-- **Date:** 2026-07-25
-- **Last-verified:** 2026-07-25
+- **Date:** 2026-07-26
+- **Last-verified:** 2026-07-26
 
 ```bash
 evil-duck eval --suite public            # summary
@@ -21,11 +21,13 @@ secrets.
 Assertions run against the **graph's decisions**, never against prose. Rewriting the tone
 layer must not turn the evaluation red; changing what the system concludes must.
 
-## The nine cases
+## The fourteen cases
 
-Cases 1–5 cover the core mechanics. Cases 6–8 are the named failure modes from section 13 of
-the domain prompt. Case 9 is the counterweight — proof the system still commits when the
-evidence is actually decisive.
+Cases 1–5 cover the core mechanics. Cases 6–8 are named failure modes from section 13 of the
+domain prompt. Case 9 is the counterweight — proof the system still commits when the evidence
+is actually decisive. Cases 10–14 lock the v0.2.2 correctness boundary: candidate-specific
+trusted evidence, fail-closed candidate admission, resolution-consistent identity,
+deterministic-finding precedence and finding-bound reranks.
 
 ### 1. `conifer-log-001` — probable Pinus
 
@@ -103,6 +105,41 @@ nothing, so when a fruit is attached to the branch the system must commit.
 Expects: Malus, status `identified`, evidence tier 7, the user's version accepted, no
 escalation. This is the only tier that unlocks the 95–100 band.
 
+### 10. `unrelated-high-tier-001` — unrelated high-tier evidence cannot raise a candidate
+
+A candidate supported only by bark must not inherit fruit/foliage authority from unrelated or
+foreign-subject evidence elsewhere in the packet.
+
+Expects: evidence tier and confidence derived only from the leader's validated support ids.
+
+### 11. `candidate-sanitization-001` — unknown or unsupported candidates are removed
+
+The model proposes unknown taxa and known taxa with empty, unrelated or contextual-only
+support. The shared admission boundary removes them and rebuilds ranks densely.
+
+Expects: only known supported candidates survive; if all are removed, resolution is `unknown`.
+
+### 12. `broadened-species-identity-001` — broadened resolution renders broader identity
+
+A species hypothesis is capped to genus or family by card/evidence/review bounds.
+
+Expects: selected id and display name match that broader resolution; no species name survives.
+
+### 13. `deterministic-preemption-001` — model findings cannot preempt deterministic findings
+
+A model emits a same-category restatement before a deterministic colour or attachment check.
+
+Expects: deterministic origin is adjudicated first and the material duplicate is retained as a
+rejected restatement.
+
+### 14. `unbound-rerank-001` — only finding-bound reranks can change ranking
+
+A review contains a recommendation behind an absent or rejected `rerank_candidates` finding,
+or multiple conflicting validated rankings at one level.
+
+Expects: the current order is preserved unless one exact accepted finding/ranking artifact is
+unambiguous.
+
 ## Metrics
 
 Every rate is reported alongside the count it was computed from. A "100% top-1 accuracy"
@@ -129,15 +166,20 @@ score.
 system that abstains without saying what would help has not solved the user's problem, it
 has merely avoided being wrong.
 
-### Current results
+### Recorded and pending results
 
-All nine cases pass; `overconfidence_rate` 0.0, `schema_validity` 1.0, escalation precision
-and recall 1.0, unnecessary arbiter calls 0.0, abstention quality 1.0.
+The frozen v0.2.1 baseline records all nine existing cases passing, with
+`overconfidence_rate` 0.0 and `schema_validity` 1.0. v0.2.2 correctness hardening intentionally
+changes admission and identity behaviour, so that baseline is historical rather than the
+release result.
 
-Read that honestly: nine hand-built cases over recorded fixtures. It demonstrates that the
-machinery does what it claims on the situations it was built to handle — including every
-failure mode the domain prompt names. It says nothing about accuracy on real photographs,
-which has not been measured.
+Do not publish v0.2.2 public-suite metrics until all fourteen cases pass, changes to existing
+outcomes are reviewed, and `public-v0.2.2` lands as the frozen baseline. The required release
+result is fourteen passing cases, zero failures and zero overconfidence.
+
+Read any eventual result honestly: fourteen hand-built cases over recorded fixtures can show
+that the machinery follows these contracts. It says nothing about identification accuracy on
+real photographs, which has not been measured.
 
 ## Adding a case
 

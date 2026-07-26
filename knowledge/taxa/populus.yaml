@@ -2,6 +2,11 @@
 # not reviewed by a dendrologist. See docs/dataset-policy.md.
 taxon_id: populus
 display_name: Populus (тополя)
+native_resolution: genus
+broader_identities:
+  - resolution: family
+    taxon_id: salicaceae
+    display_name: Salicaceae (вербові)
 aliases:
   - тополя
   - poplar

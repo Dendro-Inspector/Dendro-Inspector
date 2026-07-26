@@ -21,6 +21,6 @@ async def run(state: GraphState, ctx: NodeContext) -> GraphState:
     synthesis = adjudicate(
         state.arbiter_reviews,
         evidence=state.evidence,
-        known_taxa=frozenset(ctx.knowledge.available_taxon_ids()),
+        knowledge=ctx.knowledge,
     )
     return state.evolve(arbiter_synthesis=synthesis)

@@ -2,6 +2,14 @@
 # not reviewed by a dendrologist. See docs/dataset-policy.md.
 taxon_id: prunus_cerasifera
 display_name: Prunus cerasifera (алича)
+native_resolution: species
+broader_identities:
+  - resolution: genus
+    taxon_id: prunus
+    display_name: Prunus (кісточкові)
+  - resolution: family
+    taxon_id: rosaceae
+    display_name: Rosaceae (розові)
 aliases:
   - алича
   - cherry plum

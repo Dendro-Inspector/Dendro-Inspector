@@ -2,8 +2,8 @@
 
 - **Status:** Current
 - **Owner:** Evil Duck Dendro Inspector maintainers
-- **Date:** 2026-07-25
-- **Last-verified:** 2026-07-25
+- **Date:** 2026-07-26
+- **Last-verified:** 2026-07-26
 
 Two logical roles. Business logic names only these; which vendor and model satisfies each is
 configuration.
@@ -47,13 +47,21 @@ on. What it cannot see, it cannot be anchored by.
 
 It returns **structured findings only**. It cannot write the answer.
 
-To change the ranking it must supply `recommended_candidates` **and** a finding with
-`required_action: rerank_candidates`. A recommendation without a finding changes nothing; a
-finding without a recommendation changes nothing.
+To change the ranking it must supply `recommended_candidates` **in the same `ReviewResult`**
+as a finding with `required_action: rerank_candidates`, for the same unambiguous subject. The
+ranking passes the shared candidate validator, and `proposed_taxon`, when present, must survive.
+A recommendation without that exact admitted finding changes nothing; a finding without a
+validated recommendation changes nothing.
+
+Synthesis stores the accepted finding and validated ranking together as `AdmittedRerank`.
+Final decision consumes only that artifact, never raw recommendations. One unambiguous arbiter
+rerank takes precedence over internal reranks; conflicting arbiter rankings preserve the
+current order rather than choosing arbitrarily.
 
 Its findings then go through `adjudicate()` — the *same* function the internal reviewers
-face. A second model does not get a lower bar because it is expensive or because it
-disagreed confidently. See [`docs/review-pipeline.md`](review-pipeline.md).
+face, with deterministic findings adjudicated first. A second model does not get a lower bar
+because it is expensive or because it disagreed confidently. See
+[`docs/review-pipeline.md`](review-pipeline.md).
 
 ## Escalation policy
 
@@ -108,8 +116,9 @@ of a safety trigger. Regression-tested in
 
 ## Cost
 
-The arbiter roughly doubles model cost on escalated cases. On the public suite, 3 of 5 cases
-escalate — but that suite is deliberately weighted toward hard cases. Tune with:
+The arbiter roughly doubles model cost on escalated cases. The public conformance suite is
+deliberately weighted toward hard cases, so its escalation rate is not a production cost
+forecast. v0.2.2 expands the suite from nine to fourteen cases. Tune with:
 
 ```python
 EscalationPolicy(
