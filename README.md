@@ -63,7 +63,7 @@ pip install -e ".[dev]"
 
 evil-duck graph                                    # print the executable agent graph
 evil-duck inspect --fake primary-pass --image examples/log.jpg --location "Kyiv Oblast, Ukraine"
-evil-duck eval --suite public                      # run the fourteen public conformance cases
+evil-duck eval --suite public                      # run the sixteen public conformance cases
 pytest                                             # full test suite, offline
 ```
 
@@ -123,6 +123,19 @@ The runtime validates `prompts/versions.yaml` before constructing any provider. 
 pins policy revision `0.2.2`, the canonical domain prompt path and hash, the node-prompt root
 and revision, and the exact node-prompt file set and hashes. Composition uses the cached
 validated bytes, so a prompt changed after validation cannot silently enter a request.
+
+Replacing the prompt therefore changes its hash, and the manifest has to be re-sealed before
+the next run — including when you replace it at its own default path:
+
+```bash
+evil-duck prompt-seal            # dry run: every hash it would change, old -> new
+evil-duck prompt-seal --write    # rewrite the configured manifest, then revalidate
+```
+
+Re-sealing attests bytes, not semantic compatibility: it records what is on disk and never
+rewrites `schema_version` or `policy_revision`. Whether a changed prompt still means what the
+deterministic policy expects is a review, not a hash. The same command re-seals node prompts
+under `prompts/nodes/`, whose hashes are pinned by the same manifest.
 
 Point somewhere else only with a matching deployment manifest:
 
@@ -213,8 +226,8 @@ bark level and no field context from you.
 v0.2.2 — a correctness-hardened vertical slice, not a production system. The graph runs end
 to end; trusted candidate-specific evidence, resolution-consistent identity, deterministic
 finding precedence, finding-bound reranks and prompt-policy compatibility are enforced in
-code. The public suite now defines fourteen deterministic conformance cases; release requires
-all fourteen to pass with zero overconfidence and a reviewed frozen v0.2.2 baseline. The
+code. The public suite defines sixteen deterministic conformance cases, all passing with zero
+overconfidence against the frozen `public-v0.2.2` baseline. The
 knowledge pack is 25 taxa of demonstration content that no dendrologist has reviewed — every
 card says so in its `provenance` block.
 

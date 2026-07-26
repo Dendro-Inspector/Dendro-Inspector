@@ -67,12 +67,49 @@ construction. Custom `EVIL_DUCK_DOMAIN_PROMPT_PATH` deployments must also set
 
 ### Added
 
+- `evil-duck prompt-seal` re-pins the manifest after the owner edits a prompt. Without it the
+  manifest above made the documented workflow — replace `prompts/domain/system-prompt.md` —
+  impossible: the run aborted on a hash mismatch and nothing could rewrite the hash. Dry run by
+  default, `--write` to apply, and it never touches the policy revision, because re-sealing
+  attests bytes and cannot attest that a changed prompt still means what the code implements.
 - Prompt trace and `evil-duck prompt-info` metadata now include manifest schema, manifest path
   and hash, policy revision, node-prompt revision and compatibility status.
-- The public conformance suite expands from nine to fourteen cases with focused regressions for
-  unrelated high-tier evidence, all-candidates-removed abstention, resolution-consistent
-  identity, deterministic-finding precedence and finding-bound reranks. Release requires all
-  fourteen to pass with zero overconfidence and a reviewed frozen v0.2.2 baseline.
+- The public conformance suite expands from nine to sixteen cases: unrelated high-tier evidence,
+  all-candidates-removed abstention, resolution-consistent identity, deterministic-finding
+  precedence, finding-bound reranks, near-miss vocabulary rejection and partial-visibility
+  confidence capping. All sixteen pass with zero overconfidence against the frozen
+  `public-v0.2.2` baseline; `public-v0.2.1` is preserved as the historical record.
+- Broader taxon identities and the `larix` card carry their own provenance. Family placements
+  are standard taxonomy that the domain prompt never states, and `larix` is not in the prompt
+  at all — both previously sat under a card-level block claiming section 14. A contract test
+  now fails if a family identity claims `domain_prompt` as its source.
+
+### Fixed
+
+- `evil-duck eval` configures logging like `inspect` does. Without it the new
+  `candidate_validation_filtered` warning printed bare and lost `case_id`, `subject_id`,
+  `dropped_evidence_ids` and `rejected_taxa` — the fields that say which candidates the new
+  boundary removed — along with the JSON formatter's redaction.
+- `EvalMetrics.escalations_correct` is now `escalation_decisions_correct`. It counts correct
+  arbiter *decisions* over `cases`, including correct non-escalations, but sat between the two
+  precision/recall denominators where it read as "16 correct out of 9".
+
+### Notes on this release
+
+Two things a reader of the metrics above should know.
+
+**One pre-existing outcome moved.** `arbiter-ranking-001` confidence `medium` → `low`. The
+deterministic contradiction against the Pinus proposal now contributes its conservative
+downgrade even though the arbiter still reranks the answer to Picea. No other case changed its
+taxon, resolution, arbiter use or retry count.
+
+**Six fixtures were rewritten, not just re-expected.** The stricter admission boundary rejected
+`arbiter-review`, `primary-conflict`, `foliage-unattached`, `bark-light-trunk`,
+`bark-rough-oak-claim` and `primary-pass`, whose scripted model output used paraphrased feature
+tokens and, in one case, partial visibility. Each was repaired by conforming the model output to
+card vocabulary. That keeps them as conformance cases but removes the near-miss input they used
+to carry, so the drift comparison is not apples to apples: one of nine outcomes changed, but six
+of the nine ran on rewritten inputs. Cases 15 and 16 restore the deleted behaviours explicitly.
 
 ## [0.2.1] — 2026-07-25
 
@@ -281,6 +318,10 @@ documents, GitHub Actions CI with a blocking secret scan.
   currently carries a previous result into a new case).
 - A hosted API surface.
 
-[Unreleased]: https://github.com/OWNER/evil-duck-dendro-inspector/compare/v0.2.2...HEAD
-[0.2.2]: https://github.com/OWNER/evil-duck-dendro-inspector/compare/v0.2.1...v0.2.2
-[0.1.0]: https://github.com/OWNER/evil-duck-dendro-inspector/releases/tag/v0.1.0
+Compare links resolve once the matching tags are pushed; none exist yet.
+
+[Unreleased]: https://github.com/Dendro-Inspector/Dendro-Inspector/compare/v0.2.2...HEAD
+[0.2.2]: https://github.com/Dendro-Inspector/Dendro-Inspector/compare/v0.2.1...v0.2.2
+[0.2.1]: https://github.com/Dendro-Inspector/Dendro-Inspector/compare/v0.1.0...v0.2.1
+[0.2.0]: https://github.com/Dendro-Inspector/Dendro-Inspector/compare/v0.1.0...v0.2.0
+[0.1.0]: https://github.com/Dendro-Inspector/Dendro-Inspector/releases/tag/v0.1.0

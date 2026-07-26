@@ -92,11 +92,21 @@ every step you forget.
 
 ### Tuning prompts
 
-`prompts/nodes/*.md` are project-owned — tune them freely.
+`prompts/nodes/*.md` are project-owned — change them when a node needs different
+instructions. `prompts/versions.yaml` pins every node prompt's SHA-256 and validation is
+fail-closed, so an edit is not finished until the manifest attests the new bytes:
 
-`prompts/domain/system-prompt.md` is **not**. It is a user-managed artifact, and this
-codebase does not translate, shorten, reformat or improve it. The placeholder shipped here
-may be edited; the handling of it may not.
+```bash
+evil-duck prompt-seal            # dry run: every hash it would change, old -> new
+evil-duck prompt-seal --write    # rewrite the manifest, then revalidate
+```
+
+Commit the re-sealed manifest with the prompt change. Re-sealing attests bytes, not semantic
+compatibility — it never rewrites `schema_version` or `policy_revision`.
+
+`prompts/domain/system-prompt.md` is **not** project-owned. It is a user-managed artifact,
+and this codebase does not translate, shorten, reformat or improve it. Replacing it is the
+owner's call and is re-sealed the same way; the handling of it may not change.
 
 ## Code of conduct
 

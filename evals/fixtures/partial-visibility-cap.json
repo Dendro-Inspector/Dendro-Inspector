@@ -1,0 +1,111 @@
+{
+  "scenario": "partial-visibility-cap",
+  "description": "The conifer-log happy path with one difference: the fascicle count is only partially visible. The reviewers still ask for medium; the evidence hierarchy caps the answer at low.",
+  "responses": {
+    "primary:planner": {
+      "target_features": ["needles.fascicles", "bark.texture", "cones.scale_shape"],
+      "expect_multiple_subjects": false,
+      "bark_only_input": false,
+      "notes": ["Cut log with foliage attached; the fascicle count decides the genus if it can be resolved."]
+    },
+    "primary:evidence_extractor": {
+      "subjects": [
+        {
+          "subject_id": "foreground_log_1",
+          "kind": "log",
+          "description": "Single felled log, cut end toward camera, one needle bundle attached at the upper edge and partly behind a branch.",
+          "image_ids": ["img-1"]
+        }
+      ],
+      "observations": [
+        {
+          "observation_id": "obs-bark",
+          "feature": "bark.texture",
+          "value": "scaly_plates",
+          "subject_id": "foreground_log_1",
+          "source": "image",
+          "visibility": "clear",
+          "reliability": "medium",
+          "image_id": "img-1"
+        },
+        {
+          "observation_id": "obs-fascicles",
+          "feature": "needles.fascicles",
+          "value": "two",
+          "subject_id": "foreground_log_1",
+          "source": "image",
+          "visibility": "partial",
+          "reliability": "medium",
+          "image_id": "img-1",
+          "notes": "One bundle only, half of it behind a crossing branch; the sheath is inferred rather than seen.",
+          "attachment": "confirmed_attached"
+        },
+        {
+          "observation_id": "obs-resin",
+          "feature": "wood.resin_canals",
+          "value": "not_resolvable",
+          "subject_id": "foreground_log_1",
+          "source": "image",
+          "visibility": "not_visible",
+          "reliability": "low",
+          "image_id": "img-1",
+          "notes": "Cut face is rough-sawn; anatomy cannot be resolved at this magnification."
+        }
+      ],
+      "inferences": [],
+      "absent_features": [],
+      "image_limitations": [
+        {
+          "image_id": "img-1",
+          "lighting": "overcast_flat",
+          "white_balance": "uncorrected",
+          "scale": "absent",
+          "notes": "No scale reference in frame; needle length cannot be measured."
+        }
+      ],
+      "context_limitations": [],
+      "possible_multiple_taxa": false,
+      "instruction_like_content_detected": false
+    },
+    "primary:candidate_generator": {
+      "sets": [
+        {
+          "subject_id": "foreground_log_1",
+          "candidates": [
+            {
+              "taxon": "pinus",
+              "resolution": "genus",
+              "supporting_evidence_ids": ["obs-fascicles", "obs-bark"],
+              "contradicting_evidence_ids": [],
+              "missing_decisive_features": [],
+              "score": "moderate",
+              "rank": 1
+            }
+          ]
+        }
+      ]
+    },
+    "primary:botanical_reviewer": {
+      "reviewer": "botanical",
+      "status": "pass",
+      "findings": [],
+      "recommended_candidates": [],
+      "recommended_resolution": "genus"
+    },
+    "primary:confusion_reviewer": {
+      "reviewer": "confusion",
+      "status": "pass",
+      "findings": [],
+      "recommended_candidates": [],
+      "recommended_resolution": "genus"
+    },
+    "primary:confidence_reviewer": {
+      "reviewer": "confidence",
+      "status": "pass",
+      "findings": [],
+      "recommended_candidates": [],
+      "recommended_resolution": "genus",
+      "recommended_confidence": "medium"
+    }
+  }
+}

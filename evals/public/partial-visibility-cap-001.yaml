@@ -1,0 +1,40 @@
+# The happy path with one thing wrong: the deciding feature is only half visible.
+# This is `conifer-log-001` with a single edit — `needles.fascicles` moves from
+# `visibility: clear` to `visibility: partial`. Partial evidence stays usable but is capped
+# to bark-equivalent authority, so the genus survives and the confidence does not. The
+# reviewers still recommend medium; the cap is deterministic and wins.
+case_id: partial-visibility-cap-001
+title: Partially visible fascicles hold the genus and cap the confidence
+description: >-
+  A felled conifer log whose only taxon-specific structural evidence is a single, partly
+  occluded needle bundle. Genus remains defensible at bark-equivalent authority; medium
+  confidence does not, and a targeted photograph must be requested instead.
+scenario: partial-visibility-cap
+
+input:
+  case_id: partial-visibility-cap-001
+  images:
+    - image_id: img-1
+      path: examples/partial-visibility-cap-001.jpg
+      media_type: image/jpeg
+      caption: Felled log, needle bundle partly behind a crossing branch
+  user_text: Cut this one last autumn, what is it?
+  location: Kyiv Oblast, Ukraine
+  season: autumn
+  habitat: mixed woodland edge
+  declared_object_type: log
+
+expect:
+  expected_taxon: pinus
+  expected_taxon_in_top_3: pinus
+  expected_resolution: genus
+  max_resolution: genus
+  max_confidence: low
+  expected_status: probable
+  expected_evidence_tier: 3
+  require_next_photo: true
+  require_escalation: false
+  forbid_admitted_reranks: true
+  max_retries: 0
+
+placeholder_content: true

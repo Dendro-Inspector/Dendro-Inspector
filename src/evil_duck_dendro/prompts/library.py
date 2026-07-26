@@ -7,6 +7,7 @@ makes that claim auditable after the fact rather than a promise in a README.
 
 Node prompts are a separate concern and live under ``prompts/nodes/``. The deployment
 manifest binds both prompt layers to the deterministic policy before a provider exists.
+This module only reads and enforces that manifest; writing one is ``prompts/seal.py``.
 """
 
 from __future__ import annotations
@@ -230,12 +231,37 @@ class ValidatedPromptBundle:
     nodes: tuple[tuple[str, str], ...]
 
 
-def _resolve(root: Path, path: str | Path) -> Path:
+def resolve_prompt_path(root: Path, path: str | Path) -> Path:
+    """Resolve a configured or manifest-declared path against the deployment root."""
     candidate = Path(path)
     return candidate.resolve() if candidate.is_absolute() else (root / candidate).resolve()
 
 
-def _load_manifest(path: Path) -> tuple[PromptPolicyManifest, str]:
+def require_external_manifest(domain_prompt_path: Path, manifest_path: Path, *, root: Path) -> None:
+    """Refuse to attest a non-default domain prompt with the shipped default manifest.
+
+    Shared by validation and by re-sealing, so both refuse the same combination: the default
+    manifest ships with the project and describes the project's own bundle, and a deployment
+    that points the prompt elsewhere has to supply the manifest that attests it.
+    """
+    if domain_prompt_path == resolve_prompt_path(root, DEFAULT_DOMAIN_PROMPT_PATH):
+        return
+    if manifest_path != resolve_prompt_path(root, DEFAULT_PROMPT_MANIFEST_PATH):
+        return
+    msg = (
+        "A custom domain prompt requires a matching external manifest. "
+        "Set EVIL_DUCK_PROMPT_MANIFEST_PATH alongside EVIL_DUCK_DOMAIN_PROMPT_PATH."
+    )
+    raise PromptPolicyError(msg)
+
+
+def load_manifest(path: Path) -> tuple[PromptPolicyManifest, str]:
+    """Read one manifest, returning it with the SHA-256 of its exact bytes.
+
+    Validation is closed-world: ``schema_version`` and ``policy_revision`` are literals, so a
+    manifest that survives this call is one this code supports, and nothing downstream has to
+    re-derive those two values.
+    """
     if not path.is_file():
         msg = (
             f"Prompt policy manifest not found at {path}. "
@@ -274,10 +300,10 @@ class PromptLibrary:
 
     def __init__(self, config: PromptConfig, *, root: Path | None = None) -> None:
         self._root = (root or Path.cwd()).resolve()
-        self._domain_path = _resolve(self._root, config.domain_prompt_path)
-        self._manifest_path = _resolve(self._root, config.manifest_path)
-        self._node_root = _resolve(self._root, config.node_prompt_root)
-        self._personality_root = _resolve(self._root, config.personality_root)
+        self._domain_path = resolve_prompt_path(self._root, config.domain_prompt_path)
+        self._manifest_path = resolve_prompt_path(self._root, config.manifest_path)
+        self._node_root = resolve_prompt_path(self._root, config.node_prompt_root)
+        self._personality_root = resolve_prompt_path(self._root, config.personality_root)
         self._tone_profile = config.tone_profile
         self._domain: DomainPrompt | None = None
         self._nodes: dict[str, str] = {}
@@ -321,21 +347,10 @@ class PromptLibrary:
         if self._bundle is not None:
             return self._bundle
 
-        default_domain_path = _resolve(self._root, DEFAULT_DOMAIN_PROMPT_PATH)
-        default_manifest_path = _resolve(self._root, DEFAULT_PROMPT_MANIFEST_PATH)
-        if (
-            self._domain_path != default_domain_path
-            and self._manifest_path == default_manifest_path
-        ):
-            msg = (
-                "A custom domain prompt requires a matching external manifest. "
-                "Set EVIL_DUCK_PROMPT_MANIFEST_PATH alongside "
-                "EVIL_DUCK_DOMAIN_PROMPT_PATH."
-            )
-            raise PromptPolicyError(msg)
+        require_external_manifest(self._domain_path, self._manifest_path, root=self._root)
 
-        manifest, manifest_sha256 = _load_manifest(self._manifest_path)
-        manifest_domain_path = _resolve(self._root, manifest.domain_prompt.path)
+        manifest, manifest_sha256 = load_manifest(self._manifest_path)
+        manifest_domain_path = resolve_prompt_path(self._root, manifest.domain_prompt.path)
         if manifest_domain_path != self._domain_path:
             msg = (
                 "Domain prompt path mismatch: manifest binds "
@@ -344,7 +359,7 @@ class PromptLibrary:
             )
             raise PromptPolicyError(msg)
 
-        manifest_node_root = _resolve(self._root, manifest.node_prompts.root)
+        manifest_node_root = resolve_prompt_path(self._root, manifest.node_prompts.root)
         if manifest_node_root != self._node_root:
             msg = (
                 "Node prompt root mismatch: manifest binds "

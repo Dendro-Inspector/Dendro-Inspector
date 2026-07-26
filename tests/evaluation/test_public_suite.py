@@ -54,6 +54,9 @@ class TestSuiteHealth:
             "broadened-species-identity-001",
             "deterministic-preemption-001",
             "unbound-rerank-001",
+            # Coverage the v0.2.2 fixture repairs would otherwise have removed.
+            "near-miss-vocabulary-001",
+            "partial-visibility-cap-001",
         } == ids
 
     def test_no_case_crashed(self, report):

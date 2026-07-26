@@ -21,11 +21,19 @@ domain prompt is loaded. A deployment using another domain prompt must set both
 `EVIL_DUCK_DOMAIN_PROMPT_PATH` and `EVIL_DUCK_PROMPT_MANIFEST_PATH`; the external manifest
 must bind that exact path and hash to the active deterministic policy.
 
+Replacing this file — here, or at a configured path — changes its hash, so the manifest that
+pins it has to be re-sealed in the same step. See [re-sealing](#re-sealing).
+
 ## `nodes/*.md` — project-owned
 
-One prompt per model-backed node. These are engineering surface: tune them freely. They are
-separate from the domain prompt precisely so that tuning a reviewer does not change the
-domain prompt's hash and invalidate the audit trail.
+One prompt per model-backed node. These are engineering surface: change them when a node
+needs different instructions, without owner sign-off and without touching the domain prompt.
+What editing one *does* require is a re-seal — `versions.yaml` pins every node prompt's
+SHA-256 and validation is fail-closed, so an edited node prompt aborts the next run until
+the manifest attests its new bytes. See [re-sealing](#re-sealing).
+
+They are separate from the domain prompt precisely so that changing a reviewer does not
+change the domain prompt's hash and invalidate the audit trail.
 
 Filenames are kebab-case; node identifiers in Python are snake_case
 (`evidence_extractor` loads `nodes/evidence-extractor.md`).
@@ -62,3 +70,31 @@ registry. `evil-duck prompt-info` reports the prompt hash, manifest hash, revisi
 A custom manifest is an operator attestation that the supplied natural-language prompt is
 compatible with policy `0.2.2`. Hash validation proves byte identity only; it does not prove
 semantic equivalence.
+
+This file is generated. `evil-duck prompt-seal --write` renders it from one template, so it
+is the command's output rather than something hand-maintained beside a hash computed
+elsewhere. A contract test asserts the checked-in file is byte-identical to what the
+generator produces.
+
+## Re-sealing
+
+Any prompt file that changes — the domain prompt at its own default path included — leaves
+the manifest attesting bytes that no longer exist, and the next run fails closed with a hash
+mismatch. `evil-duck prompt-seal` is the way back:
+
+```bash
+evil-duck prompt-seal            # dry run: prints every hash it would change, old -> new
+evil-duck prompt-seal --write    # rewrite the configured manifest, then revalidate
+```
+
+The dry run exits `0` for an out-of-date manifest — being stale is the normal state after an
+edit, not an error. It exits non-zero only when the manifest is missing, unreadable, or
+bound to a policy revision this code does not support. The node-prompt file set is taken from
+whatever is on disk under the configured root, so adding or deleting a node prompt is sealed
+the same way as editing one.
+
+**Re-sealing attests bytes, not semantic compatibility.** It never rewrites `schema_version`
+or `policy_revision`: those stay pinned to what the code supports, and a manifest bound to a
+different revision is refused rather than upgraded. Whether the changed prompt still means
+what deterministic policy `0.2.2` expects is a review — the derivations listed in `AGENTS.md`
+and the evaluation suite are how that question gets answered, not a SHA-256.

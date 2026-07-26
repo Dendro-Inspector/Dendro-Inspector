@@ -127,7 +127,10 @@ class EvalMetrics(Contract):
     scored_abstention: int = 0
     escalations_expected: int = 0
     escalations_observed: int = 0
-    escalations_correct: int = 0
+    #: Cases whose arbiter decision matched the case's expectation, *including* the correct
+    #: non-escalations. Its denominator is ``cases``, not the two counters above it — the
+    #: name says "decisions" so the number cannot be read as "N correct out of expected".
+    escalation_decisions_correct: int = 0
 
 
 class EvalReport(Contract):

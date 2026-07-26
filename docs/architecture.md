@@ -208,6 +208,24 @@ manifest schema, policy revision, node revision and compatibility status. Compos
 fixed: domain prompt, optional response-register note, node prompt, then case context fenced as
 untrusted data.
 
+### Re-sealing
+
+Fail-closed hashing needs a supported way to attest new bytes, or replacing the user-managed
+prompt — the one workflow the project exists to carry — becomes unrecoverable without
+hand-edited YAML and an out-of-band SHA-256. `evil-duck prompt-seal` recomputes the domain and
+node hashes for the configured paths and regenerates the configured manifest from one
+template; `prompts/seal.py` holds the logic and the CLI only renders it. The node-prompt file
+set is read from the configured root, so an added or deleted prompt is sealed like an edited
+one. The default is a dry run printing `old -> new` per changed hash and exiting `0`: a stale
+manifest is the expected state after an edit, and only an unreadable or policy-incompatible
+manifest is an error.
+
+The command attests bytes and stops there. `schema_version` and `policy_revision` are copied
+from the validated manifest, never recomputed, so a manifest bound to an unsupported revision
+is refused instead of upgraded — a hashing command must not be able to imply that a rewritten
+prompt still satisfies the deterministic policy. That question is answered by the derivation
+table in `AGENTS.md` and by the evaluation suite.
+
 ## Determinism boundary
 
 Which nodes call a model, and which do not, is a deliberate line:

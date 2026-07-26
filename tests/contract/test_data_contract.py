@@ -14,8 +14,10 @@ import yaml
 from evil_duck_dendro.evaluation.runner import load_cases
 from evil_duck_dendro.schemas.taxon import (
     ComparisonCard,
+    Provenance,
     RegionalPack,
     Resolution,
+    SourceType,
     TaxonCard,
     resolution_rank,
 )
@@ -54,6 +56,51 @@ class TestKnowledgeCards:
             if card.native_resolution is Resolution.SPECIES:
                 assert any(
                     identity.resolution is Resolution.GENUS for identity in card.broader_identities
+                )
+
+    def test_every_taxon_identity_carries_provenance(self, repo_root):
+        """A broadened answer names a taxon, so something must be answerable for it.
+
+        The card-level block covers the feature rules. An identity either declares its own
+        source or inherits the card's, and inheriting is only honest when the card's source
+        actually names it.
+        """
+        for path in _yaml_files(repo_root, "taxa"):
+            card = TaxonCard.model_validate(yaml.safe_load(path.read_text(encoding="utf-8")))
+            for identity in (card.native_identity, *card.broader_identities):
+                assert identity.provenance is not None, (
+                    f"{card.taxon_id}: identity {identity.taxon_id} carries no provenance"
+                )
+
+    def test_no_family_identity_claims_the_domain_prompt(self, repo_root):
+        """The domain prompt names genera and species. It names no family at all.
+
+        Section 14 is the stated source for these cards, so a family placement inherited
+        from it would be a citation to text that does not exist.
+        """
+        for path in _yaml_files(repo_root, "taxa"):
+            card = TaxonCard.model_validate(yaml.safe_load(path.read_text(encoding="utf-8")))
+            for identity in card.broader_identities:
+                if identity.resolution is not Resolution.FAMILY:
+                    continue
+                provenance = identity.provenance
+                assert provenance is not None
+                assert provenance.source_type is not SourceType.DOMAIN_PROMPT, (
+                    f"{card.taxon_id}: family {identity.taxon_id} claims the domain prompt"
+                )
+
+    def test_repeated_broader_identities_share_one_provenance(self, repo_root):
+        """The same family declared by five cards must not acquire five stories."""
+        seen: dict[tuple[Resolution, str], Provenance] = {}
+        for path in _yaml_files(repo_root, "taxa"):
+            card = TaxonCard.model_validate(yaml.safe_load(path.read_text(encoding="utf-8")))
+            for identity in card.broader_identities:
+                assert identity.provenance is not None
+                key = (identity.resolution, identity.taxon_id)
+                first = seen.setdefault(key, identity.provenance)
+                assert first == identity.provenance, (
+                    f"{card.taxon_id}: provenance for {identity.taxon_id} disagrees with an "
+                    f"earlier card"
                 )
 
     def test_repeated_genus_and_family_identities_are_consistent(self, repo_root):

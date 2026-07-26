@@ -69,7 +69,31 @@ class TestShippedCards:
         for path in paths:
             card = TaxonCard.model_validate(yaml.safe_load(path.read_text(encoding="utf-8")))
             assert card.provenance.source
-            assert card.provenance.source_type is SourceType.DOMAIN_PROMPT
+
+    def test_a_card_claiming_the_domain_prompt_is_named_in_it(self, repo_root):
+        """The one check that makes `source_type: domain_prompt` mean something.
+
+        `larix` carried this claim for a release while the prompt does not mention larch in
+        any language — the sort of error provenance exists to make findable, and cannot be
+        found by a test that simply asserts every card says `domain_prompt`.
+        """
+        prompt = (
+            (repo_root / "prompts" / "domain" / "system-prompt.md")
+            .read_text(encoding="utf-8")
+            .lower()
+        )
+        unnamed: list[str] = []
+        for path in sorted((repo_root / "knowledge" / "taxa").glob("*.yaml")):
+            card = TaxonCard.model_validate(yaml.safe_load(path.read_text(encoding="utf-8")))
+            if card.provenance.source_type is not SourceType.DOMAIN_PROMPT:
+                continue
+            names = set(card.taxon_id.split("_")) | {alias.lower() for alias in card.aliases}
+            if not any(len(name) >= 4 and name in prompt for name in names):
+                unnamed.append(card.taxon_id)
+        assert unnamed == [], (
+            "cards claiming source_type=domain_prompt for a taxon the prompt never names: "
+            f"{unnamed}"
+        )
 
     def test_every_comparison_card_declares_provenance(self, repo_root):
         paths = sorted((repo_root / "knowledge" / "comparisons").glob("*.yaml"))

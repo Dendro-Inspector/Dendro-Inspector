@@ -124,7 +124,7 @@ def compute(scored: tuple[ScoredCase, ...]) -> EvalMetrics:
         scored_abstention=abstention_total,
         escalations_expected=escalation_expected,
         escalations_observed=escalation_observed,
-        escalations_correct=escalation_correct,
+        escalation_decisions_correct=escalation_correct,
     )
 
 

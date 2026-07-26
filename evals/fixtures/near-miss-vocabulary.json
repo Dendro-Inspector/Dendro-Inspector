@@ -1,0 +1,110 @@
+{
+  "scenario": "near-miss-vocabulary",
+  "description": "The model reports bark in a feature path the planner asks for but no taxon card declares. The candidate resting on it alone is not admitted; the one backed by an exact card token survives and leads.",
+  "responses": {
+    "primary:planner": {
+      "target_features": ["bark.flake_geometry", "needles.fascicles", "needles.attachment"],
+      "expect_multiple_subjects": false,
+      "bark_only_input": false,
+      "notes": ["Flake geometry is worth recording but cannot decide a genus on its own."]
+    },
+    "primary:evidence_extractor": {
+      "subjects": [
+        {
+          "subject_id": "foreground_log_1",
+          "kind": "log",
+          "description": "A felled conifer log with flaking bark and one needle spray still attached at the upper edge.",
+          "image_ids": ["img-1"]
+        }
+      ],
+      "observations": [
+        {
+          "observation_id": "obs-flake",
+          "feature": "bark.flake_geometry",
+          "value": "small_thin_scales",
+          "subject_id": "foreground_log_1",
+          "source": "image",
+          "visibility": "clear",
+          "reliability": "medium",
+          "image_id": "img-1",
+          "notes": "Reported in the planner's vocabulary. No taxon card declares this feature path, so it cannot admit anything."
+        },
+        {
+          "observation_id": "obs-fascicles",
+          "feature": "needles.fascicles",
+          "value": "two",
+          "subject_id": "foreground_log_1",
+          "source": "image",
+          "visibility": "clear",
+          "reliability": "medium",
+          "image_id": "img-1",
+          "notes": "Two needles per sheath, countable on three separate bundles.",
+          "attachment": "confirmed_attached"
+        }
+      ],
+      "inferences": [],
+      "absent_features": [],
+      "image_limitations": [
+        {
+          "image_id": "img-1",
+          "lighting": "overcast_flat",
+          "white_balance": "uncorrected",
+          "scale": "absent",
+          "notes": "No scale reference in frame; needle length cannot be measured."
+        }
+      ],
+      "context_limitations": [],
+      "possible_multiple_taxa": false,
+      "instruction_like_content_detected": false
+    },
+    "primary:candidate_generator": {
+      "sets": [
+        {
+          "subject_id": "foreground_log_1",
+          "candidates": [
+            {
+              "taxon": "picea",
+              "resolution": "genus",
+              "supporting_evidence_ids": ["obs-flake"],
+              "contradicting_evidence_ids": [],
+              "missing_decisive_features": [],
+              "score": "moderate",
+              "rank": 1
+            },
+            {
+              "taxon": "pinus",
+              "resolution": "genus",
+              "supporting_evidence_ids": ["obs-fascicles", "obs-flake"],
+              "contradicting_evidence_ids": [],
+              "missing_decisive_features": [],
+              "score": "moderate",
+              "rank": 2
+            }
+          ]
+        }
+      ]
+    },
+    "primary:botanical_reviewer": {
+      "reviewer": "botanical",
+      "status": "pass",
+      "findings": [],
+      "recommended_candidates": [],
+      "recommended_resolution": "genus"
+    },
+    "primary:confusion_reviewer": {
+      "reviewer": "confusion",
+      "status": "pass",
+      "findings": [],
+      "recommended_candidates": [],
+      "recommended_resolution": "genus"
+    },
+    "primary:confidence_reviewer": {
+      "reviewer": "confidence",
+      "status": "pass",
+      "findings": [],
+      "recommended_candidates": [],
+      "recommended_resolution": "genus",
+      "recommended_confidence": "medium"
+    }
+  }
+}

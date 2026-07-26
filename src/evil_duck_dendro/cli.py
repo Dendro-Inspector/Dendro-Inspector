@@ -20,6 +20,7 @@ from evil_duck_dendro.graph.definition import render_mermaid
 from evil_duck_dendro.observability.logging import configure_logging
 from evil_duck_dendro.observability.trace import write_trace
 from evil_duck_dendro.prompts.library import DomainPromptMissingError, PromptPolicyError
+from evil_duck_dendro.prompts.seal import SEMANTIC_NOTICE, apply_seal, plan_seal
 from evil_duck_dendro.runner import run_case
 from evil_duck_dendro.schemas.input import CaseInput, DeclaredObjectType, ImageRef, Season
 
@@ -189,8 +190,15 @@ def evaluate_suite(
     ] = None,
 ) -> None:
     """Run an evaluation suite against deterministic fixtures."""
+    config = load_config()
+    # A suite run emits the same structured warnings a real run does — which candidates the
+    # admission boundary dropped, and why. Without this they reach the last-resort handler
+    # bare: no case_id, no subject_id, no redaction.
+    configure_logging(
+        config.observability.log_level, json_output=config.observability.emit_json_logs
+    )
     try:
-        report = run_suite(suite)
+        report = run_suite(suite, config=config)
     except PromptPolicyError as exc:
         typer.secho(str(exc), fg=typer.colors.RED, err=True)
         raise typer.Exit(code=3) from exc
@@ -230,6 +238,72 @@ def prompt_info() -> None:
         typer.secho(str(exc), fg=typer.colors.RED, err=True)
         raise typer.Exit(code=3) from exc
     typer.echo(json.dumps(metadata.model_dump(mode="json"), indent=2))
+
+
+@app.command()
+def prompt_seal(
+    write: Annotated[
+        bool,
+        typer.Option("--write", help="Rewrite the manifest. Without it, this is a dry run."),
+    ] = False,
+) -> None:
+    """Re-seal the prompt manifest against the prompt bytes currently on disk.
+
+    Recomputes the domain-prompt and node-prompt SHA-256 values for the
+    configured paths and regenerates the configured manifest, so replacing
+    the user-managed domain prompt has a supported way back to a runnable
+    deployment. The node-prompt file set is taken from the configured root
+    as it actually is. The default is a dry run: it prints every hash it
+    would change, old -> new, and exits 0, because a manifest that is
+    merely out of date is not an error. An unreadable or
+    policy-incompatible one is.
+
+    Re-sealing attests bytes, not semantic compatibility. It never
+    rewrites `schema_version` or `policy_revision` — those stay pinned to
+    what this code supports, so a manifest bound to another policy
+    revision is refused rather than quietly upgraded. Whether a changed
+    prompt still means what the deterministic policy expects is a review,
+    not a hash.
+    """
+    config = load_config()
+    try:
+        plan = plan_seal(config.prompts)
+    except (DomainPromptMissingError, PromptPolicyError) as exc:
+        typer.secho(str(exc), fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=3) from exc
+
+    typer.echo(f"manifest: {plan.manifest_path}")
+    typer.echo(f"domain prompt: {plan.domain_path}")
+    typer.echo(f"node prompt root: {plan.node_root}")
+    typer.echo(f"schema_version: {plan.sealed.schema_version} (pinned by this code)")
+    typer.echo(f"policy_revision: {plan.sealed.policy_revision} (pinned by this code)")
+    typer.echo(f"node_prompts.revision: {plan.sealed.node_prompts.revision} (preserved)")
+
+    if plan.up_to_date:
+        typer.echo("The manifest already attests these bytes. Nothing to re-seal.")
+        return
+
+    typer.echo(f"changes ({len(plan.changes)}):")
+    for change in plan.changes:
+        typer.echo(f"  {change.render()}")
+
+    if not write:
+        typer.echo("Dry run: nothing was written. Re-run with --write to apply.")
+        typer.echo(SEMANTIC_NOTICE)
+        return
+
+    try:
+        metadata = apply_seal(plan, config.prompts)
+    except (DomainPromptMissingError, PromptPolicyError) as exc:
+        typer.secho(str(exc), fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=3) from exc
+
+    typer.secho(f"wrote {plan.manifest_path}", fg=typer.colors.GREEN, err=True)
+    typer.echo(
+        f"revalidated: bundle is {metadata.compatibility_status.value} "
+        f"with policy {metadata.policy_revision}."
+    )
+    typer.echo(SEMANTIC_NOTICE)
 
 
 if __name__ == "__main__":  # pragma: no cover

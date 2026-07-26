@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
+import shutil
 
 import pytest
 from typer.testing import CliRunner
 
 from evil_duck_dendro.cli import app
+from evil_duck_dendro.prompts.seal import SEMANTIC_NOTICE
 
 runner = CliRunner()
 
@@ -16,6 +19,14 @@ runner = CliRunner()
 def _in_repo_root(repo_root, monkeypatch):
     """Data paths resolve relative to the working directory by design."""
     monkeypatch.chdir(repo_root)
+
+
+@pytest.fixture
+def deployment(repo_root, tmp_path, monkeypatch):
+    """A throwaway copy of the prompt tree, run from as if it were the deployment root."""
+    shutil.copytree(repo_root / "prompts", tmp_path / "prompts")
+    monkeypatch.chdir(tmp_path)
+    return tmp_path
 
 
 class TestGraphCommand:
@@ -130,6 +141,90 @@ class TestEvalCommand:
     def test_unknown_suite_fails_cleanly(self):
         result = runner.invoke(app, ["eval", "--suite", "does-not-exist"])
         assert result.exit_code != 0
+
+    def test_it_configures_structured_logging_like_inspect_does(self, monkeypatch):
+        """A suite run emits the same warnings a real run does; they must not print bare."""
+        calls: list[tuple[str, bool]] = []
+        monkeypatch.setattr(
+            "evil_duck_dendro.cli.configure_logging",
+            lambda level, *, json_output: calls.append((level, json_output)),
+        )
+
+        result = runner.invoke(app, ["eval", "--suite", "public"])
+
+        assert result.exit_code == 0, result.stdout
+        assert calls == [("INFO", True)]
+
+    def test_logging_configuration_comes_from_the_environment_not_a_constant(self, monkeypatch):
+        calls: list[tuple[str, bool]] = []
+        monkeypatch.setattr(
+            "evil_duck_dendro.cli.configure_logging",
+            lambda level, *, json_output: calls.append((level, json_output)),
+        )
+        monkeypatch.setenv("EVIL_DUCK_LOG_LEVEL", "DEBUG")
+
+        runner.invoke(app, ["eval", "--suite", "public"])
+
+        assert calls == [("DEBUG", True)]
+
+
+class TestPromptSealCommand:
+    def test_the_shipped_bundle_needs_no_re_sealing(self):
+        result = runner.invoke(app, ["prompt-seal"])
+        assert result.exit_code == 0
+        assert "Nothing to re-seal" in result.stdout
+
+    def test_dry_run_prints_old_to_new_and_writes_nothing(self, deployment):
+        manifest = deployment / "prompts" / "versions.yaml"
+        before = manifest.read_bytes()
+        prompt = deployment / "prompts" / "domain" / "system-prompt.md"
+        prompt.write_bytes(prompt.read_bytes() + b"\nowner edit\n")
+        new_hash = hashlib.sha256(prompt.read_bytes()).hexdigest()
+
+        result = runner.invoke(app, ["prompt-seal"])
+
+        assert result.exit_code == 0
+        assert (
+            f"b4c38c00ac0a274322488cf93ed504ac4d19617e6dde0a55f4600126c06cf7d7 -> {new_hash}"
+            in result.stdout
+        )
+        assert "Dry run" in result.stdout
+        assert manifest.read_bytes() == before
+
+    def test_dry_run_says_it_attests_bytes_not_semantics(self, deployment):
+        prompt = deployment / "prompts" / "domain" / "system-prompt.md"
+        prompt.write_bytes(prompt.read_bytes() + b"\nowner edit\n")
+
+        result = runner.invoke(app, ["prompt-seal"])
+
+        assert SEMANTIC_NOTICE in result.stdout
+
+    def test_write_re_seals_and_revalidates_the_bundle(self, deployment):
+        prompt = deployment / "prompts" / "domain" / "system-prompt.md"
+        prompt.write_bytes(prompt.read_bytes() + b"\nowner edit\n")
+        new_hash = hashlib.sha256(prompt.read_bytes()).hexdigest()
+
+        result = runner.invoke(app, ["prompt-seal", "--write"])
+
+        assert result.exit_code == 0
+        assert "revalidated" in result.stdout
+        assert new_hash in (deployment / "prompts" / "versions.yaml").read_text(encoding="utf-8")
+        assert runner.invoke(app, ["prompt-info"]).exit_code == 0
+
+    def test_it_refuses_a_manifest_bound_to_another_policy_revision(self, deployment):
+        manifest = deployment / "prompts" / "versions.yaml"
+        manifest.write_text(
+            manifest.read_text(encoding="utf-8").replace(
+                'policy_revision: "0.2.2"', 'policy_revision: "0.2.1"'
+            ),
+            encoding="utf-8",
+        )
+
+        result = runner.invoke(app, ["prompt-seal", "--write"])
+
+        assert result.exit_code == 3
+        assert "policy_revision" in result.stderr
+        assert 'policy_revision: "0.2.1"' in manifest.read_text(encoding="utf-8")
 
 
 class TestPromptInfoCommand:

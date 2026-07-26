@@ -2,8 +2,8 @@
 
 - **Status:** Current
 - **Owner:** Evil Duck Dendro Inspector maintainers
-- **Date:** 2026-07-25
-- **Last-verified:** 2026-07-25
+- **Date:** 2026-07-26
+- **Last-verified:** 2026-07-26
 
 This is a **public repository**. Everything committed is world-readable, permanently
 archived by third parties, and mirrored within minutes. Deleting a commit does not unpublish
@@ -25,7 +25,9 @@ demonstration content into apparent authority.
 
 ### Provenance is mandatory
 
-Every card carries a `provenance` block, and any individual feature rule may override it:
+Every card carries a `provenance` block. **It is scoped to the card's feature rules** —
+`strong_positive_features`, `supporting_features`, `contradictions` and the thresholds
+around them — and any individual feature rule may override it:
 
 ```yaml
 provenance:
@@ -48,6 +50,38 @@ verified. Without it, that list cannot be produced at all.
 
 The contract enforces one rule: `review_state: reviewed` requires both `reviewed_by` and
 `last_reviewed`. A card cannot claim review without saying who and when.
+
+### Taxonomic placement is attributed separately
+
+`broader_identities` are not feature rules. They are taxonomic claims the system puts in
+front of a user whenever an answer is broadened, and they usually come from somewhere other
+than the features do — so each one carries its own `provenance`:
+
+```yaml
+broader_identities:
+  - resolution: genus
+    taxon_id: acer
+    display_name: Acer (клен)
+    provenance:
+      source: "Domain prompt section 14 (БАЗОВІ ПОРОДИ)"
+      source_type: domain_prompt
+  - resolution: family
+    taxon_id: sapindaceae
+    display_name: Sapindaceae (сапіндові)
+    provenance:
+      source: "Standard botanical taxonomy; the domain prompt names no family"
+      source_type: inferred
+```
+
+The distinction is not pedantry. The domain prompt names genera and species; it names **no
+family at all**. Letting a family entry inherit the card's `source_type: domain_prompt`
+would cite a section that does not contain it — and *Quercus* being in Fagaceae is exactly
+the kind of uncontroversial statement that makes a false citation easy to miss.
+
+The contract enforces three rules: every identity carries provenance, no family-resolution
+identity claims `domain_prompt`, and the same broader identity declared by several cards
+carries the same provenance. An identity that omits the block inherits the card's, which is
+honest only when the card's own source names it.
 
 ### Promoting a card
 

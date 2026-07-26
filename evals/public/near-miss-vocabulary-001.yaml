@@ -1,0 +1,42 @@
+# A near miss is not a match.
+# `bark.flake_geometry` is a real feature path: the planner asks for it, the evidence
+# extractor demonstrates it, and the Pinus/Picea/Larix comparison card lists it as shared.
+# No taxon card declares it, so it can support nothing. A model that leads with a candidate
+# resting on it alone must not have that candidate admitted — the boundary has to hold on
+# plausible vocabulary, not only on obvious nonsense.
+case_id: near-miss-vocabulary-001
+title: A plausible feature path no card declares admits nothing
+description: >-
+  The model ranks Picea first on a bark observation whose feature path appears in the prompts
+  and comparison cards but in no taxon card, and ranks Pinus second on a counted fascicle.
+  Picea must not be admitted, and the near-miss id must not survive in Pinus's support.
+scenario: near-miss-vocabulary
+
+input:
+  case_id: near-miss-vocabulary-001
+  images:
+    - image_id: img-1
+      path: examples/near-miss-vocabulary-001.jpg
+      media_type: image/jpeg
+      caption: Felled conifer log with flaking bark
+  user_text: What conifer is this?
+  location: Kyiv Oblast, Ukraine
+  season: autumn
+  habitat: mixed woodland edge
+  declared_object_type: log
+
+expect:
+  expected_candidate_taxa:
+    - pinus
+  expected_taxon: pinus
+  expected_taxon_in_top_3: pinus
+  expected_resolution: genus
+  max_resolution: genus
+  max_confidence: medium
+  expected_status: probable
+  expected_evidence_tier: 6
+  require_escalation: false
+  forbid_admitted_reranks: true
+  max_retries: 0
+
+placeholder_content: true

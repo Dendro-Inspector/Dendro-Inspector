@@ -21,13 +21,14 @@ secrets.
 Assertions run against the **graph's decisions**, never against prose. Rewriting the tone
 layer must not turn the evaluation red; changing what the system concludes must.
 
-## The fourteen cases
+## The sixteen cases
 
 Cases 1–5 cover the core mechanics. Cases 6–8 are named failure modes from section 13 of the
 domain prompt. Case 9 is the counterweight — proof the system still commits when the evidence
 is actually decisive. Cases 10–14 lock the v0.2.2 correctness boundary: candidate-specific
 trusted evidence, fail-closed candidate admission, resolution-consistent identity,
-deterministic-finding precedence and finding-bound reranks.
+deterministic-finding precedence and finding-bound reranks. Cases 15–16 hold the two
+behaviours that six v0.2.2 fixture repairs would otherwise have quietly deleted.
 
 ### 1. `conifer-log-001` — probable Pinus
 
@@ -140,6 +141,30 @@ or multiple conflicting validated rankings at one level.
 Expects: the current order is preserved unless one exact accepted finding/ranking artifact is
 unambiguous.
 
+### 15. `near-miss-vocabulary-001` — a plausible token no card declares admits nothing
+
+Real models paraphrase. They emit `bark.flake_geometry` — a path the planner and the extractor
+prompt both ask for, and the Pinus/Picea comparison card names — that no taxon card can match.
+The candidate resting on it must not be admitted, and the run must not fall back to treating
+"a feature was reported" as "a taxon was supported".
+
+Exists because six fixtures were repaired in v0.2.2 by rewriting their model output into
+verbatim card tokens. That left the near-miss path exercised only on input already conformed
+to it. This case restores the near miss.
+
+Expects: only `pinus` survives admission, tier 6, confidence ≤ medium, no escalation.
+
+### 16. `partial-visibility-cap-001` — the happy path with one feature half-seen
+
+`conifer-log-001` with a single edit: the fascicle count is `visibility: partial`. The
+confidence reviewer still recommends medium; the evidence hierarchy caps it to low.
+
+Also a v0.2.2 repair scar. The original fixture was flipped from `partial` to `clear` to keep
+its `medium` expectation green, which deleted the only case where the cap fired on an
+otherwise good photograph.
+
+Expects: `pinus`, genus, confidence low, tier 3, a targeted photo request.
+
 ## Metrics
 
 Every rate is reported alongside the count it was computed from. A "100% top-1 accuracy"
@@ -166,20 +191,28 @@ score.
 system that abstains without saying what would help has not solved the user's problem, it
 has merely avoided being wrong.
 
-### Recorded and pending results
+The report also carries three raw counters. `escalations_expected` and `escalations_observed`
+are the recall and precision denominators. `escalation_decisions_correct` is **not** a
+numerator over either of them — it counts every case whose arbiter decision matched its
+expectation, correct non-escalations included, so its denominator is `cases`. It was renamed
+from `escalations_correct` for that reason: sitting between the other two, the old name read
+as "16 correct out of 9".
 
-The frozen v0.2.1 baseline records all nine existing cases passing, with
-`overconfidence_rate` 0.0 and `schema_validity` 1.0. v0.2.2 correctness hardening intentionally
-changes admission and identity behaviour, so that baseline is historical rather than the
-release result.
+### Recorded results
 
-Do not publish v0.2.2 public-suite metrics until all fourteen cases pass, changes to existing
-outcomes are reviewed, and `public-v0.2.2` lands as the frozen baseline. The required release
-result is fourteen passing cases, zero failures and zero overconfidence.
+The frozen v0.2.1 baseline records all nine cases of that release passing, with
+`overconfidence_rate` 0.0 and `schema_validity` 1.0. It is preserved as a historical record;
+v0.2.2 intentionally changed admission and identity behaviour, so it is not the current result.
 
-Read any eventual result honestly: fourteen hand-built cases over recorded fixtures can show
-that the machinery follows these contracts. It says nothing about identification accuracy on
-real photographs, which has not been measured.
+The v0.2.2 release result is **sixteen passing cases, zero failures, zero overconfidence**,
+frozen in `evals/baselines/public-v0.2.2.json`. One pre-existing outcome moved on the way
+there — `arbiter-ranking-001` confidence `medium` → `low` — and six fixtures were rewritten so
+their scripted model output uses card vocabulary; cases 15 and 16 exist to hold the behaviours
+that rewrite would otherwise have deleted. All of that is recorded in `CHANGELOG.md`.
+
+Read the result honestly: sixteen hand-built cases over recorded fixtures can show that the
+machinery follows these contracts. It says nothing about identification accuracy on real
+photographs, which has not been measured.
 
 ## Adding a case
 

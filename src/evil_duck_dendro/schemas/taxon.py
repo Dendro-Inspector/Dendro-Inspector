@@ -171,11 +171,24 @@ class FeatureExpectation(Contract):
 
 
 class TaxonIdentity(Contract):
-    """Canonical identity used when a card's native taxon must be broadened."""
+    """Canonical identity used when a card's native taxon must be broadened.
+
+    A broader identity is a taxonomic claim in its own right and rarely shares a source with
+    the feature rules beneath it: the domain prompt names genera, so a genus identity can
+    cite it, but it names no family at all. Carrying provenance here keeps "where did this
+    come from?" answerable per claim instead of per file.
+    """
 
     resolution: Resolution
     taxon_id: Identifier
     display_name: str = Field(min_length=1, max_length=120)
+    provenance: Provenance | None = Field(
+        default=None,
+        description=(
+            "Where this taxonomic placement came from. Inherits the card's provenance when "
+            "absent — which is only honest for an identity the card's own source names."
+        ),
+    )
 
     @model_validator(mode="after")
     def _identity_must_be_taxonomic(self) -> TaxonIdentity:
@@ -249,10 +262,12 @@ class TaxonCard(Contract):
 
     @property
     def native_identity(self) -> TaxonIdentity:
+        """The card's own taxon, attributed to the card's own source."""
         return TaxonIdentity(
             resolution=self.native_resolution,
             taxon_id=self.taxon_id,
             display_name=self.display_name,
+            provenance=self.provenance,
         )
 
     def identity_at_or_broader(self, resolution: Resolution) -> TaxonIdentity | None:

@@ -26,6 +26,7 @@ from evil_duck_dendro.prompts.library import (
     PromptPolicyManifest,
     load_domain_prompt,
 )
+from evil_duck_dendro.prompts.seal import apply_seal, plan_seal, render_manifest
 from evil_duck_dendro.providers.registry import ProviderRegistry
 from evil_duck_dendro.runner import build_context
 
@@ -296,6 +297,18 @@ class TestPromptPolicyManifest:
         monkeypatch.setenv("EVIL_DUCK_PROMPT_MANIFEST_PATH", "custom/manifest.yaml")
         assert load_config().prompts.manifest_path == Path("custom/manifest.yaml")
 
+    def test_re_sealing_is_the_documented_way_back_from_a_hash_mismatch(self, repo_root, tmp_path):
+        """C1: replacing the domain prompt at its own default path must be recoverable."""
+        _copy_prompt_tree(repo_root, tmp_path)
+        path = tmp_path / "prompts" / "domain" / "system-prompt.md"
+        path.write_bytes(path.read_bytes() + b"\nowner edit\n")
+        with pytest.raises(PromptPolicyError, match="Domain prompt hash mismatch"):
+            PromptLibrary(PromptConfig(), root=tmp_path).validate_policy()
+
+        apply_seal(plan_seal(PromptConfig(), root=tmp_path), PromptConfig(), root=tmp_path)
+
+        assert PromptLibrary(PromptConfig(), root=tmp_path).validate_policy()
+
     def test_validation_happens_before_provider_registry_construction(
         self, repo_root, tmp_path, monkeypatch
     ):
@@ -313,3 +326,134 @@ class TestPromptPolicyManifest:
         with pytest.raises(PromptPolicyError, match="Domain prompt hash mismatch"):
             build_context(AppConfig(), root=tmp_path)
         assert provider_construction == []
+
+
+class TestPromptSeal:
+    """Re-sealing attests the bytes on disk, and nothing beyond them."""
+
+    def test_the_shipped_manifest_is_exactly_what_the_generator_produces(self, repo_root):
+        """One template, one file: the checked-in manifest is generator output, not a copy."""
+        plan = plan_seal(PromptConfig(), root=repo_root)
+        shipped = (repo_root / "prompts" / "versions.yaml").read_bytes()
+
+        assert plan.up_to_date
+        assert plan.changes == ()
+        assert plan.document.encode("utf-8") == shipped
+        assert render_manifest(plan.sealed).encode("utf-8") == shipped
+
+    def test_a_plan_reports_old_to_new_and_writes_nothing(self, repo_root, tmp_path):
+        _copy_prompt_tree(repo_root, tmp_path)
+        manifest_path = tmp_path / "prompts" / "versions.yaml"
+        before = manifest_path.read_bytes()
+        prompt = tmp_path / "prompts" / "domain" / "system-prompt.md"
+        prompt.write_bytes(prompt.read_bytes() + b"\nowner edit\n")
+        expected = hashlib.sha256(prompt.read_bytes()).hexdigest()
+
+        plan = plan_seal(PromptConfig(), root=tmp_path)
+
+        assert not plan.up_to_date
+        assert [(change.old, change.new) for change in plan.changes] == [
+            ("b4c38c00ac0a274322488cf93ed504ac4d19617e6dde0a55f4600126c06cf7d7", expected)
+        ]
+        assert "->" in plan.changes[0].render()
+        assert manifest_path.read_bytes() == before
+
+    def test_writing_reseals_the_bundle_and_is_idempotent(self, repo_root, tmp_path):
+        _copy_prompt_tree(repo_root, tmp_path)
+        prompt = tmp_path / "prompts" / "domain" / "system-prompt.md"
+        prompt.write_bytes(prompt.read_bytes() + b"\nowner edit\n")
+
+        metadata = apply_seal(
+            plan_seal(PromptConfig(), root=tmp_path), PromptConfig(), root=tmp_path
+        )
+
+        assert metadata.compatibility_status.value == "compatible"
+        assert metadata.sha256 == hashlib.sha256(prompt.read_bytes()).hexdigest()
+        assert plan_seal(PromptConfig(), root=tmp_path).up_to_date
+
+    def test_re_sealing_never_rewrites_schema_version_or_policy_revision(self, repo_root, tmp_path):
+        _copy_prompt_tree(repo_root, tmp_path)
+        prompt = tmp_path / "prompts" / "domain" / "system-prompt.md"
+        prompt.write_bytes(prompt.read_bytes() + b"\nowner edit\n")
+
+        apply_seal(plan_seal(PromptConfig(), root=tmp_path), PromptConfig(), root=tmp_path)
+        payload = _manifest_payload(tmp_path / "prompts" / "versions.yaml")
+
+        assert payload["schema_version"] == "1"
+        assert payload["policy_revision"] == DETERMINISTIC_POLICY_REVISION
+        assert payload["node_prompts"]["revision"] == "0.1.0"
+
+    def test_a_manifest_bound_to_another_policy_revision_is_refused_not_upgraded(
+        self, repo_root, tmp_path
+    ):
+        """Re-sealing attests bytes. Declaring semantic compatibility is not its job."""
+        _copy_prompt_tree(repo_root, tmp_path)
+        manifest_path = tmp_path / "prompts" / "versions.yaml"
+        payload = _manifest_payload(manifest_path)
+        payload["policy_revision"] = "0.2.1"
+        _write_manifest(manifest_path, payload)
+        before = manifest_path.read_bytes()
+
+        with pytest.raises(PromptPolicyError, match="policy_revision"):
+            plan_seal(PromptConfig(), root=tmp_path)
+        assert manifest_path.read_bytes() == before
+
+    def test_the_node_prompt_file_set_comes_from_disk(self, repo_root, tmp_path):
+        _copy_prompt_tree(repo_root, tmp_path)
+        nodes = tmp_path / "prompts" / "nodes"
+        (nodes / "extra-node.md").write_text("# Node: extra\n", encoding="utf-8")
+        (nodes / "arbiter.md").unlink()
+
+        plan = plan_seal(PromptConfig(), root=tmp_path)
+        changed = {change.entry: (change.old, change.new) for change in plan.changes}
+
+        assert changed["node prompt extra-node.md"][0] is None
+        assert changed["node prompt arbiter.md"][1] is None
+        assert {item.file for item in plan.sealed.node_prompts.files} == {
+            path.name for path in nodes.glob("*.md")
+        }
+        apply_seal(plan, PromptConfig(), root=tmp_path)
+        assert PromptLibrary(PromptConfig(), root=tmp_path).validate_policy()
+
+    def test_a_node_prompt_filename_the_manifest_cannot_admit_is_refused(self, repo_root, tmp_path):
+        _copy_prompt_tree(repo_root, tmp_path)
+        (tmp_path / "prompts" / "nodes" / "Not Kebab Case.md").write_text("x\n", encoding="utf-8")
+
+        with pytest.raises(PromptPolicyError, match="kebab-case"):
+            plan_seal(PromptConfig(), root=tmp_path)
+
+    def test_an_unreadable_manifest_is_an_error(self, repo_root, tmp_path):
+        _copy_prompt_tree(repo_root, tmp_path)
+        (tmp_path / "prompts" / "versions.yaml").unlink()
+
+        with pytest.raises(PromptPolicyError, match="not found"):
+            plan_seal(PromptConfig(), root=tmp_path)
+
+    def test_a_custom_prompt_still_may_not_reseal_the_default_manifest(self, repo_root, tmp_path):
+        _copy_prompt_tree(repo_root, tmp_path)
+        custom = tmp_path / "custom" / "domain.md"
+        custom.parent.mkdir()
+        custom.write_bytes((repo_root / "prompts" / "domain" / "system-prompt.md").read_bytes())
+
+        with pytest.raises(PromptPolicyError, match="EVIL_DUCK_PROMPT_MANIFEST_PATH"):
+            plan_seal(PromptConfig(domain_prompt_path=Path("custom/domain.md")), root=tmp_path)
+
+    def test_it_seals_the_configured_paths_for_a_custom_deployment(self, repo_root, tmp_path):
+        _copy_prompt_tree(repo_root, tmp_path)
+        custom = tmp_path / "custom" / "domain.md"
+        custom.parent.mkdir()
+        custom.write_text("# a deployment's own prompt\n", encoding="utf-8")
+        config = PromptConfig(
+            domain_prompt_path=Path("custom/domain.md"),
+            manifest_path=Path("deployment-prompts.yaml"),
+        )
+        (tmp_path / "deployment-prompts.yaml").write_bytes(
+            (tmp_path / "prompts" / "versions.yaml").read_bytes()
+        )
+
+        metadata = apply_seal(plan_seal(config, root=tmp_path), config, root=tmp_path)
+        payload = _manifest_payload(tmp_path / "deployment-prompts.yaml")
+
+        assert payload["domain_prompt"]["path"] == "custom/domain.md"
+        assert payload["domain_prompt"]["sha256"] == hashlib.sha256(custom.read_bytes()).hexdigest()
+        assert metadata.compatibility_status.value == "compatible"

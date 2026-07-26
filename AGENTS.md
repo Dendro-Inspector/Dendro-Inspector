@@ -407,7 +407,12 @@ evil-duck eval --suite public      # evaluation
 evil-duck graph                    # render the executable graph
 evil-duck inspect --fake primary-pass --image examples/log.jpg
 evil-duck prompt-info              # which domain prompt is loaded, and its hash
+evil-duck prompt-seal              # re-pin prompt hashes after the owner edits a prompt
 ```
+
+`prompt-seal` is a dry run by default and needs `--write` to touch `prompts/versions.yaml`.
+It re-attests bytes; it cannot attest that a changed prompt still means what the
+deterministic policy implements. That judgement is §12's conformance review.
 
 ### The domain prompt is the behavioural specification
 
@@ -590,9 +595,12 @@ overfitting, whatever else it is called. Send it back.
 
 ### Separation of concerns
 
-- **Golden material never informs card authoring.** The 25 shipped cards derive from the
-  domain prompt's section 14 and nothing else. That provenance is recorded per card and is
-  what makes the first benchmark run a genuine measurement rather than a self-assessment.
+- **Golden material never informs card authoring.** The 25 shipped cards' *feature rules*
+  derive from the domain prompt's section 14 and nothing else, which is what makes the first
+  benchmark run a genuine measurement rather than a self-assessment. Provenance is recorded
+  per card, per feature rule and per declared identity, because not everything on a card
+  comes from that one source: family placements are standard taxonomy the prompt never
+  states, and `larix` is not in the prompt at all. Each says so where it sits.
 - **Public fixtures and golden cases stay apart.** `evals/fixtures/` scripts provider
   responses to exercise the machinery; `evals/golden/` measures botanical correctness.
   Fixture wording must never be copied from a golden case, and no card may contain a value
@@ -619,8 +627,12 @@ answer.
 3. DCO sign-off, CLA, or neither. Until decided, `CONTRIBUTING.md` asserts only that a
    contributor has the right to submit under Apache-2.0.
 4. Contribution policy on AI-assisted code, if any.
-5. Replace `OWNER` in the repository URLs in `pyproject.toml`, `CHANGELOG.md` and
-   `.github/ISSUE_TEMPLATE/config.yml` with the real org or user.
+5. ~~Replace `OWNER` in the repository URLs~~ — **`Dendro-Inspector/Dendro-Inspector`**,
+   taken from `origin` and applied 2026-07-26 to `pyproject.toml`, `CHANGELOG.md` and
+   `.github/ISSUE_TEMPLATE/config.yml`. The contact links in that config assume Discussions
+   and private vulnerability reporting are enabled on the repository; enable both, or drop
+   the links rather than publish two dead ends. No release tags exist yet, so the changelog
+   compare links resolve only once `v0.2.1` and `v0.2.2` are pushed.
 6. Branch protection on `main`: require the CI checks from `.github/workflows/ci.yml`.
    Until this is switched on, §11's enforcement layer does not exist — the workflow runs
    but nothing stops a merge over a red run.

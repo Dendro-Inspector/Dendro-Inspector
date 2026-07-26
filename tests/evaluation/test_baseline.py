@@ -57,7 +57,7 @@ def current(request):
 
 def test_the_baseline_artifact_is_present(baseline):
     assert baseline["baseline_version"] == "0.2.2"
-    assert len(baseline["cases"]) == 14
+    assert len(baseline["cases"]) == 16
 
 
 def test_no_case_disappeared(baseline, current):
