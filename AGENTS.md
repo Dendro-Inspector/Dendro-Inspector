@@ -162,11 +162,16 @@ ruff format --check .              # formatting
 ruff check .                       # lint
 mypy                               # strict on src, relaxed on tests
 pytest                             # unit, contract, integration, evaluation
-evil-duck eval --suite public      # the five evaluation cases
+evil-duck eval --suite public      # the public conformance suite
 ```
 
 Do not merge if any of these fail. The evaluation suite is fully deterministic — a red case
 is a real signal, never flakiness.
+
+How many cases the suite holds is not recorded here. It changed three times in two days
+while this line still said "the five evaluation cases", which is how a file that claims to be
+the single source of truth starts being read as decoration. Counts live where they can be
+counted: `evals/public/` and `docs/evaluation.md`.
 
 ### 4.6 The determinism boundary
 
@@ -389,11 +394,13 @@ calibrated uncertainty, evaluation and CI. **It is never forced to return a spec
 | `src/evil_duck_dendro/schemas/evidence.py` | Observation vs inference; referential integrity | Evidence contract changes |
 | `src/evil_duck_dendro/graph/definition.py` | The single graph declaration | Adding or rewiring a node |
 | `src/evil_duck_dendro/graph/routing.py` | Pure routing; the termination argument | Changing a branch condition |
-| `src/evil_duck_dendro/knowledge/evidence_hierarchy.py` | Tiers, ceilings, attachment rule — §2/§6 of the domain prompt | Only when the domain prompt changes |
-| `src/evil_duck_dendro/nodes/final_decision.py` | The claim cap and downgrade composition | Never loosen the cap to pass a test |
-| `src/evil_duck_dendro/nodes/review_synthesizer.py` | Finding admissibility, shared with the arbiter | Adding a finding category |
+| `src/evil_duck_dendro/knowledge/evidence_hierarchy.py` | Tiers, ceilings, attachment rule, evidence trust projection — §2/§6 of the domain prompt | Only when the domain prompt changes |
+| `src/evil_duck_dendro/knowledge/candidate_validation.py` | The candidate admission boundary, shared by generation and every reviewer ranking | Never widen it to admit a candidate a case needs |
+| `src/evil_duck_dendro/nodes/final_decision.py` | The claim cap, identity selection and downgrade composition | Never loosen the cap to pass a test |
+| `src/evil_duck_dendro/nodes/review_synthesizer.py` | Finding admissibility and rerank binding, shared with the arbiter | Adding a finding category |
 | `src/evil_duck_dendro/nodes/escalation_gate.py` | Trigger / suppressor precedence | Tuning arbitration cost |
-| `src/evil_duck_dendro/prompts/library.py` | Domain prompt loading and hashing | Effectively never — contract-tested |
+| `src/evil_duck_dendro/prompts/library.py` | Prompt loading, hashing and fail-closed policy validation | Effectively never — contract-tested |
+| `prompts/versions.yaml` | The prompt/policy compatibility manifest | Only via `evil-duck prompt-seal --write` |
 | `knowledge/taxa/*.yaml` | Taxon cards; `supported_resolution` caps claims | Adding a taxon (no code change) |
 | `evals/public/*.yaml`, `evals/fixtures/*.json` | Deterministic evaluation | Adding a case |
 | `prompts/domain/system-prompt.md` | **User artifact and primary knowledge source.** Never translate, shorten or reformat | Only the owner replaces it |
@@ -447,15 +454,27 @@ Derivations to keep in step when it changes:
 | §3 checking the user's version | `final_decision.rule_on_user_claim` |
 | §4 hard mode, §5 jokes, §12 self-correction | `response_composer.decide_tone` |
 | §7-§11 response formats | `response_composer.select_format` |
-| §13 failure cases | reviewer checks + evaluation cases 6-9 |
-| §14 base taxa | `knowledge/taxa/*.yaml` |
+| §13 failure cases | reviewer checks + the named failure-mode evaluation cases |
+| §14 base taxa | `knowledge/taxa/*.yaml` **feature rules** |
 | §16 when to ask for photographs | `photo_planner`, card `follow_up_evidence` |
 
 Do not "improve" the prompt to make code easier. It is edited only by its owner.
 
+Editing it does mean re-sealing: `prompts/versions.yaml` pins the prompt's hash, and the run
+fails closed until `evil-duck prompt-seal --write` re-attests it. That re-attests bytes and
+nothing else — the conformance review above is still owed.
+
+Not everything in the derived files comes from the prompt. Family placements, `larix`, and
+the response register do not, and say so in their own provenance. Where a derivation is
+partial, the file records which parts it covers.
+
 ### Known limitations
 
-- Knowledge is **demonstration content**: 25 taxa, no dendrologist review.
+- Knowledge is **demonstration content**: 25 taxa, no dendrologist review. 24 have feature
+  rules from the domain prompt's §14; `larix` is not in the prompt at all.
+- Node prompts ask for `bark.flake_geometry`, which no taxon card declares — evidence for it
+  is recorded and then admits nothing. Unresolved: see
+  `docs/reviews/CORRECTNESS-BOUNDARY-2026-07-26.md`.
 - Not validated against real photographs at scale. The suite proves the machinery, not
   field accuracy.
 - Provider adapters are integration boundaries, not hardened clients.

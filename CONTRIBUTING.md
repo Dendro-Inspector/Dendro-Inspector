@@ -24,11 +24,11 @@ ruff format --check .              # formatting
 ruff check .                       # lint
 mypy                               # strict typing on src, relaxed on tests
 pytest                             # unit, contract, integration, evaluation
-evil-duck eval --suite public      # the five evaluation cases
+evil-duck eval --suite public      # the public conformance suite
 ```
 
-All five must pass. A red evaluation case is a real signal, not flakiness — the suite is
-fully deterministic.
+All five gates must pass. A red evaluation case is a real signal, not flakiness — the suite
+is fully deterministic. `docs/evaluation.md` describes the cases and what each one holds.
 
 ## What we look for
 
