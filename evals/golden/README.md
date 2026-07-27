@@ -22,7 +22,7 @@ See [`docs/dataset-policy.md`](../../docs/dataset-policy.md).
 Same format as `evals/public/`. Point `input.images[].path` at local files:
 
 ```bash
-evil-duck eval --suite golden
+dendro eval --suite golden
 ```
 
 With real providers configured this makes live, billable calls. Unlike the public suite, it

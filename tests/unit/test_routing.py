@@ -4,16 +4,16 @@ from __future__ import annotations
 
 import pytest
 
-from evil_duck_dendro.config import GraphConfig
-from evil_duck_dendro.graph.definition import NodeName
-from evil_duck_dendro.graph.routing import RoutingError, next_step, route_internal_gate
-from evil_duck_dendro.graph.state import (
+from dendro_inspector.config import GraphConfig
+from dendro_inspector.graph.definition import NodeName
+from dendro_inspector.graph.routing import RoutingError, next_step, route_internal_gate
+from dendro_inspector.graph.state import (
     EscalationDecision,
     EvidenceQualityReport,
     GraphState,
 )
-from evil_duck_dendro.schemas.input import CaseInput
-from evil_duck_dendro.schemas.reviews import ReviewSynthesis
+from dendro_inspector.schemas.input import CaseInput
+from dendro_inspector.schemas.reviews import ReviewSynthesis
 
 
 @pytest.fixture

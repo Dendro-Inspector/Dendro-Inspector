@@ -9,18 +9,18 @@ from __future__ import annotations
 
 import pytest
 
-from evil_duck_dendro.graph.state import GraphState
-from evil_duck_dendro.nodes.final_decision import normalise_claim, rule_on_user_claim
-from evil_duck_dendro.schemas.candidates import Candidate, CandidateSet, SupportStrength
-from evil_duck_dendro.schemas.decisions import UserClaimVerdict
-from evil_duck_dendro.schemas.evidence import (
+from dendro_inspector.graph.state import GraphState
+from dendro_inspector.nodes.final_decision import normalise_claim, rule_on_user_claim
+from dendro_inspector.schemas.candidates import Candidate, CandidateSet, SupportStrength
+from dendro_inspector.schemas.decisions import UserClaimVerdict
+from dendro_inspector.schemas.evidence import (
     EvidencePacket,
     Observation,
     ObservationSource,
     Subject,
 )
-from evil_duck_dendro.schemas.input import CaseInput
-from evil_duck_dendro.schemas.taxon import Resolution
+from dendro_inspector.schemas.input import CaseInput
+from dendro_inspector.schemas.taxon import Resolution
 from tests.conftest import _attachment
 
 DETACHABLE = ("leaf", "needles", "fruit", "cones", "branch", "bud", "seed", "nut", "acorn")

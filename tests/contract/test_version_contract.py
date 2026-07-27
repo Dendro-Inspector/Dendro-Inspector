@@ -7,9 +7,9 @@ import tomllib
 
 import yaml
 
-from evil_duck_dendro import __version__
-from evil_duck_dendro.observability.events import GRAPH_VERSION
-from evil_duck_dendro.prompts.library import DETERMINISTIC_POLICY_REVISION
+from dendro_inspector import __version__
+from dendro_inspector.observability.events import GRAPH_VERSION
+from dendro_inspector.prompts.library import DETERMINISTIC_POLICY_REVISION
 
 
 def test_release_identity_is_aligned(repo_root):

@@ -9,7 +9,7 @@ ruff format --check .
 ruff check .
 mypy
 pytest
-evil-duck eval --suite public
+dendro eval --suite public
 ```
 
 Paste anything notable — a new evaluation case, a metric that moved, a case that would have

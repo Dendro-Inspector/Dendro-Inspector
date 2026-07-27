@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from evil_duck_dendro.evaluation.reporting import render_json, render_text
-from evil_duck_dendro.evaluation.runner import run_suite
+from dendro_inspector.evaluation.reporting import render_json, render_text
+from dendro_inspector.evaluation.runner import run_suite
 
 pytestmark = pytest.mark.evaluation
 

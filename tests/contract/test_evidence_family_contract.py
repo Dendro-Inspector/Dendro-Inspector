@@ -13,14 +13,14 @@ from __future__ import annotations
 
 import pytest
 
-from evil_duck_dendro.knowledge.evidence_hierarchy import (
+from dendro_inspector.knowledge.evidence_hierarchy import (
     _FAMILY_TIERS,
     _PREPARED_END_GRAIN_PREFIXES,
     EvidenceTier,
     family_of,
     tier_of_feature,
 )
-from evil_duck_dendro.schemas.evidence import _WOOD_SURFACE_FAMILIES, requires_wood_surface
+from dendro_inspector.schemas.evidence import _WOOD_SURFACE_FAMILIES, requires_wood_surface
 
 pytestmark = pytest.mark.contract
 

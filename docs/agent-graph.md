@@ -1,13 +1,13 @@
 # Agent graph
 
 - **Status:** Current
-- **Owner:** Evil Duck Dendro Inspector maintainers
+- **Owner:** Dendro Inspector maintainers
 - **Date:** 2026-07-26
 - **Last-verified:** 2026-07-26
 
 The graph is declared once in
-[`graph/definition.py`](../src/evil_duck_dendro/graph/definition.py). The diagram below,
-the output of `evil-duck graph`, and the topology the executor walks are all rendered or
+[`graph/definition.py`](../src/dendro_inspector/graph/definition.py). The diagram below,
+the output of `dendro graph`, and the topology the executor walks are all rendered or
 validated from that declaration, so the picture cannot drift from the code. A contract test
 asserts that every routing target is a declared edge.
 
@@ -37,7 +37,7 @@ flowchart TD
     ARBITER_SYNTH --> FINAL_DECISION
     ABSTAIN --> FINAL_DECISION
     FINAL_DECISION --> RESPONSE
-    RESPONSE --> TONE[Evil Duck presentation layer]
+    RESPONSE --> TONE[Presentation layer]
     TONE --> OUTPUT[Final structured and human-readable output]
 ```
 
@@ -145,7 +145,7 @@ test catches an edge you route to but did not declare.
 
 ## Implementation references
 
-- [`src/evil_duck_dendro/graph/definition.py`](../src/evil_duck_dendro/graph/definition.py)
-- [`src/evil_duck_dendro/graph/routing.py`](../src/evil_duck_dendro/graph/routing.py)
-- [`src/evil_duck_dendro/graph/executor.py`](../src/evil_duck_dendro/graph/executor.py)
+- [`src/dendro_inspector/graph/definition.py`](../src/dendro_inspector/graph/definition.py)
+- [`src/dendro_inspector/graph/routing.py`](../src/dendro_inspector/graph/routing.py)
+- [`src/dendro_inspector/graph/executor.py`](../src/dendro_inspector/graph/executor.py)
 - [`tests/contract/test_graph_contract.py`](../tests/contract/test_graph_contract.py)

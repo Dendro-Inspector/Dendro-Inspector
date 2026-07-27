@@ -9,8 +9,8 @@ import shutil
 import pytest
 from typer.testing import CliRunner
 
-from evil_duck_dendro.cli import app
-from evil_duck_dendro.prompts.seal import SEMANTIC_NOTICE
+from dendro_inspector.cli import app
+from dendro_inspector.prompts.seal import SEMANTIC_NOTICE
 
 runner = CliRunner()
 
@@ -59,7 +59,7 @@ class TestInspectCommand:
         assert result.exit_code == 0
         # Ukrainian is the default output language, per the domain prompt.
         assert "Pinus" in result.stdout
-        assert "Кряк" in result.stdout
+        assert "Оцінка" in result.stdout
 
     def test_json_mode_emits_response_and_trace(self):
         result = runner.invoke(
@@ -113,7 +113,7 @@ class TestInspectCommand:
             'schema_version: "1"\npolicy_revision: "0.2.1"\n',
             encoding="utf-8",
         )
-        monkeypatch.setenv("EVIL_DUCK_PROMPT_MANIFEST_PATH", str(manifest))
+        monkeypatch.setenv("DENDRO_PROMPT_MANIFEST_PATH", str(manifest))
 
         result = runner.invoke(
             app,
@@ -146,7 +146,7 @@ class TestEvalCommand:
         """A suite run emits the same warnings a real run does; they must not print bare."""
         calls: list[tuple[str, bool]] = []
         monkeypatch.setattr(
-            "evil_duck_dendro.cli.configure_logging",
+            "dendro_inspector.cli.configure_logging",
             lambda level, *, json_output: calls.append((level, json_output)),
         )
 
@@ -158,10 +158,10 @@ class TestEvalCommand:
     def test_logging_configuration_comes_from_the_environment_not_a_constant(self, monkeypatch):
         calls: list[tuple[str, bool]] = []
         monkeypatch.setattr(
-            "evil_duck_dendro.cli.configure_logging",
+            "dendro_inspector.cli.configure_logging",
             lambda level, *, json_output: calls.append((level, json_output)),
         )
-        monkeypatch.setenv("EVIL_DUCK_LOG_LEVEL", "DEBUG")
+        monkeypatch.setenv("DENDRO_LOG_LEVEL", "DEBUG")
 
         runner.invoke(app, ["eval", "--suite", "public"])
 
@@ -185,7 +185,7 @@ class TestPromptSealCommand:
 
         assert result.exit_code == 0
         assert (
-            f"b4c38c00ac0a274322488cf93ed504ac4d19617e6dde0a55f4600126c06cf7d7 -> {new_hash}"
+            f"23ab9d12e0d09abc76888a275e7128b922dd8850f03ebcae6af3b88cce50d34a -> {new_hash}"
             in result.stdout
         )
         assert "Dry run" in result.stdout
@@ -247,7 +247,7 @@ class TestPromptInfoCommand:
             'schema_version: "1"\npolicy_revision: "0.2.1"\n',
             encoding="utf-8",
         )
-        monkeypatch.setenv("EVIL_DUCK_PROMPT_MANIFEST_PATH", str(manifest))
+        monkeypatch.setenv("DENDRO_PROMPT_MANIFEST_PATH", str(manifest))
 
         result = runner.invoke(app, ["prompt-info"])
 

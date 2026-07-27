@@ -10,7 +10,7 @@ verdict is always worth a human looking at it.
 
 To adopt a new baseline after an intentional change:
 
-    evil-duck eval --suite public --json --out evals/baselines/public-v<next>.json
+    dendro eval --suite public --json --out evals/baselines/public-v<next>.json
 
 then trim it to this file's shape and say why in CHANGELOG.md.
 """
@@ -23,7 +23,7 @@ from typing import Any
 
 import pytest
 
-from evil_duck_dendro.evaluation.runner import run_suite
+from dendro_inspector.evaluation.runner import run_suite
 
 pytestmark = pytest.mark.evaluation
 

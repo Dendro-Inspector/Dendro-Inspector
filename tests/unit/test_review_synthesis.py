@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import asyncio
 
-from evil_duck_dendro.graph.state import GraphState
-from evil_duck_dendro.nodes._support import mark_model_findings, merge_findings
-from evil_duck_dendro.nodes.arbiter_synthesizer import run as run_arbiter_synthesizer
-from evil_duck_dendro.nodes.review_synthesizer import adjudicate
-from evil_duck_dendro.schemas.candidates import Candidate
-from evil_duck_dendro.schemas.evidence import (
+from dendro_inspector.graph.state import GraphState
+from dendro_inspector.nodes._support import mark_model_findings, merge_findings
+from dendro_inspector.nodes.arbiter_synthesizer import run as run_arbiter_synthesizer
+from dendro_inspector.nodes.review_synthesizer import adjudicate
+from dendro_inspector.schemas.candidates import Candidate
+from dendro_inspector.schemas.evidence import (
     AttachmentStatus,
     EvidencePacket,
     Inference,
@@ -17,8 +17,8 @@ from evil_duck_dendro.schemas.evidence import (
     ObservationSource,
     Subject,
 )
-from evil_duck_dendro.schemas.input import CaseInput
-from evil_duck_dendro.schemas.reviews import (
+from dendro_inspector.schemas.input import CaseInput
+from dendro_inspector.schemas.reviews import (
     FindingCategory,
     FindingOrigin,
     FindingStatus,
@@ -31,7 +31,7 @@ from evil_duck_dendro.schemas.reviews import (
     ReviewStatus,
     Severity,
 )
-from evil_duck_dendro.schemas.taxon import Confidence, Resolution
+from dendro_inspector.schemas.taxon import Confidence, Resolution
 
 
 def _observation(

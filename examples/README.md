@@ -6,7 +6,7 @@ Put your own photographs here. This directory is git-ignored for image files —
 ## Fake mode does not need a real file
 
 ```bash
-evil-duck inspect --fake primary-pass --image examples/log.jpg
+dendro inspect --fake primary-pass --image examples/log.jpg
 ```
 
 The fixture supplies the evidence, so the path need not exist; a missing file is recorded as
@@ -16,9 +16,9 @@ a limitation rather than crashing the run. That is what makes the demo work on a
 
 ```bash
 cp ~/Pictures/some-log.jpg examples/log.jpg
-export EVIL_DUCK_PRIMARY_PROVIDER=openai
+export DENDRO_PRIMARY_PROVIDER=openai
 export OPENAI_API_KEY=...
-evil-duck inspect --image examples/log.jpg --location "Kyiv Oblast, Ukraine" --object-type log
+dendro inspect --image examples/log.jpg --location "Kyiv Oblast, Ukraine" --object-type log
 ```
 
 ## What makes a photograph worth sending

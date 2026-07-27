@@ -3,13 +3,13 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "evil-duck-dendro-inspector"
+name = "dendro-inspector"
 version = "0.2.3"
 description = "Eval-driven, evidence-based multimodal agent for identifying trees, logs, bark, leaves, fruit, cones and wood from photographs."
 readme = "README.md"
 requires-python = ">=3.12"
 license = { file = "LICENSE" }
-authors = [{ name = "Evil Duck Dendro Inspector maintainers" }]
+authors = [{ name = "Dendro Inspector maintainers" }]
 keywords = ["dendrology", "agents", "evaluation", "multimodal", "identification"]
 classifiers = [
   "Development Status :: 3 - Alpha",
@@ -36,14 +36,14 @@ dev = [
 ]
 
 [project.scripts]
-evil-duck = "evil_duck_dendro.cli:app"
+dendro = "dendro_inspector.cli:app"
 
 [project.urls]
 Homepage = "https://github.com/Dendro-Inspector/Dendro-Inspector"
 Issues = "https://github.com/Dendro-Inspector/Dendro-Inspector/issues"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/evil_duck_dendro"]
+packages = ["src/dendro_inspector"]
 
 # prompts/, knowledge/ and evals/ are resolved relative to the working directory, not
 # bundled into the wheel. The domain prompt is user-managed and the knowledge cards are
@@ -80,7 +80,7 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["ANN001", "ANN002", "ANN003", "ANN201", "ANN202"]
-"src/evil_duck_dendro/cli.py" = ["B006"]  # typer expresses repeatable options as list defaults
+"src/dendro_inspector/cli.py" = ["B006"]  # typer expresses repeatable options as list defaults
 
 [tool.ruff.lint.flake8-tidy-imports]
 ban-relative-imports = "parents"

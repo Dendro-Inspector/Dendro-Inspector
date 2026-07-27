@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from evil_duck_dendro.config import (
+from dendro_inspector.config import (
     Adapter,
     AppConfig,
     KnowledgeConfig,
@@ -20,18 +20,18 @@ from evil_duck_dendro.config import (
     ProviderConfig,
     Role,
 )
-from evil_duck_dendro.graph.executor import NodeContext
-from evil_duck_dendro.knowledge.loader import KnowledgeBase
-from evil_duck_dendro.observability.trace import TraceRecorder
-from evil_duck_dendro.prompts.library import PromptLibrary
-from evil_duck_dendro.providers.registry import ProviderRegistry
-from evil_duck_dendro.runner import CaseRunResult, run_case
-from evil_duck_dendro.schemas.evidence import (
+from dendro_inspector.graph.executor import NodeContext
+from dendro_inspector.knowledge.loader import KnowledgeBase
+from dendro_inspector.observability.trace import TraceRecorder
+from dendro_inspector.prompts.library import PromptLibrary
+from dendro_inspector.providers.registry import ProviderRegistry
+from dendro_inspector.runner import CaseRunResult, run_case
+from dendro_inspector.schemas.evidence import (
     AttachmentStatus,
     WoodSurface,
     requires_wood_surface,
 )
-from evil_duck_dendro.schemas.input import CaseInput, DeclaredObjectType, ImageRef
+from dendro_inspector.schemas.input import CaseInput, DeclaredObjectType, ImageRef
 
 
 @pytest.fixture(scope="session")

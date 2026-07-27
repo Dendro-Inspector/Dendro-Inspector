@@ -4,14 +4,14 @@ from __future__ import annotations
 
 import pytest
 
-from evil_duck_dendro.knowledge.candidate_validation import (
+from dendro_inspector.knowledge.candidate_validation import (
     candidate_support_tier,
     validate_candidate_set,
     validate_candidate_set_with_report,
 )
-from evil_duck_dendro.knowledge.evidence_hierarchy import EvidenceTier
-from evil_duck_dendro.schemas.candidates import Candidate, CandidateSet, SupportStrength
-from evil_duck_dendro.schemas.evidence import (
+from dendro_inspector.knowledge.evidence_hierarchy import EvidenceTier
+from dendro_inspector.schemas.candidates import Candidate, CandidateSet, SupportStrength
+from dendro_inspector.schemas.evidence import (
     EvidencePacket,
     Inference,
     Observation,
@@ -22,7 +22,7 @@ from evil_duck_dendro.schemas.evidence import (
     Visibility,
     WoodSurface,
 )
-from evil_duck_dendro.schemas.taxon import Resolution
+from dendro_inspector.schemas.taxon import Resolution
 from tests.conftest import _attachment, _wood_surface
 
 

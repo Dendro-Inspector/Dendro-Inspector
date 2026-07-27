@@ -16,7 +16,7 @@ This is a dated assessment, not a source of truth for any rule in `AGENTS.md`.
 
 | # | Resolved by |
 |---|---|
-| C1 | `evil-duck prompt-seal` — dry run by default, `--write` applies, never touches the policy revision. `prompts/seal.py`, documented in `README.md`, `prompts/README.md`, `CONTRIBUTING.md`, `docs/architecture.md`, `AGENTS.md` §12. |
+| C1 | `dendro prompt-seal` — dry run by default, `--write` applies, never touches the policy revision. `prompts/seal.py`, documented in `README.md`, `prompts/README.md`, `CONTRIBUTING.md`, `docs/architecture.md`, `AGENTS.md` §12. |
 | C2 | "Tune them freely" replaced; `prompts/README.md` and `CONTRIBUTING.md` now say tuning a node prompt requires a re-seal, committed with the change. |
 | C3 | `near-miss-vocabulary-001` and `partial-visibility-cap-001` added, restoring both deleted behaviours; proven non-vacuous by negative-control probes. The rewritten six stay as conformance cases. |
 | C4 | `TaxonIdentity.provenance` added and migrated across 25 cards: family placements say `inferred`, the five genus identities the prompt names keep `domain_prompt`. Contract tests enforce it. `docs/dataset-policy.md` scopes the card-level block to feature rules. |
@@ -49,7 +49,7 @@ All five §4.5 gates were re-run from a clean shell against the current working 
 | `ruff check .` | All checks passed | `VERIFIED` |
 | `mypy` | no issues in 91 source files | `VERIFIED` |
 | `pytest` | 458 passed in 20.67s | `VERIFIED` |
-| `evil-duck eval --suite public` | 14 cases, 14 passed, 0 failed, overconfidence 0.0 | `VERIFIED` |
+| `dendro eval --suite public` | 14 cases, 14 passed, 0 failed, overconfidence 0.0 | `VERIFIED` |
 
 Other checks that came back clean:
 
@@ -81,7 +81,7 @@ owner", and `cli.py:172` tells the user "Put your own prompt in
 `prompts/domain/system-prompt.md`". Doing exactly that now aborts the run.
 
 The custom-manifest escape hatch in `prompts/library.py:324-335` only triggers when
-`EVIL_DUCK_DOMAIN_PROMPT_PATH` differs from the default. Replacing the file *at* the default
+`DENDRO_DOMAIN_PROMPT_PATH` differs from the default. Replacing the file *at* the default
 path skips that branch and dies one check later on the hash comparison
 (`prompts/library.py:353-359`).
 
@@ -98,7 +98,7 @@ hand-edit `prompts/versions.yaml` and compute a SHA-256 out of band, and nothing
 `README.md`, `prompts/README.md` or `docs/architecture.md` says so.
 
 Fail-closed is the right default; the missing half is the supported path for the artifact the
-project exists to carry. Options: an `evil-duck prompt-seal` style command, or treating the
+project exists to carry. Options: an `dendro prompt-seal` style command, or treating the
 default path as self-attesting and reserving hash enforcement for non-default deployments.
 
 ### C2 — "Tune node prompts freely" is now false, in the same file that pins their hashes
@@ -228,8 +228,8 @@ One `configure_logging` call in `evaluate_suite` fixes it.
 ### C7 — Changelog compare links point at a repository that does not exist
 
 ```text
-[Unreleased]: https://github.com/OWNER/evil-duck-dendro-inspector/compare/v0.2.2...HEAD
-[0.2.2]:      https://github.com/OWNER/evil-duck-dendro-inspector/compare/v0.2.1...v0.2.2
+[Unreleased]: https://github.com/OWNER/dendro-inspector/compare/v0.2.2...HEAD
+[0.2.2]:      https://github.com/OWNER/dendro-inspector/compare/v0.2.1...v0.2.2
 ```
 
 `origin` is `https://github.com/Dendro-Inspector/Dendro-Inspector.git` — both the `OWNER`

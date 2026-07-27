@@ -1,14 +1,14 @@
 # Evaluation
 
 - **Status:** Current
-- **Owner:** Evil Duck Dendro Inspector maintainers
+- **Owner:** Dendro Inspector maintainers
 - **Date:** 2026-07-27
 - **Last-verified:** 2026-07-27
 
 ```bash
-evil-duck eval --suite public            # summary
-evil-duck eval --suite public --verbose  # every assertion, including passes
-evil-duck eval --suite public --json --out report.json
+dendro eval --suite public            # summary
+dendro eval --suite public --verbose  # every assertion, including passes
+dendro eval --suite public --json --out report.json
 ```
 
 The suite is deterministic: each case replays a recorded provider scenario from
@@ -271,7 +271,7 @@ call and succeed on the retry, exercising the structured-output repair path.
 2. **Declare the case** at `evals/public/<name>.yaml` with a `case_id`, `title`,
    `description`, `scenario`, `input` and `expect` block.
 
-3. **Run it**: `evil-duck eval --suite public --verbose`.
+3. **Run it**: `dendro eval --suite public --verbose`.
 
 A case that asserts nothing cannot fail, which is worse than no case at all — a contract
 test enforces that every case declares at least one expectation.
@@ -294,6 +294,6 @@ overfitting: the fixtures are synthetic and the case documents a rule rather tha
 
 ## Implementation references
 
-- [`src/evil_duck_dendro/evaluation/`](../src/evil_duck_dendro/evaluation)
+- [`src/dendro_inspector/evaluation/`](../src/dendro_inspector/evaluation)
 - [`evals/public/`](../evals/public), [`evals/fixtures/`](../evals/fixtures)
 - [`tests/evaluation/test_public_suite.py`](../tests/evaluation/test_public_suite.py)

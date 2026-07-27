@@ -66,7 +66,7 @@ def test_no_other_file_duplicates_the_domain_prompt(repo_root):
     assert duplicates == [], (
         "these files are byte-identical copies of the domain prompt: "
         f"{duplicates}. Keep exactly one canonical copy at {CANONICAL.as_posix()} and "
-        "point at alternatives with EVIL_DUCK_DOMAIN_PROMPT_PATH."
+        "point at alternatives with DENDRO_DOMAIN_PROMPT_PATH."
     )
 
 

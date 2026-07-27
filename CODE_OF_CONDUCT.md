@@ -37,7 +37,7 @@ Technical disagreement is welcome and expected — this repository argues with i
 own documentation. Criticise the code, the design, the evidence and the conclusions as
 sharply as you like. Do not criticise the person.
 
-The Evil Duck tone applies to *results*. It does not apply to contributors.
+The project’s sharp tone applies to *results*. It does not apply to contributors.
 
 ## Enforcement responsibilities
 

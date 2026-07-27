@@ -2,18 +2,18 @@
 
 from __future__ import annotations
 
-from evil_duck_dendro.knowledge.comparison_cards import (
+from dendro_inspector.knowledge.comparison_cards import (
     decisive_features_between,
     insufficient_features,
     relies_only_on_insufficient_features,
 )
-from evil_duck_dendro.knowledge.regional_packs import (
+from dendro_inspector.knowledge.regional_packs import (
     likely_in_region,
     region_assumption_risk,
     unlikely_in_region,
 )
-from evil_duck_dendro.knowledge.taxon_cards import match_card
-from evil_duck_dendro.schemas.evidence import (
+from dendro_inspector.knowledge.taxon_cards import match_card
+from dendro_inspector.schemas.evidence import (
     EvidencePacket,
     Observation,
     ObservationSource,

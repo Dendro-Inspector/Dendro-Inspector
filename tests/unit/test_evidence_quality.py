@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from evil_duck_dendro.graph.state import EvidenceQualityReport
-from evil_duck_dendro.knowledge.evidence_hierarchy import EvidenceTier
-from evil_duck_dendro.nodes.evidence_quality import assess as assess_quality
-from evil_duck_dendro.schemas.evidence import (
+from dendro_inspector.graph.state import EvidenceQualityReport
+from dendro_inspector.knowledge.evidence_hierarchy import EvidenceTier
+from dendro_inspector.nodes.evidence_quality import assess as assess_quality
+from dendro_inspector.schemas.evidence import (
     EvidencePacket,
     Observation,
     ObservationSource,

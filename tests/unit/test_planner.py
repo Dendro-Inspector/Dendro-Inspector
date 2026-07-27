@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from evil_duck_dendro.graph.state import GraphState
-from evil_duck_dendro.nodes.planner import deterministic_facts
-from evil_duck_dendro.schemas.input import DeclaredObjectType
+from dendro_inspector.graph.state import GraphState
+from dendro_inspector.nodes.planner import deterministic_facts
+from dendro_inspector.schemas.input import DeclaredObjectType
 
 
 def test_split_firewood_forces_multiple_subject_conservatism(simple_case):

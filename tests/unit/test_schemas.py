@@ -5,8 +5,8 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from evil_duck_dendro.schemas.candidates import Candidate, CandidateSet, SupportStrength
-from evil_duck_dendro.schemas.evidence import (
+from dendro_inspector.schemas.candidates import Candidate, CandidateSet, SupportStrength
+from dendro_inspector.schemas.evidence import (
     EvidencePacket,
     GeneratedObservation,
     ImageLimitation,
@@ -18,7 +18,7 @@ from evil_duck_dendro.schemas.evidence import (
     WoodSurface,
     requires_wood_surface,
 )
-from evil_duck_dendro.schemas.taxon import (
+from dendro_inspector.schemas.taxon import (
     Confidence,
     Resolution,
     lower_confidence,

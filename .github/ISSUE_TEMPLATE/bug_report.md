@@ -11,7 +11,7 @@ labels: bug
 ## Reproduction
 
 ```bash
-evil-duck inspect --fake <scenario> ...
+dendro inspect --fake <scenario> ...
 ```
 
 Please reproduce with `--fake` where possible. A run that needs your API key is one nobody
@@ -22,7 +22,7 @@ else can investigate.
 Paste the relevant output. If you can, attach the trace:
 
 ```bash
-evil-duck inspect ... --trace-out ./traces
+dendro inspect ... --trace-out ./traces
 ```
 
 Check the trace before attaching: it records your location if you supplied one.

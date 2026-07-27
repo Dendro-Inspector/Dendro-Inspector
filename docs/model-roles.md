@@ -1,7 +1,7 @@
 # Model roles and escalation
 
 - **Status:** Current
-- **Owner:** Evil Duck Dendro Inspector maintainers
+- **Owner:** Dendro Inspector maintainers
 - **Date:** 2026-07-27
 - **Last-verified:** 2026-07-27
 
@@ -15,8 +15,8 @@ reviews, and (in a future revision) composes the answer. Needs strong multimodal
 and reliable structured output.
 
 ```bash
-EVIL_DUCK_PRIMARY_PROVIDER=openai
-EVIL_DUCK_PRIMARY_MODEL=gpt-5.6
+DENDRO_PRIMARY_PROVIDER=openai
+DENDRO_PRIMARY_MODEL=gpt-5.6
 ```
 
 ## `arbiter`
@@ -26,8 +26,8 @@ finds overlooked alternatives, assesses overconfidence, and recommends the highe
 defensible taxonomic level.
 
 ```bash
-EVIL_DUCK_ARBITER_PROVIDER=anthropic
-EVIL_DUCK_ARBITER_MODEL=claude-opus-5
+DENDRO_ARBITER_PROVIDER=anthropic
+DENDRO_ARBITER_MODEL=claude-opus-5
 ```
 
 **Bind the arbiter to a different model family than the primary.** Two instances of the same
@@ -127,7 +127,7 @@ EscalationPolicy(
 )
 ```
 
-Measure the effect with `evil-duck eval --suite public`: `escalation_precision`,
+Measure the effect with `dendro eval --suite public`: `escalation_precision`,
 `escalation_recall` and `unnecessary_arbiter_call_rate` are all reported.
 
 Do not disable the hard triggers to save money. They exist for the cases where a wrong
@@ -144,7 +144,7 @@ branch a type error rather than a runtime surprise.
 
 ## Implementation references
 
-- [`src/evil_duck_dendro/config.py`](../src/evil_duck_dendro/config.py) — `Role`, `EscalationPolicy`
-- [`src/evil_duck_dendro/nodes/escalation_gate.py`](../src/evil_duck_dendro/nodes/escalation_gate.py)
-- [`src/evil_duck_dendro/providers/`](../src/evil_duck_dendro/providers)
+- [`src/dendro_inspector/config.py`](../src/dendro_inspector/config.py) — `Role`, `EscalationPolicy`
+- [`src/dendro_inspector/nodes/escalation_gate.py`](../src/dendro_inspector/nodes/escalation_gate.py)
+- [`src/dendro_inspector/providers/`](../src/dendro_inspector/providers)
 - [`prompts/nodes/arbiter.md`](../prompts/nodes/arbiter.md)

@@ -6,9 +6,9 @@ from pathlib import Path
 
 import pytest
 
-from evil_duck_dendro.graph.state import GraphState
-from evil_duck_dendro.nodes.input_guard import build_report, scan_for_instructions
-from evil_duck_dendro.schemas.input import CaseInput, ImageRef
+from dendro_inspector.graph.state import GraphState
+from dendro_inspector.nodes.input_guard import build_report, scan_for_instructions
+from dendro_inspector.schemas.input import CaseInput, ImageRef
 
 
 def _state(**changes) -> GraphState:

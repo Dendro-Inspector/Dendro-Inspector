@@ -1,4 +1,4 @@
-"""When the duck is allowed to bite — sections 4, 5 and 12 of the domain prompt.
+"""When the answer is allowed to bite — sections 4, 5 and 12 of the domain prompt.
 
 Hard mode is a conjunction, not a mood. Each test below removes exactly one clause from an
 otherwise-qualifying case and asserts the mode falls back, because "жорсткість без доказів —
@@ -11,26 +11,26 @@ from typing import Any
 
 import pytest
 
-from evil_duck_dendro.graph.state import GraphState, GuardReport
-from evil_duck_dendro.knowledge.evidence_hierarchy import EvidenceTier
-from evil_duck_dendro.nodes.response_composer import decide_tone, select_format
-from evil_duck_dendro.schemas.candidates import Candidate, CandidateSet, SupportStrength
-from evil_duck_dendro.schemas.decisions import (
+from dendro_inspector.graph.state import GraphState, GuardReport
+from dendro_inspector.knowledge.evidence_hierarchy import EvidenceTier
+from dendro_inspector.nodes.response_composer import decide_tone, select_format
+from dendro_inspector.schemas.candidates import Candidate, CandidateSet, SupportStrength
+from dendro_inspector.schemas.decisions import (
     DecisionStatus,
     FinalDecision,
     ResponseFormat,
     ToneMode,
     UserClaimVerdict,
 )
-from evil_duck_dendro.schemas.input import CaseInput
-from evil_duck_dendro.schemas.reviews import (
+from dendro_inspector.schemas.input import CaseInput
+from dendro_inspector.schemas.reviews import (
     FindingCategory,
     RequiredAction,
     ReviewFinding,
     ReviewSynthesis,
     Severity,
 )
-from evil_duck_dendro.schemas.taxon import Confidence, Resolution
+from dendro_inspector.schemas.taxon import Confidence, Resolution
 
 
 def _decision(**changes) -> FinalDecision:

@@ -25,8 +25,8 @@ concurrency:
 
 env:
   # Belt and braces: even if a credential were present, the adapters would not be selected.
-  EVIL_DUCK_PRIMARY_PROVIDER: fake
-  EVIL_DUCK_ARBITER_PROVIDER: fake
+  DENDRO_PRIMARY_PROVIDER: fake
+  DENDRO_ARBITER_PROVIDER: fake
 
 jobs:
   quality:
@@ -79,17 +79,17 @@ jobs:
         run: pytest tests/evaluation -q
 
       - name: Public evaluation suite
-        run: evil-duck eval --suite public --verbose
+        run: dendro eval --suite public --verbose
 
       - name: Graph renders
-        run: evil-duck graph
+        run: dendro graph
 
       - name: Domain prompt loads and hashes
-        run: evil-duck prompt-info
+        run: dendro prompt-info
 
       - name: Upload evaluation report
         if: always() && matrix.python-version == '3.12'
-        run: evil-duck eval --suite public --json --out eval-report.json || true
+        run: dendro eval --suite public --json --out eval-report.json || true
 
       - uses: actions/upload-artifact@v4
         if: always() && matrix.python-version == '3.12'

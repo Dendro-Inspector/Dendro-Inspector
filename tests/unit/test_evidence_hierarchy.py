@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from evil_duck_dendro.knowledge.evidence_hierarchy import (
+from dendro_inspector.knowledge.evidence_hierarchy import (
     BAND_DECISIVE,
     EvidenceTier,
     EvidenceTrust,
@@ -20,7 +20,7 @@ from evil_duck_dendro.knowledge.evidence_hierarchy import (
     tier_of_feature,
     unattached_observations,
 )
-from evil_duck_dendro.schemas.evidence import (
+from dendro_inspector.schemas.evidence import (
     AttachmentStatus,
     EvidencePacket,
     Inference,
@@ -31,7 +31,7 @@ from evil_duck_dendro.schemas.evidence import (
     Visibility,
     WoodSurface,
 )
-from evil_duck_dendro.schemas.taxon import Confidence, Resolution
+from dendro_inspector.schemas.taxon import Confidence, Resolution
 from tests.conftest import _attachment, _wood_surface
 
 DETACHABLE = ("leaf", "needles", "fruit", "cones", "branch", "bud", "seed", "nut", "acorn")

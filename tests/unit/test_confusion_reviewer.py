@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from evil_duck_dendro.graph.state import EvidenceQualityReport, GraphState
-from evil_duck_dendro.nodes.confusion_reviewer import colour_findings
-from evil_duck_dendro.schemas.evidence import (
+from dendro_inspector.graph.state import EvidenceQualityReport, GraphState
+from dendro_inspector.nodes.confusion_reviewer import colour_findings
+from dendro_inspector.schemas.evidence import (
     EvidencePacket,
     Observation,
     ObservationSource,

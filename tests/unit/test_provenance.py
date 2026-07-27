@@ -13,7 +13,7 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
-from evil_duck_dendro.schemas.taxon import (
+from dendro_inspector.schemas.taxon import (
     Applicability,
     ComparisonCard,
     DecisiveDifference,

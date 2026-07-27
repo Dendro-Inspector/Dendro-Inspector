@@ -10,15 +10,15 @@ codebase or by any agent working on it.
 
 This repository ships the maintainer's **real** domain prompt. It is the primary knowledge
 source for the whole system: the evidence hierarchy in
-`src/evil_duck_dendro/knowledge/evidence_hierarchy.py`, the taxon cards under `knowledge/`,
+`src/dendro_inspector/knowledge/evidence_hierarchy.py`, the taxon cards under `knowledge/`,
 the tone gating in the response composer and several evaluation cases are all derived from
 it. When it changes, those derivations should be revisited — but the file itself is edited
 only by its owner.
 
-A prompt carrying the marker `<!-- EVIL-DUCK-DOMAIN-PROMPT-PLACEHOLDER -->` on its first
+A prompt carrying the marker `<!-- DENDRO-DOMAIN-PROMPT-PLACEHOLDER -->` on its first
 line is treated as scaffolding: the CLI and every run trace then announce that no real
 domain prompt is loaded. A deployment using another domain prompt must set both
-`EVIL_DUCK_DOMAIN_PROMPT_PATH` and `EVIL_DUCK_PROMPT_MANIFEST_PATH`; the external manifest
+`DENDRO_DOMAIN_PROMPT_PATH` and `DENDRO_PROMPT_MANIFEST_PATH`; the external manifest
 must bind that exact path and hash to the active deterministic policy.
 
 Replacing this file — here, or at a configured path — changes its hash, so the manifest that
@@ -64,14 +64,14 @@ frozen schema binds:
 - the exact node-prompt file set and every file's SHA-256.
 
 `runner.build_context()` validates the complete bundle before constructing the provider
-registry. `evil-duck prompt-info` reports the prompt hash, manifest hash, revisions and
+registry. `dendro prompt-info` reports the prompt hash, manifest hash, revisions and
 `compatible` status; an incompatible bundle exits before any provider can be called.
 
 A custom manifest is an operator attestation that the supplied natural-language prompt is
 compatible with policy `0.2.3`. Hash validation proves byte identity only; it does not prove
 semantic equivalence.
 
-This file is generated. `evil-duck prompt-seal --write` renders it from one template, so it
+This file is generated. `dendro prompt-seal --write` renders it from one template, so it
 is the command's output rather than something hand-maintained beside a hash computed
 elsewhere. A contract test asserts the checked-in file is byte-identical to what the
 generator produces.
@@ -80,11 +80,11 @@ generator produces.
 
 Any prompt file that changes — the domain prompt at its own default path included — leaves
 the manifest attesting bytes that no longer exist, and the next run fails closed with a hash
-mismatch. `evil-duck prompt-seal` is the way back:
+mismatch. `dendro prompt-seal` is the way back:
 
 ```bash
-evil-duck prompt-seal            # dry run: prints every hash it would change, old -> new
-evil-duck prompt-seal --write    # rewrite the configured manifest, then revalidate
+dendro prompt-seal            # dry run: prints every hash it would change, old -> new
+dendro prompt-seal --write    # rewrite the configured manifest, then revalidate
 ```
 
 The dry run exits `0` for an out-of-date manifest — being stale is the normal state after an

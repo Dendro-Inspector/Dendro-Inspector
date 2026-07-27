@@ -1,7 +1,7 @@
 # Dataset and content policy
 
 - **Status:** Current
-- **Owner:** Evil Duck Dendro Inspector maintainers
+- **Owner:** Dendro Inspector maintainers
 - **Date:** 2026-07-26
 - **Last-verified:** 2026-07-26
 

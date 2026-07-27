@@ -1,12 +1,12 @@
 # Node: Response composer
 
 > **v0.1 status.** Response composition is currently **deterministic code**
-> (`src/evil_duck_dendro/nodes/response_composer.py`), not a model call. This file is the
+> (`src/dendro_inspector/nodes/response_composer.py`), not a model call. This file is the
 > contract that composition follows, and the prompt a model-backed composer would be given
 > if one is introduced later. It is kept here so the rule set has one home rather than
 > living only inside a formatter.
 
-Turn the final decisions into the factual answer. The Evil Duck tone layer runs *after*
+Turn the final decisions into the factual answer. The presentation layer runs *after*
 this and may not change anything you produce here.
 
 ## Structured result

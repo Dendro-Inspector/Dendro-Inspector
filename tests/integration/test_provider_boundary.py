@@ -6,20 +6,20 @@ import asyncio
 
 import pytest
 
-from evil_duck_dendro.config import Adapter, ProviderConfig
-from evil_duck_dendro.observability.trace import TraceRecorder
-from evil_duck_dendro.providers.base import (
+from dendro_inspector.config import Adapter, ProviderConfig
+from dendro_inspector.observability.trace import TraceRecorder
+from dendro_inspector.providers.base import (
     ProviderUnavailableError,
     StructuredOutputError,
     request_structured,
 )
-from evil_duck_dendro.providers.fake import (
+from dendro_inspector.providers.fake import (
     FakeModelProvider,
     ScenarioNotFoundError,
     UnscriptedCallError,
 )
-from evil_duck_dendro.providers.registry import ProviderRegistry, build_provider
-from evil_duck_dendro.schemas.evidence import EvidencePacket
+from dendro_inspector.providers.registry import ProviderRegistry, build_provider
+from dendro_inspector.schemas.evidence import EvidencePacket
 
 
 @pytest.fixture

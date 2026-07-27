@@ -5,17 +5,17 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from evil_duck_dendro.graph.state import GraphState
-from evil_duck_dendro.nodes.final_decision import (
+from dendro_inspector.graph.state import GraphState
+from dendro_inspector.nodes.final_decision import (
     apply_reranking,
     cap_resolution,
     decide_subject,
     resolve_identity,
 )
-from evil_duck_dendro.nodes.response_composer import build_result
-from evil_duck_dendro.schemas.candidates import Candidate, CandidateSet, SupportStrength
-from evil_duck_dendro.schemas.decisions import DecisionStatus, FinalDecision
-from evil_duck_dendro.schemas.evidence import (
+from dendro_inspector.nodes.response_composer import build_result
+from dendro_inspector.schemas.candidates import Candidate, CandidateSet, SupportStrength
+from dendro_inspector.schemas.decisions import DecisionStatus, FinalDecision
+from dendro_inspector.schemas.evidence import (
     AttachmentStatus,
     EvidencePacket,
     Observation,
@@ -24,8 +24,8 @@ from evil_duck_dendro.schemas.evidence import (
     SubjectKind,
     WoodSurface,
 )
-from evil_duck_dendro.schemas.input import DeclaredObjectType
-from evil_duck_dendro.schemas.reviews import (
+from dendro_inspector.schemas.input import DeclaredObjectType
+from dendro_inspector.schemas.reviews import (
     AdmittedRerank,
     FindingCategory,
     FindingStatus,
@@ -38,7 +38,7 @@ from evil_duck_dendro.schemas.reviews import (
     ReviewSynthesis,
     Severity,
 )
-from evil_duck_dendro.schemas.taxon import (
+from dendro_inspector.schemas.taxon import (
     Provenance,
     Resolution,
     SourceType,

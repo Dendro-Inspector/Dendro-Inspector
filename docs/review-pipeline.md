@@ -1,7 +1,7 @@
 # Review pipeline
 
 - **Status:** Current
-- **Owner:** Evil Duck Dendro Inspector maintainers
+- **Owner:** Dendro Inspector maintainers
 - **Date:** 2026-07-26
 - **Last-verified:** 2026-07-26
 
@@ -11,7 +11,7 @@
 
 Three reviewers plus an arbiter emit findings. Every one of them faces the same
 deterministic admissibility test in
-[`nodes/review_synthesizer.py:adjudicate`](../src/evil_duck_dendro/nodes/review_synthesizer.py).
+[`nodes/review_synthesizer.py:adjudicate`](../src/dendro_inspector/nodes/review_synthesizer.py).
 Findings that pass are applied. Findings that fail are **kept**, marked rejected, with a
 reason code. `ReviewFinding.origin` records `model` or `deterministic`; provider-returned
 findings are forced to model origin at the reviewer boundary, while code-generated findings
@@ -158,6 +158,6 @@ unless that broader card declares it. Status describes the answer returned, not 
 
 ## Implementation references
 
-- [`src/evil_duck_dendro/nodes/review_synthesizer.py`](../src/evil_duck_dendro/nodes/review_synthesizer.py)
-- [`src/evil_duck_dendro/schemas/reviews.py`](../src/evil_duck_dendro/schemas/reviews.py)
+- [`src/dendro_inspector/nodes/review_synthesizer.py`](../src/dendro_inspector/nodes/review_synthesizer.py)
+- [`src/dendro_inspector/schemas/reviews.py`](../src/dendro_inspector/schemas/reviews.py)
 - [`tests/unit/test_review_synthesis.py`](../tests/unit/test_review_synthesis.py)

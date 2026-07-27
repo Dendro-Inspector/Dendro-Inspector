@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from evil_duck_dendro.graph.state import GraphState, GuardReport, InspectionPlan
-from evil_duck_dendro.nodes.evidence_extractor import reconcile_packet
-from evil_duck_dendro.schemas.evidence import EvidencePacket
+from dendro_inspector.graph.state import GraphState, GuardReport, InspectionPlan
+from dendro_inspector.nodes.evidence_extractor import reconcile_packet
+from dendro_inspector.schemas.evidence import EvidencePacket
 
 
 def test_split_firewood_plan_forces_possible_multiple_taxa(simple_case):

@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import pytest
 
-from evil_duck_dendro.schemas.decisions import DecisionStatus
-from evil_duck_dendro.schemas.input import DeclaredObjectType
-from evil_duck_dendro.schemas.taxon import Confidence, Resolution
+from dendro_inspector.schemas.decisions import DecisionStatus
+from dendro_inspector.schemas.input import DeclaredObjectType
+from dendro_inspector.schemas.taxon import Confidence, Resolution
 
 
 class TestHappyPath:
@@ -46,7 +46,7 @@ class TestHappyPath:
         response = result.response
         assert response is not None
         assert response.tone_applied
-        assert "Кряк" in response.human_readable
+        assert "Оцінка" in response.human_readable
         assert response.results[0].taxonomic_resolution is Resolution.GENUS
 
 

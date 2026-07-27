@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from evil_duck_dendro.graph.state import GraphState
-from evil_duck_dendro.nodes.photo_planner import choose_request
-from evil_duck_dendro.schemas.evidence import EvidencePacket, Subject, SubjectKind
-from evil_duck_dendro.schemas.input import DeclaredObjectType
+from dendro_inspector.graph.state import GraphState
+from dendro_inspector.nodes.photo_planner import choose_request
+from dendro_inspector.schemas.evidence import EvidencePacket, Subject, SubjectKind
+from dendro_inspector.schemas.input import DeclaredObjectType
 
 
 def test_split_firewood_requests_matching_views_of_one_labelled_piece(simple_case, node_context):

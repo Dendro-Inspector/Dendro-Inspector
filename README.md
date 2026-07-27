@@ -1,4 +1,4 @@
-# Evil Duck Dendro Inspector
+# Dendro Inspector
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.12%2B-blue.svg)](pyproject.toml)
@@ -41,7 +41,7 @@ directly.
    returns that declared broader id and display name, never the original species name under a
    broader resolution label. Missing broader identity means `unknown`.
 5. **The personality layer cannot touch the verdict.** The factual answer is composed first;
-   the Evil Duck voice is applied afterwards, and a contract check fails the run if the
+   the presentation register is applied afterwards, and a contract check fails the run if the
    taxon, resolution, confidence — or the tone layer's own permission to be sharp — moved.
 
 The last one has teeth: sharpness is a conjunction of conditions computed from the evidence
@@ -57,13 +57,13 @@ ranking; recommendations floating elsewhere in a review are inert.
 ## Quickstart — no API key required
 
 ```bash
-git clone <your-fork-url> && cd evil-duck-dendro-inspector
+git clone <your-fork-url> && cd dendro-inspector
 python -m venv .venv && . .venv/bin/activate      # Windows: .venv\Scripts\activate
 pip install -e ".[dev]"
 
-evil-duck graph                                    # print the executable agent graph
-evil-duck inspect --fake primary-pass --image examples/log.jpg --location "Kyiv Oblast, Ukraine"
-evil-duck eval --suite public                      # run the nineteen public conformance cases
+dendro graph                                    # print the executable agent graph
+dendro inspect --fake primary-pass --image examples/log.jpg --location "Kyiv Oblast, Ukraine"
+dendro eval --suite public                      # run the nineteen public conformance cases
 pytest                                             # full test suite, offline
 ```
 
@@ -71,7 +71,7 @@ Answers are in Ukrainian by default, as the domain prompt specifies. Add `--lang
 English. You can state your own version and it will be ruled on rather than ignored:
 
 ```bash
-evil-duck inspect --image examples/trunk.jpg --claim "дуб" --field-context
+dendro inspect --image examples/trunk.jpg --claim "дуб" --field-context
 ```
 
 `--field-context` says you know things the photograph cannot show — foliage out of frame,
@@ -83,8 +83,8 @@ because in that situation you have evidence it does not.
 The presentation register is a deployment choice, kept separate from the dendrology policy:
 
 ```bash
-EVIL_DUCK_TONE_PROFILE=evil_duck_public   # default — dry, direct, workplace-safe
-EVIL_DUCK_TONE_PROFILE=evil_duck          # the author's original register
+DENDRO_TONE_PROFILE=standard   # default — dry, direct, workplace-safe
+DENDRO_TONE_PROFILE=direct          # the author's original register
 ```
 
 Profiles live in `prompts/personality/` and carry vocabulary only. Switching profile changes
@@ -99,8 +99,8 @@ mode — the fixture supplies the evidence, and the missing file is recorded as 
 To use real models, copy `.env.example` to `.env` and set the provider and key:
 
 ```bash
-EVIL_DUCK_PRIMARY_PROVIDER=openai      # plan, extract, generate, review
-EVIL_DUCK_ARBITER_PROVIDER=anthropic   # independently challenge disputed results
+DENDRO_PRIMARY_PROVIDER=openai      # plan, extract, generate, review
+DENDRO_ARBITER_PROVIDER=anthropic   # independently challenge disputed results
 ```
 
 ## The domain prompt
@@ -116,7 +116,7 @@ taxon cards, tone gating and public conformance cases are derived from it. When 
 those derivations should be revisited — but the file itself is edited only by its owner.
 
 ```bash
-evil-duck prompt-info      # prompt/manifest hashes, policy revision and compatibility status
+dendro prompt-info      # prompt/manifest hashes, policy revision and compatibility status
 ```
 
 The runtime validates `prompts/versions.yaml` before constructing any provider. That manifest
@@ -128,8 +128,8 @@ Replacing the prompt therefore changes its hash, and the manifest has to be re-s
 the next run — including when you replace it at its own default path:
 
 ```bash
-evil-duck prompt-seal            # dry run: every hash it would change, old -> new
-evil-duck prompt-seal --write    # rewrite the configured manifest, then revalidate
+dendro prompt-seal            # dry run: every hash it would change, old -> new
+dendro prompt-seal --write    # rewrite the configured manifest, then revalidate
 ```
 
 Re-sealing attests bytes, not semantic compatibility: it records what is on disk and never
@@ -140,8 +140,8 @@ under `prompts/nodes/`, whose hashes are pinned by the same manifest.
 Point somewhere else only with a matching deployment manifest:
 
 ```bash
-export EVIL_DUCK_DOMAIN_PROMPT_PATH=/path/to/your/prompt.md
-export EVIL_DUCK_PROMPT_MANIFEST_PATH=/path/to/your/versions.yaml
+export DENDRO_DOMAIN_PROMPT_PATH=/path/to/your/prompt.md
+export DENDRO_PROMPT_MANIFEST_PATH=/path/to/your/versions.yaml
 ```
 
 The external manifest is an explicit compatibility attestation, not a mechanical proof that
@@ -178,11 +178,11 @@ flowchart TD
     ARBITER_SYNTH --> FINAL_DECISION
     ABSTAIN --> FINAL_DECISION
     FINAL_DECISION --> RESPONSE
-    RESPONSE --> TONE[Evil Duck presentation layer]
+    RESPONSE --> TONE[Presentation layer]
     TONE --> OUTPUT[Final structured and human-readable output]
 ```
 
-`evil-duck graph` renders this from the same declaration the executor walks, so the picture
+`dendro graph` renders this from the same declaration the executor walks, so the picture
 cannot drift from the code. Details in [docs/agent-graph.md](docs/agent-graph.md).
 
 ## What it can answer

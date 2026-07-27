@@ -4,25 +4,25 @@ from __future__ import annotations
 
 import pytest
 
-from evil_duck_dendro.config import EscalationPolicy
-from evil_duck_dendro.graph.state import (
+from dendro_inspector.config import EscalationPolicy
+from dendro_inspector.graph.state import (
     EvidenceQualityReport,
     GraphState,
     GuardReport,
     InspectionPlan,
 )
-from evil_duck_dendro.nodes.escalation_gate import decide
-from evil_duck_dendro.schemas.candidates import Candidate, CandidateSet, SupportStrength
-from evil_duck_dendro.schemas.evidence import EvidencePacket, Subject
-from evil_duck_dendro.schemas.input import CaseInput
-from evil_duck_dendro.schemas.reviews import (
+from dendro_inspector.nodes.escalation_gate import decide
+from dendro_inspector.schemas.candidates import Candidate, CandidateSet, SupportStrength
+from dendro_inspector.schemas.evidence import EvidencePacket, Subject
+from dendro_inspector.schemas.input import CaseInput
+from dendro_inspector.schemas.reviews import (
     FindingCategory,
     RequiredAction,
     ReviewFinding,
     ReviewSynthesis,
     Severity,
 )
-from evil_duck_dendro.schemas.taxon import Resolution
+from dendro_inspector.schemas.taxon import Resolution
 
 
 def _state(**changes) -> GraphState:

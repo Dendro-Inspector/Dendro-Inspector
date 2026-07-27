@@ -6,7 +6,7 @@ are impersonal, which is what lets us say no to code without saying no to a pers
 ## Setup
 
 ```bash
-git clone <your-fork> && cd evil-duck-dendro-inspector
+git clone <your-fork> && cd dendro-inspector
 python -m venv .venv && . .venv/bin/activate      # Windows: .venv\Scripts\activate
 pip install -e ".[dev]"
 pytest
@@ -24,7 +24,7 @@ ruff format --check .              # formatting
 ruff check .                       # lint
 mypy                               # strict typing on src, relaxed on tests
 pytest                             # unit, contract, integration, evaluation
-evil-duck eval --suite public      # the public conformance suite
+dendro eval --suite public      # the public conformance suite
 ```
 
 All five gates must pass. A red evaluation case is a real signal, not flakiness — the suite
@@ -97,8 +97,8 @@ instructions. `prompts/versions.yaml` pins every node prompt's SHA-256 and valid
 fail-closed, so an edit is not finished until the manifest attests the new bytes:
 
 ```bash
-evil-duck prompt-seal            # dry run: every hash it would change, old -> new
-evil-duck prompt-seal --write    # rewrite the manifest, then revalidate
+dendro prompt-seal            # dry run: every hash it would change, old -> new
+dendro prompt-seal --write    # rewrite the manifest, then revalidate
 ```
 
 Commit the re-sealed manifest with the prompt change. Re-sealing attests bytes, not semantic

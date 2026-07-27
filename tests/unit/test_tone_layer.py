@@ -1,8 +1,8 @@
 """The tone layer may add voice and nothing else.
 
-This is the test that keeps the duck honest. If someone later replaces the deterministic
-tone layer with a model call, these assertions are what stop "make it punchier" from
-quietly becoming "make it more certain".
+This is the test that keeps the presentation layer honest. If someone later replaces the
+deterministic tone layer with a model call, these assertions are what stop "make it punchier"
+from quietly becoming "make it more certain".
 """
 
 from __future__ import annotations
@@ -11,10 +11,10 @@ from pathlib import Path
 
 import pytest
 
-from evil_duck_dendro.config import DEFAULT_PERSONALITY_ROOT
-from evil_duck_dendro.nodes.tone_layer import apply_tone as _apply_tone
-from evil_duck_dendro.prompts.library import load_personality_profile
-from evil_duck_dendro.schemas.decisions import (
+from dendro_inspector.config import DEFAULT_PERSONALITY_ROOT
+from dendro_inspector.nodes.tone_layer import apply_tone as _apply_tone
+from dendro_inspector.prompts.library import load_personality_profile
+from dendro_inspector.schemas.decisions import (
     CaseResponse,
     DecisionStatus,
     FinalDecision,
@@ -22,13 +22,13 @@ from evil_duck_dendro.schemas.decisions import (
     ToneMode,
     assert_tone_preserved_decision,
 )
-from evil_duck_dendro.schemas.taxon import Confidence, Resolution
+from dendro_inspector.schemas.taxon import Confidence, Resolution
 
 PUBLIC_PROFILE = load_personality_profile(
-    Path(__file__).resolve().parents[2] / DEFAULT_PERSONALITY_ROOT / "evil-duck-public.md"
+    Path(__file__).resolve().parents[2] / DEFAULT_PERSONALITY_ROOT / "standard.md"
 )
 UNFILTERED_PROFILE = load_personality_profile(
-    Path(__file__).resolve().parents[2] / DEFAULT_PERSONALITY_ROOT / "evil-duck.md"
+    Path(__file__).resolve().parents[2] / DEFAULT_PERSONALITY_ROOT / "direct.md"
 )
 
 
@@ -113,11 +113,11 @@ class TestGuardrail:
 class TestFraming:
     def test_ukrainian_is_the_default_output_language(self):
         """Section 4 of the domain prompt: `Мова відповіді за замовчуванням: українська`."""
-        assert "Кряк" in apply_tone(_response()).human_readable
+        assert "Оцінка" in apply_tone(_response()).human_readable
 
     def test_english_is_available(self):
         english = _response().model_copy(update={"locale": "en"})
-        assert "Kryak" in apply_tone(english).human_readable
+        assert "Assessment" in apply_tone(english).human_readable
 
     def test_insufficient_evidence_is_always_delivered_cautiously(self):
         """Whatever mode was computed, a weak photograph is never delivered in hard voice."""
@@ -146,7 +146,7 @@ class TestFraming:
         corrective = _response().model_copy(update={"tone_mode": ToneMode.CORRECTIVE})
         text = apply_tone(corrective).human_readable
         assert "Приймаю" in text
-        assert "Кряк" not in text
+        assert "Оцінка" not in text
 
 
 class TestJokePermission:
@@ -186,7 +186,7 @@ class TestProfileSeparation:
     """Register is a deployment choice; the science is not."""
 
     def test_the_public_profile_is_the_shipped_default(self):
-        assert PUBLIC_PROFILE.profile == "evil_duck_public"
+        assert PUBLIC_PROFILE.profile == "standard"
         assert not PUBLIC_PROFILE.allows_profanity
 
     def test_the_unfiltered_profile_declares_itself(self):

@@ -15,8 +15,8 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
-from evil_duck_dendro.config import AppConfig, PromptConfig, load_config
-from evil_duck_dendro.prompts.library import (
+from dendro_inspector.config import AppConfig, PromptConfig, load_config
+from dendro_inspector.prompts.library import (
     DETERMINISTIC_POLICY_REVISION,
     PLACEHOLDER_MARKER,
     DomainPromptMissingError,
@@ -26,9 +26,9 @@ from evil_duck_dendro.prompts.library import (
     PromptPolicyManifest,
     load_domain_prompt,
 )
-from evil_duck_dendro.prompts.seal import apply_seal, plan_seal, render_manifest
-from evil_duck_dendro.providers.registry import ProviderRegistry
-from evil_duck_dendro.runner import build_context
+from dendro_inspector.prompts.seal import apply_seal, plan_seal, render_manifest
+from dendro_inspector.providers.registry import ProviderRegistry
+from dendro_inspector.runner import build_context
 
 pytestmark = pytest.mark.contract
 
@@ -67,7 +67,7 @@ class TestLoadedUnchanged:
     def test_hash_is_the_hash_of_the_file(self, repo_root):
         path = repo_root / "prompts" / "domain" / "system-prompt.md"
         expected = hashlib.sha256(path.read_bytes()).hexdigest()
-        assert expected == "b4c38c00ac0a274322488cf93ed504ac4d19617e6dde0a55f4600126c06cf7d7"
+        assert expected == "23ab9d12e0d09abc76888a275e7128b922dd8850f03ebcae6af3b88cce50d34a"
         assert load_domain_prompt(path).sha256 == expected
 
     def test_text_is_not_stripped_normalised_or_reformatted(self, tmp_path):
@@ -100,7 +100,7 @@ class TestFailsLoudly:
             load_domain_prompt(tmp_path / "absent.md")
         message = str(exc.value)
         assert "user-managed artifact" in message
-        assert "EVIL_DUCK_DOMAIN_PROMPT_PATH" in message
+        assert "DENDRO_DOMAIN_PROMPT_PATH" in message
 
     def test_missing_domain_prompt_is_never_silently_substituted(self, tmp_path):
         library = PromptLibrary(PromptConfig(domain_prompt_path=tmp_path / "absent.md"))
@@ -236,7 +236,7 @@ class TestPromptPolicyManifest:
         custom.write_bytes((repo_root / "prompts" / "domain" / "system-prompt.md").read_bytes())
         config = PromptConfig(domain_prompt_path=Path("custom/domain.md"))
 
-        with pytest.raises(PromptPolicyError, match="EVIL_DUCK_PROMPT_MANIFEST_PATH"):
+        with pytest.raises(PromptPolicyError, match="DENDRO_PROMPT_MANIFEST_PATH"):
             PromptLibrary(config, root=tmp_path).validate_policy()
 
     def test_custom_prompt_with_matching_external_manifest_is_compatible(self, repo_root, tmp_path):
@@ -294,7 +294,7 @@ class TestPromptPolicyManifest:
         assert "tampered after validation" not in composed
 
     def test_manifest_path_is_loaded_from_the_environment(self, monkeypatch):
-        monkeypatch.setenv("EVIL_DUCK_PROMPT_MANIFEST_PATH", "custom/manifest.yaml")
+        monkeypatch.setenv("DENDRO_PROMPT_MANIFEST_PATH", "custom/manifest.yaml")
         assert load_config().prompts.manifest_path == Path("custom/manifest.yaml")
 
     def test_re_sealing_is_the_documented_way_back_from_a_hash_mismatch(self, repo_root, tmp_path):
@@ -353,7 +353,7 @@ class TestPromptSeal:
 
         assert not plan.up_to_date
         assert [(change.old, change.new) for change in plan.changes] == [
-            ("b4c38c00ac0a274322488cf93ed504ac4d19617e6dde0a55f4600126c06cf7d7", expected)
+            ("23ab9d12e0d09abc76888a275e7128b922dd8850f03ebcae6af3b88cce50d34a", expected)
         ]
         assert "->" in plan.changes[0].render()
         assert manifest_path.read_bytes() == before
@@ -435,7 +435,7 @@ class TestPromptSeal:
         custom.parent.mkdir()
         custom.write_bytes((repo_root / "prompts" / "domain" / "system-prompt.md").read_bytes())
 
-        with pytest.raises(PromptPolicyError, match="EVIL_DUCK_PROMPT_MANIFEST_PATH"):
+        with pytest.raises(PromptPolicyError, match="DENDRO_PROMPT_MANIFEST_PATH"):
             plan_seal(PromptConfig(domain_prompt_path=Path("custom/domain.md")), root=tmp_path)
 
     def test_it_seals_the_configured_paths_for_a_custom_deployment(self, repo_root, tmp_path):

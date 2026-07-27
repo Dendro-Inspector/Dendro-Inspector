@@ -1,7 +1,7 @@
 # Architecture
 
 - **Status:** Current
-- **Owner:** Evil Duck Dendro Inspector maintainers
+- **Owner:** Dendro Inspector maintainers
 - **Date:** 2026-07-27
 - **Last-verified:** 2026-07-27
 
@@ -217,11 +217,11 @@ before any provider can be called. `PromptLibrary.compose()` uses the cached adm
 so a file modified after validation cannot enter the request.
 
 The default domain prompt is still passed byte-for-byte — no normalisation, line-ending
-rewriting or templating. A custom `EVIL_DUCK_DOMAIN_PROMPT_PATH` requires a non-default
-`EVIL_DUCK_PROMPT_MANIFEST_PATH` whose path and hash match. That manifest is an explicit
+rewriting or templating. A custom `DENDRO_DOMAIN_PROMPT_PATH` requires a non-default
+`DENDRO_PROMPT_MANIFEST_PATH` whose path and hash match. That manifest is an explicit
 operator attestation of compatibility, not a proof of natural-language semantic equivalence.
 
-Prompt trace metadata and `evil-duck prompt-info` record the domain and manifest hashes,
+Prompt trace metadata and `dendro prompt-info` record the domain and manifest hashes,
 manifest schema, policy revision, node revision and compatibility status. Composition order is
 fixed: domain prompt, optional response-register note, node prompt, then case context fenced as
 untrusted data.
@@ -230,7 +230,7 @@ untrusted data.
 
 Fail-closed hashing needs a supported way to attest new bytes, or replacing the user-managed
 prompt — the one workflow the project exists to carry — becomes unrecoverable without
-hand-edited YAML and an out-of-band SHA-256. `evil-duck prompt-seal` recomputes the domain and
+hand-edited YAML and an out-of-band SHA-256. `dendro prompt-seal` recomputes the domain and
 node hashes for the configured paths and regenerates the configured manifest from one
 template; `prompts/seal.py` holds the logic and the CLI only renders it. The node-prompt file
 set is read from the configured root, so an added or deleted prompt is sealed like an edited
@@ -301,11 +301,11 @@ a backstop against a routing bug, not the primary guarantee.
 
 ## Implementation references
 
-- [`src/evil_duck_dendro/schemas/`](../src/evil_duck_dendro/schemas) — contracts
-- [`src/evil_duck_dendro/graph/definition.py`](../src/evil_duck_dendro/graph/definition.py) — graph declaration
-- [`src/evil_duck_dendro/graph/routing.py`](../src/evil_duck_dendro/graph/routing.py) — termination argument
-- [`src/evil_duck_dendro/knowledge/candidate_validation.py`](../src/evil_duck_dendro/knowledge/candidate_validation.py) — candidate admission
-- [`src/evil_duck_dendro/nodes/final_decision.py`](../src/evil_duck_dendro/nodes/final_decision.py) — resolution, identity and confidence bounds
-- [`src/evil_duck_dendro/nodes/review_synthesizer.py`](../src/evil_duck_dendro/nodes/review_synthesizer.py) — finding and rerank admission
-- [`src/evil_duck_dendro/prompts/library.py`](../src/evil_duck_dendro/prompts/library.py) — prompt-policy compatibility
+- [`src/dendro_inspector/schemas/`](../src/dendro_inspector/schemas) — contracts
+- [`src/dendro_inspector/graph/definition.py`](../src/dendro_inspector/graph/definition.py) — graph declaration
+- [`src/dendro_inspector/graph/routing.py`](../src/dendro_inspector/graph/routing.py) — termination argument
+- [`src/dendro_inspector/knowledge/candidate_validation.py`](../src/dendro_inspector/knowledge/candidate_validation.py) — candidate admission
+- [`src/dendro_inspector/nodes/final_decision.py`](../src/dendro_inspector/nodes/final_decision.py) — resolution, identity and confidence bounds
+- [`src/dendro_inspector/nodes/review_synthesizer.py`](../src/dendro_inspector/nodes/review_synthesizer.py) — finding and rerank admission
+- [`src/dendro_inspector/prompts/library.py`](../src/dendro_inspector/prompts/library.py) — prompt-policy compatibility
 - [`docs/agent-graph.md`](agent-graph.md), [`docs/review-pipeline.md`](review-pipeline.md), [`docs/model-roles.md`](model-roles.md)

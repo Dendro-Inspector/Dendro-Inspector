@@ -11,8 +11,8 @@ import json
 import pytest
 import yaml
 
-from evil_duck_dendro.evaluation.runner import load_cases
-from evil_duck_dendro.schemas.taxon import (
+from dendro_inspector.evaluation.runner import load_cases
+from dendro_inspector.schemas.taxon import (
     ComparisonCard,
     Provenance,
     RegionalPack,

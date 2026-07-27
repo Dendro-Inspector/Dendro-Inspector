@@ -162,7 +162,7 @@ ruff format --check .              # formatting
 ruff check .                       # lint
 mypy                               # strict on src, relaxed on tests
 pytest                             # unit, contract, integration, evaluation
-evil-duck eval --suite public      # the public conformance suite
+dendro eval --suite public      # the public conformance suite
 ```
 
 Do not merge if any of these fail. The evaluation suite is fully deterministic — a red case
@@ -360,7 +360,7 @@ When reasoning about agents, roles, capabilities, limits, or project rules:
 
 ## 12. Project Facts
 
-**Evil Duck Dendro Inspector** — an eval-driven, evidence-based, multimodal agent that
+**Dendro Inspector** — an eval-driven, evidence-based, multimodal agent that
 identifies trees, logs, bark, leaves, fruit, cones and wood from photographs.
 
 The one loop it must do reliably:
@@ -390,17 +390,17 @@ calibrated uncertainty, evaluation and CI. **It is never forced to return a spec
 
 | File | Purpose | When to modify |
 |---|---|---|
-| `src/evil_duck_dendro/schemas/base.py` | Frozen contract base, constrained string types | Rarely — a change here touches everything |
-| `src/evil_duck_dendro/schemas/evidence.py` | Observation vs inference; referential integrity | Evidence contract changes |
-| `src/evil_duck_dendro/graph/definition.py` | The single graph declaration | Adding or rewiring a node |
-| `src/evil_duck_dendro/graph/routing.py` | Pure routing; the termination argument | Changing a branch condition |
-| `src/evil_duck_dendro/knowledge/evidence_hierarchy.py` | Tiers, ceilings, attachment rule, evidence trust projection — §2/§6 of the domain prompt | Only when the domain prompt changes |
-| `src/evil_duck_dendro/knowledge/candidate_validation.py` | The candidate admission boundary, shared by generation and every reviewer ranking | Never widen it to admit a candidate a case needs |
-| `src/evil_duck_dendro/nodes/final_decision.py` | The claim cap, identity selection and downgrade composition | Never loosen the cap to pass a test |
-| `src/evil_duck_dendro/nodes/review_synthesizer.py` | Finding admissibility and rerank binding, shared with the arbiter | Adding a finding category |
-| `src/evil_duck_dendro/nodes/escalation_gate.py` | Trigger / suppressor precedence | Tuning arbitration cost |
-| `src/evil_duck_dendro/prompts/library.py` | Prompt loading, hashing and fail-closed policy validation | Effectively never — contract-tested |
-| `prompts/versions.yaml` | The prompt/policy compatibility manifest | Only via `evil-duck prompt-seal --write` |
+| `src/dendro_inspector/schemas/base.py` | Frozen contract base, constrained string types | Rarely — a change here touches everything |
+| `src/dendro_inspector/schemas/evidence.py` | Observation vs inference; referential integrity | Evidence contract changes |
+| `src/dendro_inspector/graph/definition.py` | The single graph declaration | Adding or rewiring a node |
+| `src/dendro_inspector/graph/routing.py` | Pure routing; the termination argument | Changing a branch condition |
+| `src/dendro_inspector/knowledge/evidence_hierarchy.py` | Tiers, ceilings, attachment rule, evidence trust projection — §2/§6 of the domain prompt | Only when the domain prompt changes |
+| `src/dendro_inspector/knowledge/candidate_validation.py` | The candidate admission boundary, shared by generation and every reviewer ranking | Never widen it to admit a candidate a case needs |
+| `src/dendro_inspector/nodes/final_decision.py` | The claim cap, identity selection and downgrade composition | Never loosen the cap to pass a test |
+| `src/dendro_inspector/nodes/review_synthesizer.py` | Finding admissibility and rerank binding, shared with the arbiter | Adding a finding category |
+| `src/dendro_inspector/nodes/escalation_gate.py` | Trigger / suppressor precedence | Tuning arbitration cost |
+| `src/dendro_inspector/prompts/library.py` | Prompt loading, hashing and fail-closed policy validation | Effectively never — contract-tested |
+| `prompts/versions.yaml` | The prompt/policy compatibility manifest | Only via `dendro prompt-seal --write` |
 | `knowledge/taxa/*.yaml` | Taxon cards; `supported_resolution` caps claims | Adding a taxon (no code change) |
 | `evals/public/*.yaml`, `evals/fixtures/*.json` | Deterministic evaluation | Adding a case |
 | `prompts/domain/system-prompt.md` | **User artifact and primary knowledge source.** Never translate, shorten or reformat | Only the owner replaces it |
@@ -410,11 +410,11 @@ calibrated uncertainty, evaluation and CI. **It is never forced to return a spec
 ```bash
 pip install -e ".[dev]"            # setup
 pytest                             # tests
-evil-duck eval --suite public      # evaluation
-evil-duck graph                    # render the executable graph
-evil-duck inspect --fake primary-pass --image examples/log.jpg
-evil-duck prompt-info              # which domain prompt is loaded, and its hash
-evil-duck prompt-seal              # re-pin prompt hashes after the owner edits a prompt
+dendro eval --suite public      # evaluation
+dendro graph                    # render the executable graph
+dendro inspect --fake primary-pass --image examples/log.jpg
+dendro prompt-info              # which domain prompt is loaded, and its hash
+dendro prompt-seal              # re-pin prompt hashes after the owner edits a prompt
 ```
 
 `prompt-seal` is a dry run by default and needs `--write` to touch `prompts/versions.yaml`.
@@ -462,7 +462,7 @@ Derivations to keep in step when it changes:
 Do not "improve" the prompt to make code easier. It is edited only by its owner.
 
 Editing it does mean re-sealing: `prompts/versions.yaml` pins the prompt's hash, and the run
-fails closed until `evil-duck prompt-seal --write` re-attests it. That re-attests bytes and
+fails closed until `dendro prompt-seal --write` re-attests it. That re-attests bytes and
 nothing else — the conformance review above is still owed.
 
 Not everything in the derived files comes from the prompt. Family placements, `larix`, and

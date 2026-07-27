@@ -6,8 +6,8 @@ import contextlib
 
 import pytest
 
-from evil_duck_dendro.config import GraphConfig
-from evil_duck_dendro.graph.definition import (
+from dendro_inspector.config import GraphConfig
+from dendro_inspector.graph.definition import (
     ENTRY_NODE,
     EXECUTABLE_NODES,
     GRAPH_EDGES,
@@ -19,15 +19,15 @@ from evil_duck_dendro.graph.definition import (
     render_mermaid,
     validate_definition,
 )
-from evil_duck_dendro.graph.routing import RoutingError, next_step
-from evil_duck_dendro.graph.state import (
+from dendro_inspector.graph.routing import RoutingError, next_step
+from dendro_inspector.graph.state import (
     EscalationDecision,
     EvidenceQualityReport,
     GraphState,
 )
-from evil_duck_dendro.nodes import build_registry
-from evil_duck_dendro.schemas.input import CaseInput
-from evil_duck_dendro.schemas.reviews import ReviewSynthesis
+from dendro_inspector.nodes import build_registry
+from dendro_inspector.schemas.input import CaseInput
+from dendro_inspector.schemas.reviews import ReviewSynthesis
 
 pytestmark = pytest.mark.contract
 

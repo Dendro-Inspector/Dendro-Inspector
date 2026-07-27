@@ -1,7 +1,7 @@
 # Regional packs
 
 - **Status:** Current
-- **Owner:** Evil Duck Dendro Inspector maintainers
+- **Owner:** Dendro Inspector maintainers
 - **Date:** 2026-07-25
 - **Last-verified:** 2026-07-25
 
@@ -49,7 +49,7 @@ placeholder_content: true
 something as unlikely lowers confidence and raises a finding; it does not remove the
 candidate.
 
-Selected via `EVIL_DUCK_REGION_PACK`, or `KnowledgeConfig(region_pack=...)`. Set it to `None`
+Selected via `DENDRO_REGION_PACK`, or `KnowledgeConfig(region_pack=...)`. Set it to `None`
 to disable regional reasoning entirely, which is the right default for a global deployment.
 
 ## Adding a pack
@@ -76,6 +76,6 @@ knowledge.
 
 ## Implementation references
 
-- [`src/evil_duck_dendro/knowledge/regional_packs.py`](../src/evil_duck_dendro/knowledge/regional_packs.py)
+- [`src/dendro_inspector/knowledge/regional_packs.py`](../src/dendro_inspector/knowledge/regional_packs.py)
 - [`knowledge/regions/eastern-europe.yaml`](../knowledge/regions/eastern-europe.yaml)
 - [`tests/unit/test_knowledge.py`](../tests/unit/test_knowledge.py) — `TestRegionalPriors`

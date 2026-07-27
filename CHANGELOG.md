@@ -10,6 +10,24 @@ get entries.
 
 ## [Unreleased]
 
+The project no longer ships under a mascot name. Identification behaviour is unchanged — the
+frozen 19-case public baseline is byte-identical — but every name a user types moved.
+
+### Changed — breaking
+
+- The installed package is `dendro-inspector` and the import path is `dendro_inspector`.
+- The CLI command is `dendro`, replacing `evil-duck`.
+- Environment variables use the `DENDRO_` prefix, replacing `EVIL_DUCK_`. The old names are
+  not read and no fallback is provided; a deployment that sets them silently gets defaults.
+- Tone profiles are `standard` (default) and `direct`, replacing `evil_duck_public` and
+  `evil_duck`. Their profile files moved to `prompts/personality/standard.md` and
+  `prompts/personality/direct.md`.
+- The domain prompt placeholder marker is `<!-- DENDRO-DOMAIN-PROMPT-PLACEHOLDER -->`.
+- The domain prompt and the response-composer node prompt were reworded to drop the mascot,
+  so `prompts/versions.yaml` records new hashes. Deployments pinning the previous domain
+  prompt hash must re-run `dendro prompt-seal` against their own copy. Policy revision stays
+  `0.2.3`: no rule changed, only wording that never had authority over a verdict.
+
 ## [0.2.3] — 2026-07-27
 
 Firewood evidence now records the physical wood surface, rejects unsupported anatomy and
@@ -98,17 +116,17 @@ unsupported or conflicting recommendations leave the current ranking unchanged.
 **Prompt and deterministic policy compatibility is fail-closed.** `prompts/versions.yaml` now
 pins schema `1`, policy revision `0.2.2`, the canonical domain prompt path/hash, node-prompt
 root/revision, exact file set and per-file hashes. Validation occurs before provider
-construction. Custom `EVIL_DUCK_DOMAIN_PROMPT_PATH` deployments must also set
-`EVIL_DUCK_PROMPT_MANIFEST_PATH` to a matching external compatibility attestation.
+construction. Custom `DENDRO_DOMAIN_PROMPT_PATH` deployments must also set
+`DENDRO_PROMPT_MANIFEST_PATH` to a matching external compatibility attestation.
 
 ### Added
 
-- `evil-duck prompt-seal` re-pins the manifest after the owner edits a prompt. Without it the
+- `dendro prompt-seal` re-pins the manifest after the owner edits a prompt. Without it the
   manifest above made the documented workflow — replace `prompts/domain/system-prompt.md` —
   impossible: the run aborted on a hash mismatch and nothing could rewrite the hash. Dry run by
   default, `--write` to apply, and it never touches the policy revision, because re-sealing
   attests bytes and cannot attest that a changed prompt still means what the code implements.
-- Prompt trace and `evil-duck prompt-info` metadata now include manifest schema, manifest path
+- Prompt trace and `dendro prompt-info` metadata now include manifest schema, manifest path
   and hash, policy revision, node-prompt revision and compatibility status.
 - The public conformance suite expands from nine to sixteen cases: unrelated high-tier evidence,
   all-candidates-removed abstention, resolution-consistent identity, deterministic-finding
@@ -122,7 +140,7 @@ construction. Custom `EVIL_DUCK_DOMAIN_PROMPT_PATH` deployments must also set
 
 ### Fixed
 
-- `evil-duck eval` configures logging like `inspect` does. Without it the new
+- `dendro eval` configures logging like `inspect` does. Without it the new
   `candidate_validation_filtered` warning printed bare and lost `case_id`, `subject_id`,
   `dropped_evidence_ids` and `rejected_taxa` — the fields that say which candidates the new
   boundary removed — along with the JSON formatter's redaction.
@@ -175,11 +193,11 @@ rules and requirements that cannot be formally implemented; the old rule made al
 unfixable. The file is still edited only by its owner.
 
 **Presentation register separated from domain policy.** Personality vocabulary moved out of
-hardcoded Python into `prompts/personality/`, selected by `EVIL_DUCK_TONE_PROFILE`:
+hardcoded Python into `prompts/personality/`, selected by `DENDRO_TONE_PROFILE`:
 
-- `evil_duck_public` (**default**) — dry and direct, safe for demos, workplaces and
+- `standard` (**default**) — dry and direct, safe for demos, workplaces and
   corporate deployment;
-- `evil_duck` — the author's original register.
+- `direct` — the author's original register.
 
 The profile also supplies a register note appended after the domain prompt, so a public
 deployment does not reproduce the prompt's own profanity examples. Switching profile changes
@@ -208,7 +226,7 @@ green is not the same as the suite behaving the same way.
 ### Removed
 
 - The duplicate domain prompt at the repository root. `prompts/domain/system-prompt.md` is
-  the only canonical copy; point elsewhere with `EVIL_DUCK_DOMAIN_PROMPT_PATH`.
+  the only canonical copy; point elsewhere with `DENDRO_DOMAIN_PROMPT_PATH`.
 
 ### Fixed
 
@@ -308,7 +326,7 @@ scientific uncertainty.
 recorded as evidence and never obeyed, and forces escalation. Deliberately conservative
 against false positives on ordinary botanical prose.
 
-**Tone layer that cannot lie.** The factual answer is composed first; the Evil Duck voice is
+**Tone layer that cannot lie.** The factual answer is composed first; the presentation register is
 applied afterwards and a contract check fails the run if any taxon, resolution or confidence
 moved.
 
