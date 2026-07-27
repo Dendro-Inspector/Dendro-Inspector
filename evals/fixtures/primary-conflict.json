@@ -38,7 +38,8 @@
           "source": "image",
           "visibility": "clear",
           "reliability": "low",
-          "image_id": "img-1"
+          "image_id": "img-1",
+          "wood_surface": "rough_end_grain"
         },
         {
           "observation_id": "obs-3",

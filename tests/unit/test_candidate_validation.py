@@ -18,10 +18,12 @@ from evil_duck_dendro.schemas.evidence import (
     ObservationSource,
     Reliability,
     Subject,
+    SubjectKind,
     Visibility,
+    WoodSurface,
 )
 from evil_duck_dendro.schemas.taxon import Resolution
-from tests.conftest import _attachment
+from tests.conftest import _attachment, _wood_surface
 
 
 def _obs(
@@ -33,6 +35,7 @@ def _obs(
     source: ObservationSource = ObservationSource.IMAGE,
     visibility: Visibility = Visibility.CLEAR,
     reliability: Reliability = Reliability.MEDIUM,
+    wood_surface: WoodSurface = WoodSurface.PREPARED_END_GRAIN,
 ) -> Observation:
     return Observation(
         observation_id=observation_id,
@@ -44,6 +47,7 @@ def _obs(
         visibility=visibility,
         reliability=reliability,
         attachment=_attachment(feature, True),
+        wood_surface=_wood_surface(feature, wood_surface),
     )
 
 
@@ -251,3 +255,102 @@ def test_all_candidates_removed_leaves_an_explicit_empty_set(knowledge):
 
     assert validated.subject_id == "log_1"
     assert validated.candidates == ()
+
+
+def test_colour_only_candidate_is_rejected_even_when_the_card_matches(knowledge):
+    evidence = _packet(
+        _obs(
+            "tone",
+            "heartwood.tone",
+            "warm_yellow_orange",
+            wood_surface=WoodSurface.SPLIT_FACE,
+        )
+    )
+    candidate_set = CandidateSet(
+        subject_id="log_1",
+        candidates=(_candidate("prunus", 1, "tone"),),
+    )
+
+    result = validate_candidate_set_with_report(candidate_set, evidence, knowledge)
+
+    assert result.candidate_set.candidates == ()
+    assert result.rejected_taxa == ("prunus",)
+    assert result.dropped_evidence_ids == ("tone",)
+
+
+def test_colour_plus_context_is_not_structural_corroboration(knowledge):
+    evidence = _packet(
+        _obs("tone", "heartwood.tone", "warm_yellow_orange"),
+        _obs("site", "context.site", "garden_roadside"),
+    )
+    candidate_set = CandidateSet(
+        subject_id="log_1",
+        candidates=(_candidate("prunus", 1, "tone", "site"),),
+    )
+
+    result = validate_candidate_set_with_report(candidate_set, evidence, knowledge)
+
+    assert result.candidate_set.candidates == ()
+    assert set(result.dropped_evidence_ids) == {"tone", "site"}
+
+
+def test_colour_with_exact_structural_support_survives_conservatively(knowledge):
+    evidence = _packet(
+        _obs(
+            "tone",
+            "heartwood.tone",
+            "warm_yellow_orange",
+            wood_surface=WoodSurface.SPLIT_FACE,
+        ),
+        _obs("lenticels", "lenticels.orientation", "horizontal"),
+    )
+    candidate_set = CandidateSet(
+        subject_id="log_1",
+        candidates=(_candidate("prunus", 1, "tone", "lenticels"),),
+    )
+
+    validated = validate_candidate_set(candidate_set, evidence, knowledge)
+
+    assert validated.leader is not None
+    assert validated.leader.supporting_evidence_ids == ("tone", "lenticels")
+    assert candidate_support_tier(validated.leader, evidence, "log_1") is EvidenceTier.BARK
+
+
+def test_colour_spelling_is_not_rewritten_at_the_admission_boundary(knowledge):
+    evidence = _packet(
+        _obs("tone", "heartwood.color", "warm_yellow_orange"),
+        _obs("lenticels", "lenticels.orientation", "horizontal"),
+    )
+    candidate_set = CandidateSet(
+        subject_id="log_1",
+        candidates=(_candidate("prunus", 1, "tone", "lenticels"),),
+    )
+
+    validated = validate_candidate_set(candidate_set, evidence, knowledge)
+
+    assert validated.leader is not None
+    assert validated.leader.supporting_evidence_ids == ("lenticels",)
+
+
+def test_corroborated_material_group_candidate_remains_admissible(knowledge):
+    evidence = _packet(
+        _obs("bark", "bark.texture", "scaly_plates", subject_id="pile"),
+        _obs(
+            "resin",
+            "resin.presence",
+            "present",
+            subject_id="pile",
+            wood_surface=WoodSurface.ROUGH_END_GRAIN,
+        ),
+        subjects=(Subject(subject_id="pile", kind=SubjectKind.MATERIAL_GROUP),),
+    )
+    candidate_set = CandidateSet(
+        subject_id="pile",
+        candidates=(_candidate("pinus", 1, "bark", "resin"),),
+    )
+
+    validated = validate_candidate_set(candidate_set, evidence, knowledge)
+
+    assert validated.leader is not None
+    assert validated.leader.taxon == "pinus"
+    assert candidate_support_tier(validated.leader, evidence, "pile") is EvidenceTier.BARK

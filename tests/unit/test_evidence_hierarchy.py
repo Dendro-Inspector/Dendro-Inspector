@@ -29,9 +29,10 @@ from evil_duck_dendro.schemas.evidence import (
     Reliability,
     Subject,
     Visibility,
+    WoodSurface,
 )
 from evil_duck_dendro.schemas.taxon import Confidence, Resolution
-from tests.conftest import _attachment
+from tests.conftest import _attachment, _wood_surface
 
 DETACHABLE = ("leaf", "needles", "fruit", "cones", "branch", "bud", "seed", "nut", "acorn")
 
@@ -45,6 +46,7 @@ def _obs(
     source=ObservationSource.IMAGE,
     attached=True,
     subject_id="log_1",
+    wood_surface=WoodSurface.PREPARED_END_GRAIN,
 ):
     return Observation(
         observation_id=observation_id,
@@ -56,6 +58,7 @@ def _obs(
         visibility=visibility,
         reliability=reliability,
         attachment=_attachment(feature, attached),
+        wood_surface=_wood_surface(feature, wood_surface),
     )
 
 
@@ -323,6 +326,54 @@ class TestTrustProjection:
         projection = project_evidence(packet, "i1", "log_1")
         assert not projection.source_observations
         assert projection.trust is EvidenceTrust.CONTEXT_ONLY
+
+
+class TestWoodSurfaceProjection:
+    @pytest.mark.parametrize(
+        "surface",
+        (
+            WoodSurface.ROUGH_END_GRAIN,
+            WoodSurface.SPLIT_FACE,
+            WoodSurface.PLANED_FACE,
+            WoodSurface.UNKNOWN,
+        ),
+    )
+    def test_unprepared_anatomy_is_context_only(self, surface):
+        observation = _obs("o1", "pores.arrangement", wood_surface=surface)
+        assert observation_trust(observation) is EvidenceTrust.CONTEXT_ONLY
+        assert effective_tier(observation) is EvidenceTier.CONTEXT
+
+    def test_prepared_end_grain_can_carry_anatomy(self):
+        observation = _obs("o1", "pores.arrangement")
+        assert observation_trust(observation) is EvidenceTrust.FULL_POSITIVE
+        assert effective_tier(observation) is EvidenceTier.WOOD_CUT
+
+    @pytest.mark.parametrize("feature", ("rings.width", "resin.presence"))
+    def test_coarse_wood_features_survive_rough_end_grain_at_a_cap(self, feature):
+        observation = _obs(
+            "o1",
+            feature,
+            wood_surface=WoodSurface.ROUGH_END_GRAIN,
+        )
+        assert observation_trust(observation) is EvidenceTrust.CAPPED_POSITIVE
+        assert effective_tier(observation) is EvidenceTier.BARK
+
+    def test_colour_is_always_capped_even_on_prepared_end_grain(self):
+        observation = _obs("o1", "heartwood.tone")
+        assert observation_trust(observation) is EvidenceTrust.CAPPED_POSITIVE
+        assert effective_tier(observation) is EvidenceTier.BARK
+
+    def test_legacy_unknown_surface_fails_closed_for_anatomy(self):
+        observation = Observation(
+            observation_id="o1",
+            feature="wood.resin_canals",
+            value="visible",
+            subject_id="log_1",
+            source=ObservationSource.IMAGE,
+            image_id="img-1",
+        )
+        assert observation.wood_surface is WoodSurface.UNKNOWN
+        assert effective_tier(observation) is EvidenceTier.CONTEXT
 
 
 class TestSubjectLevel:

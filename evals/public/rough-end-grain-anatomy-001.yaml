@@ -1,0 +1,28 @@
+case_id: rough-end-grain-anatomy-001
+title: Rough end grain cannot carry prepared wood anatomy
+description: >-
+  A rough chainsaw cut is described with exact pore and ray tokens. Those observations remain
+  recorded but must be demoted to context because the surface is not prepared end grain.
+scenario: rough-end-grain-anatomy
+
+input:
+  case_id: rough-end-grain-anatomy-001
+  images:
+    - image_id: img-1
+      path: examples/rough-end-grain-anatomy-001.jpg
+      media_type: image/jpeg
+  user_text: The pores look diffuse. Is this beech?
+  declared_object_type: wood
+
+expect:
+  expected_candidate_taxa: []
+  expected_resolution: unknown
+  max_resolution: unknown
+  max_confidence: low
+  expected_status: insufficient_evidence
+  expected_evidence_tier: 1
+  require_next_photo: true
+  require_escalation: false
+  max_retries: 0
+
+placeholder_content: true

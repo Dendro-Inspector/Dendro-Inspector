@@ -10,10 +10,38 @@ get entries.
 
 ## [Unreleased]
 
-First piece of scientific benchmark governance, landed before any real photograph exists —
-a rule against overfitting is worthless if it arrives after the first tempting failure.
+## [0.2.3] — 2026-07-27
+
+Firewood evidence now records the physical wood surface, rejects unsupported anatomy and
+colour-only guesses deterministically, and preserves the domain prompt's qualified pile-level
+identification path without turning one field case into botanical knowledge.
+
+### Changed
+
+- Wood/cut observations carry `prepared_end_grain`, `rough_end_grain`, `split_face`,
+  `planed_face` or `unknown`. Legacy packets without the field parse as `unknown`; newly
+  generated extractor output must answer explicitly. Pores, rays, vessels and resin canals
+  require prepared transverse end grain, while coarse rings and visible resin remain usable at
+  a conservative cap.
+- Colour and tone are always bark-capped and cannot admit a candidate without exact non-colour
+  evidence above context. Feature vocabulary remains exact: `.color`, `.colour` and `.tone`
+  are classified as colour but never rewritten into one another for card matching.
+- Declared split firewood deterministically forces mixed-taxa scope and requests a clean end
+  grain plus surrounding bark from one labelled piece. `material_group` subjects are not
+  blanket-rejected: corroborated pile-level evidence can still support a conservative result.
+- Package, graph trace, deterministic prompt policy and the public baseline now share release
+  identity `0.2.3`; node prompts are revision `0.2.0`.
 
 ### Added
+
+- Three public conformance cases: rough-end-grain anatomy fails closed, split-face colour-only
+  firewood abstains with a targeted request, and a corroborated Pinus log pile remains
+  candidate-bearing. All nineteen cases pass with zero overconfidence, and the original sixteen
+  decisions have no drift from `public-v0.2.2`.
+- Duplicate `ImageLimitation.image_id` values now fail schema validation, removing tuple-order
+  dependence from evidence authority.
+- First piece of scientific benchmark governance, landed before any real photograph exists —
+  a rule against overfitting is worthless if it arrives after the first tempting failure.
 
 - `AGENTS.md` §16 **Benchmark Governance**: golden cases are immutable evaluation assets.
   Cards, prompts, thresholds and routing rules must not be tuned against an individual case.
@@ -22,6 +50,14 @@ a rule against overfitting is worthless if it arrives after the first tempting f
   and new non-golden tests.
 - Stated separation between `evals/public/` (conformance and regression, synthetic) and
   `evals/golden/` (botanical correctness, private), and the blind-evaluation requirement.
+
+### Fixed
+
+- Context-tier observations such as `context.site` can no longer count as positive candidate
+  support, so colour plus location cannot manufacture structural corroboration.
+- Five existing fake-provider fixtures now state `rough_end_grain` on their rough cut-face
+  observations. This is a schema migration only: all sixteen pre-existing public decisions are
+  unchanged against the frozen v0.2.2 baseline.
 
 ## [0.2.2] — 2026-07-26
 
@@ -320,7 +356,8 @@ documents, GitHub Actions CI with a blocking secret scan.
 
 Compare links resolve once the matching tags are pushed; none exist yet.
 
-[Unreleased]: https://github.com/Dendro-Inspector/Dendro-Inspector/compare/v0.2.2...HEAD
+[Unreleased]: https://github.com/Dendro-Inspector/Dendro-Inspector/compare/v0.2.3...HEAD
+[0.2.3]: https://github.com/Dendro-Inspector/Dendro-Inspector/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/Dendro-Inspector/Dendro-Inspector/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/Dendro-Inspector/Dendro-Inspector/compare/v0.1.0...v0.2.1
 [0.2.0]: https://github.com/Dendro-Inspector/Dendro-Inspector/compare/v0.1.0...v0.2.0

@@ -15,6 +15,8 @@ Return a single JSON object matching the `InspectionPlan` schema:
 - `expect_multiple_subjects` — true when more than one physically distinct thing appears
   identifiable in the frame.
 - `bark_only_input` — true when bark or cut wood surface is all that is available.
+- `split_firewood_input` — true when the declared input is split firewood; deterministic code
+  may force this fact even when you omit it.
 - `notes` — short, factual planning notes.
 
 ## Rules
@@ -25,4 +27,7 @@ Return a single JSON object matching the `InspectionPlan` schema:
 - If the frame appears to contain several logs, several trees, or a mix of detached parts,
   say so — downstream nodes scope every conclusion per subject and cannot recover a subject
   you failed to anticipate.
+- For split firewood, plan one labelled piece at a time: a clean perpendicular end grain and
+  the bark around that same piece. The pile may contain multiple taxa, but a corroborated
+  pile-level pattern is still evidence about the pile.
 - Do not identify anything here. That is not this node's job.

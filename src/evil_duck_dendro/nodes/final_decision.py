@@ -31,7 +31,7 @@ from evil_duck_dendro.knowledge.evidence_hierarchy import (
     resolution_ceiling,
 )
 from evil_duck_dendro.knowledge.taxon_cards import match_card
-from evil_duck_dendro.nodes.photo_planner import choose_request
+from evil_duck_dendro.nodes.photo_planner import choose_request, effective_object_type
 from evil_duck_dendro.schemas.candidates import Candidate, CandidateSet, SupportStrength
 from evil_duck_dendro.schemas.decisions import (
     DecisionStatus,
@@ -400,6 +400,7 @@ def _contradiction_summary(
 
 
 def _next_photo(
+    state: GraphState,
     ctx: NodeContext,
     candidate_set: CandidateSet,
     leader: Candidate,
@@ -415,6 +416,16 @@ def _next_photo(
     if tier is EvidenceTier.FRUIT_SEED and confidence is Confidence.HIGH:
         return None
 
+    if effective_object_type(state, candidate_set.subject_id) is DeclaredObjectType.SPLIT_FIREWOOD:
+        return PhotoRequest(
+            target="prepared_end_grain_and_bark_circumference",
+            reason=(
+                "Label one piece, then photograph a clean perpendicular end grain and the "
+                "bark around that same piece; other pieces may be different taxa."
+            ),
+            subject_id=candidate_set.subject_id,
+        )
+
     taxa = frozenset(candidate.taxon for candidate in candidate_set.ordered)
     photos = recommended_photos(ctx.knowledge.comparisons_for(taxa))
     if not photos:
@@ -428,10 +439,21 @@ def _next_photo(
     )
 
 
-def _unresolved(state: GraphState, subject_id: str, leader: Candidate) -> tuple[str, ...]:
-    questions = [
+def _unresolved(
+    state: GraphState,
+    evidence: EvidencePacket,
+    subject_id: str,
+    leader: Candidate,
+) -> tuple[str, ...]:
+    questions = []
+    if evidence.possible_multiple_taxa:
+        questions.append(
+            "This verdict is scoped to this subject; other pieces or trees in the frame may "
+            "be different taxa."
+        )
+    questions.extend(
         f"Decisive feature not visible: {item}" for item in leader.missing_decisive_features
-    ]
+    )
     questions.extend(
         finding.summary
         for synthesis in _syntheses(state)
@@ -456,7 +478,7 @@ def decide_subject(
         return FinalDecision(
             subject_id=subject_id,
             status=DecisionStatus.INSUFFICIENT_EVIDENCE,
-            best_next_photo=choose_request(state, ctx),
+            best_next_photo=choose_request(state, ctx, subject_id),
             arbiter_used=state.arbiter_used,
         )
 
@@ -470,8 +492,8 @@ def decide_subject(
             subject_id=subject_id,
             status=DecisionStatus.INSUFFICIENT_EVIDENCE,
             strongest_support=_support_summary(evidence, leader),
-            unresolved_questions=_unresolved(state, subject_id, leader),
-            best_next_photo=_next_photo(ctx, reranked, leader, tier, Confidence.LOW),
+            unresolved_questions=_unresolved(state, evidence, subject_id, leader),
+            best_next_photo=_next_photo(state, ctx, reranked, leader, tier, Confidence.LOW),
             arbiter_used=state.arbiter_used,
             user_claim_verdict=verdict,
             evidence_tier=int(tier),
@@ -500,8 +522,8 @@ def decide_subject(
             state, ctx, subject_id, evidence, selected, leader.taxon
         ),
         nearest_alternative=_nearest_alternative(ctx, reranked.runner_up, resolution, selected),
-        unresolved_questions=_unresolved(state, subject_id, leader),
-        best_next_photo=_next_photo(ctx, reranked, leader, tier, confidence),
+        unresolved_questions=_unresolved(state, evidence, subject_id, leader),
+        best_next_photo=_next_photo(state, ctx, reranked, leader, tier, confidence),
         arbiter_used=state.arbiter_used,
         user_claim_verdict=verdict,
         evidence_tier=int(tier),

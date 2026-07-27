@@ -1,0 +1,105 @@
+{
+  "scenario": "log-pile-pinus",
+  "description": "A corroborated material-group pile remains eligible for a conservative Pinus genus result.",
+  "responses": {
+    "primary:planner": {
+      "target_features": ["bark.texture", "wood.tone", "resin.presence"],
+      "expect_multiple_subjects": true,
+      "bark_only_input": false,
+      "split_firewood_input": false,
+      "notes": ["Assess the repeated pile-level pattern without claiming every unseen piece is identical."]
+    },
+    "primary:evidence_extractor": {
+      "subjects": [
+        {
+          "subject_id": "log_pile",
+          "kind": "material_group",
+          "description": "A visually consistent pile of conifer logs with repeated bark and cut-end traits.",
+          "image_ids": ["img-1"]
+        }
+      ],
+      "observations": [
+        {
+          "observation_id": "bark",
+          "feature": "bark.texture",
+          "value": "scaly_plates",
+          "subject_id": "log_pile",
+          "source": "image",
+          "visibility": "clear",
+          "reliability": "medium",
+          "image_id": "img-1"
+        },
+        {
+          "observation_id": "wood-tone",
+          "feature": "wood.tone",
+          "value": "light_yellow_honey",
+          "subject_id": "log_pile",
+          "source": "image",
+          "visibility": "clear",
+          "reliability": "medium",
+          "image_id": "img-1",
+          "wood_surface": "rough_end_grain"
+        },
+        {
+          "observation_id": "resin",
+          "feature": "resin.presence",
+          "value": "present",
+          "subject_id": "log_pile",
+          "source": "image",
+          "visibility": "clear",
+          "reliability": "medium",
+          "image_id": "img-1",
+          "wood_surface": "rough_end_grain"
+        }
+      ],
+      "inferences": [],
+      "absent_features": [],
+      "image_limitations": [
+        {
+          "image_id": "img-1",
+          "lighting": "overcast",
+          "white_balance": "neutral",
+          "scale": "absent"
+        }
+      ],
+      "context_limitations": ["pile_scoped_result"],
+      "possible_multiple_taxa": false,
+      "instruction_like_content_detected": false
+    },
+    "primary:candidate_generator": {
+      "sets": [
+        {
+          "subject_id": "log_pile",
+          "candidates": [
+            {
+              "taxon": "pinus",
+              "resolution": "genus",
+              "supporting_evidence_ids": ["bark", "wood-tone", "resin"],
+              "contradicting_evidence_ids": [],
+              "missing_decisive_features": ["needles_or_cones"],
+              "score": "moderate",
+              "rank": 1
+            }
+          ]
+        }
+      ]
+    },
+    "primary:botanical_reviewer": {
+      "reviewer": "botanical",
+      "status": "pass",
+      "findings": []
+    },
+    "primary:confusion_reviewer": {
+      "reviewer": "confusion",
+      "status": "pass",
+      "findings": []
+    },
+    "primary:confidence_reviewer": {
+      "reviewer": "confidence",
+      "status": "pass",
+      "findings": [],
+      "recommended_resolution": "genus",
+      "recommended_confidence": "low"
+    }
+  }
+}

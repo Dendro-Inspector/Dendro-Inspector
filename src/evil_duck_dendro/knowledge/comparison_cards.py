@@ -6,7 +6,10 @@ observations?" — is answered here from declared data rather than from a model'
 
 from __future__ import annotations
 
-from evil_duck_dendro.knowledge.evidence_hierarchy import positive_observations_for
+from evil_duck_dendro.knowledge.evidence_hierarchy import (
+    is_colour_feature,
+    positive_observations_for,
+)
 from evil_duck_dendro.schemas.evidence import EvidencePacket
 from evil_duck_dendro.schemas.taxon import ComparisonCard
 
@@ -36,7 +39,10 @@ def relies_only_on_insufficient_features(
     if not observations:
         return False
     weak = insufficient_features(cards)
-    return all(observation.feature in weak for observation in observations)
+    return all(
+        observation.feature in weak or is_colour_feature(observation.feature)
+        for observation in observations
+    )
 
 
 def decisive_features_between(

@@ -26,7 +26,11 @@ from evil_duck_dendro.observability.trace import TraceRecorder
 from evil_duck_dendro.prompts.library import PromptLibrary
 from evil_duck_dendro.providers.registry import ProviderRegistry
 from evil_duck_dendro.runner import CaseRunResult, run_case
-from evil_duck_dendro.schemas.evidence import AttachmentStatus
+from evil_duck_dendro.schemas.evidence import (
+    AttachmentStatus,
+    WoodSurface,
+    requires_wood_surface,
+)
 from evil_duck_dendro.schemas.input import CaseInput, DeclaredObjectType, ImageRef
 
 
@@ -125,3 +129,11 @@ def _attachment(feature: str, attached: bool) -> AttachmentStatus | None:
     if feature.split(".")[0] not in DETACHABLE_FAMILIES:
         return None
     return AttachmentStatus.CONFIRMED_ATTACHED if attached else AttachmentStatus.UNKNOWN
+
+
+def _wood_surface(
+    feature: str,
+    surface: WoodSurface = WoodSurface.PREPARED_END_GRAIN,
+) -> WoodSurface | None:
+    """Surface provenance a test observation needs, or None for non-wood features."""
+    return surface if requires_wood_surface(feature) else None

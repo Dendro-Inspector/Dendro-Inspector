@@ -16,7 +16,7 @@ from pydantic import Field
 from evil_duck_dendro.schemas.base import Contract, ShortText
 from evil_duck_dendro.schemas.taxon import Confidence, Resolution
 
-GRAPH_VERSION = "0.2.2"
+GRAPH_VERSION = "0.2.3"
 
 
 class NodeStatus(StrEnum):

@@ -28,6 +28,15 @@ Per candidate:
   photograph supports.
 - Genus is usually the correct answer for conifer bark and cut logs. Species from bark alone
   is almost never defensible.
+- Colour or tone is supporting evidence only. It needs at least one exact, candidate-specific
+  non-colour feature above context; site or material context does not count as structural
+  corroboration.
+- Use `pores.*`, `rays.*`, `wood.vessels*` and `wood.resin_canals*` only when the observation
+  records `wood_surface: prepared_end_grain`. Coarse rings and visible `resin.presence` may be
+  useful from other surfaces, but carry reduced authority.
+- A material group may receive a pile-scoped candidate when several exact features agree. Do
+  not imply that every separable piece is the same taxon, and keep each piece's evidence scoped
+  to its own subject id.
 - Include the strongest *alternative*, not three variations on your favourite. A candidate
   set whose second entry cannot possibly be right is not a candidate set.
 - If nothing is supportable above family, say `family`. If nothing is supportable at all,

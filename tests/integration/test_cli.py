@@ -71,7 +71,7 @@ class TestInspectCommand:
         assert payload["response"]["results"][0]["taxonomic_resolution"] == "genus"
         prompt = payload["trace"]["domain_prompt"]
         assert prompt["sha256"]
-        assert prompt["policy_revision"] == "0.2.2"
+        assert prompt["policy_revision"] == "0.2.3"
         assert prompt["manifest_sha256"]
         assert prompt["compatibility_status"] == "compatible"
 
@@ -215,7 +215,7 @@ class TestPromptSealCommand:
         manifest = deployment / "prompts" / "versions.yaml"
         manifest.write_text(
             manifest.read_text(encoding="utf-8").replace(
-                'policy_revision: "0.2.2"', 'policy_revision: "0.2.1"'
+                'policy_revision: "0.2.3"', 'policy_revision: "0.2.1"'
             ),
             encoding="utf-8",
         )
@@ -236,8 +236,8 @@ class TestPromptInfoCommand:
         assert payload["is_placeholder"] is False
         assert payload["version"] == "user-managed"
         assert payload["manifest_schema_version"] == "1"
-        assert payload["policy_revision"] == "0.2.2"
-        assert payload["node_prompt_revision"] == "0.1.0"
+        assert payload["policy_revision"] == "0.2.3"
+        assert payload["node_prompt_revision"] == "0.2.0"
         assert len(payload["manifest_sha256"]) == 64
         assert payload["compatibility_status"] == "compatible"
 

@@ -34,7 +34,7 @@ from evil_duck_dendro.observability.events import (
 from evil_duck_dendro.schemas.base import Contract
 
 #: The only deterministic policy revision compatible with this code.
-DETERMINISTIC_POLICY_REVISION = "0.2.2"
+DETERMINISTIC_POLICY_REVISION = "0.2.3"
 
 #: A domain prompt file containing this marker is demonstration scaffolding, not the
 #: user's reviewed dendrology prompt. Surfaced in the CLI and in every trace.
@@ -104,10 +104,10 @@ class NodePromptManifest(Contract):
 
 
 class PromptPolicyManifest(Contract):
-    """Closed-world manifest accepted by the v0.2.2 deterministic policy."""
+    """Closed-world manifest accepted by the current deterministic policy."""
 
     schema_version: Literal["1"]
-    policy_revision: Literal["0.2.2"]
+    policy_revision: Literal["0.2.3"]
     domain_prompt: DomainPromptManifest
     node_prompts: NodePromptManifest
 

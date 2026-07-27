@@ -10,9 +10,11 @@ from evil_duck_dendro.schemas.evidence import (
     Observation,
     ObservationSource,
     Subject,
+    SubjectKind,
     Visibility,
+    WoodSurface,
 )
-from tests.conftest import _attachment
+from tests.conftest import _attachment, _wood_surface
 
 DETACHABLE = ("leaf", "needles", "fruit", "cones", "branch", "bud", "seed", "nut")
 
@@ -24,21 +26,27 @@ def _obs(
     visibility: Visibility = Visibility.CLEAR,
     attached: bool = True,
     source: ObservationSource = ObservationSource.IMAGE,
+    subject_id: str = "log_1",
+    wood_surface: WoodSurface = WoodSurface.PREPARED_END_GRAIN,
 ) -> Observation:
     return Observation(
         observation_id=observation_id,
         feature=feature,
         value="some_value",
-        subject_id="log_1",
+        subject_id=subject_id,
         source=source,
         image_id="img-1" if source is ObservationSource.IMAGE else None,
         visibility=visibility,
         attachment=_attachment(feature, attached),
+        wood_surface=_wood_surface(feature, wood_surface),
     )
 
 
-def _packet(*observations: Observation) -> EvidencePacket:
-    return EvidencePacket(subjects=(Subject(subject_id="log_1"),), observations=observations)
+def _packet(
+    *observations: Observation,
+    subjects: tuple[Subject, ...] = (Subject(subject_id="log_1"),),
+) -> EvidencePacket:
+    return EvidencePacket(subjects=subjects, observations=observations)
 
 
 def assess(packet: EvidencePacket) -> EvidenceQualityReport:
@@ -109,6 +117,36 @@ def test_structural_evidence_passes_cleanly():
     assert report.sufficient
     assert report.usable_subject_ids == ("log_1",)
     assert not report.colour_dependence_detected
+
+
+def test_tone_suffix_is_classified_as_colour_dependence():
+    report = assess(
+        _packet(
+            _obs("obs-1", "heartwood.tone"),
+            _obs("obs-2", "lenticels.orientation"),
+        )
+    )
+    assert report.sufficient
+    assert report.colour_dependence_detected
+
+
+def test_corroborated_material_group_is_not_blanket_rejected():
+    packet = _packet(
+        _obs("obs-1", "bark.texture", subject_id="pile"),
+        _obs(
+            "obs-2",
+            "resin.presence",
+            subject_id="pile",
+            wood_surface=WoodSurface.ROUGH_END_GRAIN,
+        ),
+        subjects=(Subject(subject_id="pile", kind=SubjectKind.MATERIAL_GROUP),),
+    )
+
+    report = assess(packet)
+
+    assert report.sufficient
+    assert report.usable_subject_ids == ("pile",)
+    assert report.tier_for("pile") == int(EvidenceTier.BARK)
 
 
 def test_only_usable_subjects_are_listed():

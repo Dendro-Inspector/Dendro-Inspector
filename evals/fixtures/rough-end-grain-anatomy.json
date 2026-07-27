@@ -1,0 +1,61 @@
+{
+  "scenario": "rough-end-grain-anatomy",
+  "description": "Prepared-anatomy tokens observed on a rough chainsaw cut are deterministically demoted to context.",
+  "responses": {
+    "primary:planner": {
+      "target_features": ["pores.arrangement", "rays.visibility", "bark.texture"],
+      "expect_multiple_subjects": false,
+      "bark_only_input": true,
+      "split_firewood_input": false,
+      "notes": ["The cut is rough; verify whether anatomy is genuinely resolvable."]
+    },
+    "primary:evidence_extractor": {
+      "subjects": [
+        {
+          "subject_id": "cut_face_1",
+          "kind": "wood_surface",
+          "description": "A rough chainsawn transverse end with torn fibres.",
+          "image_ids": ["img-1"]
+        }
+      ],
+      "observations": [
+        {
+          "observation_id": "pores",
+          "feature": "pores.arrangement",
+          "value": "diffuse_porous",
+          "subject_id": "cut_face_1",
+          "source": "image",
+          "visibility": "clear",
+          "reliability": "medium",
+          "image_id": "img-1",
+          "wood_surface": "rough_end_grain"
+        },
+        {
+          "observation_id": "rays",
+          "feature": "rays.visibility",
+          "value": "fine_even",
+          "subject_id": "cut_face_1",
+          "source": "image",
+          "visibility": "clear",
+          "reliability": "medium",
+          "image_id": "img-1",
+          "wood_surface": "rough_end_grain"
+        }
+      ],
+      "inferences": [],
+      "absent_features": [],
+      "image_limitations": [
+        {
+          "image_id": "img-1",
+          "lighting": "even_daylight",
+          "white_balance": "neutral",
+          "scale": "absent",
+          "notes": "The surface preparation, not the exposure, limits anatomy."
+        }
+      ],
+      "context_limitations": ["rough_surface"],
+      "possible_multiple_taxa": false,
+      "instruction_like_content_detected": false
+    }
+  }
+}

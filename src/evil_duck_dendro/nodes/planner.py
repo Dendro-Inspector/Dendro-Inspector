@@ -17,15 +17,21 @@ from evil_duck_dendro.schemas.input import DeclaredObjectType
 NODE = "planner"
 
 BARK_ONLY_TYPES: frozenset[DeclaredObjectType] = frozenset(
-    {DeclaredObjectType.BARK, DeclaredObjectType.WOOD}
+    {
+        DeclaredObjectType.BARK,
+        DeclaredObjectType.WOOD,
+        DeclaredObjectType.SPLIT_FIREWOOD,
+    }
 )
 
 
 def deterministic_facts(state: GraphState) -> dict[str, bool]:
     """Facts the graph knows without asking a model."""
+    split_firewood = state.case.declared_object_type is DeclaredObjectType.SPLIT_FIREWOOD
     return {
         "bark_only_input": state.case.declared_object_type in BARK_ONLY_TYPES,
-        "expect_multiple_subjects": len(state.case.images) > 1,
+        "expect_multiple_subjects": len(state.case.images) > 1 or split_firewood,
+        "split_firewood_input": split_firewood,
     }
 
 
@@ -52,6 +58,7 @@ async def run(state: GraphState, ctx: NodeContext) -> GraphState:
             "bark_only_input": plan.bark_only_input or facts["bark_only_input"],
             "expect_multiple_subjects": plan.expect_multiple_subjects
             or facts["expect_multiple_subjects"],
+            "split_firewood_input": plan.split_firewood_input or facts["split_firewood_input"],
         }
     )
     return state.evolve(plan=merged)

@@ -45,6 +45,7 @@ class InspectionPlan(Contract):
     target_features: tuple[FeaturePath, ...] = ()
     expect_multiple_subjects: bool = False
     bark_only_input: bool = False
+    split_firewood_input: bool = False
     notes: tuple[ShortText, ...] = ()
 
 

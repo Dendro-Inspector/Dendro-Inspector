@@ -139,7 +139,7 @@ class TestMetadata:
         assert metadata.path.endswith("system-prompt.md")
         assert metadata.manifest_schema_version == "1"
         assert metadata.policy_revision == DETERMINISTIC_POLICY_REVISION
-        assert metadata.node_prompt_revision == "0.1.0"
+        assert metadata.node_prompt_revision == "0.2.0"
         assert metadata.manifest_path is not None
         assert metadata.manifest_path.endswith("versions.yaml")
         assert metadata.manifest_sha256 is not None
@@ -381,7 +381,7 @@ class TestPromptSeal:
 
         assert payload["schema_version"] == "1"
         assert payload["policy_revision"] == DETERMINISTIC_POLICY_REVISION
-        assert payload["node_prompts"]["revision"] == "0.1.0"
+        assert payload["node_prompts"]["revision"] == "0.2.0"
 
     def test_a_manifest_bound_to_another_policy_revision_is_refused_not_upgraded(
         self, repo_root, tmp_path

@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 
 from evil_duck_dendro.schemas.decisions import DecisionStatus
+from evil_duck_dendro.schemas.input import DeclaredObjectType
 from evil_duck_dendro.schemas.taxon import Confidence, Resolution
 
 
@@ -69,6 +70,37 @@ class TestAbstention:
 
     def test_abstention_does_not_burn_retries(self, simple_case, run_scenario):
         assert run_scenario(simple_case, "primary-insufficient").state.retries == 0
+
+
+class TestSplitFirewood:
+    def test_declared_split_firewood_reconciles_scope_and_photo_target(
+        self, simple_case, run_scenario
+    ):
+        case = simple_case.model_copy(
+            update={"declared_object_type": DeclaredObjectType.SPLIT_FIREWOOD}
+        )
+
+        result = run_scenario(case, "split-face-colour-only")
+
+        assert result.state.plan is not None
+        assert result.state.plan.split_firewood_input
+        assert result.state.plan.expect_multiple_subjects
+        assert result.state.evidence is not None
+        assert result.state.evidence.possible_multiple_taxa
+        decision = result.state.decisions[0]
+        assert decision.best_next_photo is not None
+        assert decision.best_next_photo.target == "prepared_end_grain_and_bark_circumference"
+
+    def test_unknown_declared_type_uses_the_extracted_split_subject(
+        self, simple_case, run_scenario
+    ):
+        case = simple_case.model_copy(update={"declared_object_type": DeclaredObjectType.UNKNOWN})
+
+        result = run_scenario(case, "split-face-colour-only")
+
+        decision = result.state.decisions[0]
+        assert decision.best_next_photo is not None
+        assert decision.best_next_photo.target == "prepared_end_grain_and_bark_circumference"
 
 
 class TestMultipleSubjects:

@@ -21,7 +21,10 @@ from evil_duck_dendro.schemas.evidence import (
     Observation,
     ObservationSource,
     Subject,
+    SubjectKind,
+    WoodSurface,
 )
+from evil_duck_dendro.schemas.input import DeclaredObjectType
 from evil_duck_dendro.schemas.reviews import (
     AdmittedRerank,
     FindingCategory,
@@ -43,6 +46,7 @@ from evil_duck_dendro.schemas.taxon import (
     TaxonIdentity,
     resolution_rank,
 )
+from tests.conftest import _wood_surface
 
 NON_UNKNOWN_RESOLUTIONS = (
     Resolution.FAMILY,
@@ -95,15 +99,24 @@ def _observation(observation_id: str, feature: str, value: str) -> Observation:
         source=ObservationSource.IMAGE,
         image_id="img-1",
         attachment=AttachmentStatus.CONFIRMED_ATTACHED if detachable else None,
+        wood_surface=_wood_surface(feature),
     )
 
 
-def _state(simple_case, observations: tuple[Observation, ...], candidates: tuple[Candidate, ...]):
+def _state(
+    simple_case,
+    observations: tuple[Observation, ...],
+    candidates: tuple[Candidate, ...],
+    *,
+    subject_kind: SubjectKind = SubjectKind.UNKNOWN,
+    possible_multiple_taxa: bool = False,
+):
     return GraphState(
         case=simple_case,
         evidence=EvidencePacket(
-            subjects=(Subject(subject_id="tree_1"),),
+            subjects=(Subject(subject_id="tree_1", kind=subject_kind),),
             observations=observations,
+            possible_multiple_taxa=possible_multiple_taxa,
         ),
         candidate_sets=(CandidateSet(subject_id="tree_1", candidates=candidates),),
     )
@@ -191,6 +204,93 @@ class TestStructuredAndRenderedIdentity:
         assert decision.status is DecisionStatus.INSUFFICIENT_EVIDENCE
         assert decision.selected_taxon is None
         assert decision.best_next_photo is not None
+
+    def test_empty_split_subject_uses_its_own_photo_request(self, simple_case, node_context):
+        case = simple_case.model_copy(update={"declared_object_type": DeclaredObjectType.UNKNOWN})
+        empty = CandidateSet(subject_id="firewood")
+        state = GraphState(
+            case=case,
+            evidence=EvidencePacket(
+                subjects=(
+                    Subject(subject_id="firewood", kind=SubjectKind.SPLIT_WOOD),
+                    Subject(subject_id="tree", kind=SubjectKind.STANDING_TREE),
+                )
+            ),
+            candidate_sets=(empty,),
+        )
+
+        decision = decide_subject(state, node_context, empty)
+
+        assert decision.best_next_photo is not None
+        assert decision.best_next_photo.target == "prepared_end_grain_and_bark_circumference"
+        assert decision.best_next_photo.subject_id == "firewood"
+
+    def test_split_firewood_result_is_scoped_and_requests_matching_piece_views(
+        self, simple_case, node_context
+    ):
+        case = simple_case.model_copy(
+            update={"declared_object_type": DeclaredObjectType.SPLIT_FIREWOOD}
+        )
+        bark = _observation("bark", "bark.texture", "scaly_plates")
+        resin = _observation("resin", "resin.presence", "present").model_copy(
+            update={"wood_surface": WoodSurface.SPLIT_FACE}
+        )
+        candidate = Candidate(
+            taxon="pinus",
+            resolution=Resolution.GENUS,
+            supporting_evidence_ids=("bark", "resin"),
+            score=SupportStrength.MODERATE,
+            rank=1,
+        )
+        candidates = CandidateSet(subject_id="tree_1", candidates=(candidate,))
+
+        decision = decide_subject(
+            _state(
+                case,
+                (bark, resin),
+                (candidate,),
+                subject_kind=SubjectKind.SPLIT_WOOD,
+                possible_multiple_taxa=True,
+            ),
+            node_context,
+            candidates,
+        )
+
+        assert decision.selected_taxon == "pinus"
+        assert decision.best_next_photo is not None
+        assert decision.best_next_photo.target == "prepared_end_grain_and_bark_circumference"
+        assert decision.unresolved_questions
+        assert "scoped to this subject" in decision.unresolved_questions[0]
+
+    def test_split_subject_does_not_change_another_subjects_follow_up(
+        self, simple_case, node_context
+    ):
+        case = simple_case.model_copy(update={"declared_object_type": DeclaredObjectType.UNKNOWN})
+        bark = _observation("bark", "bark.texture", "scaly_plates")
+        candidate = Candidate(
+            taxon="pinus",
+            resolution=Resolution.GENUS,
+            supporting_evidence_ids=("bark",),
+            score=SupportStrength.MODERATE,
+            rank=1,
+        )
+        candidates = CandidateSet(subject_id="tree_1", candidates=(candidate,))
+        state = GraphState(
+            case=case,
+            evidence=EvidencePacket(
+                subjects=(
+                    Subject(subject_id="firewood", kind=SubjectKind.SPLIT_WOOD),
+                    Subject(subject_id="tree_1", kind=SubjectKind.STANDING_TREE),
+                ),
+                observations=(bark,),
+            ),
+            candidate_sets=(candidates,),
+        )
+
+        decision = decide_subject(state, node_context, candidates)
+
+        assert decision.best_next_photo is not None
+        assert decision.best_next_photo.target != "prepared_end_grain_and_bark_circumference"
 
     def test_species_hypothesis_broadened_by_foliage_renders_only_genus(
         self, simple_case, node_context

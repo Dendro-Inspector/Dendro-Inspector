@@ -17,7 +17,7 @@ from evil_duck_dendro.graph.executor import NodeContext
 from evil_duck_dendro.graph.state import GraphState
 from evil_duck_dendro.nodes._support import case_context, image_inputs, locale_of
 from evil_duck_dendro.providers.base import request_structured
-from evil_duck_dendro.schemas.evidence import EvidencePacket
+from evil_duck_dendro.schemas.evidence import EvidencePacket, GeneratedEvidencePacket
 
 NODE = "evidence_extractor"
 
@@ -50,6 +50,18 @@ def _empty_packet(state: GraphState) -> EvidencePacket:
     )
 
 
+def reconcile_packet(state: GraphState, packet: EvidencePacket) -> EvidencePacket:
+    """Merge conservative facts a model is not allowed to erase."""
+    guard = state.guard
+    plan = state.plan
+    updates: dict[str, bool] = {}
+    if guard is not None and guard.instruction_like_detected:
+        updates["instruction_like_content_detected"] = True
+    if plan is not None and plan.split_firewood_input:
+        updates["possible_multiple_taxa"] = True
+    return packet.model_copy(update=updates) if updates else packet
+
+
 async def run(state: GraphState, ctx: NodeContext) -> GraphState:
     guard = state.guard
     if guard is not None and not guard.safe_to_continue:
@@ -61,7 +73,7 @@ async def run(state: GraphState, ctx: NodeContext) -> GraphState:
         context_parts.append(corrections)
 
     provider = ctx.providers.get(Role.PRIMARY)
-    packet = await request_structured(
+    generated = await request_structured(
         provider=provider,
         role=Role.PRIMARY.value,
         node=NODE,
@@ -71,14 +83,10 @@ async def run(state: GraphState, ctx: NodeContext) -> GraphState:
             locale=locale_of(state),
         ),
         images=image_inputs(state.case),
-        response_model=EvidencePacket,
+        response_model=GeneratedEvidencePacket,
         recorder=ctx.recorder,
         max_retries=ctx.config.provider_for(Role.PRIMARY).max_structured_retries,
     )
 
-    # The guard's verdict is authoritative: a model that omitted the injection signal
-    # does not get to erase it from the record.
-    if guard is not None and guard.instruction_like_detected:
-        packet = packet.model_copy(update={"instruction_like_content_detected": True})
-
+    packet = reconcile_packet(state, generated.to_evidence_packet())
     return state.evolve(evidence=packet)

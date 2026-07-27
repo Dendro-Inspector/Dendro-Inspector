@@ -24,10 +24,13 @@ from enum import IntEnum
 
 from evil_duck_dendro.schemas.evidence import (
     EvidencePacket,
+    ImageLimitation,
     Observation,
     ObservationSource,
     Reliability,
     Visibility,
+    WoodSurface,
+    requires_wood_surface,
 )
 from evil_duck_dendro.schemas.taxon import Confidence, Resolution
 
@@ -68,7 +71,7 @@ class EvidenceProjection:
 
     @property
     def supports_identification(self) -> bool:
-        return self.trust is not EvidenceTrust.CONTEXT_ONLY
+        return self.trust is not EvidenceTrust.CONTEXT_ONLY and self.tier > EvidenceTier.CONTEXT
 
 
 #: Feature-family prefix -> tier. Longest prefix wins, so `leaf.arrangement` is a distinct
@@ -101,8 +104,9 @@ _FAMILY_TIERS: tuple[tuple[str, EvidenceTier], ...] = (
     ("resin", EvidenceTier.WOOD_CUT),
     ("heartwood", EvidenceTier.WOOD_CUT),
     ("sapwood", EvidenceTier.WOOD_CUT),
-    # Bark.
+    # Bark and the tissue directly beneath it.
     ("bark", EvidenceTier.BARK),
+    ("inner_bark", EvidenceTier.BARK),
     ("lenticels", EvidenceTier.BARK),
     # Shape of the thing as a whole.
     ("trunk", EvidenceTier.SILHOUETTE),
@@ -135,6 +139,17 @@ DETACHABLE_FAMILIES: frozenset[str] = frozenset(
         "branch",
     }
 )
+
+#: These observations claim anatomy that only a prepared transverse end grain can show.
+_PREPARED_END_GRAIN_PREFIXES: tuple[str, ...] = (
+    "pores",
+    "rays",
+    "wood.vessels",
+    "wood.resin_canals",
+)
+
+#: Colour is supporting evidence only, regardless of how favourable the photograph looks.
+_COLOUR_SUFFIXES: tuple[str, ...] = (".colour", ".color", ".tone")
 
 #: The narrowest claim each tier can carry on its own (prompt sections 2, 6 and 14).
 _RESOLUTION_CEILING: dict[EvidenceTier, Resolution] = {
@@ -193,13 +208,36 @@ def requires_attachment(feature: str) -> bool:
     return family_of(feature) in DETACHABLE_FAMILIES
 
 
-def observation_trust(observation: Observation) -> EvidenceTrust:
+def is_colour_feature(feature: str) -> bool:
+    """Whether a feature fundamentally describes colour or tone."""
+    return feature.endswith(_COLOUR_SUFFIXES)
+
+
+def _requires_prepared_end_grain(feature: str) -> bool:
+    return any(
+        feature == prefix or feature.startswith(f"{prefix}.")
+        for prefix in _PREPARED_END_GRAIN_PREFIXES
+    )
+
+
+def _limitation_for(evidence: EvidencePacket, observation: Observation) -> ImageLimitation | None:
+    if observation.image_id is None:
+        return None
+    return next(
+        (item for item in evidence.image_limitations if item.image_id == observation.image_id),
+        None,
+    )
+
+
+def observation_trust(
+    observation: Observation,
+    limitation: ImageLimitation | None = None,
+) -> EvidenceTrust:
     """Project one observation onto the deterministic identification trust boundary.
 
-    Only image observations can support a taxon. Clear, medium-or-high reliability evidence
-    carries its normal feature tier. Partial or low-reliability evidence remains usable but
-    is capped to bark-equivalent authority. Obscured, unresolvable, contextual-source, and
-    unconfirmed detachable observations remain available as context but cannot raise a claim.
+    Besides source, visibility, reliability and attachment, the physical wood surface caps
+    what an image can prove. Colour and tone remain supporting context rather than full-tier
+    evidence under every photographic condition.
     """
     if observation.source is not ObservationSource.IMAGE:
         return EvidenceTrust.CONTEXT_ONLY
@@ -207,9 +245,24 @@ def observation_trust(observation: Observation) -> EvidenceTrust:
         return EvidenceTrust.CONTEXT_ONLY
     if requires_attachment(observation.feature) and not observation.is_attached:
         return EvidenceTrust.CONTEXT_ONLY
+
+    trust = EvidenceTrust.FULL_POSITIVE
     if observation.visibility is Visibility.PARTIAL or observation.reliability is Reliability.LOW:
-        return EvidenceTrust.CAPPED_POSITIVE
-    return EvidenceTrust.FULL_POSITIVE
+        trust = EvidenceTrust.CAPPED_POSITIVE
+
+    if _requires_prepared_end_grain(observation.feature):
+        if observation.wood_surface is not WoodSurface.PREPARED_END_GRAIN:
+            return EvidenceTrust.CONTEXT_ONLY
+    elif (
+        requires_wood_surface(observation.feature)
+        and observation.wood_surface is not WoodSurface.PREPARED_END_GRAIN
+    ):
+        trust = min(trust, EvidenceTrust.CAPPED_POSITIVE)
+
+    if is_colour_feature(observation.feature):
+        trust = min(trust, EvidenceTrust.CAPPED_POSITIVE)
+
+    return trust
 
 
 def _tier_at_trust(tier: EvidenceTier, trust: EvidenceTrust) -> EvidenceTier:
@@ -220,9 +273,12 @@ def _tier_at_trust(tier: EvidenceTier, trust: EvidenceTrust) -> EvidenceTier:
     return tier
 
 
-def project_observation(observation: Observation) -> EvidenceProjection:
+def project_observation(
+    observation: Observation,
+    limitation: ImageLimitation | None = None,
+) -> EvidenceProjection:
     """Return the trust and effective tier of one observation."""
-    trust = observation_trust(observation)
+    trust = observation_trust(observation, limitation)
     return EvidenceProjection(
         evidence_id=observation.observation_id,
         source_observations=(observation,),
@@ -281,7 +337,9 @@ def project_evidence(
             tier=EvidenceTier.CONTEXT,
         )
 
-    source_projections = tuple(project_observation(source) for source in sources)
+    source_projections = tuple(
+        project_observation(source, _limitation_for(evidence, source)) for source in sources
+    )
     trust = min(projection.trust for projection in source_projections)
     tier = min(projection.tier for projection in source_projections)
     return EvidenceProjection(
@@ -297,7 +355,8 @@ def positive_observations_for(evidence: EvidencePacket, subject_id: str) -> tupl
     return tuple(
         observation
         for observation in evidence.observations_for(subject_id)
-        if observation_trust(observation) is not EvidenceTrust.CONTEXT_ONLY
+        if observation_trust(observation, _limitation_for(evidence, observation))
+        is not EvidenceTrust.CONTEXT_ONLY
     )
 
 
@@ -308,7 +367,8 @@ def full_positive_observations_for(
     return tuple(
         observation
         for observation in evidence.observations_for(subject_id)
-        if observation_trust(observation) is EvidenceTrust.FULL_POSITIVE
+        if observation_trust(observation, _limitation_for(evidence, observation))
+        is EvidenceTrust.FULL_POSITIVE
     )
 
 
@@ -323,14 +383,20 @@ def contextual_observations_for(
     )
 
 
-def effective_tier(observation: Observation) -> EvidenceTier:
+def effective_tier(
+    observation: Observation,
+    limitation: ImageLimitation | None = None,
+) -> EvidenceTier:
     """The tier an observation carries after the shared trust projection."""
-    return project_observation(observation).tier
+    return project_observation(observation, limitation).tier
 
 
 def best_tier(evidence: EvidencePacket, subject_id: str) -> EvidenceTier:
     """The strongest trusted positive tier available for one subject."""
-    tiers = [effective_tier(o) for o in evidence.observations_for(subject_id)]
+    tiers = [
+        effective_tier(observation, _limitation_for(evidence, observation))
+        for observation in evidence.observations_for(subject_id)
+    ]
     return max(tiers, default=EvidenceTier.CONTEXT)
 
 

@@ -10,6 +10,6 @@ escalates disputed results to an independent model, and is allowed to say it doe
 
 from __future__ import annotations
 
-__version__ = "0.2.2"
+__version__ = "0.2.3"
 
 __all__ = ["__version__"]

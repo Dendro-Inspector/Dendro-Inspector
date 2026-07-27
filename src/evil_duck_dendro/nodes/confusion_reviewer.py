@@ -16,13 +16,11 @@ from __future__ import annotations
 
 from evil_duck_dendro.graph.executor import NodeContext
 from evil_duck_dendro.graph.state import GraphState
-from evil_duck_dendro.knowledge.comparison_cards import (
-    INSUFFICIENT_ALONE,
-    decisive_features_between,
-)
+from evil_duck_dendro.knowledge.comparison_cards import decisive_features_between
 from evil_duck_dendro.knowledge.evidence_hierarchy import (
     bark_only,
     contextual_observations_for,
+    is_colour_feature,
     positive_observations_for,
     unattached_observations,
 )
@@ -54,7 +52,7 @@ def colour_findings(state: GraphState) -> tuple[ReviewFinding, ...]:
         colour_ids = tuple(
             observation.observation_id
             for observation in contextual_observations_for(evidence, subject.subject_id)
-            if observation.feature in INSUFFICIENT_ALONE
+            if is_colour_feature(observation.feature)
         )
         if not colour_ids:
             continue

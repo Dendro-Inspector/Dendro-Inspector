@@ -19,6 +19,7 @@ from evil_duck_dendro.schemas.decisions import (
     PhotoRequest,
     UserClaimVerdict,
 )
+from evil_duck_dendro.schemas.evidence import SubjectKind
 from evil_duck_dendro.schemas.input import DeclaredObjectType
 
 NODE = "photo_planner"
@@ -32,6 +33,11 @@ _BY_DECLARED_TYPE: dict[DeclaredObjectType, tuple[str, str]] = {
     DeclaredObjectType.WOOD: (
         "prepared_end_grain_macro",
         "A cleanly cut, wetted end grain at macro distance resolves wood anatomy.",
+    ),
+    DeclaredObjectType.SPLIT_FIREWOOD: (
+        "prepared_end_grain_and_bark_circumference",
+        "Label one piece, then photograph a clean perpendicular end grain and the bark around "
+        "that same piece; other pieces in the pile may be different taxa.",
     ),
     DeclaredObjectType.LOG: (
         "cut_end_and_branch_scar",
@@ -65,14 +71,54 @@ _REASON_TEXT: dict[str, str] = {
     "input_unusable": "The request contained neither a readable image nor usable text.",
 }
 
+_SUBJECT_KIND_TO_OBJECT_TYPE: dict[SubjectKind, DeclaredObjectType] = {
+    SubjectKind.SPLIT_WOOD: DeclaredObjectType.SPLIT_FIREWOOD,
+    SubjectKind.WOOD_SURFACE: DeclaredObjectType.WOOD,
+    SubjectKind.BARK_SURFACE: DeclaredObjectType.BARK,
+    SubjectKind.LOG: DeclaredObjectType.LOG,
+    SubjectKind.STANDING_TREE: DeclaredObjectType.STANDING_TREE,
+}
 
-def choose_request(state: GraphState, ctx: NodeContext) -> PhotoRequest:
-    """Pick the single most useful next photograph."""
+
+def effective_object_type(
+    state: GraphState,
+    subject_id: str | None = None,
+) -> DeclaredObjectType:
+    """Use the declared type, or infer a follow-up-safe kind for one subject only."""
+    declared = state.case.declared_object_type
+    if declared is not DeclaredObjectType.UNKNOWN:
+        return declared
+    evidence = state.evidence
+    if evidence is None:
+        return declared
+
+    subjects = (
+        tuple(subject for subject in evidence.subjects if subject.subject_id == subject_id)
+        if subject_id is not None
+        else evidence.subjects
+    )
+    if not subjects:
+        return declared
+    inferred = {
+        _SUBJECT_KIND_TO_OBJECT_TYPE[subject.kind]
+        for subject in subjects
+        if subject.kind in _SUBJECT_KIND_TO_OBJECT_TYPE
+    }
+    return inferred.pop() if len(inferred) == 1 else declared
+
+
+def choose_request(
+    state: GraphState,
+    ctx: NodeContext,
+    subject_id: str | None = None,
+) -> PhotoRequest:
+    """Pick the single most useful next photograph for one subject."""
     follow_ups = ctx.knowledge.follow_up_for(ctx.knowledge.available_taxon_ids())
-    target, reason = _BY_DECLARED_TYPE.get(state.case.declared_object_type, _DEFAULT_REQUEST)
-    if state.case.declared_object_type is DeclaredObjectType.UNKNOWN and follow_ups:
+    object_type = effective_object_type(state, subject_id)
+    target, reason = _BY_DECLARED_TYPE.get(object_type, _DEFAULT_REQUEST)
+    if object_type is DeclaredObjectType.UNKNOWN and follow_ups:
         target = follow_ups[0]
-    return PhotoRequest(target=target, reason=reason)
+    return PhotoRequest(target=target, reason=reason, subject_id=subject_id)
 
 
 def limitation_text(state: GraphState) -> tuple[str, ...]:
@@ -89,7 +135,6 @@ def limitation_text(state: GraphState) -> tuple[str, ...]:
 
 
 async def run(state: GraphState, ctx: NodeContext) -> GraphState:
-    request = choose_request(state, ctx)
     subjects = state.subject_ids or ("case",)
     quality = state.quality
 
@@ -106,7 +151,7 @@ async def run(state: GraphState, ctx: NodeContext) -> GraphState:
                 subject_id=subject_id,
                 status=DecisionStatus.INSUFFICIENT_EVIDENCE,
                 unresolved_questions=limitation_text(state),
-                best_next_photo=request,
+                best_next_photo=choose_request(state, ctx, subject_id),
                 arbiter_used=state.arbiter_used,
                 user_claim_verdict=verdict,
                 evidence_tier=quality.tier_for(subject_id) if quality else 1,

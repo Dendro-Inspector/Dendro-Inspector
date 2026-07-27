@@ -57,6 +57,10 @@ class TestSuiteHealth:
             # Coverage the v0.2.2 fixture repairs would otherwise have removed.
             "near-miss-vocabulary-001",
             "partial-visibility-cap-001",
+            # Wood-surface and split-firewood conformance added in v0.2.3.
+            "rough-end-grain-anatomy-001",
+            "split-face-colour-only-001",
+            "log-pile-pinus-001",
         } == ids
 
     def test_no_case_crashed(self, report):

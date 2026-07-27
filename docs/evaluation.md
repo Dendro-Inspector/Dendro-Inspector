@@ -2,8 +2,8 @@
 
 - **Status:** Current
 - **Owner:** Evil Duck Dendro Inspector maintainers
-- **Date:** 2026-07-26
-- **Last-verified:** 2026-07-26
+- **Date:** 2026-07-27
+- **Last-verified:** 2026-07-27
 
 ```bash
 evil-duck eval --suite public            # summary
@@ -21,14 +21,15 @@ secrets.
 Assertions run against the **graph's decisions**, never against prose. Rewriting the tone
 layer must not turn the evaluation red; changing what the system concludes must.
 
-## The sixteen cases
+## The nineteen cases
 
 Cases 1–5 cover the core mechanics. Cases 6–8 are named failure modes from section 13 of the
 domain prompt. Case 9 is the counterweight — proof the system still commits when the evidence
 is actually decisive. Cases 10–14 lock the v0.2.2 correctness boundary: candidate-specific
 trusted evidence, fail-closed candidate admission, resolution-consistent identity,
 deterministic-finding precedence and finding-bound reranks. Cases 15–16 hold the two
-behaviours that six v0.2.2 fixture repairs would otherwise have quietly deleted.
+behaviours that six v0.2.2 fixture repairs would otherwise have quietly deleted. Cases 17–19
+lock the v0.2.3 wood-surface boundary while preserving corroborated pile-level conclusions.
 
 ### 1. `conifer-log-001` — probable Pinus
 
@@ -165,6 +166,31 @@ otherwise good photograph.
 
 Expects: `pinus`, genus, confidence low, tier 3, a targeted photo request.
 
+### 17. `rough-end-grain-anatomy-001` — rough cuts cannot prove prepared anatomy
+
+A rough chainsaw face is described with exact pore and ray tokens. The tokens stay in the
+packet for review, but surface provenance demotes both to context before quality or candidate
+admission can treat them as anatomy.
+
+Expects: no candidate, resolution `unknown`, tier 1, a prepared-end-grain request.
+
+### 18. `split-face-colour-only-001` — split firewood needs more than colour
+
+The model returns two exact colour/tone observations and incorrectly clears the mixed-taxa
+flag. Deterministic planner/extractor reconciliation restores the flag; colour remains
+bark-capped and insufficient without a non-colour feature above context.
+
+Expects: no candidate, resolution `unknown`, tier 3, and matching end-grain/bark views of one
+labelled piece.
+
+### 19. `log-pile-pinus-001` — the pile counterexample
+
+A `material_group` carries repeated exact Pinus-card evidence: scaly bark, light honey wood and
+visible resin. This is the conformance counterexample to an overbroad aggregate ban: the pile
+may receive a conservative genus conclusion, without proving every separated piece identical.
+
+Expects: `pinus`, genus, confidence low, tier 3, no escalation.
+
 ## Metrics
 
 Every rate is reported alongside the count it was computed from. A "100% top-1 accuracy"
@@ -204,13 +230,15 @@ The frozen v0.2.1 baseline records all nine cases of that release passing, with
 `overconfidence_rate` 0.0 and `schema_validity` 1.0. It is preserved as a historical record;
 v0.2.2 intentionally changed admission and identity behaviour, so it is not the current result.
 
-The v0.2.2 release result is **sixteen passing cases, zero failures, zero overconfidence**,
-frozen in `evals/baselines/public-v0.2.2.json`. One pre-existing outcome moved on the way
-there — `arbiter-ranking-001` confidence `medium` → `low` — and six fixtures were rewritten so
-their scripted model output uses card vocabulary; cases 15 and 16 exist to hold the behaviours
-that rewrite would otherwise have deleted. All of that is recorded in `CHANGELOG.md`.
+The v0.2.2 release result is preserved in `evals/baselines/public-v0.2.2.json`: sixteen
+passing cases, zero failures and zero overconfidence.
 
-Read the result honestly: sixteen hand-built cases over recorded fixtures can show that the
+The v0.2.3 release result is **nineteen passing cases, zero failures, zero overconfidence**,
+frozen in `evals/baselines/public-v0.2.3.json`. The original sixteen decisions are byte-for-byte
+equivalent in the baseline comparison; the three additions cover rough-end-grain anatomy,
+split-face colour-only abstention and the corroborated log-pile counterexample.
+
+Read the result honestly: nineteen hand-built cases over recorded fixtures can show that the
 machinery follows these contracts. It says nothing about identification accuracy on real
 photographs, which has not been measured.
 

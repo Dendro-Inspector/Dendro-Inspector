@@ -16,7 +16,9 @@ Two further distinctions the extractor must preserve:
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from enum import StrEnum
+from typing import Any
 
 from pydantic import Field, model_validator
 
@@ -49,6 +51,49 @@ _DETACHABLE_FAMILIES: frozenset[str] = frozenset(
         "branch",
     }
 )
+
+#: Feature families that describe exposed wood rather than the outside of a standing tree.
+#: Surface provenance is part of their authority: a split face cannot prove end-grain anatomy.
+_WOOD_SURFACE_FAMILIES: frozenset[str] = frozenset(
+    {
+        "wood",
+        "cut",
+        "rings",
+        "pores",
+        "rays",
+        "resin",
+        "heartwood",
+        "sapwood",
+        "inner_bark",
+    }
+)
+
+
+def requires_wood_surface(feature: str) -> bool:
+    """Whether a feature describes exposed wood whose physical surface matters."""
+    return feature.split(".", 1)[0] in _WOOD_SURFACE_FAMILIES
+
+
+def _surface_payload(data: Any, *, require_explicit: bool) -> Any:
+    """Normalize legacy wood observations or reject incomplete generated output."""
+    if not isinstance(data, Mapping):
+        return data
+    feature = data.get("feature")
+    if not isinstance(feature, str):
+        return data
+
+    payload = dict(data)
+    surface = payload.get("wood_surface")
+    if requires_wood_surface(feature):
+        if surface is None:
+            if require_explicit:
+                msg = f"generated wood observation on feature {feature!r} must set wood_surface"
+                raise ValueError(msg)
+            payload["wood_surface"] = WoodSurface.UNKNOWN
+    elif surface is not None:
+        msg = f"observation on non-wood feature {feature!r} must omit wood_surface"
+        raise ValueError(msg)
+    return payload
 
 
 class ObservationSource(StrEnum):
@@ -102,9 +147,21 @@ class ScaleQuality(StrEnum):
     ABSENT = "absent"
 
 
+class WoodSurface(StrEnum):
+    """The physical surface on which a wood observation was made."""
+
+    PREPARED_END_GRAIN = "prepared_end_grain"
+    ROUGH_END_GRAIN = "rough_end_grain"
+    SPLIT_FACE = "split_face"
+    PLANED_FACE = "planed_face"
+    UNKNOWN = "unknown"
+
+
 class SubjectKind(StrEnum):
     STANDING_TREE = "standing_tree"
     LOG = "log"
+    SPLIT_WOOD = "split_wood"
+    MATERIAL_GROUP = "material_group"
     BRANCH = "branch"
     DETACHED_PART = "detached_part"
     BARK_SURFACE = "bark_surface"
@@ -145,7 +202,19 @@ class Observation(Contract):
             "families; must be None for bark, wood, trunk and context features."
         ),
     )
+    wood_surface: WoodSurface | None = Field(
+        default=None,
+        description=(
+            "For wood/cut/anatomy observations: prepared or rough end grain, a split or "
+            "planed longitudinal face, or unknown. Omitted legacy values become unknown."
+        ),
+    )
     notes: ShortText | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _wood_surface_contract(cls, data: Any) -> Any:
+        return _surface_payload(data, require_explicit=False)
 
     @model_validator(mode="after")
     def _image_source_needs_image(self) -> Observation:
@@ -183,6 +252,15 @@ class Observation(Contract):
     def is_attached(self) -> bool:
         """True only when attachment was positively confirmed."""
         return self.attachment is AttachmentStatus.CONFIRMED_ATTACHED
+
+
+class GeneratedObservation(Observation):
+    """Extractor output: new wood observations must state their surface explicitly."""
+
+    @model_validator(mode="before")
+    @classmethod
+    def _wood_surface_contract(cls, data: Any) -> Any:
+        return _surface_payload(data, require_explicit=True)
 
 
 class Inference(Contract):
@@ -227,12 +305,16 @@ class EvidencePacket(Contract):
     def _referential_integrity(self) -> EvidencePacket:
         subject_ids = {subject.subject_id for subject in self.subjects}
         observation_ids = {observation.observation_id for observation in self.observations}
+        limitation_ids = {limitation.image_id for limitation in self.image_limitations}
 
         if len(subject_ids) != len(self.subjects):
             msg = "duplicate subject_id in evidence packet"
             raise ValueError(msg)
         if len(observation_ids) != len(self.observations):
             msg = "duplicate observation_id in evidence packet"
+            raise ValueError(msg)
+        if len(limitation_ids) != len(self.image_limitations):
+            msg = "duplicate image limitation image_id in evidence packet"
             raise ValueError(msg)
 
         for observation in self.observations:
@@ -276,3 +358,13 @@ class EvidencePacket(Contract):
             o.feature == feature_prefix or o.feature.startswith(f"{feature_prefix}.")
             for o in self.visible_observations_for(subject_id)
         )
+
+
+class GeneratedEvidencePacket(EvidencePacket):
+    """Provider response contract with strict surface provenance for new observations."""
+
+    observations: tuple[GeneratedObservation, ...] = ()
+
+    def to_evidence_packet(self) -> EvidencePacket:
+        """Return the canonical persistence/runtime contract after generated-output checks."""
+        return EvidencePacket.model_validate(self.model_dump(mode="python"))

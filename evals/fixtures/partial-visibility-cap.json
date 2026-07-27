@@ -49,6 +49,7 @@
           "visibility": "not_visible",
           "reliability": "low",
           "image_id": "img-1",
+          "wood_surface": "rough_end_grain",
           "notes": "Cut face is rough-sawn; anatomy cannot be resolved at this magnification."
         }
       ],

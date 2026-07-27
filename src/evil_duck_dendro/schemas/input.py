@@ -29,6 +29,7 @@ class DeclaredObjectType(StrEnum):
 
     STANDING_TREE = "standing_tree"
     LOG = "log"
+    SPLIT_FIREWOOD = "split_firewood"
     BARK = "bark"
     LEAF = "leaf"
     NEEDLE = "needle"

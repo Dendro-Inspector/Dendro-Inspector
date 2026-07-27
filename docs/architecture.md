@@ -2,8 +2,8 @@
 
 - **Status:** Current
 - **Owner:** Evil Duck Dendro Inspector maintainers
-- **Date:** 2026-07-26
-- **Last-verified:** 2026-07-26
+- **Date:** 2026-07-27
+- **Last-verified:** 2026-07-27
 
 ## The problem this shape solves
 
@@ -106,6 +106,21 @@ high-tier evidence elsewhere in the frame from widening the claim. Bark is cappe
 *confidence*, not silenced: a bark-supported candidate may remain at genus and low confidence,
 and weak/contextual evidence remains available for finding flaws without earning a taxon.
 
+### Wood-surface provenance
+
+Wood observations carry `prepared_end_grain | rough_end_grain | split_face | planed_face |
+unknown`. Legacy packets without the field parse as `unknown`, but newly generated extractor
+output must answer the surface question explicitly. Pores, rays, vessels and resin canals carry
+wood-anatomy authority only on prepared transverse end grain; on any other surface they remain
+context. Coarse rings and visible resin may still support a claim at a bark-equivalent cap.
+Colour and tone are always capped and can never admit a candidate without exact non-colour
+evidence above context.
+
+Declared split firewood is reconciled after model extraction: deterministic planner state forces
+`possible_multiple_taxa`, while conclusions remain scoped by subject id. A material-group pile
+is not automatically rejected — corroborated pile-level evidence may support a conservative
+result, without asserting that every separable piece is the same taxon.
+
 ### Attachment provenance
 
 A leaf at the edge of the frame may belong to the tree next door. `Observation.attachment`
@@ -126,10 +141,13 @@ trusted ids whose source observations exactly match that card's strong or suppor
 feature/value expectations. Contradiction ids survive only when they match the card's declared
 contradictions.
 
-Candidates with no surviving positive support are removed. Survivors preserve order but are
-renumbered densely; when none survive, the explicit empty `CandidateSet` drives abstention.
-This same validated support determines evidence tier, confidence and resolution, so a model
-cannot cite unrelated evidence to make a plausible name look earned.
+Candidates with no surviving positive support are removed. Context-tier evidence never counts
+as support, and a candidate whose surviving support is entirely colour/tone is rejected. Exact
+feature vocabulary is preserved — `.color` is not silently rewritten to `.colour` or `.tone`.
+Survivors preserve order but are renumbered densely; when none survive, the explicit empty
+`CandidateSet` drives abstention. This same validated support determines evidence tier,
+confidence and resolution, so a model cannot cite unrelated evidence to make a plausible name
+look earned.
 
 ### Ordinal scores, not percentages
 
@@ -189,7 +207,7 @@ rather than degrading to a low-confidence guess.
 
 The dendrology prompt is an **opaque, user-managed artifact**, but it is not admitted alone.
 `prompts/versions.yaml` is a frozen compatibility manifest that binds schema `1`, deterministic
-policy revision `0.2.2`, the canonical domain path/hash, node-prompt root/revision, and the
+policy revision `0.2.3`, the canonical domain path/hash, node-prompt root/revision, and the
 exact node-prompt file set and hashes.
 
 `runner.build_context()` validates the complete bundle before constructing

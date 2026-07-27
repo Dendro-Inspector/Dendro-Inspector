@@ -2,8 +2,8 @@
 
 - **Status:** Draft
 - **Owner:** Dendro Inspector maintainers
-- **Date:** 2026-07-25
-- **Last-verified:** 2026-07-25
+- **Date:** 2026-07-27
+- **Last-verified:** 2026-07-27
 
 **This is a public open-source repository.** Everything committed here is permanent,
 world-readable, and mirrored by third parties within minutes. Sections 13-15 carry the
@@ -456,6 +456,7 @@ Derivations to keep in step when it changes:
 | §7-§11 response formats | `response_composer.select_format` |
 | §13 failure cases | reviewer checks + the named failure-mode evaluation cases |
 | §14 base taxa | `knowledge/taxa/*.yaml` **feature rules** |
+| §15 wood/firewood analysis | `schemas/evidence.py`, `knowledge/evidence_hierarchy.py` |
 | §16 when to ask for photographs | `photo_planner`, card `follow_up_evidence` |
 
 Do not "improve" the prompt to make code easier. It is edited only by its owner.
@@ -651,7 +652,7 @@ answer.
    `.github/ISSUE_TEMPLATE/config.yml`. The contact links in that config assume Discussions
    and private vulnerability reporting are enabled on the repository; enable both, or drop
    the links rather than publish two dead ends. No release tags exist yet, so the changelog
-   compare links resolve only once `v0.2.1` and `v0.2.2` are pushed.
+   compare links resolve only once `v0.2.1`, `v0.2.2` and `v0.2.3` are pushed.
 6. Branch protection on `main`: require the CI checks from `.github/workflows/ci.yml`.
    Until this is switched on, §11's enforcement layer does not exist — the workflow runs
    but nothing stops a merge over a red run.

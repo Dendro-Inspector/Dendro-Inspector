@@ -1,0 +1,30 @@
+case_id: log-pile-pinus-001
+title: Corroborated log pile remains eligible for Pinus
+description: >-
+  A material-group subject carries repeated scaly bark, light honey wood and visible resin.
+  The pile-level result must remain candidate-bearing while confidence stays conservative.
+scenario: log-pile-pinus
+
+input:
+  case_id: log-pile-pinus-001
+  images:
+    - image_id: img-1
+      path: examples/log-pile-pinus-001.jpg
+      media_type: image/jpeg
+  user_text: Are these pine logs?
+  location: Kyiv Oblast, Ukraine
+  declared_object_type: log
+
+expect:
+  expected_taxon: pinus
+  expected_candidate_taxa:
+    - pinus
+  expected_resolution: genus
+  max_resolution: genus
+  max_confidence: low
+  expected_evidence_tier: 3
+  require_next_photo: true
+  require_escalation: false
+  max_retries: 0
+
+placeholder_content: true

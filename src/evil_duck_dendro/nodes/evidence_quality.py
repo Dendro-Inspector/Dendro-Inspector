@@ -21,6 +21,7 @@ from evil_duck_dendro.knowledge.evidence_hierarchy import (
     EvidenceTier,
     best_tier,
     contextual_observations_for,
+    is_colour_feature,
     positive_observations_for,
     unattached_observations,
 )
@@ -37,7 +38,11 @@ def _colour_dependent(evidence: EvidencePacket, subject_id: str) -> bool:
     observations = contextual_observations_for(evidence, subject_id)
     if not observations:
         return False
-    weak = sum(1 for o in observations if o.feature in INSUFFICIENT_ALONE)
+    weak = sum(
+        1
+        for observation in observations
+        if observation.feature in INSUFFICIENT_ALONE or is_colour_feature(observation.feature)
+    )
     return weak / len(observations) >= COLOUR_DEPENDENCE_RATIO
 
 

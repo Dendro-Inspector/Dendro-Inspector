@@ -1,0 +1,29 @@
+case_id: split-face-colour-only-001
+title: Split-firewood colour alone cannot admit a taxon
+description: >-
+  One split piece shows warm heartwood and reddish inner bark under warm light, but no exact
+  non-colour discriminator. The graph must abstain, retain mixed-taxa scope, and request matching
+  prepared end-grain and bark views of one labelled piece.
+scenario: split-face-colour-only
+
+input:
+  case_id: split-face-colour-only-001
+  images:
+    - image_id: img-1
+      path: examples/split-face-colour-only-001.jpg
+      media_type: image/jpeg
+  user_text: What species is this firewood pile?
+  declared_object_type: split_firewood
+
+expect:
+  expected_candidate_taxa: []
+  expected_resolution: unknown
+  max_resolution: unknown
+  max_confidence: low
+  expected_status: insufficient_evidence
+  expected_evidence_tier: 3
+  require_next_photo: true
+  require_escalation: false
+  max_retries: 0
+
+placeholder_content: true

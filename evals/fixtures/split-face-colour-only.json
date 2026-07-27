@@ -1,0 +1,60 @@
+{
+  "scenario": "split-face-colour-only",
+  "description": "Split firewood with colour-only support must abstain and retain mixed-taxa scope conservatism.",
+  "responses": {
+    "primary:planner": {
+      "target_features": ["heartwood.tone", "lenticels.orientation", "pores.arrangement"],
+      "expect_multiple_subjects": false,
+      "bark_only_input": false,
+      "split_firewood_input": false,
+      "notes": ["The model omits the declared split-firewood facts; deterministic code restores them."]
+    },
+    "primary:evidence_extractor": {
+      "subjects": [
+        {
+          "subject_id": "piece_1",
+          "kind": "split_wood",
+          "description": "One split firewood piece with no prepared end grain.",
+          "image_ids": ["img-1"]
+        }
+      ],
+      "observations": [
+        {
+          "observation_id": "heartwood-tone",
+          "feature": "heartwood.tone",
+          "value": "warm_yellow_orange",
+          "subject_id": "piece_1",
+          "source": "image",
+          "visibility": "clear",
+          "reliability": "medium",
+          "image_id": "img-1",
+          "wood_surface": "split_face"
+        },
+        {
+          "observation_id": "inner-bark-colour",
+          "feature": "inner_bark.colour",
+          "value": "reddish_brown",
+          "subject_id": "piece_1",
+          "source": "image",
+          "visibility": "clear",
+          "reliability": "medium",
+          "image_id": "img-1",
+          "wood_surface": "split_face"
+        }
+      ],
+      "inferences": [],
+      "absent_features": [],
+      "image_limitations": [
+        {
+          "image_id": "img-1",
+          "lighting": "late_afternoon_warm",
+          "white_balance": "uncorrected",
+          "scale": "absent"
+        }
+      ],
+      "context_limitations": ["colour_only", "no_prepared_end_grain"],
+      "possible_multiple_taxa": false,
+      "instruction_like_content_detected": false
+    }
+  }
+}

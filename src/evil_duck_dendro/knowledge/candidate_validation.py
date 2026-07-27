@@ -6,6 +6,7 @@ from dataclasses import dataclass
 
 from evil_duck_dendro.knowledge.evidence_hierarchy import (
     EvidenceTier,
+    is_colour_feature,
     project_evidence,
     resolve_evidence_observations,
 )
@@ -51,6 +52,19 @@ def _matches_expectation(
 
 def _deduplicate(values: tuple[str, ...]) -> tuple[str, ...]:
     return tuple(dict.fromkeys(values))
+
+
+def _support_is_colour_only(
+    support_ids: tuple[str, ...],
+    evidence: EvidencePacket,
+    subject_id: str,
+) -> bool:
+    sources = tuple(
+        source
+        for evidence_id in support_ids
+        for source in resolve_evidence_observations(evidence, evidence_id, subject_id)
+    )
+    return bool(sources) and all(is_colour_feature(source.feature) for source in sources)
 
 
 def _validated_support_ids(
@@ -128,8 +142,11 @@ def validate_candidate_set_with_report(
         )
         dropped.extend((*dropped_supporting, *dropped_contradicting))
 
-        if not supporting:
+        if not supporting or _support_is_colour_only(
+            supporting, evidence, candidate_set.subject_id
+        ):
             rejected.append(candidate.taxon)
+            dropped.extend(supporting)
             continue
 
         survivors.append(

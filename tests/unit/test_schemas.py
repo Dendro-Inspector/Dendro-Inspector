@@ -8,11 +8,15 @@ from pydantic import ValidationError
 from evil_duck_dendro.schemas.candidates import Candidate, CandidateSet, SupportStrength
 from evil_duck_dendro.schemas.evidence import (
     EvidencePacket,
+    GeneratedObservation,
+    ImageLimitation,
     Inference,
     Observation,
     ObservationSource,
     Subject,
     Visibility,
+    WoodSurface,
+    requires_wood_surface,
 )
 from evil_duck_dendro.schemas.taxon import (
     Confidence,
@@ -72,6 +76,58 @@ class TestObservationContract:
                 source=ObservationSource.IMAGE,
             )
 
+    def test_legacy_wood_observation_defaults_surface_to_unknown(self):
+        observation = Observation(
+            observation_id="obs-wood",
+            feature="wood.tone",
+            value="light_yellow_honey",
+            subject_id="log_1",
+            source=ObservationSource.IMAGE,
+            image_id="img-1",
+        )
+        assert observation.wood_surface is WoodSurface.UNKNOWN
+        assert observation.model_dump(mode="json")["wood_surface"] == "unknown"
+
+    def test_generated_wood_observation_requires_explicit_surface(self):
+        with pytest.raises(ValidationError, match="must set wood_surface"):
+            GeneratedObservation(
+                observation_id="obs-wood",
+                feature="wood.tone",
+                value="light_yellow_honey",
+                subject_id="log_1",
+                source=ObservationSource.IMAGE,
+                image_id="img-1",
+            )
+
+    def test_non_wood_observation_must_not_claim_a_wood_surface(self):
+        with pytest.raises(ValidationError, match="must omit wood_surface"):
+            Observation(
+                observation_id="obs-bark",
+                feature="bark.texture",
+                value="rough",
+                subject_id="log_1",
+                source=ObservationSource.IMAGE,
+                image_id="img-1",
+                wood_surface=WoodSurface.SPLIT_FACE,
+            )
+
+    @pytest.mark.parametrize(
+        "feature",
+        (
+            "wood.tone",
+            "cut.orientation",
+            "rings.width",
+            "pores.arrangement",
+            "rays.visibility",
+            "resin.presence",
+            "heartwood.tone",
+            "sapwood.width",
+            "inner_bark.colour",
+        ),
+    )
+    def test_wood_surface_family_predicate_covers_the_contract(self, feature):
+        assert requires_wood_surface(feature)
+
     def test_observations_are_immutable(self):
         observation = _observation()
         with pytest.raises(ValidationError):
@@ -109,6 +165,17 @@ class TestEvidencePacketIntegrity:
             EvidencePacket(
                 subjects=(_subject(),),
                 observations=(_observation(), _observation()),
+            )
+
+    def test_duplicate_image_limitation_ids_are_rejected(self):
+        with pytest.raises(ValidationError, match="duplicate image limitation image_id"):
+            EvidencePacket(
+                subjects=(_subject(),),
+                observations=(_observation(),),
+                image_limitations=(
+                    ImageLimitation(image_id="img-1"),
+                    ImageLimitation(image_id="img-1"),
+                ),
             )
 
     def test_observations_are_scoped_per_subject(self):

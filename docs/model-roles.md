@@ -2,8 +2,8 @@
 
 - **Status:** Current
 - **Owner:** Evil Duck Dendro Inspector maintainers
-- **Date:** 2026-07-26
-- **Last-verified:** 2026-07-26
+- **Date:** 2026-07-27
+- **Last-verified:** 2026-07-27
 
 Two logical roles. Business logic names only these; which vendor and model satisfies each is
 configuration.
@@ -118,7 +118,7 @@ of a safety trigger. Regression-tested in
 
 The arbiter roughly doubles model cost on escalated cases. The public conformance suite is
 deliberately weighted toward hard cases, so its escalation rate is not a production cost
-forecast. v0.2.2 expands the suite from nine to sixteen cases. Tune with:
+forecast. v0.2.3 expands the suite from sixteen to nineteen cases. Tune with:
 
 ```python
 EscalationPolicy(

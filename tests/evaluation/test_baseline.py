@@ -27,7 +27,7 @@ from evil_duck_dendro.evaluation.runner import run_suite
 
 pytestmark = pytest.mark.evaluation
 
-BASELINE = Path("evals/baselines/public-v0.2.2.json")
+BASELINE = Path("evals/baselines/public-v0.2.3.json")
 
 #: Metrics that must never get worse. True means higher is better.
 _DIRECTION: dict[str, bool] = {
@@ -56,8 +56,8 @@ def current(request):
 
 
 def test_the_baseline_artifact_is_present(baseline):
-    assert baseline["baseline_version"] == "0.2.2"
-    assert len(baseline["cases"]) == 16
+    assert baseline["baseline_version"] == "0.2.3"
+    assert len(baseline["cases"]) == 19
 
 
 def test_no_case_disappeared(baseline, current):
