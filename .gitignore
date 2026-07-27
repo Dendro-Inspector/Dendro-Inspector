@@ -31,6 +31,10 @@ runs/
 *.trace.json
 eval-report-*.json
 
+# Agent-as-provider bridge state. Holds the decoded photographs of every call it served,
+# plus prompts and cached model answers. See docs/agent-as-provider.md.
+.bridge/
+
 # Private evaluation material (see docs/dataset-policy.md)
 evals/golden/**
 !evals/golden/README.md

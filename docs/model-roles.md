@@ -98,6 +98,9 @@ on the answer.
 | NVIDIA / OpenAI-compatible | patterns normalized | the server constrains decoding with its own grammar engine |
 | Ollama | `pattern` dropped | llama.cpp's GBNF converter rejects an escaped hyphen in a character class — see below |
 
+To check a translation against a host that refuses the untranslated form, without a vendor
+account, see [agent-as-provider.md](agent-as-provider.md).
+
 **Pattern normalization exists because of a silent failure, not a loud one.** Pydantic emits
 `[a-z0-9_\-]`. Asked for a token matching it, Gemini returns `F1` — the schema is accepted
 and the constraint ignored. Written `[a-z0-9_-]` the same request returns `f1`. Ollama
