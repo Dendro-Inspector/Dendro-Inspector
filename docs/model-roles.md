@@ -34,6 +34,123 @@ DENDRO_ARBITER_MODEL=claude-opus-5
 model share failure modes, and a model that agrees with itself is not a second opinion — it
 is the same opinion, billed twice.
 
+## Gemini
+
+```bash
+DENDRO_PRIMARY_PROVIDER=gemini
+DENDRO_PRIMARY_MODEL=gemini-3.6-flash   # the adapter's default
+```
+
+Reads `GEMINI_API_KEY`, over plain HTTPS with no SDK. Structured output uses the API's
+native `responseSchema`.
+
+**Pro models are not on the free tier.** Verified 2026-07-27 against a free-tier key:
+`gemini-3.1-pro-preview`, `gemini-3-pro-preview`, `gemini-2.5-pro` and `gemini-pro-latest`
+all return `429` with `limit: 0` — a billing state, not a rate limit, so retrying never
+clears it. `gemini-3.6-flash`, `gemini-3.5-flash` and `gemini-2.5-flash` serve requests.
+Because a quota `429` is not a bad credential, the adapter reports it as a plain
+`ProviderError`; only `401`/`403` accuse the key.
+
+## NVIDIA NIM
+
+```bash
+DENDRO_PRIMARY_PROVIDER=nvidia
+DENDRO_PRIMARY_MODEL=nvidia/nemotron-3-nano-omni-30b-a3b-reasoning   # the adapter's default
+```
+
+Reads `NVIDIA_API_KEY`. NIM speaks the OpenAI chat-completions dialect, so the adapter is
+written against that dialect rather than the vendor: `NVIDIA_BASE_URL` repoints it at any
+OpenAI-compatible server — a self-hosted NIM, vLLM — with no code change.
+
+**The model must accept images.** Measured 2026-07-27 against `integrate.api.nvidia.com`
+on a single photograph:
+
+| Model | Image | `json_schema` |
+|---|---|---|
+| `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning` | yes | clean |
+| `google/gemma-4-31b-it` | yes | clean |
+| `meta/llama-3.2-90b-vision-instruct` | yes | clean |
+| `nvidia/nemotron-nano-12b-v2-vl` | yes | valid, padded with trailing newlines |
+| `meta/llama-3.2-11b-vision-instruct` | yes | ignored — returns prose |
+| `nvidia/nemotron-3-super-120b-a12b` | **no** — `500 multimodal processing is not enabled` | reasoning prose |
+
+A text-only model cannot serve any role here, because every node call carries the
+photograph. The adapter turns that `500` into a named error rather than a generic failure.
+Transient `500`/`503` from the shared endpoint are retried twice — an `EngineCore` 500 was
+observed on a request that succeeded unchanged moments later.
+
+The `omni` member of the `nemotron-3` family is the default because latency separated the
+clean ones: on one photograph it answered in 3.9 s where `google/gemma-4-31b-it` and
+`meta/llama-3.2-90b-vision-instruct` both exceeded 300 s on the shared endpoint. Its
+text-only siblings — `nemotron-3-super-120b-a12b`, `nemotron-3-nano-30b-a3b` — cannot serve
+any role here.
+
+## Schema dialects
+
+Neither Gemini nor Ollama accepts the JSON Schema Pydantic emits. `providers/schema_compat.py`
+translates it per target, and the translation is never a relaxation — the response is always
+validated by the original model, so a constraint dropped from the request is still enforced
+on the answer.
+
+| Target | Changed in the request | Why |
+|---|---|---|
+| Gemini | `$ref`/`$defs` inlined; `additionalProperties` and length bounds dropped; patterns normalized | `responseSchema` is an OpenAPI 3.0 subset |
+| NVIDIA / OpenAI-compatible | patterns normalized | the server constrains decoding with its own grammar engine |
+| Ollama | `pattern` dropped | llama.cpp's GBNF converter rejects an escaped hyphen in a character class — see below |
+
+**Pattern normalization exists because of a silent failure, not a loud one.** Pydantic emits
+`[a-z0-9_\-]`. Asked for a token matching it, Gemini returns `F1` — the schema is accepted
+and the constraint ignored. Written `[a-z0-9_-]` the same request returns `f1`. Ollama
+rejects the first form outright. `normalize_pattern` moves the hyphen to the end of the
+class rather than merely unescaping it, because `[a\-z]` unescaped in place becomes the
+range `a-z`; a test asserts the rewritten pattern matches exactly the same strings.
+
+## Local models via Ollama
+
+For offline or credential-free runs, either role can be bound to a locally hosted model
+through the `ollama` adapter. It needs no API key and no SDK — it talks to a running
+`ollama serve` over plain HTTP — but it is only as reliable as the local model's
+structured-output following, which is generally weaker than the hosted frontier models
+above. The adapter requests every call at `temperature: 0`.
+
+The model **must be vision-capable**: every node call carries images, and a text-only
+model ignores them silently rather than failing, which surfaces as a confidently wrong
+identification rather than an error. The default is `gemma4:e4b` — multimodal, edge-sized,
+128K context.
+
+```bash
+ollama pull gemma4:e4b
+DENDRO_PRIMARY_PROVIDER=ollama
+DENDRO_PRIMARY_MODEL=gemma4:e4b
+```
+
+Other multimodal options in the same range: `gemma4:e2b` (smaller), `gemma4:12b` (larger,
+256K context), or the `qwen3-vl` line. Pick the `-instruct` variant over `-thinking` where
+both exist — reasoning tokens fight the schema constraint.
+
+`OLLAMA_HOST` overrides the default `http://localhost:11434` if the server listens
+elsewhere.
+
+### The grammar constraint
+
+Ollama compiles the requested schema into a GBNF grammar before sampling, and its converter
+accepts less than JSON Schema allows. Measured on Ollama 0.32.4 with `gemma4:e4b` and
+`gemma3:4b`: a character class holding an escaped hyphen — `[a-z0-9_\-]`, exactly what
+Pydantic emits for `Identifier` and `ValueToken` — is answered with
+`400 failed to parse grammar`, while `[a-z0-9_-]` compiles. Small output caps hide it,
+because the failure needs a generation budget above roughly 256 tokens to surface, so a
+short smoke test passes and the real call does not.
+
+`to_ollama_schema` therefore drops `pattern` outright rather than tracking which escapes
+today's converter tolerates — upstream has a family of these, including PCRE shorthands and
+large `maxLength` bounds. Structure, types, enums and required fields still constrain the
+grammar; the regex is enforced where it always was, in validation.
+
+The practical consequence is that a local model is free to answer `feature: "Log Data
+Presence"` where the contract wants `bark.peeling`, and it will — that exact response came
+back from `gemma4:e4b`. Validation rejects it and the repair retry returns the error to the
+model. Budget for that: local runs spend more attempts per node than hosted ones.
+
 ## What the arbiter receives
 
 Original images, original user context, the evidence packet, the candidate set, the proposed

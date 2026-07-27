@@ -41,6 +41,31 @@ def build_provider(
                 model=config.model,
                 api_key_env=config.api_key_env or "ANTHROPIC_API_KEY",
             )
+        case Adapter.OLLAMA:
+            from dendro_inspector.providers.ollama_adapter import OllamaProvider
+
+            return OllamaProvider(model=config.model)
+        case Adapter.GEMINI:
+            from dendro_inspector.providers.gemini_adapter import GeminiProvider
+
+            return GeminiProvider(
+                model=config.model,
+                api_key_env=config.api_key_env or "GEMINI_API_KEY",
+            )
+        case Adapter.NVIDIA:
+            from dendro_inspector.providers.nvidia_adapter import NvidiaProvider
+
+            return NvidiaProvider(
+                model=config.model,
+                api_key_env=config.api_key_env or "NVIDIA_API_KEY",
+            )
+        case Adapter.OPENROUTER:
+            from dendro_inspector.providers.openrouter_adapter import OpenRouterProvider
+
+            return OpenRouterProvider(
+                model=config.model,
+                api_key_env=config.api_key_env or "OPENROUTER_API_KEY",
+            )
         case _:  # pragma: no cover - exhaustiveness check, fails at type-check time
             assert_never(config.adapter)
 

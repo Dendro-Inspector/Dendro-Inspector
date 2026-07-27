@@ -13,7 +13,14 @@ from typing import Annotated
 
 import typer
 
-from dendro_inspector.config import Adapter, AppConfig, ProviderConfig, Role, load_config
+from dendro_inspector.config import (
+    Adapter,
+    AppConfig,
+    ProviderConfig,
+    Role,
+    load_config,
+    load_dotenv,
+)
 from dendro_inspector.evaluation.reporting import render_json, render_text
 from dendro_inspector.evaluation.runner import run_suite
 from dendro_inspector.graph.definition import render_mermaid
@@ -30,6 +37,12 @@ app = typer.Typer(
     no_args_is_help=True,
     add_completion=False,
 )
+
+
+@app.callback()
+def _bootstrap() -> None:
+    """Read `.env` once, before any command builds its configuration."""
+    load_dotenv()
 
 
 def _fake_config(base: AppConfig, scenario: str) -> AppConfig:

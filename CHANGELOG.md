@@ -10,6 +10,59 @@ get entries.
 
 ## [Unreleased]
 
+### Added
+
+- `gemini` provider adapter, selectable for either role. Reads `GEMINI_API_KEY`, talks to the
+  Generative Language API over plain HTTPS with no SDK and no new dependency, and requests
+  structured output natively via `responseSchema`. Defaults to `gemini-3.6-flash`.
+  Pro-tier models are not reachable on a free-tier key — they answer `429` with `limit: 0`,
+  which no amount of retrying clears. A rate-limit `429` is different and is retried up to
+  three times, waiting the delay the API itself reports: a free-tier per-minute cap is easy
+  to trip when one inspection calls seven nodes. The two are told apart by `limit: 0`, so a
+  billing state fails immediately instead of sleeping first.
+- `nvidia` provider adapter for NVIDIA NIM, reading `NVIDIA_API_KEY`. It is written against
+  the OpenAI chat-completions dialect rather than the vendor, so `NVIDIA_BASE_URL` repoints
+  it at any OpenAI-compatible server. Defaults to
+  `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning`, the multimodal member of that family. A
+  model that cannot accept images is reported as such by name, because every node call
+  carries the photograph and the server's own error for it is an opaque `500`.
+- `openrouter` provider adapter, sharing the OpenAI-compatible implementation with `nvidia`;
+  the two differ only in base URL, credential and default model. Reads `OPENROUTER_API_KEY`.
+- `DENDRO_STRUCTURED_RETRIES` sets how many times a malformed structured response is handed
+  back to the model with its validation error. Still 1 by default. A hosted frontier model
+  satisfies these contracts first time; a smaller one frequently needs two or three.
+- `.env` is now loaded at startup. `README.md` and `.env.example` had told the reader to
+  create it since the first release; nothing read it back, so provider settings placed there
+  were silently ignored. An exported variable still wins over the file.
+
+- `ollama` provider adapter, selectable for either role via `DENDRO_PRIMARY_PROVIDER` or
+  `DENDRO_ARBITER_PROVIDER`. It runs against a local `ollama serve` over plain HTTP: no API
+  key, no SDK, no new dependency. `OLLAMA_HOST` overrides the default
+  `http://localhost:11434`, and `DENDRO_*_MODEL` selects the model — it defaults to
+  `gemma4:e4b` and **must be vision-capable**, because every node call carries images and a
+  text-only model ignores them rather than failing. Calls are made at `temperature: 0`. A
+  local model's schema-following is weaker than the hosted models', so malformed output —
+  and the one repair retry that follows it — is the expected failure mode rather than an
+  exceptional one.
+
+### Fixed
+
+- Each adapter now reads its own credential variable. `api_key_env` was pinned per *role* —
+  `primary` to `OPENAI_API_KEY`, `arbiter` to `ANTHROPIC_API_KEY` — so binding a role to any
+  other vendor reported a missing credential for a key that was set.
+- Regex patterns are normalized before being sent to any provider that constrains decoding.
+  Pydantic writes a hyphen inside a character class as `\-`, which Gemini **accepts and then
+  silently ignores** — asked for a value matching `^[a-z0-9][a-z0-9_\-]*$` it answers `F1`,
+  and answers `f1` once the class is written `[a-z0-9_-]`. The identifier and value-token
+  contracts were therefore unenforced on every structured call. The rewrite moves the hyphen
+  to the end of the class rather than unescaping it in place, since `[a\-z]` would otherwise
+  become the range `a-z`.
+- The Ollama adapter no longer sends `pattern` constraints. Ollama compiles the schema into a
+  GBNF grammar, and llama.cpp's converter rejects a character class containing an escaped
+  hyphen (`[a-z0-9_\-]`), which is what Pydantic emits for this project's identifier and
+  value-token types; every image-bearing call failed with `400 failed to parse grammar`.
+  Patterns are still enforced when the response is validated.
+
 ## [0.3.0] — 2026-07-27
 
 The project no longer ships under a mascot name. Identification behaviour is unchanged — the

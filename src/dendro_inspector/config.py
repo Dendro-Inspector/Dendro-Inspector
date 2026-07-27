@@ -33,6 +33,22 @@ class Adapter(StrEnum):
     FAKE = "fake"
     OPENAI = "openai"
     ANTHROPIC = "anthropic"
+    OLLAMA = "ollama"
+    GEMINI = "gemini"
+    NVIDIA = "nvidia"
+    OPENROUTER = "openrouter"
+
+
+# Which credential each adapter reads by default. The role does not decide this — binding
+# `arbiter` to Anthropic once did not make ANTHROPIC_API_KEY the arbiter's key forever, and
+# reading the wrong variable surfaces as a missing-credential error for a key that is set.
+DEFAULT_KEY_ENV: dict[Adapter, str] = {
+    Adapter.OPENAI: "OPENAI_API_KEY",
+    Adapter.ANTHROPIC: "ANTHROPIC_API_KEY",
+    Adapter.GEMINI: "GEMINI_API_KEY",
+    Adapter.NVIDIA: "NVIDIA_API_KEY",
+    Adapter.OPENROUTER: "OPENROUTER_API_KEY",
+}
 
 
 class ProviderConfig(Contract):
@@ -142,6 +158,39 @@ class AppConfig(Contract):
             raise KeyError(msg) from exc
 
 
+def load_dotenv(path: Path | None = None) -> None:
+    """Populate ``os.environ`` from a ``.env`` file, without overriding what is already set.
+
+    `README.md` and `.env.example` have always told the reader to copy the example to
+    `.env`; nothing read it back, so the file was decoration. Fifteen lines of parsing beat
+    a dependency for that (§14), and the real environment still wins — an exported variable
+    is a deliberate act, a file on disk is a default.
+
+    Deliberately not a dotenv implementation: no interpolation, no `export` prefixes, no
+    multi-line values. A key, an `=`, and a value.
+
+    Called from the CLI entrypoint rather than from :func:`load_config`, so that importing
+    this package never reads a file. A test that builds configuration would otherwise pick
+    up whatever provider the developer happens to have in `.env`, and §10's guarantee that
+    every gate runs on the fake provider would hold only on machines without one.
+    """
+    target = path or Path(".env")
+    if not target.is_file():
+        return
+    for line in target.read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#") or "=" not in stripped:
+            continue
+        name, _, raw = stripped.partition("=")
+        key = name.strip()
+        if not key or key in os.environ:
+            continue
+        value = raw.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in {'"', "'"}:
+            value = value[1:-1]
+        os.environ[key] = value
+
+
 def _env(name: str, default: str | None = None) -> str | None:
     value = os.environ.get(name)
     if value is None or value.strip() == "":
@@ -159,17 +208,29 @@ def load_config(overrides: AppConfig | None = None) -> AppConfig:
         return overrides
 
     scenario = _env("DENDRO_FAKE_SCENARIO", "primary-pass")
+    # A hosted frontier model satisfies these contracts first time; a smaller one often needs
+    # the validation error handed back to it more than once. That is a property of the model,
+    # not of the code, so it belongs in configuration.
+    retries = int(_env("DENDRO_STRUCTURED_RETRIES", "1") or "1")
+    primary_adapter = Adapter(
+        _env("DENDRO_PRIMARY_PROVIDER", Adapter.FAKE.value) or Adapter.FAKE.value
+    )
+    arbiter_adapter = Adapter(
+        _env("DENDRO_ARBITER_PROVIDER", Adapter.FAKE.value) or Adapter.FAKE.value
+    )
     primary = ProviderConfig(
-        adapter=Adapter(_env("DENDRO_PRIMARY_PROVIDER", Adapter.FAKE.value) or Adapter.FAKE.value),
+        adapter=primary_adapter,
         model=_env("DENDRO_PRIMARY_MODEL"),
-        api_key_env="OPENAI_API_KEY",
+        api_key_env=DEFAULT_KEY_ENV.get(primary_adapter),
         scenario=scenario,
+        max_structured_retries=retries,
     )
     arbiter = ProviderConfig(
-        adapter=Adapter(_env("DENDRO_ARBITER_PROVIDER", Adapter.FAKE.value) or Adapter.FAKE.value),
+        adapter=arbiter_adapter,
         model=_env("DENDRO_ARBITER_MODEL"),
-        api_key_env="ANTHROPIC_API_KEY",
+        api_key_env=DEFAULT_KEY_ENV.get(arbiter_adapter),
         scenario=scenario,
+        max_structured_retries=retries,
     )
     trace_dir = _env("DENDRO_TRACE_DIR")
 

@@ -103,6 +103,14 @@ DENDRO_PRIMARY_PROVIDER=openai      # plan, extract, generate, review
 DENDRO_ARBITER_PROVIDER=anthropic   # independently challenge disputed results
 ```
 
+`.env` is read at startup; anything already exported in the environment wins over it.
+
+Either role can also be bound to `gemini` (reads `GEMINI_API_KEY`, no SDK) or to `ollama`,
+which needs no key at all — just a local `ollama serve` and a vision-capable model pulled
+onto the machine. Both speak narrower schema dialects than Pydantic emits, so requests are
+translated per provider without ever relaxing what the response is validated against. See
+[docs/model-roles.md](docs/model-roles.md).
+
 ## The domain prompt
 
 The dendrology system prompt at `prompts/domain/system-prompt.md` is an **opaque,
