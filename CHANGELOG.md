@@ -10,8 +10,11 @@ get entries.
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-07-27
+
 The project no longer ships under a mascot name. Identification behaviour is unchanged — the
-frozen 19-case public baseline is byte-identical — but every name a user types moved.
+19-case public baseline records the same decision for every case — but every name a user
+types moved, which is what makes this a major-for-0.x release rather than a patch.
 
 ### Changed — breaking
 
@@ -25,8 +28,14 @@ frozen 19-case public baseline is byte-identical — but every name a user types
 - The domain prompt placeholder marker is `<!-- DENDRO-DOMAIN-PROMPT-PLACEHOLDER -->`.
 - The domain prompt and the response-composer node prompt were reworded to drop the mascot,
   so `prompts/versions.yaml` records new hashes. Deployments pinning the previous domain
-  prompt hash must re-run `dendro prompt-seal` against their own copy. Policy revision stays
-  `0.2.3`: no rule changed, only wording that never had authority over a verdict.
+  prompt hash must re-run `dendro prompt-seal` against their own copy.
+- Deterministic policy revision, graph version and package version are `0.3.0`. No
+  identification rule changed — the wording that moved never had authority over a verdict —
+  but the names in every trace, manifest and import moved together, and a trace is only
+  useful if its version string tells you which vocabulary produced it.
+- The frozen baseline is `evals/baselines/public-v0.3.0.json`. It was regenerated from a live
+  run rather than copied: all 19 cases record the same decision as `public-v0.2.3.json`, and
+  every metric is identical. `public-v0.2.1` through `v0.2.3` are retained as history.
 
 ## [0.2.3] — 2026-07-27
 
@@ -374,7 +383,8 @@ documents, GitHub Actions CI with a blocking secret scan.
 
 Compare links resolve once the matching tags are pushed; none exist yet.
 
-[Unreleased]: https://github.com/Dendro-Inspector/Dendro-Inspector/compare/v0.2.3...HEAD
+[Unreleased]: https://github.com/Dendro-Inspector/Dendro-Inspector/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/Dendro-Inspector/Dendro-Inspector/compare/v0.2.3...v0.3.0
 [0.2.3]: https://github.com/Dendro-Inspector/Dendro-Inspector/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/Dendro-Inspector/Dendro-Inspector/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/Dendro-Inspector/Dendro-Inspector/compare/v0.1.0...v0.2.1

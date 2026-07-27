@@ -652,7 +652,7 @@ answer.
    `.github/ISSUE_TEMPLATE/config.yml`. The contact links in that config assume Discussions
    and private vulnerability reporting are enabled on the repository; enable both, or drop
    the links rather than publish two dead ends. No release tags exist yet, so the changelog
-   compare links resolve only once `v0.2.1`, `v0.2.2` and `v0.2.3` are pushed.
+   compare links resolve only once `v0.2.1`, `v0.2.2`, `v0.2.3` and `v0.3.0` are pushed.
 6. Branch protection on `main`: require the CI checks from `.github/workflows/ci.yml`.
    Until this is switched on, §11's enforcement layer does not exist — the workflow runs
    but nothing stops a merge over a red run.

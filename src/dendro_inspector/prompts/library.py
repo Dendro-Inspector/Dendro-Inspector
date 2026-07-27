@@ -34,7 +34,7 @@ from dendro_inspector.observability.events import (
 from dendro_inspector.schemas.base import Contract
 
 #: The only deterministic policy revision compatible with this code.
-DETERMINISTIC_POLICY_REVISION = "0.2.3"
+DETERMINISTIC_POLICY_REVISION = "0.3.0"
 
 #: A domain prompt file containing this marker is demonstration scaffolding, not the
 #: user's reviewed dendrology prompt. Surfaced in the CLI and in every trace.
@@ -107,7 +107,7 @@ class PromptPolicyManifest(Contract):
     """Closed-world manifest accepted by the current deterministic policy."""
 
     schema_version: Literal["1"]
-    policy_revision: Literal["0.2.3"]
+    policy_revision: Literal["0.3.0"]
     domain_prompt: DomainPromptManifest
     node_prompts: NodePromptManifest
 

@@ -233,8 +233,8 @@ v0.2.2 intentionally changed admission and identity behaviour, so it is not the 
 The v0.2.2 release result is preserved in `evals/baselines/public-v0.2.2.json`: sixteen
 passing cases, zero failures and zero overconfidence.
 
-The v0.2.3 release result is **nineteen passing cases, zero failures, zero overconfidence**,
-frozen in `evals/baselines/public-v0.2.3.json`. The original sixteen decisions are byte-for-byte
+The v0.3.0 release result is **nineteen passing cases, zero failures, zero overconfidence**,
+frozen in `evals/baselines/public-v0.3.0.json`. The original sixteen decisions are byte-for-byte
 equivalent in the baseline comparison; the three additions cover rough-end-grain anatomy,
 split-face colour-only abstention and the corroborated log-pile counterexample.
 
