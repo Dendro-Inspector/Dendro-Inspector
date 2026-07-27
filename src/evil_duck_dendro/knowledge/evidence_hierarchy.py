@@ -24,7 +24,6 @@ from enum import IntEnum
 
 from evil_duck_dendro.schemas.evidence import (
     EvidencePacket,
-    ImageLimitation,
     Observation,
     ObservationSource,
     Reliability,
@@ -220,24 +219,13 @@ def _requires_prepared_end_grain(feature: str) -> bool:
     )
 
 
-def _limitation_for(evidence: EvidencePacket, observation: Observation) -> ImageLimitation | None:
-    if observation.image_id is None:
-        return None
-    return next(
-        (item for item in evidence.image_limitations if item.image_id == observation.image_id),
-        None,
-    )
-
-
-def observation_trust(
-    observation: Observation,
-    limitation: ImageLimitation | None = None,
-) -> EvidenceTrust:
+def observation_trust(observation: Observation) -> EvidenceTrust:
     """Project one observation onto the deterministic identification trust boundary.
 
     Besides source, visibility, reliability and attachment, the physical wood surface caps
-    what an image can prove. Colour and tone remain supporting context rather than full-tier
-    evidence under every photographic condition.
+    what an image can prove. Colour and tone are capped unconditionally rather than only
+    under unfavourable light: the alternative is trusting a model-authored lighting label
+    to decide how much a model-authored colour claim is worth.
     """
     if observation.source is not ObservationSource.IMAGE:
         return EvidenceTrust.CONTEXT_ONLY
@@ -273,12 +261,9 @@ def _tier_at_trust(tier: EvidenceTier, trust: EvidenceTrust) -> EvidenceTier:
     return tier
 
 
-def project_observation(
-    observation: Observation,
-    limitation: ImageLimitation | None = None,
-) -> EvidenceProjection:
+def project_observation(observation: Observation) -> EvidenceProjection:
     """Return the trust and effective tier of one observation."""
-    trust = observation_trust(observation, limitation)
+    trust = observation_trust(observation)
     return EvidenceProjection(
         evidence_id=observation.observation_id,
         source_observations=(observation,),
@@ -337,9 +322,7 @@ def project_evidence(
             tier=EvidenceTier.CONTEXT,
         )
 
-    source_projections = tuple(
-        project_observation(source, _limitation_for(evidence, source)) for source in sources
-    )
+    source_projections = tuple(project_observation(source) for source in sources)
     trust = min(projection.trust for projection in source_projections)
     tier = min(projection.tier for projection in source_projections)
     return EvidenceProjection(
@@ -355,8 +338,7 @@ def positive_observations_for(evidence: EvidencePacket, subject_id: str) -> tupl
     return tuple(
         observation
         for observation in evidence.observations_for(subject_id)
-        if observation_trust(observation, _limitation_for(evidence, observation))
-        is not EvidenceTrust.CONTEXT_ONLY
+        if observation_trust(observation) is not EvidenceTrust.CONTEXT_ONLY
     )
 
 
@@ -367,8 +349,7 @@ def full_positive_observations_for(
     return tuple(
         observation
         for observation in evidence.observations_for(subject_id)
-        if observation_trust(observation, _limitation_for(evidence, observation))
-        is EvidenceTrust.FULL_POSITIVE
+        if observation_trust(observation) is EvidenceTrust.FULL_POSITIVE
     )
 
 
@@ -383,20 +364,14 @@ def contextual_observations_for(
     )
 
 
-def effective_tier(
-    observation: Observation,
-    limitation: ImageLimitation | None = None,
-) -> EvidenceTier:
+def effective_tier(observation: Observation) -> EvidenceTier:
     """The tier an observation carries after the shared trust projection."""
-    return project_observation(observation, limitation).tier
+    return project_observation(observation).tier
 
 
 def best_tier(evidence: EvidencePacket, subject_id: str) -> EvidenceTier:
     """The strongest trusted positive tier available for one subject."""
-    tiers = [
-        effective_tier(observation, _limitation_for(evidence, observation))
-        for observation in evidence.observations_for(subject_id)
-    ]
+    tiers = [effective_tier(observation) for observation in evidence.observations_for(subject_id)]
     return max(tiers, default=EvidenceTier.CONTEXT)
 
 
