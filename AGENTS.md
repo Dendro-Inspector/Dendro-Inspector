@@ -287,13 +287,20 @@ per session.
 
 | Skill | Use for |
 |---|---|
-| *(none yet — add as recurring workflows emerge)* | |
+| `eval-case` | Adding or changing a public conformance case; fake-provider fixtures; re-freezing a baseline |
+| `prompt-change` | Editing the domain prompt or a node prompt; re-sealing the manifest; prompt hash mismatches |
+| `knowledge-card` | Adding or editing taxon cards, comparison cards and regional packs; provenance |
+| `evidence-contract` | Feature families, evidence tiers, trust projection, wood-surface and attachment rules |
 
-Do not vendor-fork this catalog. A mirrored skill drifts within a week.
+Skills are **drafts** until exercised on real work. Status is declared in each `SKILL.md`.
 
-Until a skill exists, the routing documents are `docs/architecture.md` (contracts and
-layering), `docs/agent-graph.md` (nodes and routing), `docs/review-pipeline.md` (finding
-admissibility), `docs/model-roles.md` (escalation), `docs/evaluation.md` (adding cases).
+Do not vendor-fork this catalog. A mirrored skill drifts within a week. A skill routes to
+the implementation and the owning document; it does not restate them. When a skill and a
+`docs/**` document disagree, the document wins and the skill is the bug.
+
+Subjects no skill covers yet route to `docs/architecture.md` (contracts and layering),
+`docs/agent-graph.md` (nodes and routing), `docs/review-pipeline.md` (finding
+admissibility), `docs/model-roles.md` (escalation).
 
 ---
 
