@@ -67,11 +67,21 @@ concurrently, so three answer files can be written at once.
 
 ### Answers are cached, so a second dialect costs nothing
 
-The cache key is a hash of the prompt plus the schema's top-level field names. The prompt
-already contains every upstream node's output, so an identical prompt means an identical
-position in an identical run — and replaying it in another dialect is the same model answering
-the same question at temperature 0. Any real divergence upstream changes the prompt and falls
-through to a fresh request.
+The cache key is a hash of the prompt, the schema's top-level field names, and the SHA-256 of
+every photograph served. The prompt already contains every upstream node's output, so an
+identical prompt means an identical position in an identical run — and replaying it in another
+dialect is the same model answering the same question at temperature 0. Any real divergence
+upstream changes the prompt and falls through to a fresh request.
+
+The photographs are hashed in because the prompt does **not** contain them: case context names
+each image by id and media type only. Two different photographs inspected with the same season,
+object type and locale therefore produce a byte-identical planner prompt. Keyed on the prompt
+alone — as it was until 2026-07-28 — the second run silently received the answers authored while
+looking at the first run's picture, which is a wrong result wearing the costume of a fast one.
+
+A replay of a run that needed a repair retry will not complete from cache. The repair prompt
+embeds the adapter name — `gemini returned unparseable output …` becomes `nvidia returned …` —
+so every repair round misses and blocks for a fresh answer. Only clean runs replay end to end.
 
 In practice: author the answers once through `gemini` or `ollama`, then re-run the same
 photograph through `nvidia` and `openrouter`, which finish in seconds and exercise the other
@@ -84,7 +94,17 @@ dialect's schema translation and envelope. To re-author a call, move its file ou
 | --- | --- | --- |
 | `gemini` | `GEMINI_TIMEOUT_SECONDS`, raised to 3600 by the launcher | authoring answers live |
 | `ollama` | `OLLAMA_TIMEOUT_SECONDS`, raised to 3600 by the launcher | authoring answers live, no credential at all |
+| `anthropic` | `ANTHROPIC_TIMEOUT_SECONDS`, raised to 3600 by the launcher | authoring answers live |
 | `nvidia`, `openrouter` | 300 s, fixed — the registry does not pass the constructor argument | replaying cached answers |
+
+The `anthropic` dialect needs the optional extra: `pip install '.[anthropic]'`. It is the only
+dialect whose adapter is an SDK rather than a raw `urlopen`, so two behaviours differ. The SDK
+retries a timed-out request twice on its own, which against a socket waiting for a human means
+three pending requests for one answer file — the raised timeout, not a retry setting, is what
+prevents that, because the SDK reads no environment variable for retry count. And the base URL
+is redirected through `ANTHROPIC_BASE_URL`, which the SDK reads itself, so `-Fault` cannot be
+expressed on this dialect: the SDK appends `/v1/messages` to the base URL and a path prefix
+would not survive.
 
 ## The bridge is a strict vendor
 
@@ -96,7 +116,17 @@ code and error shape, so `providers/schema_compat.py` is exercised rather than t
 | Gemini | `$ref`, `$defs`, `additionalProperties`, `const`, `allOf`, `oneOf`, `not` — `400 INVALID_ARGUMENT` |
 | Ollama | a character class holding `\-` — `400 failed to parse grammar` |
 | OpenAI-compatible | the same escaped hyphen — `400`, guided-decoding grammar failed to compile |
-| Gemini, OpenAI-compatible | a missing or empty credential in the header that dialect uses |
+| Anthropic | nothing about the schema; a missing `anthropic-version` or `max_tokens` — `400` |
+| Gemini, OpenAI-compatible, Anthropic | a missing or empty credential in the header that dialect uses |
+
+Anthropic rejects no schema construct, and that is the point of including it. The other three
+hand the schema to a constrained decoder, so a construct the decoder cannot compile is a
+request-time error. `providers/anthropic_adapter.py` appends the raw Pydantic schema to the
+prompt as prose, so nothing is compiled and nothing is rejected: `$ref`, `$defs`, `const` and
+the escaped hyphen all travel intact. Two consequences follow. That path never passes through
+`providers/schema_compat.py`, so constraints the other dialects lose — `maxLength` among them —
+survive, and the model resolves `$defs` itself. And every constraint is enforced only by
+Pydantic after the fact, which makes the repair retry this dialect's sole line of defence.
 
 The forbidden sets are written out in `bridge.py` rather than imported from `schema_compat`, on
 purpose: importing them would make the check agree with the code by construction and prove

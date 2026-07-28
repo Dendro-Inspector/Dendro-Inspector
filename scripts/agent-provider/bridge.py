@@ -182,21 +182,51 @@ def reject_openai(stats: dict[str, Any]) -> None:
         )
 
 
-REJECTORS = {"gemini": reject_gemini, "ollama": reject_ollama, "openai": reject_openai}
+def reject_anthropic(stats: dict[str, Any]) -> None:
+    """Reject nothing, and mean it.
+
+    The other three dialects hand the schema to a constrained decoder, so a construct the
+    decoder cannot compile is a request-time error. This adapter appends the schema to the
+    prompt as prose and asks for a JSON object back, so there is no grammar to compile and
+    nothing to reject: `$ref`, `$defs`, `const` and an escaped hyphen all travel intact.
+
+    Two consequences worth stating rather than discovering. The schema never passes through
+    `providers/schema_compat.py` on this path, so the model resolves `$defs` itself; and
+    every constraint is enforced only by Pydantic after the fact, which makes the repair
+    retry — not the request — this dialect's sole line of defence.
+    """
+    del stats
 
 
-def cache_key(prompt: str, properties: list[str]) -> str:
+REJECTORS = {
+    "gemini": reject_gemini,
+    "ollama": reject_ollama,
+    "openai": reject_openai,
+    "anthropic": reject_anthropic,
+}
+
+
+def cache_key(prompt: str, properties: list[str], image_digests: list[str]) -> str:
     """Identity of a model call, independent of the dialect that carried it.
 
-    The prompt already contains every upstream node's output, so an identical prompt means an
-    identical position in an identical run. A second dialect replaying the first dialect's
-    answers is therefore the same model answering the same question at temperature 0, and any
-    divergence upstream changes the prompt and falls through to a fresh request.
+    The prompt carries every upstream node's output, so an identical prompt means an identical
+    position in an identical run. A second dialect replaying the first dialect's answers is
+    therefore the same model answering the same question at temperature 0, and any divergence
+    upstream changes the prompt and falls through to a fresh request.
+
+    The photographs are hashed in because the prompt does **not** contain them. Case context
+    names each image by id and media type only, so two different photographs inspected with
+    the same season, object type and locale produce a byte-identical planner prompt. Keyed on
+    the prompt alone, the second run silently received answers authored while looking at the
+    first run's picture — a wrong result that looked like a fast one, visible only by
+    comparing the digest in the pending metadata against the file on disk.
     """
     digest = hashlib.sha256()
     digest.update(prompt.encode("utf-8"))
     digest.update(b"\x00")
     digest.update(",".join(properties).encode("utf-8"))
+    digest.update(b"\x00")
+    digest.update(",".join(image_digests).encode("utf-8"))
     return digest.hexdigest()[:16]
 
 
@@ -313,7 +343,11 @@ class Handler(BaseHTTPRequestHandler):
             saved = self._decode_images(images, request_id)
             if fault in RAISING_FAULTS:
                 raise_fault(fault, self.state, dialect)
-            key = cache_key(prompt, stats["top_level_properties"])
+            key = cache_key(
+                prompt,
+                stats["top_level_properties"],
+                [str(image["sha256"]) for image in saved],
+            )
             answer, source = self._answer(
                 request_id,
                 dialect,
@@ -373,6 +407,41 @@ class Handler(BaseHTTPRequestHandler):
             schema = body["format"]
             name = schema.get("title", "unknown")
             return "ollama", message["content"], images, schema, body.get("model", "?"), name
+        if path.endswith("/v1/messages"):
+            self._require_header("x-api-key", "")
+            self._require_header("anthropic-version", "")
+            if not body.get("max_tokens"):
+                raise DialectRejectionError(
+                    400,
+                    {
+                        "type": "error",
+                        "error": {
+                            "type": "invalid_request_error",
+                            "message": "max_tokens: Field required",
+                        },
+                    },
+                    "anthropic requires max_tokens",
+                )
+            content = body["messages"][0]["content"]
+            prompt = "".join(part["text"] for part in content if part.get("type") == "text")
+            images = [
+                (part["source"]["media_type"], part["source"]["data"])
+                for part in content
+                if part.get("type") == "image"
+            ]
+            # Unlike the other three, this adapter carries no structured-output field: it
+            # appends the raw Pydantic schema to the prompt as prose. Recover it from the
+            # tail so the pending request still shows the contract that was actually asked
+            # for, and so a missing one is a loud rejection rather than a silent `{}`.
+            schema = self._trailing_schema(prompt)
+            return (
+                "anthropic",
+                prompt,
+                images,
+                schema,
+                body.get("model", "?"),
+                schema.get("title", "unknown"),
+            )
         match = re.search(r"/models/([^:]+):generateContent$", path)
         if match:
             self._require_header("x-goog-api-key", "")
@@ -389,10 +458,66 @@ class Handler(BaseHTTPRequestHandler):
             404, {"error": {"message": f"no route for {path}"}}, f"unrouted path {path}"
         )
 
+    @staticmethod
+    def _trailing_schema(prompt: str) -> dict[str, Any]:
+        """Recover the JSON Schema the Anthropic adapter appended to the prompt text.
+
+        The object runs to the end of the prompt, so decoding from the last ``{`` that
+        parses is enough; scanning from the marker forward would stop at the first brace
+        inside the prose above it.
+        """
+        marker = prompt.rfind("## Required output")
+        tail = prompt[marker:] if marker >= 0 else prompt
+        start = tail.find("{")
+        while start >= 0:
+            try:
+                decoded = json.loads(tail[start:])
+            except json.JSONDecodeError:
+                start = tail.find("{", start + 1)
+                continue
+            if isinstance(decoded, dict):
+                return decoded
+            break
+        raise DialectRejectionError(
+            400,
+            {
+                "type": "error",
+                "error": {
+                    "type": "invalid_request_error",
+                    "message": "no JSON Schema found in the message content",
+                },
+            },
+            "anthropic prompt carried no schema",
+        )
+
     def _require_header(self, name: str, prefix: str) -> None:
         value = self.headers.get(name) or ""
         if value.startswith(prefix) and value[len(prefix) :].strip():
             return
+        if name == "anthropic-version":
+            raise DialectRejectionError(
+                400,
+                {
+                    "type": "error",
+                    "error": {
+                        "type": "invalid_request_error",
+                        "message": "anthropic-version: Field required",
+                    },
+                },
+                f"no {name} header",
+            )
+        if name == "x-api-key":
+            raise DialectRejectionError(
+                401,
+                {
+                    "type": "error",
+                    "error": {
+                        "type": "authentication_error",
+                        "message": "invalid x-api-key",
+                    },
+                },
+                f"no credential in {name}",
+            )
         if name == "x-goog-api-key":
             raise DialectRejectionError(
                 403,
@@ -570,6 +695,20 @@ class Handler(BaseHTTPRequestHandler):
                 "message": {"role": "assistant", "content": text},
                 "done": True,
                 "done_reason": "stop",
+            }
+        if dialect == "anthropic":
+            # `usage` and `stop_reason` are not decoration: the SDK parses this into typed
+            # objects and a caller that reads `stop_reason` to detect truncation needs the
+            # empty-text case to say `max_tokens`, exactly as the real API does.
+            return {
+                "id": "msg_bridge",
+                "type": "message",
+                "role": "assistant",
+                "model": model,
+                "content": [{"type": "text", "text": text}] if text else [],
+                "stop_reason": "end_turn" if text else "max_tokens",
+                "stop_sequence": None,
+                "usage": {"input_tokens": 0, "output_tokens": 0},
             }
         return {
             "candidates": [
