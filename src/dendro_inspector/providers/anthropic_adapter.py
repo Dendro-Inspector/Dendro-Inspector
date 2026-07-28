@@ -24,6 +24,23 @@ from dendro_inspector.providers.base import (
 
 DEFAULT_MODEL = "claude-opus-5"
 MAX_TOKENS = 4096
+DEFAULT_TIMEOUT_SECONDS = 120.0
+
+
+def _default_timeout() -> float:
+    """Same override the Gemini and Ollama adapters take, for the same reason.
+
+    A hosted vendor answers inside two minutes or not at all, so the default stands. The
+    override exists because `scripts/agent-provider/bridge.py` puts a human or an agent
+    behind this socket, and neither writes a structured answer in 120 seconds.
+    """
+    raw = os.environ.get("ANTHROPIC_TIMEOUT_SECONDS")
+    if not raw:
+        return DEFAULT_TIMEOUT_SECONDS
+    try:
+        return float(raw)
+    except ValueError:
+        return DEFAULT_TIMEOUT_SECONDS
 
 
 class AnthropicProvider:
@@ -36,11 +53,11 @@ class AnthropicProvider:
         *,
         model: str | None = None,
         api_key_env: str = "ANTHROPIC_API_KEY",
-        timeout_seconds: float = 120.0,
+        timeout_seconds: float | None = None,
     ) -> None:
         self.model = model or DEFAULT_MODEL
         self._api_key_env = api_key_env
-        self._timeout = timeout_seconds
+        self._timeout = timeout_seconds if timeout_seconds is not None else _default_timeout()
         self._client: Any | None = None
 
     def _ensure_client(self) -> Any:

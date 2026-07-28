@@ -36,7 +36,7 @@ See docs/agent-as-provider.md. Start bridge.py first.
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)]
-    [ValidateSet('gemini', 'ollama', 'nvidia', 'openrouter')]
+    [ValidateSet('gemini', 'ollama', 'nvidia', 'openrouter', 'anthropic')]
     [string]$Dialect,
 
     [Parameter(Mandatory = $true)]
@@ -90,6 +90,17 @@ switch ($Dialect) {
     'openrouter' {
         $env:OPENROUTER_BASE_URL = "$root/v1"
         $env:OPENROUTER_API_KEY = 'bridge-local-placeholder'
+    }
+    'anthropic' {
+        # The adapter takes no base-url argument; the SDK reads this env var, which is why
+        # the redirect needs no change to `anthropic_adapter.py`. A fault prefix cannot be
+        # expressed here — the SDK appends `/v1/messages` to the base URL itself.
+        $env:ANTHROPIC_BASE_URL = "http://127.0.0.1:$Port"
+        $env:ANTHROPIC_API_KEY = 'bridge-local-placeholder'
+        # Without this the SDK's own 120s default expires while the answer is being
+        # written, and it then retries twice — three pending requests for one answer file.
+        # The SDK has no env var for retry count, so raising the timeout is the whole fix.
+        $env:ANTHROPIC_TIMEOUT_SECONDS = '3600'
     }
 }
 
