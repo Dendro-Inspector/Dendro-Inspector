@@ -11,6 +11,8 @@ and confidence downstream.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 from dendro_inspector.graph.executor import NodeContext
 from dendro_inspector.graph.state import EvidenceQualityReport, GraphState
 from dendro_inspector.knowledge.comparison_cards import (
@@ -25,6 +27,11 @@ from dendro_inspector.knowledge.evidence_hierarchy import (
     positive_observations_for,
     unattached_observations,
 )
+from dendro_inspector.knowledge.taxon_cards import (
+    card_value_vocabulary,
+    unmatchable_observations,
+)
+from dendro_inspector.observability.logging import get_logger
 from dendro_inspector.schemas.evidence import EvidencePacket
 
 NODE = "evidence_quality"
@@ -51,6 +58,7 @@ def assess(
     *,
     min_observations: int,
     require_non_colour: bool,
+    vocabulary: Mapping[str, frozenset[str]] | None = None,
 ) -> EvidenceQualityReport:
     """Pure quality assessment over an evidence packet."""
     reasons: list[str] = []
@@ -94,6 +102,12 @@ def assess(
     if not usable and "no_usable_subject" not in reasons:
         reasons.append("no_usable_subject")
 
+    unmatchable = (
+        tuple(o.observation_id for o in unmatchable_observations(evidence, vocabulary))
+        if vocabulary is not None
+        else ()
+    )
+
     return EvidenceQualityReport(
         sufficient=bool(usable),
         usable_subject_ids=tuple(usable),
@@ -101,6 +115,7 @@ def assess(
         colour_dependence_detected=colour_dependence,
         best_tier_by_subject=tiers,
         unattached_evidence_ids=tuple(unattached),
+        unmatchable_evidence_ids=unmatchable,
     )
 
 
@@ -110,9 +125,32 @@ async def run(state: GraphState, ctx: NodeContext) -> GraphState:
         return state.evolve(
             quality=EvidenceQualityReport(sufficient=False, insufficient_reasons=("no_evidence",))
         )
+    vocabulary = card_value_vocabulary(ctx.knowledge.taxa(ctx.knowledge.available_taxon_ids()))
     report = assess(
         evidence,
         min_observations=ctx.config.graph.min_observations_for_candidates,
         require_non_colour=ctx.config.graph.require_non_colour_evidence,
+        vocabulary=vocabulary,
     )
+    if report.unmatchable_evidence_ids:
+        # Logged here rather than at the admission boundary because by then the reason is
+        # gone: the candidate is simply rejected, and "the model saw nothing useful" and
+        # "the cards describe nothing the model saw" look identical in the output.
+        by_id = {o.observation_id: o for o in evidence.observations}
+        get_logger(NODE).warning(
+            "evidence_outside_card_vocabulary",
+            extra={
+                "case_id": state.case.case_id,
+                "unmatchable": len(report.unmatchable_evidence_ids),
+                "observations": len(evidence.observations),
+                "features_absent_from_all_cards": sorted(
+                    {
+                        by_id[observation_id].feature
+                        for observation_id in report.unmatchable_evidence_ids
+                        if observation_id in by_id
+                        and by_id[observation_id].feature not in vocabulary
+                    }
+                ),
+            },
+        )
     return state.evolve(quality=report)

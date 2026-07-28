@@ -7,6 +7,7 @@ lying about how it treats the user's prompt.
 from __future__ import annotations
 
 import hashlib
+import re
 import shutil
 from pathlib import Path
 from typing import Any, cast
@@ -67,7 +68,7 @@ class TestLoadedUnchanged:
     def test_hash_is_the_hash_of_the_file(self, repo_root):
         path = repo_root / "prompts" / "domain" / "system-prompt.md"
         expected = hashlib.sha256(path.read_bytes()).hexdigest()
-        assert expected == "23ab9d12e0d09abc76888a275e7128b922dd8850f03ebcae6af3b88cce50d34a"
+        assert expected == "d1abfc373b6a7c715528b80e655085bd83a5ed13c7e1571aa6ed72a1a83edf47"
         assert load_domain_prompt(path).sha256 == expected
 
     def test_text_is_not_stripped_normalised_or_reformatted(self, tmp_path):
@@ -346,15 +347,16 @@ class TestPromptSeal:
         manifest_path = tmp_path / "prompts" / "versions.yaml"
         before = manifest_path.read_bytes()
         prompt = tmp_path / "prompts" / "domain" / "system-prompt.md"
+        # Derived, not pinned: this test is about the old -> new transition, so hard-coding
+        # the shipped prompt's hash here only makes every future prompt edit fail twice.
+        original = hashlib.sha256(prompt.read_bytes()).hexdigest()
         prompt.write_bytes(prompt.read_bytes() + b"\nowner edit\n")
         expected = hashlib.sha256(prompt.read_bytes()).hexdigest()
 
         plan = plan_seal(PromptConfig(), root=tmp_path)
 
         assert not plan.up_to_date
-        assert [(change.old, change.new) for change in plan.changes] == [
-            ("23ab9d12e0d09abc76888a275e7128b922dd8850f03ebcae6af3b88cce50d34a", expected)
-        ]
+        assert [(change.old, change.new) for change in plan.changes] == [(original, expected)]
         assert "->" in plan.changes[0].render()
         assert manifest_path.read_bytes() == before
 
@@ -457,3 +459,138 @@ class TestPromptSeal:
         assert payload["domain_prompt"]["path"] == "custom/domain.md"
         assert payload["domain_prompt"]["sha256"] == hashlib.sha256(custom.read_bytes()).hexdigest()
         assert metadata.compatibility_status.value == "compatible"
+
+
+def test_cache_boundary_is_exactly_the_shared_head_of_every_composed_prompt(repo_root: Path):
+    """The reported cache prefix must be the real text sent, byte for byte.
+
+    A boundary that drifts from `compose` would mark a breakpoint mid-sentence and cache a
+    prefix no later call reproduces — paying the write cost forever and never reading it.
+    """
+    library = PromptLibrary(PromptConfig(), root=repo_root)
+    boundary = library.cacheable_prefix_chars("uk")
+
+    composed = {
+        name: library.compose(name, context="case-specific text", locale="uk")
+        for name in NODE_PROMPTS
+    }
+    prefixes = {text[:boundary] for text in composed.values()}
+    assert len(prefixes) == 1, "the cached prefix must be identical across every node"
+
+    prefix = prefixes.pop()
+    assert prefix.startswith(library.domain.text)
+    assert prefix.endswith("\n\n---\n\n"), "the boundary must fall on a layer separator"
+    for name, text in composed.items():
+        assert text[boundary:].startswith(library.node(name).split("\n", 1)[0])
+
+
+def test_cache_boundary_covers_the_domain_prompt_and_nothing_case_specific(repo_root: Path):
+    library = PromptLibrary(PromptConfig(), root=repo_root)
+    boundary = library.cacheable_prefix_chars("uk")
+    secret = "SUBJECT-SPECIFIC-MARKER"
+
+    composed = library.compose("planner", context=secret, locale="uk")
+
+    assert secret not in composed[:boundary], "case context must never enter a shared cache"
+    assert len(library.domain.text) <= boundary < len(composed)
+
+
+def test_every_genus_card_is_named_in_the_domain_prompt(repo_root: Path, knowledge):
+    """Cards cite section 14 as their source; nothing checked that section 14 agrees.
+
+    The manifest seals the prompt's bytes, not its agreement with the knowledge base, so a
+    genus could be added to either side and drift unnoticed. `larix` is the one documented
+    exception and says so in its own file header.
+    """
+    prompt = load_domain_prompt(repo_root / "prompts/domain/system-prompt.md").text
+    documented_absentees = {"larix"}
+
+    for taxon_id in knowledge.available_taxon_ids():
+        if "_" in taxon_id:
+            continue  # species cards are named as binomials, covered by the check below
+        if taxon_id in documented_absentees:
+            assert taxon_id.upper() not in prompt, (
+                f"{taxon_id} is documented as absent from the domain prompt but now appears; "
+                "remove the exception and its card-header note"
+            )
+            continue
+        assert taxon_id.upper() in prompt, (
+            f"knowledge card {taxon_id!r} cites the domain prompt, which never names it"
+        )
+
+
+def _base_taxa_section(prompt: str) -> str:
+    """Section 14 (БАЗОВІ ПОРОДИ), the section every taxon card cites as its source."""
+    lines = prompt.splitlines()
+    bounds = {
+        int(match.group(1)): index
+        for index, line in enumerate(lines)
+        if (match := re.match(r"^(\d+)\.\s", line)) and line.strip().isupper()
+    }
+    assert 14 in bounds and 15 in bounds, "domain prompt no longer has numbered sections 14/15"
+    return "\n".join(lines[bounds[14] : bounds[15]])
+
+
+def test_every_latin_name_in_section_14_has_a_knowledge_card(repo_root: Path, knowledge):
+    """The reverse binding: the prompt must not name a taxon the cards cannot represent.
+
+    Latin names are written in ASCII capitals there, and the Ukrainian headings alongside
+    them are Cyrillic, so an ASCII-only pattern picks out exactly the botanical tokens.
+    Binomials appear as two tokens (`JUGLANS REGIA`), which is why card ids are matched
+    component-wise against `juglans_regia`.
+    """
+    prompt = load_domain_prompt(repo_root / "prompts/domain/system-prompt.md").text
+    section = _base_taxa_section(prompt)
+    card_parts = {
+        part for taxon_id in knowledge.available_taxon_ids() for part in taxon_id.split("_")
+    }
+
+    named = {token.lower() for token in re.findall(r"\b[A-Z]{4,}\b", section)}
+    assert named, "sanity: section 14 should name taxa in Latin capitals"
+
+    unbacked = sorted(named - card_parts)
+    assert not unbacked, f"domain prompt section 14 names taxa with no knowledge card: {unbacked}"
+
+
+def test_every_token_annotated_in_section_14_exists_on_a_knowledge_card(repo_root: Path, knowledge):
+    """Section 14 names the canonical token beside each feature; all of them must be real.
+
+    The annotation exists so the extractor writes tokens candidate validation can match by
+    exact equality. A token in the prompt that no card carries is worse than no annotation:
+    it reads as authoritative and matches nothing.
+    """
+    prompt = load_domain_prompt(repo_root / "prompts/domain/system-prompt.md").text
+    section = _base_taxa_section(prompt)
+
+    written = set()
+    for feature, values in re.findall(r"→ ([a-z_]+\.[a-z_]+) = (.+)", section):
+        for value in values.split(" | "):
+            written.add((feature, value.strip()))
+    assert written, "sanity: section 14 should carry canonical token annotations"
+
+    on_cards = {
+        (expectation.feature, value)
+        for taxon_id in knowledge.available_taxon_ids()
+        for expectation in (
+            *knowledge.taxon(taxon_id).strong_positive_features,
+            *knowledge.taxon(taxon_id).supporting_features,
+            *knowledge.taxon(taxon_id).contradictions,
+        )
+        for value in expectation.values
+    }
+
+    invented = sorted(written - on_cards)
+    assert not invented, f"section 14 annotates tokens no knowledge card carries: {invented}"
+
+
+def test_section_14_annotations_are_additive_only(repo_root: Path):
+    """The annotation must not have rewritten the owner's prose, only added lines beside it."""
+    section = _base_taxa_section(
+        load_domain_prompt(repo_root / "prompts/domain/system-prompt.md").text
+    )
+    annotation = re.compile(r"→ [a-z_]+\.[a-z_]+ = ")
+    for line in section.splitlines():
+        if not annotation.search(line):
+            continue
+        assert line.startswith("    → "), f"annotation was merged into prose: {line!r}"
+        assert line.strip().startswith("→"), f"annotation not on its own line: {line!r}"

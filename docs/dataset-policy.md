@@ -94,6 +94,31 @@ honest only when the card's own source names it.
 Do not promote a card because it "looks right". The failure mode this project is built
 around is confident content that nobody checked.
 
+### Finding the gaps a card review should fill
+
+Candidate validation matches evidence to cards by exact `(feature, value)` equality, so any
+observation outside the cards' combined vocabulary is silently unusable no matter how good
+the photograph was. Every run now measures this: the evidence-quality report carries
+`unmatchable_evidence_ids`, and the quality gate logs `evidence_outside_card_vocabulary`
+with the features absent from every card.
+
+Read it as a **card coverage** signal, not a model failure. The extractor is deliberately
+told to prefer an honest out-of-vocabulary observation over a forced in-vocabulary one, so a
+recurring feature in that log is a request for a card rule, addressed to someone qualified
+to write one. On the first live nine-photograph run it was 30% of all extracted
+observations, led by `bark.colour` — a feature the conifer comparison card already names
+under `insufficient_features` while no taxon card mentions it at all.
+
+Two cautions before acting on it:
+
+- **A missing feature is not automatically a missing rule.** That run recorded
+  `needles.shape = short_linear_flattened` against a `picea` candidate. Adding it to the
+  Picea card would have been wrong in the direction that matters — flattened needles point
+  away from spruce — and the deterministic rejection was right for a mechanical reason.
+- **Context-tier features can never support an identification** whatever the cards say, so
+  they are excluded from the count. Adding `context.site` values changes nothing about
+  support; they matter only as contradictions.
+
 ## Photographs
 
 **Do not commit photographs of trees to this repository.**

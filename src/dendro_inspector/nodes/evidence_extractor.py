@@ -15,7 +15,12 @@ from __future__ import annotations
 from dendro_inspector.config import Role
 from dendro_inspector.graph.executor import NodeContext
 from dendro_inspector.graph.state import GraphState
-from dendro_inspector.nodes._support import case_context, image_inputs, locale_of
+from dendro_inspector.nodes._support import (
+    case_context,
+    case_image_inputs,
+    evidence_value_vocabulary_context,
+    locale_of,
+)
 from dendro_inspector.providers.base import request_structured
 from dendro_inspector.schemas.evidence import EvidencePacket, GeneratedEvidencePacket
 
@@ -67,7 +72,10 @@ async def run(state: GraphState, ctx: NodeContext) -> GraphState:
     if guard is not None and not guard.safe_to_continue:
         return state.evolve(evidence=_empty_packet(state))
 
-    context_parts = [case_context(state.case)]
+    context_parts = [
+        case_context(state.case),
+        evidence_value_vocabulary_context(ctx),
+    ]
     corrections = corrections_context(state)
     if corrections:
         context_parts.append(corrections)
@@ -82,9 +90,10 @@ async def run(state: GraphState, ctx: NodeContext) -> GraphState:
             context="\n\n".join(context_parts),
             locale=locale_of(state),
         ),
-        images=image_inputs(state.case),
+        images=case_image_inputs(state, ctx),
         response_model=GeneratedEvidencePacket,
         recorder=ctx.recorder,
+        cache_prefix_chars=ctx.prompts.cacheable_prefix_chars(locale_of(state)),
         max_retries=ctx.config.provider_for(Role.PRIMARY).max_structured_retries,
     )
 

@@ -9,18 +9,37 @@ strictly apart, because conflating them is how an outage becomes a scientific cl
 
 from __future__ import annotations
 
+import io
 import time
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, Protocol, TypeVar
 
 from pydantic import BaseModel, ValidationError
 
 from dendro_inspector.observability.events import ProviderCallRecord
+from dendro_inspector.observability.logging import get_logger
 from dendro_inspector.observability.trace import TraceRecorder
 
 ResponseT = TypeVar("ResponseT", bound=BaseModel)
+
+#: Call-metadata key carrying how many leading characters of ``prompt`` are identical
+#: across every node in a case. An adapter whose provider supports explicit prompt caching
+#: may mark a breakpoint there; one whose provider caches automatically, or not at all,
+#: ignores it. Advisory in both directions: it never changes the text that is sent.
+CACHE_PREFIX_CHARS = "cache_prefix_chars"
+
+
+def cache_prefix_of(metadata: Mapping[str, Any], prompt: str) -> int:
+    """Read the advisory cache boundary, clamped to something the prompt can honour."""
+    raw = metadata.get(CACHE_PREFIX_CHARS)
+    if not isinstance(raw, int) or raw <= 0:
+        return 0
+    # A repair retry appends to the prompt, so the prefix stays valid; a caller that
+    # reported a boundary past the end of a shortened prompt gets no caching, not a crash.
+    return min(raw, len(prompt))
 
 
 class ProviderError(RuntimeError):
@@ -35,16 +54,95 @@ class StructuredOutputError(ProviderError):
     """The model returned output that does not satisfy the requested contract."""
 
 
+#: Formats worth re-encoding. Anything else is passed through untouched rather than
+#: guessed at — a bounded edge is an optimisation, never a reason to corrupt an input.
+_RESIZABLE_MEDIA_TYPES: dict[str, str] = {"image/jpeg": "JPEG", "image/png": "PNG"}
+
+_JPEG_QUALITY = 88
+
+_pillow_warning_issued = False
+
+
+def _warn_pillow_missing_once(max_edge_px: int) -> None:
+    global _pillow_warning_issued
+    if _pillow_warning_issued:
+        return
+    _pillow_warning_issued = True
+    get_logger("providers").warning(
+        "image_downscale_unavailable",
+        extra={
+            "max_edge_px": max_edge_px,
+            "detail": (
+                "Pillow is not installed; sending originals. "
+                "Install the 'images' extra to bound the transmitted size."
+            ),
+        },
+    )
+
+
+@lru_cache(maxsize=64)
+def _bounded_bytes(
+    path: Path,
+    max_edge_px: int,
+    pillow_format: str,
+    # Part of the cache key only: a file edited in place must not serve stale bytes.
+    mtime_ns: int,
+    size: int,
+) -> bytes:
+    try:
+        from PIL import Image, ImageOps
+    except ImportError:
+        _warn_pillow_missing_once(max_edge_px)
+        return path.read_bytes()
+
+    with Image.open(path) as opened:
+        # Re-encoding drops EXIF, so the rotation flag has to be baked into the pixels
+        # first. Phone cameras store a portrait photograph as landscape plus an
+        # orientation tag; dropping the tag without applying it hands the model a tree
+        # lying on its side. Every photograph in this project's golden set is tagged.
+        upright = ImageOps.exif_transpose(opened)
+        if max(upright.size) <= max_edge_px and upright.size == opened.size:
+            # Already small enough and already upright. Returning the original avoids a
+            # pointless second generation of JPEG loss on evidence the model is asked to
+            # read closely.
+            return path.read_bytes()
+        upright.thumbnail((max_edge_px, max_edge_px), Image.Resampling.LANCZOS)
+        prepared = upright.convert("RGB") if pillow_format == "JPEG" else upright
+        buffer = io.BytesIO()
+        save_options: dict[str, object] = (
+            {"quality": _JPEG_QUALITY, "optimize": True} if pillow_format == "JPEG" else {}
+        )
+        prepared.save(buffer, format=pillow_format, **save_options)
+    return buffer.getvalue()
+
+
 @dataclass(frozen=True, slots=True)
 class ImageInput:
-    """An image handed to a provider. Bytes are read at the adapter boundary only."""
+    """An image handed to a provider. Bytes are read at the adapter boundary only.
+
+    ``max_edge_px`` bounds the longest edge of what is actually transmitted. Every node in
+    a case sends the same photograph, so an unbounded original is uploaded once per node —
+    a nine-photo run measured 349 MB sent for 47 MB of distinct images. Vision models
+    downsample server-side regardless, so the bytes above the bound buy nothing.
+    """
 
     image_id: str
     path: Path
     media_type: str = "image/jpeg"
+    max_edge_px: int | None = None
 
     def read_bytes(self) -> bytes:
-        return self.path.read_bytes()
+        pillow_format = _RESIZABLE_MEDIA_TYPES.get(self.media_type)
+        if self.max_edge_px is None or pillow_format is None:
+            return self.path.read_bytes()
+        stat = self.path.stat()
+        return _bounded_bytes(
+            self.path,
+            self.max_edge_px,
+            pillow_format,
+            stat.st_mtime_ns,
+            stat.st_size,
+        )
 
 
 class ModelProvider(Protocol):
@@ -92,6 +190,7 @@ async def request_structured(
     metadata: Mapping[str, Any] | None = None,
     recorder: TraceRecorder | None = None,
     max_retries: int = 1,
+    cache_prefix_chars: int = 0,
 ) -> ResponseT:
     """Call a provider for structured output, repairing malformed output at most once.
 
@@ -99,8 +198,15 @@ async def request_structured(
     *protocol* failures, the graph's fixes *scientific* ones. Exhausting this one raises
     rather than degrading a result, so a broken model never masquerades as an uncertain
     tree.
+
+    ``cache_prefix_chars`` is advisory and reaches adapters through call metadata: how much
+    of the leading prompt is byte-identical across every node in the case.
     """
-    call_metadata: dict[str, Any] = {"node": node, **(metadata or {})}
+    call_metadata: dict[str, Any] = {
+        "node": node,
+        CACHE_PREFIX_CHARS: cache_prefix_chars,
+        **(metadata or {}),
+    }
     attempt_prompt = prompt
     validation_failures = 0
     started = time.perf_counter()

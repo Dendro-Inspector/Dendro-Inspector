@@ -13,8 +13,8 @@ from dendro_inspector.graph.state import GraphState
 from dendro_inspector.knowledge.candidate_validation import validate_candidate_set_with_report
 from dendro_inspector.nodes._support import (
     case_context,
+    case_image_inputs,
     evidence_context,
-    image_inputs,
     knowledge_context,
     locale_of,
 )
@@ -47,9 +47,10 @@ async def run(state: GraphState, ctx: NodeContext) -> GraphState:
             ),
             locale=locale_of(state),
         ),
-        images=image_inputs(state.case),
+        images=case_image_inputs(state, ctx),
         response_model=CandidateProposal,
         recorder=ctx.recorder,
+        cache_prefix_chars=ctx.prompts.cacheable_prefix_chars(locale_of(state)),
         max_retries=ctx.config.provider_for(Role.PRIMARY).max_structured_retries,
     )
 

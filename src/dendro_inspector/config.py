@@ -101,6 +101,16 @@ class GraphConfig(Contract):
     max_steps: int = Field(default=64, ge=8, le=512)
     min_observations_for_candidates: int = Field(default=2, ge=1)
     require_non_colour_evidence: bool = True
+    image_max_edge_px: int | None = Field(
+        default=1568,
+        ge=256,
+        description=(
+            "Longest edge of the image actually transmitted, or None to send originals. "
+            "Every node re-sends the same photograph, so this multiplies by node count. "
+            "Requires the 'images' extra; without Pillow the original is sent and a "
+            "warning is logged."
+        ),
+    )
 
 
 class ObservabilityConfig(Contract):

@@ -19,6 +19,7 @@ from dendro_inspector.observability.events import (
     ProviderCallRecord,
     RunTrace,
 )
+from dendro_inspector.observability.logging import get_logger
 from dendro_inspector.schemas.taxon import Confidence, Resolution
 
 
@@ -45,8 +46,21 @@ class TraceRecorder:
         self._providers[role] = f"{adapter}:{model}" if model else adapter
 
     def record_provider_call(self, record: ProviderCallRecord) -> None:
-        """Attach a model call to the node event that is about to be recorded."""
+        """Hold a model call until its own node is recorded.
+
+        Claimed by node name rather than by arrival order, because the reviewer fan-out runs
+        three nodes concurrently against one recorder. Draining every pending call into
+        whichever node finished the bookkeeping first filed all three reviewers' calls under
+        the first one and left the other two reading ``calls=0`` beside minutes of wall time.
+        """
         self._pending_calls.append(record)
+
+    def _claim_calls(self, node: str) -> tuple[ProviderCallRecord, ...]:
+        """Take the pending calls this node made, leaving other nodes' calls alone."""
+        claimed = tuple(record for record in self._pending_calls if record.node == node)
+        if claimed:
+            self._pending_calls = [record for record in self._pending_calls if record.node != node]
+        return claimed
 
     def record_node(
         self,
@@ -56,8 +70,7 @@ class TraceRecorder:
         detail: str | None = None,
         duration_ms: float | None = None,
     ) -> None:
-        calls = tuple(self._pending_calls)
-        self._pending_calls.clear()
+        calls = self._claim_calls(node)
         self._events.append(
             NodeEvent(
                 node=node,
@@ -90,6 +103,18 @@ class TraceRecorder:
         final_confidence: Confidence | None = None,
     ) -> RunTrace:
         finished_at = datetime.now(UTC)
+        if self._pending_calls:
+            # A call whose node never recorded an event would vanish from the trace. That is
+            # a wiring bug in the caller, and a silently short provider-call count is exactly
+            # the kind of wrong-but-plausible audit trail this module exists to prevent.
+            get_logger("trace").warning(
+                "unattributed_provider_calls",
+                extra={
+                    "case_id": self._case_id,
+                    "nodes": sorted({record.node for record in self._pending_calls}),
+                    "count": len(self._pending_calls),
+                },
+            )
         return RunTrace(
             case_id=self._case_id,
             graph_version=GRAPH_VERSION,

@@ -339,36 +339,55 @@ FAILURE 8: «Кора сама все вирішує»
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 14. БАЗОВІ ПОРОДИ
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Рядки «→» називають канонічні токени доказів, якими система записує ознаку.
+Використовуй саме ці feature = value, коли ознака справді видима на фотографії.
+Токен називає спостереження, а не породу, і не замінює перевірку решти ознак.
 СОСНА / PINUS
 Ознаки:
 хвоя;
+    → needles.fascicles = two | three | five
 рудо-бура або помаранчева луската кора;
+    → bark.texture = scaly_plates
 прямі довгі стовбури;
+    → trunk.form = straight_long
 промисловий кругляк часто рівний;
 зріз світло-жовтий або медовий;
+    → wood.tone = light_yellow_honey
 чіткі річні кільця;
 хвойна непориста структура;
 можливі смоляні ділянки.
+    → resin.presence = present
 Не називай сосною листяне дерево без хвої, якщо видно його листя.
 За купою колод можна ставити високо, якщо одночасно видно руду кору, хвойну структуру й типові торці.
 ЯЛИНА / СМЕРЕКА / PICEA
 Ознаки:
 коротша густа хвоя;
+    → needles.attachment = single_on_woody_peg
 конічна крона;
+    → crown.shape = conical
 кора сіро-бура, дрібнолуската;
+    → bark.texture = fine_scales
 менш руда, ніж типова соснова;
 гілки можуть бути ярусними або звислими;
 деревина світла.
+    → wood.tone = light
 ДУБ / QUERCUS
 Ознаки:
 груба сіро-бура кора;
 глибокі поздовжні тріщини;
+    → bark.texture = deep_longitudinal_fissures
 стара кора може виглядати як броня;
+    → bark.texture = armoured_plates
 листя просте, лопатеве;
+    → leaf.shape = simple_lobed
 жолуді — надзвичайно сильний доказ;
+    → acorn.presence = present
 деревина кільцепориста;
+    → pores.arrangement = ring_porous
 можливі виразні серцевинні промені;
+    → rays.visibility = prominent
 колір жовтувато-коричневий.
+    → wood.tone = yellowish_brown
 Обережно:
 не називай дубом усе з грубою корою;
 не відкидай дуб лише тому, що конкретна ділянка кори світла або нетипова;
@@ -377,10 +396,15 @@ FAILURE 8: «Кора сама все вирішує»
 БУК / FAGUS
 Ознаки:
 гладка сіра кора;
+    → bark.texture = smooth_grey
 рівний циліндричний стовбур;
+    → trunk.form = straight_cylindrical
 світла кремова або рожевувата деревина;
+    → wood.tone = cream_pinkish
 структура рівна й щільна;
+    → pores.arrangement = diffuse_porous
 листя овальне, цільне, із хвилястим краєм;
+    → leaf.shape = oval_entire_wavy_margin
 у старих або пошкоджених дерев кора може бути менш ідеально гладкою.
 На дровах:
 деревина світла;
@@ -390,28 +414,42 @@ FAILURE 8: «Кора сама все вирішує»
 ГРАБ / CARPINUS
 Ознаки:
 сіра гладка або слабко потріскана кора;
+    → bark.texture = smooth_grey_slightly_cracked
 стовбур ребристий, хвилястий, «м’язистий»;
+    → trunk.form = fluted_muscular
 деревина дуже світла, тверда й щільна;
+    → wood.tone = very_pale
 листя овальне, зубчасте, із виразними жилками.
+    → leaf.shape = oval_serrate_strong_veins
 Бук і граб на дровах можуть бути близькими.
 Без листя або характерного стовбура не став 95+.
 БЕРЕЗА / BETULA
 Ознаки:
 біла паперова кора;
+    → bark.pattern = white_papery_with_black_marks
 чорні риски, плями й рубці;
+    → bark.pattern = white_papery_with_black_marks
 горизонтальні лентіцели;
+    → lenticels.orientation = horizontal
 кора лущиться тонкими шарами;
+    → bark.peeling = thin_layers
 низ старого стовбура може бути темним і потрісканим;
 листя дрібне, овальне, трикутне або ромбічне, зубчасте.
+    → leaf.shape = small_triangular_serrate
 Якщо видно типову білу паперову кору з чорними мітками, рід Betula можна визначати дуже високо.
 Для точного виду потрібне листя й тонкі гілки.
 ТОПОЛЯ / POPULUS
 Ознаки:
 масивні стовбури;
+    → trunk.form = massive
 міські й паркові посадки;
+    → context.site = urban_park
 стара кора груба, борозниста;
+    → bark.texture = coarse_furrowed
 листя може бути трикутним, округлим, серцеподібним або лопатевим;
+    → leaf.shape = triangular | rounded | cordate
 біла тополя може мати світлі ділянки кори;
+    → bark.pattern = pale_upper_dark_rough_base
 у кроні часто буває омела.
 Біла тополя може плутатися:
 з березою через світлу кору;
@@ -420,29 +458,40 @@ FAILURE 8: «Кора сама все вирішує»
 КЛЕН / ACER
 Ознаки:
 пальчасто-лопатеве листя;
+    → leaf.shape = palmate_lobed
 найчастіше п’ять або більше лопатей;
 лист схожий на долоню або зірку;
 листки супротивні;
+    → leaf.arrangement = opposite
 плоди — парні крилатки;
+    → samara.presence = paired
 старі дерева можуть мати грубу потріскану кору.
 Якщо листя чітко кленове й точно росте на цьому дереві, листя важливіше за кору.
 КЛЕН СРІБЛЯСТИЙ / ACER SACCHARINUM
 Ознаки:
 дуже глибоко розсічене пальчасте листя;
+    → leaf.dissection = deeply_dissected_narrow_lobes
 вузькі довгі гострі лопаті;
 зубчастий край;
 нижній бік світліший;
+    → leaf.underside = pale_not_tomentose
 велике старе міське або паркове дерево;
+    → context.site = urban_park
 груба сіро-бура кора.
 Без нижнього боку листка, крилаток і розміщення листків не став 95+ саме для виду.
 ЯВІР / ACER PSEUDOPLATANUS
 Ознаки:
 широке грубувате пальчасте листя;
 п’ять лопатей;
+    → leaf.shape = broad_palmate_five_lobed
 супротивне розміщення;
+    → leaf.arrangement = opposite
 парні крилатки;
+    → samara.presence = paired
 у старих дерев кора часто відшаровується нерівними пластинами;
+    → bark.peeling = irregular_plates
 може виникати плямистий мозаїчний рисунок.
+    → bark.pattern = mosaic_patchwork
 По одній старій корі явір визначати небезпечно.
 Не використовуй випадкове листя в куті кадру.
 КЛЕН СРІБЛЯСТИЙ ПРОТИ БІЛОЇ ТОПОЛІ
@@ -450,79 +499,121 @@ FAILURE 8: «Кора сама все вирішує»
 листя пальчасте;
 лопаті глибокі й вузькі;
 листки супротивні;
+    → leaf.arrangement = opposite
 нижній бік світлий, але не густо повстистий.
+    → leaf.underside = pale_not_tomentose
 Біла тополя:
 листя округло- або трикутно-лопатеве;
+    → leaf.shape = rounded_or_triangular_lobed
 листки почергові;
+    → leaf.arrangement = alternate
 нижній бік часто білий, сіруватий, повстистий;
+    → leaf.underside = white_tomentose
 кора молодих частин світла, старих — груба й темна.
+    → bark.pattern = pale_upper_dark_rough_base
 Якщо не видно нижнього боку й розміщення листків, максимум 80–85/100.
 ЛИПА / TILIA
 Ознаки:
 серцеподібне листя;
 зубчастий край;
+    → leaf.shape = cordate_serrate
 густа крона;
+    → crown.shape = dense
 стара кора сіро-бура й тріщинувата;
+    → bark.texture = grey_brown_fissured
 приквітки та дрібні горішки.
+    → fruit.type = nutlet_with_bract
 ВІЛЬХА / ALNUS
 Ознаки:
 часто росте біля вологи;
+    → context.site = near_water
 стара кора темна, плитчаста або тріщинувата;
+    → bark.texture = dark_platy
 листя округле чи овальне;
 вершина листка може бути тупою або виїмчастою;
+    → leaf.shape = rounded_obtuse_or_notched_apex
 маленькі дерев’янисті «шишечки» — сильний доказ.
+    → cones.type = small_woody_persistent
 ОСИКА / POPULUS TREMULA
 Ознаки:
 молода кора сіро-зелена й гладка;
+    → bark.pattern = grey_green_smooth_young
 стара кора темніє й тріскається;
 листя округле;
+    → leaf.shape = rounded
 довгий сплюснутий черешок;
+    → leaf.petiole = long_flattened
 деревина світла й м’яка.
+    → wood.tone = pale_soft
 ГОРІХ ВОЛОСЬКИЙ / JUGLANS REGIA
 Ознаки:
 складне перисте листя;
 великі овальні листочки;
+    → leaf.type = compound_pinnate_large_leaflets
 сіра кора;
 старий стовбур може бути борознистим;
+    → bark.texture = grey_furrowed_old
 розлога садова крона;
+    → crown.shape = spreading_garden
 плід горіха — сильний доказ;
+    → nut.presence = present
 зріз може мати темніше ядро.
+    → heartwood.tone = darker_core
 По самій корі горіх легко плутається з ясеном, дубом та іншими старими листяними породами.
 РОБІНІЯ ПСЕВДОАКАЦІЯ / ROBINIA PSEUDOACACIA
 Ознаки:
 глибоко поздовжньо борозниста «канатна» кора;
+    → bark.texture = deep_rope_like_furrows
 складне перисте листя;
 округлі листочки;
+    → leaf.type = compound_pinnate_rounded_leaflets
 можливі колючки;
+    → branch.thorns = present
 білі квіти гронами;
 стручки;
+    → pod.presence = present
 ядро жовтувате, зеленувато-жовте або золотисте.
+    → heartwood.tone = greenish_gold
 ЯСЕН / FRAXINUS
 Ознаки:
 складне перисте листя;
+    → leaf.type = compound_pinnate
 листки супротивні;
+    → leaf.arrangement = opposite
 сіра кора;
 у старих дерев можливий ромбоподібний рисунок тріщин;
+    → bark.pattern = diamond_fissures
 деревина світла;
+    → wood.tone = pale
 кільцепориста структура.
+    → pores.arrangement = ring_porous
 Не визначай ясен лише через нечітке перисте листя на задньому плані.
 ЯБЛУНЯ / MALUS
 Ознаки:
 садове дерево;
+    → context.site = garden
 часто кривий стовбур;
 низьке розгалуження;
+    → trunk.form = crooked_low_branching
 стара кора сіро-бура, луската;
+    → bark.texture = grey_brown_scaly
 листя овальне, зубчасте;
+    → leaf.shape = oval_serrate
 яблуко на гілці закриває дискусію.
+    → fruit.type = apple
 З яблуком: 98–100/100.
 За однією старою корою: не 90+.
 ГРУША / PYRUS
 Ознаки:
 садове дерево;
 стара кора темна, дрібноблокова;
+    → bark.texture = dark_small_blocks
 листя овальне, часто блискуче;
+    → leaf.shape = oval_glossy
 гілки можуть бути вертикальнішими;
+    → branch.arrangement = vertical
 плід — сильний доказ.
+    → fruit.type = pear
 Без плодів яблуня та груша можуть бути близькими.
 PRUNUS-ГРУПА
 Сюди входять:
@@ -535,40 +626,62 @@ PRUNUS-ГРУПА
 інші кісточкові.
 Загальні ознаки:
 овальне або видовжене зубчасте листя;
+    → leaf.shape = oval_elongate_serrate
 плоди-кістянки;
+    → fruit.type = drupe
 можливі горизонтальні лентіцели;
+    → lenticels.orientation = horizontal
 теплі жовто-оранжеві, рожеві або рудуваті тони зрізу;
+    → heartwood.tone = warm_yellow_orange
 садовий або придорожній контекст.
+    → context.site = garden_roadside
 Алича, слива й терен без плодів можуть бути майже близнюками.
 АЛИЧА / PRUNUS CERASIFERA
 Ознаки:
 невеликі або середні стовбури;
+    → trunk.form = small_garden
 садовий чи дворовий контекст;
 теплий жовто-оранжевий або рудуватий зріз;
+    → heartwood.tone = warm_yellow_orange
 вузька світла заболонь;
+    → sapwood.width = narrow_pale
 сіро-бура потріскана кора.
+    → bark.texture = grey_brown_cracked
 Без плодів не став 100/100.
+    → fruit.type = small_round_drupe
 ЧЕРЕШНЯ / PRUNUS AVIUM
 Ознаки:
 сіро-бура або червонувато-бура кора;
+    → bark.pattern = grey_reddish_banded
 виразні горизонтальні лентіцели;
+    → lenticels.orientation = prominent_horizontal
 стара кора може відходити пластинами;
+    → bark.peeling = plates_old
 овальне зубчасте листя;
+    → leaf.shape = oval_serrate
 плоди — сильний доказ.
 АБРИКОС / PRUNUS ARMENIACA
 Ознаки:
 садове дерево;
+    → context.site = garden
 темна потріскана стара кора;
+    → bark.texture = dark_cracked_old
 округло-овальне листя;
+    → leaf.shape = rounded_oval
 плід — сильний доказ.
+    → fruit.type = apricot
 Без плодів може плутатися з аличею та сливою.
 ШОВКОВИЦЯ / MORUS
 Ознаки:
 листя може бути цільним або лопатевим;
 на одному дереві можлива різна форма листків;
+    → leaf.variability = entire_and_lobed_on_same_tree
 плоди схожі на видовжені ягоди;
+    → fruit.type = elongate_berry
 стара кора груба;
+    → bark.texture = coarse_old
 деревина може мати жовтуватий тон.
+    → wood.tone = yellowish
 Сам жовтий колір деревини не доводить шовковицю.
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 15. АНАЛІЗ ЗРІЗІВ І ДРОВ

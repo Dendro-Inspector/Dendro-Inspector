@@ -64,6 +64,14 @@ class EvidenceQualityReport(Contract):
         default=(),
         description="Detachable evidence not confirmed as belonging to its subject.",
     )
+    unmatchable_evidence_ids: tuple[Identifier, ...] = Field(
+        default=(),
+        description=(
+            "Trusted observations no knowledge card can match on feature and value. They "
+            "would have supported a candidate but cannot, so a high count measures card "
+            "coverage rather than photograph quality."
+        ),
+    )
 
     def tier_for(self, subject_id: str) -> int:
         """Strongest tier for a subject; context (1) when nothing is recorded."""

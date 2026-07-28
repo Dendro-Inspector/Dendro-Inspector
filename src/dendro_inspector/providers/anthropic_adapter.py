@@ -20,6 +20,7 @@ from dendro_inspector.providers.base import (
     ProviderUnavailableError,
     ResponseT,
     StructuredOutputError,
+    cache_prefix_of,
 )
 
 DEFAULT_MODEL = "claude-opus-5"
@@ -99,11 +100,25 @@ class AnthropicProvider:
         client = self._ensure_client()
         blocks: list[dict[str, Any]] = [self._image_block(image) for image in images]
         schema = json.dumps(response_model.model_json_schema(), ensure_ascii=False)
+
+        # A cache breakpoint covers everything before it, so placing one after the domain
+        # prompt also covers the photographs — which are byte-identical across all seven
+        # calls in a case, and the largest single payload in each of them.
+        prefix_chars = cache_prefix_of(metadata, prompt)
+        if prefix_chars:
+            blocks.append(
+                {
+                    "type": "text",
+                    "text": prompt[:prefix_chars],
+                    "cache_control": {"type": "ephemeral"},
+                }
+            )
+
         blocks.append(
             {
                 "type": "text",
                 "text": (
-                    f"{prompt}\n\n---\n\n## Required output\n\n"
+                    f"{prompt[prefix_chars:]}\n\n---\n\n## Required output\n\n"
                     f"Return a single JSON object conforming to this schema. "
                     f"No prose, no code fence.\n\n{schema}"
                 ),

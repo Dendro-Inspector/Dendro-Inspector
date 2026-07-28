@@ -45,8 +45,70 @@ get entries.
   and the one repair retry that follows it — is the expected failure mode rather than an
   exceptional one.
 
+- `GraphConfig.image_max_edge_px` bounds the longest edge of the photograph actually
+  transmitted, defaulting to 1568 px. Every node in a case sends the same image, so an
+  unbounded original is uploaded once per node: a nine-photograph run moved 349 MB for 47 MB
+  of distinct images. On that run's photographs the bound cuts the transfer 7.6× with no
+  change to what any node is allowed to see, since vision models downsample server-side
+  anyway. Set it to `None` to send originals. Resizing needs the new `images` extra
+  (`pip install dendro-inspector[images]`); without Pillow the original is sent and a
+  warning names the missing extra once. EXIF orientation is applied to the pixels before
+  resizing, since re-encoding drops the tag: a phone stores a portrait photograph as
+  landscape plus a rotation flag, and discarding that flag without applying it hands the
+  model a tree lying on its side. Images already inside the bound *and* already upright are
+  passed through untouched rather than re-encoded, and formats other than JPEG and PNG are
+  never rewritten.
+- The domain prompt is now offered to adapters as a cacheable prompt prefix. It frames all
+  seven calls in a case, so on one measured case it was 138,318 of 360,078 prompt characters
+  — 38% — re-sent unchanged, and the photograph sits inside the same prefix. The Anthropic
+  adapter marks a breakpoint there; adapters whose providers cache automatically, or not at
+  all, ignore the advisory boundary. The text sent to the model is byte-identical either
+  way, and a contract test binds the reported boundary to what `compose` actually emits so
+  the two cannot drift into caching a prefix no later call reproduces.
+- The evidence-quality report now records `unmatchable_evidence_ids`: trusted observations
+  that no knowledge card can match on both feature and value. They are extracted, carried
+  through the packet, shown to every reviewer, and then dropped at the admission boundary,
+  where "the model saw nothing useful" and "the cards describe nothing the model saw" had
+  been indistinguishable. A warning additionally names the features absent from every card.
+  On the first live nine-photograph run this was 30% of all extracted observations, led by
+  `bark.colour`, which no card mentions at all.
+
+### Changed
+
+- Section 14 of the domain prompt (БАЗОВІ ПОРОДИ) now names the canonical evidence token
+  beside each feature it describes — `біла паперова кора;` is followed by
+  `→ bark.pattern = white_papery_with_black_marks`. Candidate validation matches cards by
+  exact `(feature, value)` equality, so the extractor previously had to translate Ukrainian
+  prose into English snake_case unaided, and 30% of one live run's trusted observations
+  landed outside the vocabulary and were discarded. 110 lines carry 97 tokens; all 100
+  `(feature, value)` pairs are verified against the knowledge cards by a contract test, and
+  a second test enforces that the annotation is additive — the owner's prose is untouched,
+  every token sits on its own line. Six card tokens remain unannotated because section 14
+  has no line describing them; four of those belong to `larix`, which the prompt has never
+  named. **The prompt hash changed, so any deployment pinning the old manifest must
+  re-seal** (`dendro prompt-seal --write`).
+
 ### Fixed
 
+- Provider calls made by the three concurrent reviewers are now recorded against the
+  reviewer that made them. They share one recorder, and the trace attached every pending
+  call to whichever node was written first, so every trace reported
+  `botanical_reviewer calls=3` beside `confusion_reviewer calls=0` and
+  `confidence_reviewer calls=0` — each with several minutes of wall time next to a call
+  count of zero. Per-node cost and latency read off a trace were wrong for any run that
+  reached review. A call whose node never records an event is now reported rather than
+  silently discarded.
+- Evidence extraction now receives a taxon-neutral vocabulary of the exact feature values
+  used by the knowledge cards. Visible evidence can therefore survive strict candidate
+  validation without relying on a model to guess spellings such as `scaly_plates`; the
+  extractor is still told to preserve honest out-of-vocabulary observations when no listed
+  token fits.
+- Arbiter calls now include the deterministic pre-arbitration taxon, resolution, confidence,
+  confidence band and status that would otherwise become final. This makes the runtime input
+  match the arbiter prompt without exposing or inventing hidden model reasoning.
+- Weak-photo results with no surviving candidate now report the subject's recorded visible
+  observations and the evidence packet's context and image limitations. They no longer print
+  `none recorded` when the trace contains usable observations or explicit uncertainty.
 - Each adapter now reads its own credential variable. `api_key_env` was pinned per *role* —
   `primary` to `OPENAI_API_KEY`, `arbiter` to `ANTHROPIC_API_KEY` — so binding a role to any
   other vendor reported a missing credential for a key that was set.

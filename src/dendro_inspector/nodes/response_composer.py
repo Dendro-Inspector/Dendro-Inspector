@@ -29,6 +29,7 @@ from dendro_inspector.schemas.decisions import (
     ToneMode,
     UserClaimVerdict,
 )
+from dendro_inspector.schemas.evidence import ScaleQuality
 from dendro_inspector.schemas.reviews import FindingCategory
 from dendro_inspector.schemas.taxon import Confidence, Resolution
 
@@ -215,8 +216,9 @@ def verdict_line(decision: FinalDecision, locale: str) -> str:
 def build_result(
     decision: FinalDecision,
     locale: str,
+    state: GraphState | None = None,
 ) -> StructuredFinalResult:
-    supporting = (decision.strongest_support,) if decision.strongest_support else ()
+    supporting = _supporting_evidence(decision, state)
     ruled_out: tuple[str, ...] = ()
     if decision.nearest_alternative:
         reason = decision.strongest_contradiction or _LABELS[locale]["none_recorded"]
@@ -232,9 +234,56 @@ def build_result(
         ruled_out=ruled_out,
         strongest_contradiction=decision.strongest_contradiction,
         nearest_alternative=decision.nearest_alternative,
-        limitations=decision.unresolved_questions,
+        limitations=_limitations(decision, state),
         best_next_photo=decision.best_next_photo,
     )
+
+
+def _supporting_evidence(
+    decision: FinalDecision,
+    state: GraphState | None,
+) -> tuple[str, ...]:
+    """Use admitted observations when an abstaining decision has no candidate summary."""
+    if decision.strongest_support:
+        return (decision.strongest_support,)
+    if state is None or state.evidence is None:
+        return ()
+    return tuple(
+        f"{observation.feature} = {observation.value}"
+        for observation in state.evidence.visible_observations_for(decision.subject_id)
+    )[:8]
+
+
+def _limitations(
+    decision: FinalDecision,
+    state: GraphState | None,
+) -> tuple[str, ...]:
+    """Combine decision questions with limitations already recorded in the evidence packet."""
+    items = list(decision.unresolved_questions)
+    if state is None or state.evidence is None:
+        return tuple(items)
+
+    evidence = state.evidence
+    items.extend(evidence.context_limitations)
+    if evidence.possible_multiple_taxa:
+        items.append("possible_multiple_taxa")
+
+    subject = next(
+        (item for item in evidence.subjects if item.subject_id == decision.subject_id),
+        None,
+    )
+    image_ids = set(subject.image_ids) if subject is not None else set()
+    for limitation in evidence.image_limitations:
+        if subject is not None and limitation.image_id not in image_ids:
+            continue
+        if subject is None and decision.subject_id != "case":
+            continue
+        if limitation.notes:
+            items.append(limitation.notes)
+        if limitation.scale is not ScaleQuality.EXACT:
+            items.append(f"{limitation.image_id}: scale_{limitation.scale.value}")
+
+    return tuple(dict.fromkeys(items))[:8]
 
 
 def _render_block(
@@ -316,7 +365,7 @@ def render_human_readable(
 async def run(state: GraphState, ctx: NodeContext) -> GraphState:
     locale = locale_of(state)
     tone, joke_allowed = decide_tone(state)
-    results = tuple(build_result(decision, locale) for decision in state.decisions)
+    results = tuple(build_result(decision, locale, state) for decision in state.decisions)
     response_format = (
         select_format(state.decisions[0], tone) if state.decisions else ResponseFormat.NO_VERSION
     )

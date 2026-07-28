@@ -10,7 +10,7 @@ from __future__ import annotations
 from dendro_inspector.config import Role
 from dendro_inspector.graph.executor import NodeContext
 from dendro_inspector.graph.state import GraphState, InspectionPlan
-from dendro_inspector.nodes._support import case_context, image_inputs, locale_of
+from dendro_inspector.nodes._support import case_context, case_image_inputs, locale_of
 from dendro_inspector.providers.base import request_structured
 from dendro_inspector.schemas.input import DeclaredObjectType
 
@@ -46,9 +46,10 @@ async def run(state: GraphState, ctx: NodeContext) -> GraphState:
             context=case_context(state.case),
             locale=locale_of(state),
         ),
-        images=image_inputs(state.case),
+        images=case_image_inputs(state, ctx),
         response_model=InspectionPlan,
         recorder=ctx.recorder,
+        cache_prefix_chars=ctx.prompts.cacheable_prefix_chars(locale_of(state)),
         max_retries=ctx.config.provider_for(Role.PRIMARY).max_structured_retries,
     )
 

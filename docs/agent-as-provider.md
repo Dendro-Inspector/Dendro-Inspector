@@ -200,5 +200,15 @@ photograph proves, but it arrived there for a reason worth knowing:
   `What remains uncertain: none recorded` while the trace held 25 observations, 4 inferences and
   5 context limitations.
 
-None of the three is a defect in the provider adapters, and none was changed in response to this
-run.
+None of the three was a defect in the provider adapters. A second live run, using GPT-5.6 on
+a different conifer photograph through the `anthropic` dialect, reproduced all three before
+the corresponding fixes:
+
+- the extractor now receives a deduplicated feature-to-value vocabulary derived from the
+  cards, with taxon identities omitted and explicit permission to remain out of vocabulary
+  when no exact token fits;
+- the arbiter receives a deterministic preview of the taxon, resolution, confidence,
+  confidence band and status that would stand without arbitration;
+- response composition falls back to admitted visible observations when no candidate
+  supplied a support summary, and merges recorded context and subject-scoped image
+  limitations into the uncertainty list.

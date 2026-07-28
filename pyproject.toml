@@ -28,6 +28,9 @@ dependencies = [
 [project.optional-dependencies]
 openai = ["openai>=1.40"]
 anthropic = ["anthropic>=0.34"]
+# Bounds the image bytes actually transmitted (GraphConfig.image_max_edge_px). Optional
+# because the core has no imaging dependency: without it, originals are sent as before.
+images = ["pillow>=10.0"]
 dev = [
   "pytest>=8.0",
   "ruff>=0.6",
@@ -94,7 +97,7 @@ files = ["src", "tests"]
 plugins = []
 
 [[tool.mypy.overrides]]
-module = ["openai.*", "anthropic.*"]
+module = ["openai.*", "anthropic.*", "PIL.*"]
 ignore_missing_imports = true
 
 # Strict typing is a production-code discipline. Requiring `-> None` on several hundred

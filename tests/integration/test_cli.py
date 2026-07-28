@@ -178,16 +178,16 @@ class TestPromptSealCommand:
         manifest = deployment / "prompts" / "versions.yaml"
         before = manifest.read_bytes()
         prompt = deployment / "prompts" / "domain" / "system-prompt.md"
+        # Derived, not pinned: the assertion is about the old -> new transition, and a
+        # literal here turns every future domain-prompt edit into an unrelated failure.
+        old_hash = hashlib.sha256(prompt.read_bytes()).hexdigest()
         prompt.write_bytes(prompt.read_bytes() + b"\nowner edit\n")
         new_hash = hashlib.sha256(prompt.read_bytes()).hexdigest()
 
         result = runner.invoke(app, ["prompt-seal"])
 
         assert result.exit_code == 0
-        assert (
-            f"23ab9d12e0d09abc76888a275e7128b922dd8850f03ebcae6af3b88cce50d34a -> {new_hash}"
-            in result.stdout
-        )
+        assert f"{old_hash} -> {new_hash}" in result.stdout
         assert "Dry run" in result.stdout
         assert manifest.read_bytes() == before
 

@@ -59,7 +59,7 @@ ranking; recommendations floating elsewhere in a review are inert.
 ```bash
 git clone <your-fork-url> && cd dendro-inspector
 python -m venv .venv && . .venv/bin/activate      # Windows: .venv\Scripts\activate
-pip install -e ".[dev]"
+pip install -e ".[dev,images]"                    # 'images' bounds the bytes each call sends
 
 dendro graph                                    # print the executable agent graph
 dendro inspect --fake primary-pass --image examples/log.jpg --location "Kyiv Oblast, Ukraine"

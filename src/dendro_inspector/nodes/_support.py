@@ -12,6 +12,7 @@ import json
 from dendro_inspector.config import Role
 from dendro_inspector.graph.executor import NodeContext
 from dendro_inspector.graph.state import GraphState
+from dendro_inspector.knowledge.taxon_cards import card_value_vocabulary
 from dendro_inspector.providers.base import ImageInput, request_structured
 from dendro_inspector.schemas.candidates import CandidateSet
 from dendro_inspector.schemas.evidence import EvidencePacket
@@ -40,13 +41,28 @@ def locale_of(state: GraphState) -> str:
     return configured if configured in SUPPORTED_LOCALES else DEFAULT_LOCALE
 
 
-def image_inputs(case: CaseInput, *, existing_only: bool = True) -> tuple[ImageInput, ...]:
+def image_inputs(
+    case: CaseInput,
+    *,
+    existing_only: bool = True,
+    max_edge_px: int | None = None,
+) -> tuple[ImageInput, ...]:
     """Build provider image inputs. Missing files are skipped, not faked."""
     return tuple(
-        ImageInput(image_id=image.image_id, path=image.path, media_type=image.media_type)
+        ImageInput(
+            image_id=image.image_id,
+            path=image.path,
+            media_type=image.media_type,
+            max_edge_px=max_edge_px,
+        )
         for image in case.images
         if image.exists or not existing_only
     )
+
+
+def case_image_inputs(state: GraphState, ctx: NodeContext) -> tuple[ImageInput, ...]:
+    """The case images every node sends, bounded by the configured transmit size."""
+    return image_inputs(state.case, max_edge_px=ctx.config.graph.image_max_edge_px)
 
 
 def case_context(case: CaseInput) -> str:
@@ -100,6 +116,27 @@ def knowledge_context(ctx: NodeContext, taxon_ids: tuple[str, ...]) -> str:
     return f"## Knowledge cards (project data)\n\n```json\n{body}\n```"
 
 
+def evidence_value_vocabulary_context(ctx: NodeContext) -> str:
+    """Render canonical evidence tokens without revealing which taxa use them.
+
+    Candidate validation intentionally matches card values exactly. Giving the extractor
+    this deduplicated vocabulary prevents semantically equivalent inventions such as
+    ``scaly_plated`` from becoming unusable evidence, while omitting taxon identities keeps
+    extraction observational rather than turning it into identification.
+    """
+    vocabulary = card_value_vocabulary(ctx.knowledge.taxa(ctx.knowledge.available_taxon_ids()))
+    payload = {feature: sorted(values) for feature, values in sorted(vocabulary.items())}
+    body = json.dumps(payload, indent=2, ensure_ascii=False)
+    return (
+        "## Canonical evidence value vocabulary (project data)\n\n"
+        "When a listed value accurately describes visible evidence, use that exact token. "
+        "Do not force a listed value when none fits: an honest out-of-vocabulary observation "
+        "is preferable, but it cannot support exact knowledge-card matching. These tokens "
+        "are not an identification, and taxon names are deliberately omitted.\n\n"
+        f"```json\n{body}\n```"
+    )
+
+
 def _known(ctx: NodeContext, taxon_ids: tuple[str, ...]) -> tuple[str, ...]:
     available = set(ctx.knowledge.available_taxon_ids())
     return tuple(taxon_id for taxon_id in taxon_ids if taxon_id in available)
@@ -123,30 +160,32 @@ async def review_call(
 ) -> ReviewResult:
     """Run one reviewer against the current evidence and candidates.
 
-    Shared because all four reviewers see exactly the same material. The arbiter differs
-    only in its role binding and its prompt — never in what it is allowed to look at, and
-    never by receiving hidden reasoning from the primary model (none is ever stored).
+    All reviewers see the case, evidence, candidates, and relevant cards. The arbiter also
+    receives the deterministic pre-arbitration assessment its prompt asks it to challenge.
+    It never receives hidden reasoning from the primary model (none is ever stored).
     """
     evidence = state.evidence
     if evidence is None:
         return ReviewResult(reviewer=reviewer, status=ReviewStatus.PASS)
 
-    context = "\n\n".join(
-        [
-            case_context(state.case),
-            evidence_context(evidence),
-            candidates_context(state.candidate_sets),
-            knowledge_context(ctx, proposed_taxa(state.candidate_sets)),
-        ]
-    )
+    context_parts = [
+        case_context(state.case),
+        evidence_context(evidence),
+        candidates_context(state.candidate_sets),
+        knowledge_context(ctx, proposed_taxa(state.candidate_sets)),
+    ]
+    if reviewer is Reviewer.ARBITER:
+        context_parts.append(proposed_assessment_context(state, ctx))
+    context = "\n\n".join(context_parts)
     result = await request_structured(
         provider=ctx.providers.get(role),
         role=role.value,
         node=node,
         prompt=ctx.prompts.compose(node, context=context, locale=locale_of(state)),
-        images=image_inputs(state.case),
+        images=case_image_inputs(state, ctx),
         response_model=ReviewResult,
         recorder=ctx.recorder,
+        cache_prefix_chars=ctx.prompts.cacheable_prefix_chars(locale_of(state)),
         max_retries=ctx.config.provider_for(role).max_structured_retries,
     )
     return mark_model_findings(result)
@@ -175,3 +214,30 @@ def proposed_taxa(candidate_sets: tuple[CandidateSet, ...]) -> tuple[str, ...]:
             if candidate.taxon not in seen:
                 seen.append(candidate.taxon)
     return tuple(seen)
+
+
+def proposed_assessment_context(state: GraphState, ctx: NodeContext) -> str:
+    """Render the deterministic verdict that would stand if arbitration made no change."""
+    # Local import keeps the shared context module below the decision layer at import time.
+    from dendro_inspector.nodes.final_decision import decide_subject
+
+    decisions = tuple(
+        decide_subject(state, ctx, candidate_set) for candidate_set in state.candidate_sets
+    )
+    payload = [
+        {
+            "subject_id": decision.subject_id,
+            "selected_taxon": decision.selected_taxon,
+            "resolution": decision.resolution.value,
+            "confidence": decision.confidence.value,
+            "confidence_band": decision.confidence_band,
+            "status": decision.status.value,
+        }
+        for decision in decisions
+    ]
+    body = json.dumps(payload, indent=2, ensure_ascii=False)
+    return (
+        "## Proposed assessment (deterministic pre-arbitration result)\n\n"
+        "This is the result that would stand if arbitration made no admissible change.\n\n"
+        f"```json\n{body}\n```"
+    )
