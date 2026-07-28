@@ -2,8 +2,8 @@
 
 - **Status:** Current
 - **Owner:** Dendro Inspector maintainers
-- **Date:** 2026-07-27
-- **Last-verified:** 2026-07-27
+- **Date:** 2026-07-28
+- **Last-verified:** 2026-07-28
 
 ```bash
 dendro eval --suite public            # summary
@@ -237,6 +237,11 @@ The v0.3.0 release result is **nineteen passing cases, zero failures, zero overc
 frozen in `evals/baselines/public-v0.3.0.json`. The original sixteen decisions are byte-for-byte
 equivalent in the baseline comparison; the three additions cover rough-end-grain anatomy,
 split-face colour-only abstention and the corroborated log-pile counterexample.
+
+The v0.4.0 release result is also **nineteen passing cases, zero failures and zero
+overconfidence**, frozen in `evals/baselines/public-v0.4.0.json`. Every decision and metric
+is identical to v0.3.0; this release changes provider reachability, image transport,
+observability and evidence-vocabulary diagnostics without moving the conformance boundary.
 
 Read the result honestly: nineteen hand-built cases over recorded fixtures can show that the
 machinery follows these contracts. It says nothing about identification accuracy on real

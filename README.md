@@ -10,6 +10,7 @@
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.12%2B-blue.svg)](pyproject.toml)
+[![CI](https://github.com/Dendro-Inspector/Dendro-Inspector/actions/workflows/ci.yml/badge.svg)](https://github.com/Dendro-Inspector/Dendro-Inspector/actions/workflows/ci.yml)
 
 An eval-driven, evidence-based, multimodal agent for identifying trees, logs, bark, leaves,
 fruit, cones and wood from photographs.
@@ -229,7 +230,7 @@ dendro prompt-info      # prompt/manifest hashes, policy revision and compatibil
 ```
 
 The runtime validates `prompts/versions.yaml` before constructing any provider. That manifest
-pins policy revision `0.3.0`, the canonical domain prompt path and hash, the node-prompt root
+pins policy revision `0.4.0`, the canonical domain prompt path and hash, the node-prompt root
 and revision, and the exact node-prompt file set and hashes. Composition uses the cached
 validated bytes, so a prompt changed after validation cannot silently enter a request.
 
@@ -277,13 +278,15 @@ bundle.
 
 ## Status
 
-v0.3.0 — a correctness-hardened vertical slice, not a production system. The graph runs end
-to end; trusted candidate-specific evidence, wood-surface provenance, split-firewood scope,
-deterministic finding precedence, finding-bound reranks and prompt-policy compatibility are
-enforced in code. The public suite defines nineteen deterministic conformance cases, all
-passing with zero overconfidence against the frozen `public-v0.3.0` baseline. The
-knowledge pack is 25 taxa of demonstration content that no dendrologist has reviewed — every
-card says so in its `provenance` block.
+v0.4.0 — the first public, provider-complete vertical slice, not a production system. The
+graph runs end to end through OpenAI, Anthropic, Gemini, NVIDIA, OpenRouter and Ollama
+adapters; live calls can be exercised without an SDK client through the agent-as-provider
+bridge. Image-aware caching, bounded image transport, reviewer-call attribution, evidence
+vocabulary diagnostics and prompt-policy compatibility are enforced in code. The public
+suite defines nineteen deterministic conformance cases, all passing with zero overconfidence
+against the frozen `public-v0.4.0` baseline. The knowledge pack remains 25 taxa of
+demonstration content that no dendrologist has reviewed — every card says so in its
+`provenance` block.
 
 What the numbers do and do not prove:
 
