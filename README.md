@@ -1,5 +1,13 @@
 # Dendro Inspector
 
+<p align="center">
+  <img
+    src="docs/assets/dendro-inspector-banner.png"
+    alt="Dendro Inspector logo: a magnifying glass framing tree rings and a leafy tree"
+    width="900"
+  />
+</p>
+
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.12%2B-blue.svg)](pyproject.toml)
 
