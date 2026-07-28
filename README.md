@@ -2,7 +2,7 @@
 
 <p align="center">
   <img
-    src="docs/assets/dendro-inspector-banner.png"
+    src="https://raw.githubusercontent.com/Dendro-Inspector/Dendro-Inspector/main/docs/assets/dendro-inspector-banner.png"
     alt="Dendro Inspector logo: a magnifying glass framing tree rings and a leafy tree"
     width="900"
   />
@@ -14,10 +14,16 @@
 An eval-driven, evidence-based, multimodal agent for identifying trees, logs, bark, leaves,
 fruit, cones and wood from photographs.
 
-**What it is:** an executable agent graph that separates what it *sees* from what it
-*infers*, reviews its own conclusions from three angles, escalates disputed or high-risk
-results to an independent second model, and is architecturally permitted to answer "I do
-not know — send me this photograph instead."
+The core idea is an executable graph, not a single prompt:
+
+**photographs &rarr; typed observations &rarr; card-validated candidates &rarr; adversarial
+review &rarr; bounded decision**
+
+Models may propose each artifact. Deterministic code decides what is admissible, when a run
+must retry or escalate, and how specific and confident the final answer may be.
+
+**What it is:** a reference implementation for evidence handling, adversarial review,
+calibrated uncertainty, evaluation and CI in a multimodal agent.
 
 **What it is not:** a tree identification app, a dataset, or a source of botanical truth.
 Dendrology is the *reference domain*; the engineering subject is evidence handling, review,
@@ -28,11 +34,97 @@ demonstration content that no dendrologist has reviewed.
 whether a tree is safe, whether timber is what a seller claims, or whether a plant is
 edible.
 
-## Why it is built this way
+## The graph is the central idea
+
+Dendro Inspector is a typed state machine. Model nodes propose bounded artifacts;
+deterministic nodes validate provenance, enforce evidence ceilings, route retries and own
+the final decision. Insufficient evidence exits with a next-photo plan; correctable review
+loops back; disputed or high-risk cases reach an independently bound arbiter.
+
+```mermaid
+flowchart TD
+    INPUT[Input: images plus optional context]
+    INPUT_GUARD[Input guard]
+    PLANNER[Planner]
+    EVIDENCE_EXTRACTOR[Evidence extractor]
+    EVIDENCE_QUALITY{Evidence quality gate}
+    PHOTO_PLANNER[Additional photo planner]
+    CANDIDATE_GENERATOR[Candidate generator]
+    BOTANICAL_REVIEWER[Botanical reviewer]
+    CONFUSION_REVIEWER[Confusion reviewer]
+    CONFIDENCE_REVIEWER[Confidence reviewer]
+    REVIEW_SYNTHESIZER[Review synthesizer]
+    INTERNAL_GATE{Internal review passes?}
+    CORRECTION_WORKER[Correction worker]
+    ABSTAIN[Lower resolution or abstain]
+    ESCALATION_GATE{Arbiter required?}
+    ARBITER[Independent arbiter review]
+    ARBITER_SYNTHESIZER[Arbiter synthesis]
+    FINAL_DECISION[Final decision engine]
+    RESPONSE_COMPOSER[Response composer]
+    TONE_LAYER[Presentation layer]
+    OUTPUT[Final structured and human-readable output]
+
+    INPUT --> INPUT_GUARD
+    INPUT_GUARD --> PLANNER
+    PLANNER --> EVIDENCE_EXTRACTOR
+    EVIDENCE_EXTRACTOR --> EVIDENCE_QUALITY
+    EVIDENCE_QUALITY -->|insufficient| PHOTO_PLANNER
+    PHOTO_PLANNER --> RESPONSE_COMPOSER
+    EVIDENCE_QUALITY -->|usable| CANDIDATE_GENERATOR
+    CANDIDATE_GENERATOR --> BOTANICAL_REVIEWER
+    CANDIDATE_GENERATOR --> CONFUSION_REVIEWER
+    CANDIDATE_GENERATOR --> CONFIDENCE_REVIEWER
+    BOTANICAL_REVIEWER --> REVIEW_SYNTHESIZER
+    CONFUSION_REVIEWER --> REVIEW_SYNTHESIZER
+    CONFIDENCE_REVIEWER --> REVIEW_SYNTHESIZER
+    REVIEW_SYNTHESIZER --> INTERNAL_GATE
+    INTERNAL_GATE -->|correctable failure| CORRECTION_WORKER
+    CORRECTION_WORKER --> EVIDENCE_EXTRACTOR
+    INTERNAL_GATE -->|unresolvable| ABSTAIN
+    INTERNAL_GATE -->|pass| ESCALATION_GATE
+    ESCALATION_GATE -->|no| FINAL_DECISION
+    ESCALATION_GATE -->|yes| ARBITER
+    ARBITER --> ARBITER_SYNTHESIZER
+    ARBITER_SYNTHESIZER --> FINAL_DECISION
+    ABSTAIN --> FINAL_DECISION
+    FINAL_DECISION --> RESPONSE_COMPOSER
+    RESPONSE_COMPOSER --> TONE_LAYER
+    TONE_LAYER --> OUTPUT
+```
+
+`dendro graph` renders this from the same declaration the executor walks, so the picture
+cannot drift from the code. Details in [docs/agent-graph.md](docs/agent-graph.md).
+
+The presentation layer runs only after the factual result is fixed. It may change wording;
+it cannot change the taxon, resolution, confidence or requested follow-up photograph.
+
+## What the graph may return
+
+A run returns one of five statuses for each subject in the frame:
+
+| Outcome | Meaning |
+| --- | --- |
+| `identified` | The evidence supports the claim at the stated level, with high confidence |
+| `probable` | Best supported hypothesis, honestly hedged |
+| `insufficient_evidence` | Nothing defensible, plus the photograph that would fix it |
+| `conflicting_evidence` | Visible evidence contradicts the leading candidate's own card |
+| `unsupported_user_claim` | What you said it is does not match what the image shows |
+
+Resolution is one of `family`, `genus`, `species_group`, `species`, `unknown`. **It is never
+forced to species.** For bark, genus is the ceiling and low confidence is the cap. The selected
+taxon id and display name always identify a taxon at that final resolution; when a card has no
+declared identity broad enough for the bound, the result is `unknown`.
+
+If you supplied your own version, it gets its own ruling: `accepted`, `possible`, `doubtful`
+or `rejected`. Rejection is deliberately hard to reach — it needs contrary evidence above
+bark level and no field context from you.
+
+## Why the boundaries matter
 
 Most photo-identification agents fail the same way: they return a confident species name
-from a photograph that could not possibly support one. Five design decisions target that
-directly.
+from a photograph that could not possibly support one. The graph encodes five
+non-negotiable boundaries against that failure.
 
 1. **Observations and inferences are different types.** "Bark flakes lift at thin irregular
    edges" and "this is compatible with Pinus" cannot be stored in the same field. An
@@ -69,9 +161,9 @@ git clone <your-fork-url> && cd dendro-inspector
 python -m venv .venv && . .venv/bin/activate      # Windows: .venv\Scripts\activate
 pip install -e ".[dev,images]"                    # 'images' bounds the bytes each call sends
 
-dendro graph                                    # print the executable agent graph
+dendro graph                                       # print the executable agent graph
 dendro inspect --fake primary-pass --image examples/log.jpg --location "Kyiv Oblast, Ukraine"
-dendro eval --suite public                      # run the nineteen public conformance cases
+dendro eval --suite public                         # run the nineteen public conformance cases
 pytest                                             # full test suite, offline
 ```
 
@@ -92,7 +184,7 @@ The presentation register is a deployment choice, kept separate from the dendrol
 
 ```bash
 DENDRO_TONE_PROFILE=standard   # default — dry, direct, workplace-safe
-DENDRO_TONE_PROFILE=direct          # the author's original register
+DENDRO_TONE_PROFILE=direct     # the author's original register
 ```
 
 Profiles live in `prompts/personality/` and carry vocabulary only. Switching profile changes
@@ -113,10 +205,11 @@ DENDRO_ARBITER_PROVIDER=anthropic   # independently challenge disputed results
 
 `.env` is read at startup; anything already exported in the environment wins over it.
 
-Either role can also be bound to `gemini` (reads `GEMINI_API_KEY`, no SDK) or to `ollama`,
-which needs no key at all — just a local `ollama serve` and a vision-capable model pulled
-onto the machine. Both speak narrower schema dialects than Pydantic emits, so requests are
-translated per provider without ever relaxing what the response is validated against. See
+Either role can use `openai`, `anthropic`, `gemini`, `nvidia`, `openrouter` or `ollama`.
+Every selected model must accept images. Hosted adapters read their own credential variable;
+OpenAI and Anthropic use optional SDK extras, Gemini and the OpenAI-compatible
+NVIDIA/OpenRouter adapters use direct HTTPS, and Ollama needs no key. Provider-specific
+schema translation never relaxes the Pydantic contract used to validate the response. See
 [docs/model-roles.md](docs/model-roles.md).
 
 ## The domain prompt
@@ -166,62 +259,6 @@ or incompatible policy revision is a loud `PromptPolicyError`, never a silent de
 and manifest hashes appear in every execution trace, tying an answer to the exact admitted
 bundle.
 
-## The graph
-
-```mermaid
-flowchart TD
-    INPUT[Input: images plus optional context] --> GUARD[Input guard]
-    GUARD --> PLANNER[Planner]
-    PLANNER --> EXTRACTOR[Evidence extractor]
-    EXTRACTOR --> QUALITY{Evidence quality gate}
-    QUALITY -->|insufficient| PHOTO_PLAN[Additional photo planner]
-    PHOTO_PLAN --> RESPONSE[Response composer]
-    QUALITY -->|usable| CANDIDATES[Candidate generator]
-    CANDIDATES --> BOTANICAL[Botanical reviewer]
-    CANDIDATES --> CONFUSION[Confusion reviewer]
-    CANDIDATES --> CONFIDENCE[Confidence reviewer]
-    BOTANICAL --> REVIEW_SYNTH[Review synthesizer]
-    CONFUSION --> REVIEW_SYNTH
-    CONFIDENCE --> REVIEW_SYNTH
-    REVIEW_SYNTH --> INTERNAL_GATE{Internal review passes?}
-    INTERNAL_GATE -->|correctable failure| RETRY[Correction worker]
-    RETRY --> EXTRACTOR
-    INTERNAL_GATE -->|unresolvable| ABSTAIN[Lower resolution or abstain]
-    INTERNAL_GATE -->|pass| ESCALATION{Arbiter required?}
-    ESCALATION -->|no| FINAL_DECISION[Final decision engine]
-    ESCALATION -->|yes| ARBITER[Independent arbiter review]
-    ARBITER --> ARBITER_SYNTH[Arbiter synthesis]
-    ARBITER_SYNTH --> FINAL_DECISION
-    ABSTAIN --> FINAL_DECISION
-    FINAL_DECISION --> RESPONSE
-    RESPONSE --> TONE[Presentation layer]
-    TONE --> OUTPUT[Final structured and human-readable output]
-```
-
-`dendro graph` renders this from the same declaration the executor walks, so the picture
-cannot drift from the code. Details in [docs/agent-graph.md](docs/agent-graph.md).
-
-## What it can answer
-
-A run returns one of five things, per subject in the frame:
-
-| Outcome | Meaning |
-| --- | --- |
-| `identified` | The evidence supports the claim at the stated level, with high confidence |
-| `probable` | Best supported hypothesis, honestly hedged |
-| `insufficient_evidence` | Nothing defensible, plus the photograph that would fix it |
-| `conflicting_evidence` | Visible evidence contradicts the leading candidate's own card |
-| `unsupported_user_claim` | What you said it is does not match what the image shows |
-
-Resolution is one of `family`, `genus`, `species_group`, `species`, `unknown`. **It is never
-forced to species.** For bark, genus is the ceiling and low confidence is the cap. The selected
-taxon id and display name always identify a taxon at that final resolution; when a card has no
-declared identity broad enough for the bound, the result is `unknown`.
-
-If you supplied your own version, it gets its own ruling: `accepted`, `possible`, `doubtful`
-or `rejected`. Rejection is deliberately hard to reach — it needs contrary evidence above
-bark level and no field context from you.
-
 ## Documentation
 
 | Document | Covers |
@@ -229,6 +266,7 @@ bark level and no field context from you.
 | [docs/architecture.md](docs/architecture.md) | Contracts, layering, why taxon cards are data |
 | [docs/agent-graph.md](docs/agent-graph.md) | Node responsibilities, routing, retry and stop conditions |
 | [docs/model-roles.md](docs/model-roles.md) | Primary vs arbiter, escalation policy |
+| [docs/agent-as-provider.md](docs/agent-as-provider.md) | Live multimodal adapter testing through the local bridge |
 | [docs/evaluation.md](docs/evaluation.md) | Public conformance cases, metrics, how to add one |
 | [docs/review-pipeline.md](docs/review-pipeline.md) | Finding admissibility and reason codes |
 | [docs/regional-packs.md](docs/regional-packs.md) | Regional priors and how they are constrained |

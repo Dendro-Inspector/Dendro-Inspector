@@ -3,7 +3,7 @@
 - **Status:** Current
 - **Owner:** Dendro Inspector maintainers
 - **Date:** 2026-07-26
-- **Last-verified:** 2026-07-26
+- **Last-verified:** 2026-07-28
 
 The graph is declared once in
 [`graph/definition.py`](../src/dendro_inspector/graph/definition.py). The diagram below,
@@ -13,32 +13,54 @@ asserts that every routing target is a declared edge.
 
 ```mermaid
 flowchart TD
-    INPUT[Input: images plus optional context] --> GUARD[Input guard]
-    GUARD --> PLANNER[Planner]
-    PLANNER --> EXTRACTOR[Evidence extractor]
-    EXTRACTOR --> QUALITY{Evidence quality gate}
-    QUALITY -->|insufficient| PHOTO_PLAN[Additional photo planner]
-    PHOTO_PLAN --> RESPONSE[Response composer]
-    QUALITY -->|usable| CANDIDATES[Candidate generator]
-    CANDIDATES --> BOTANICAL[Botanical reviewer]
-    CANDIDATES --> CONFUSION[Confusion reviewer]
-    CANDIDATES --> CONFIDENCE[Confidence reviewer]
-    BOTANICAL --> REVIEW_SYNTH[Review synthesizer]
-    CONFUSION --> REVIEW_SYNTH
-    CONFIDENCE --> REVIEW_SYNTH
-    REVIEW_SYNTH --> INTERNAL_GATE{Internal review passes?}
-    INTERNAL_GATE -->|correctable failure| RETRY[Correction worker]
-    RETRY --> EXTRACTOR
-    INTERNAL_GATE -->|unresolvable| ABSTAIN[Lower resolution or abstain]
-    INTERNAL_GATE -->|pass| ESCALATION{Arbiter required?}
-    ESCALATION -->|no| FINAL_DECISION[Final decision engine]
-    ESCALATION -->|yes| ARBITER[Independent arbiter review]
-    ARBITER --> ARBITER_SYNTH[Arbiter synthesis]
-    ARBITER_SYNTH --> FINAL_DECISION
+    INPUT[Input: images plus optional context]
+    INPUT_GUARD[Input guard]
+    PLANNER[Planner]
+    EVIDENCE_EXTRACTOR[Evidence extractor]
+    EVIDENCE_QUALITY{Evidence quality gate}
+    PHOTO_PLANNER[Additional photo planner]
+    CANDIDATE_GENERATOR[Candidate generator]
+    BOTANICAL_REVIEWER[Botanical reviewer]
+    CONFUSION_REVIEWER[Confusion reviewer]
+    CONFIDENCE_REVIEWER[Confidence reviewer]
+    REVIEW_SYNTHESIZER[Review synthesizer]
+    INTERNAL_GATE{Internal review passes?}
+    CORRECTION_WORKER[Correction worker]
+    ABSTAIN[Lower resolution or abstain]
+    ESCALATION_GATE{Arbiter required?}
+    ARBITER[Independent arbiter review]
+    ARBITER_SYNTHESIZER[Arbiter synthesis]
+    FINAL_DECISION[Final decision engine]
+    RESPONSE_COMPOSER[Response composer]
+    TONE_LAYER[Presentation layer]
+    OUTPUT[Final structured and human-readable output]
+
+    INPUT --> INPUT_GUARD
+    INPUT_GUARD --> PLANNER
+    PLANNER --> EVIDENCE_EXTRACTOR
+    EVIDENCE_EXTRACTOR --> EVIDENCE_QUALITY
+    EVIDENCE_QUALITY -->|insufficient| PHOTO_PLANNER
+    PHOTO_PLANNER --> RESPONSE_COMPOSER
+    EVIDENCE_QUALITY -->|usable| CANDIDATE_GENERATOR
+    CANDIDATE_GENERATOR --> BOTANICAL_REVIEWER
+    CANDIDATE_GENERATOR --> CONFUSION_REVIEWER
+    CANDIDATE_GENERATOR --> CONFIDENCE_REVIEWER
+    BOTANICAL_REVIEWER --> REVIEW_SYNTHESIZER
+    CONFUSION_REVIEWER --> REVIEW_SYNTHESIZER
+    CONFIDENCE_REVIEWER --> REVIEW_SYNTHESIZER
+    REVIEW_SYNTHESIZER --> INTERNAL_GATE
+    INTERNAL_GATE -->|correctable failure| CORRECTION_WORKER
+    CORRECTION_WORKER --> EVIDENCE_EXTRACTOR
+    INTERNAL_GATE -->|unresolvable| ABSTAIN
+    INTERNAL_GATE -->|pass| ESCALATION_GATE
+    ESCALATION_GATE -->|no| FINAL_DECISION
+    ESCALATION_GATE -->|yes| ARBITER
+    ARBITER --> ARBITER_SYNTHESIZER
+    ARBITER_SYNTHESIZER --> FINAL_DECISION
     ABSTAIN --> FINAL_DECISION
-    FINAL_DECISION --> RESPONSE
-    RESPONSE --> TONE[Presentation layer]
-    TONE --> OUTPUT[Final structured and human-readable output]
+    FINAL_DECISION --> RESPONSE_COMPOSER
+    RESPONSE_COMPOSER --> TONE_LAYER
+    TONE_LAYER --> OUTPUT
 ```
 
 `input`, `output` and `internal_gate` are rendering pseudo-nodes. The first two mark the

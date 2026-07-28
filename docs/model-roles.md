@@ -3,7 +3,7 @@
 - **Status:** Current
 - **Owner:** Dendro Inspector maintainers
 - **Date:** 2026-07-27
-- **Last-verified:** 2026-07-27
+- **Last-verified:** 2026-07-28
 
 Two logical roles. Business logic names only these; which vendor and model satisfies each is
 configuration.
@@ -33,6 +33,21 @@ DENDRO_ARBITER_MODEL=claude-opus-5
 **Bind the arbiter to a different model family than the primary.** Two instances of the same
 model share failure modes, and a model that agrees with itself is not a second opinion — it
 is the same opinion, billed twice.
+
+## Adapter matrix
+
+| Adapter | Credential | Transport and structured-output dialect |
+| --- | --- | --- |
+| `openai` | `OPENAI_API_KEY` | Optional OpenAI SDK; native `json_schema` response format |
+| `anthropic` | `ANTHROPIC_API_KEY` | Optional Anthropic SDK; Messages API with schema in the prompt and Pydantic validation |
+| `gemini` | `GEMINI_API_KEY` | Direct HTTPS; native `responseSchema` after compatibility translation |
+| `nvidia` | `NVIDIA_API_KEY` | Direct HTTPS; OpenAI-compatible chat-completions dialect |
+| `openrouter` | `OPENROUTER_API_KEY` | Direct HTTPS; OpenAI-compatible chat-completions dialect |
+| `ollama` | none | Local HTTP; Ollama schema format after compatibility translation |
+
+Both logical roles accept any adapter in this table. The selected model must support image
+input; a text-only model cannot serve even a reviewer because every model call receives the
+case photographs. The `fake` adapter is reserved for deterministic tests and evaluations.
 
 ## Gemini
 

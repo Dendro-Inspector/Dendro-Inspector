@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+from pathlib import Path
 
 import pytest
 
@@ -30,6 +31,14 @@ from dendro_inspector.schemas.input import CaseInput
 from dendro_inspector.schemas.reviews import ReviewSynthesis
 
 pytestmark = pytest.mark.contract
+
+
+def _embedded_mermaid(path: Path) -> str:
+    """Extract the repository's single checked-in Mermaid graph."""
+    text = path.read_text(encoding="utf-8")
+    opening = "```mermaid\n"
+    assert text.count(opening) == 1, f"{path} must contain exactly one Mermaid graph"
+    return text.split(opening, 1)[1].split("\n```", 1)[0].strip()
 
 
 def _saturated_state() -> GraphState:
@@ -145,3 +154,10 @@ class TestMermaidRendering:
 
     def test_diagram_is_a_flowchart(self):
         assert render_mermaid().startswith("flowchart TD")
+
+    @pytest.mark.parametrize(
+        "relative_path",
+        [Path("README.md"), Path("docs/agent-graph.md")],
+    )
+    def test_checked_in_diagrams_match_runtime(self, repo_root, relative_path):
+        assert _embedded_mermaid(repo_root / relative_path) == render_mermaid()
