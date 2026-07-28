@@ -10,7 +10,24 @@ get entries.
 
 ## [Unreleased]
 
+## [0.4.0] — 2026-07-28
+
+The first public release expands the live provider boundary and makes real-photo runs
+measurable, cheaper and safe from cross-image cache contamination.
+
 ### Added
+
+- A local agent-as-provider bridge now drives all six adapters through their real wire
+  dialects while an agent supplies the structured multimodal answer. It records decoded
+  image digests, schemas and pending requests, supports deterministic replay and fault
+  injection, and documents the complete workflow in `docs/agent-as-provider.md`.
+- The bridge now speaks Anthropic's Messages API dialect in addition to OpenAI-compatible,
+  Gemini and Ollama envelopes. This exercises `x-api-key`, `anthropic-version`,
+  `max_tokens`, base64 image decoding and prompt-tail schema recovery without weakening
+  the schema accepted by Pydantic.
+- `ANTHROPIC_TIMEOUT_SECONDS` overrides the SDK's 120-second default for long agent-driven
+  answers. Raising the timeout prevents one logical request from expiring and producing
+  two automatic retries while a human or agent is still preparing the answer.
 
 - `gemini` provider adapter, selectable for either role. Reads `GEMINI_API_KEY`, talks to the
   Generative Language API over plain HTTPS with no SDK and no new dependency, and requests
@@ -75,6 +92,14 @@ get entries.
 
 ### Changed
 
+- Package metadata, graph traces, deterministic prompt policy and the frozen public
+  baseline now share release identity `0.4.0`. All nineteen decisions and every metric are
+  identical to v0.3.0.
+
+- The README now presents the executable graph as the central idea. Its Mermaid diagram and
+  the detailed graph document are contract-tested against the declaration the executor
+  walks, so public architecture diagrams cannot silently drift from runtime routing.
+
 - Section 14 of the domain prompt (БАЗОВІ ПОРОДИ) now names the canonical evidence token
   beside each feature it describes — `біла паперова кора;` is followed by
   `→ bark.pattern = white_papery_with_black_marks`. Candidate validation matches cards by
@@ -89,6 +114,11 @@ get entries.
   re-seal** (`dendro prompt-seal --write`).
 
 ### Fixed
+
+- Agent-bridge cache keys now include every transmitted image's content digest. Two
+  different photographs with the same context and schema can no longer share an answer
+  authored while viewing the first image. Repair-round replays remain deliberately
+  uncacheable.
 
 - Provider calls made by the three concurrent reviewers are now recorded against the
   reviewer that made them. They share one recorder, and the trace attached every pending
@@ -124,6 +154,9 @@ get entries.
   hyphen (`[a-z0-9_\-]`), which is what Pydantic emits for this project's identifier and
   value-token types; every image-bearing call failed with `400 failed to parse grammar`.
   Patterns are still enforced when the response is validated.
+
+- The distribution now ships a PEP 561 `py.typed` marker and advertises Apache-2.0 in its
+  package classifiers, matching the inline type hints and repository license.
 
 ## [0.3.0] — 2026-07-27
 
@@ -358,7 +391,7 @@ green is not the same as the suite behaving the same way.
   decisive tier with high confidence there is nothing left to ask for, and reflexive hedging
   teaches people to ignore the request entirely.
 
-## [0.2.0] — 2026-07-25
+## 0.2.0 — 2026-07-25
 
 The real dendrology domain prompt replaces the placeholder, and the system is rebuilt around
 what it actually says. Previously the prompt was a text file the models read; now it is the
@@ -413,7 +446,7 @@ user claiming oak, foliage at the frame edge, and an apple on the branch. Nine c
 
 - `cached_property` on a slotted dataclass crashed every run at prompt load.
 
-## [0.1.0] — 2026-07-25
+## 0.1.0 — 2026-07-25
 
 Initial vertical slice: image and optional context → evidence extraction → candidate
 generation → structured internal review → optional arbitration → confidence and resolution
@@ -496,12 +529,11 @@ documents, GitHub Actions CI with a blocking secret scan.
   currently carries a previous result into a new case).
 - A hosted API surface.
 
-Compare links resolve once the matching tags are pushed; none exist yet.
+Git history begins at v0.2.1; the older entries remain as unlinked release notes.
 
-[Unreleased]: https://github.com/Dendro-Inspector/Dendro-Inspector/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/Dendro-Inspector/Dendro-Inspector/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/Dendro-Inspector/Dendro-Inspector/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/Dendro-Inspector/Dendro-Inspector/compare/v0.2.3...v0.3.0
 [0.2.3]: https://github.com/Dendro-Inspector/Dendro-Inspector/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/Dendro-Inspector/Dendro-Inspector/compare/v0.2.1...v0.2.2
-[0.2.1]: https://github.com/Dendro-Inspector/Dendro-Inspector/compare/v0.1.0...v0.2.1
-[0.2.0]: https://github.com/Dendro-Inspector/Dendro-Inspector/compare/v0.1.0...v0.2.0
-[0.1.0]: https://github.com/Dendro-Inspector/Dendro-Inspector/releases/tag/v0.1.0
+[0.2.1]: https://github.com/Dendro-Inspector/Dendro-Inspector/releases/tag/v0.2.1

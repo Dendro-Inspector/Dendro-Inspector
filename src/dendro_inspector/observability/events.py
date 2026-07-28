@@ -16,7 +16,7 @@ from pydantic import Field
 from dendro_inspector.schemas.base import Contract, ShortText
 from dendro_inspector.schemas.taxon import Confidence, Resolution
 
-GRAPH_VERSION = "0.3.0"
+GRAPH_VERSION = "0.4.0"
 
 
 class NodeStatus(StrEnum):

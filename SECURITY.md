@@ -20,8 +20,8 @@ fix ships. That publishes it just as effectively as an issue would.
 
 | Version | Supported |
 | --- | --- |
-| 0.1.x | Yes |
-| < 0.1 | No |
+| 0.4.x | Yes |
+| < 0.4 | No |
 
 Pre-1.0: fixes land on `main`, and there are no backports.
 

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "dendro-inspector"
-version = "0.3.0"
+version = "0.4.0"
 description = "Eval-driven, evidence-based multimodal agent for identifying trees, logs, bark, leaves, fruit, cones and wood from photographs."
 readme = "README.md"
 requires-python = ">=3.12"
@@ -15,6 +15,7 @@ classifiers = [
   "Development Status :: 3 - Alpha",
   "Intended Audience :: Developers",
   "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: Apache Software License",
   "Programming Language :: Python :: 3.12",
   "Topic :: Scientific/Engineering :: Bio-Informatics",
   "Typing :: Typed",

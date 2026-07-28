@@ -3,7 +3,7 @@
 - **Status:** Draft
 - **Owner:** Dendro Inspector maintainers
 - **Date:** 2026-07-27
-- **Last-verified:** 2026-07-27
+- **Last-verified:** 2026-07-28
 
 **This is a public open-source repository.** Everything committed here is permanent,
 world-readable, and mirrored by third parties within minutes. Sections 13-15 carry the
@@ -642,17 +642,16 @@ answer.
 
 ## 17. Open Decisions
 
-**Still open, blocking the first public push:**
+**Still open:**
 
 3. DCO sign-off, CLA, or neither. Until decided, `CONTRIBUTING.md` asserts only that a
    contributor has the right to submit under Apache-2.0.
 4. Contribution policy on AI-assisted code, if any.
 5. ~~Replace `OWNER` in the repository URLs~~ — **`Dendro-Inspector/Dendro-Inspector`**,
    taken from `origin` and applied 2026-07-26 to `pyproject.toml`, `CHANGELOG.md` and
-   `.github/ISSUE_TEMPLATE/config.yml`. The contact links in that config assume Discussions
-   and private vulnerability reporting are enabled on the repository; enable both, or drop
-   the links rather than publish two dead ends. No release tags exist yet, so the changelog
-   compare links resolve only once `v0.2.1`, `v0.2.2`, `v0.2.3` and `v0.3.0` are pushed.
+   `.github/ISSUE_TEMPLATE/config.yml`. The repository became public on 2026-07-28.
+   Release tags begin at `v0.2.1`; the `v0.1.0` and `v0.2.0` changelog entries predate the
+   imported Git history and deliberately remain untagged.
 6. Branch protection on `main`: require the CI checks from `.github/workflows/ci.yml`.
    Until this is switched on, §11's enforcement layer does not exist — the workflow runs
    but nothing stops a merge over a red run.
