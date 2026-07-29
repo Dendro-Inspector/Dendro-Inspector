@@ -18,7 +18,9 @@ from dendro_inspector.graph.executor import NodeContext
 from dendro_inspector.graph.state import GraphState
 from dendro_inspector.knowledge.comparison_cards import decisive_features_between
 from dendro_inspector.knowledge.evidence_hierarchy import (
+    EvidenceTier,
     bark_only,
+    best_tier,
     contextual_observations_for,
     is_colour_feature,
     positive_observations_for,
@@ -82,6 +84,13 @@ def unattached_evidence_findings(state: GraphState) -> tuple[ReviewFinding, ...]
     tree, and it must not be allowed to turn an oak into an ash. The evidence hierarchy
     already demotes it to context; this finding makes the demotion visible and asks for the
     photograph that would settle it.
+
+    How much that matters depends on what else the subject has. When some foliage *was*
+    traced to this trunk, the loose material is a footnote — it was demoted, the verdict
+    never rested on it, and reporting "foliage could not be traced to this trunk" as the
+    subject's headline contradiction contradicts the tier the verdict was computed from.
+    When the loose material is all there is, the same sentence is the most important thing
+    on the page. One finding, two weights.
     """
     evidence = state.evidence
     if evidence is None:
@@ -93,26 +102,39 @@ def unattached_evidence_findings(state: GraphState) -> tuple[ReviewFinding, ...]
         if not loose:
             continue
 
+        # Only an attached leaf, needle, bud or fruit can reach FOLIAGE, so this is exactly
+        # the question "did anything detachable survive the attachment test on this subject".
+        corroborated = best_tier(evidence, subject.subject_id) >= EvidenceTier.FOLIAGE
+
         # The two states call for different photographs, so they are reported differently.
         detached = [o for o in loose if o.attachment is AttachmentStatus.CONFIRMED_DETACHED]
-        summary = (
-            "Foliage or fruit in frame is detached from this trunk, so it cannot support "
-            "the identification — material on the ground belongs to whoever dropped it."
-            if detached
-            else "Foliage or fruit in frame could not be traced to this trunk, so it cannot "
-            "support the identification. It may belong to a neighbouring tree."
-        )
+        if corroborated:
+            summary = (
+                "Some foliage or fruit in frame is not traceable to this trunk and was "
+                "demoted to context. The verdict rests on the foliage that is traceable, "
+                "not on this material."
+            )
+        elif detached:
+            summary = (
+                "Foliage or fruit in frame is detached from this trunk, so it cannot support "
+                "the identification — material on the ground belongs to whoever dropped it."
+            )
+        else:
+            summary = (
+                "Foliage or fruit in frame could not be traced to this trunk, so it cannot "
+                "support the identification. It may belong to a neighbouring tree."
+            )
         findings.append(
             ReviewFinding(
                 origin=FindingOrigin.DETERMINISTIC,
                 finding_id=f"auto-unattached-{subject.subject_id}",
                 category=FindingCategory.UNSUPPORTED_CLAIM,
-                severity=Severity.MAJOR,
+                severity=Severity.MINOR if corroborated else Severity.MAJOR,
                 summary=summary,
                 evidence_ids=tuple(o.observation_id for o in loose),
                 subject_id=subject.subject_id,
                 required_action=RequiredAction.REQUEST_ADDITIONAL_PHOTO,
-                impact=Impact.CONFIDENCE_CHANGE,
+                impact=Impact.NO_MATERIAL_CHANGE if corroborated else Impact.CONFIDENCE_CHANGE,
             )
         )
     return tuple(findings)

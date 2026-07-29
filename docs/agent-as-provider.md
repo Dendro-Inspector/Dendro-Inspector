@@ -2,8 +2,8 @@
 
 - **Status:** Current
 - **Owner:** Dendro Inspector maintainers
-- **Date:** 2026-07-28
-- **Last-verified:** 2026-07-28
+- **Date:** 2026-07-29
+- **Last-verified:** 2026-07-29
 
 `scripts/agent-provider/bridge.py` is a local HTTP server that speaks the three wire dialects
 this project's adapters talk, and answers nothing by itself. It writes each request to disk —
@@ -212,3 +212,35 @@ the corresponding fixes:
 - response composition falls back to admitted visible observations when no candidate
   supplied a support summary, and merges recorded context and subject-scoped image
   limitations into the uncertainty list.
+
+## Findings from the third run, 2026-07-29
+
+A standing urban maple in full leaf, answered live by Claude Opus 5 through the `gemini`
+adapter and replayed through `nvidia`. Eight accepted calls, one repair round, decisions
+byte-identical across both dialects, same image SHA-256 in both. `n = 1`, again.
+
+The photograph is the case the evidence hierarchy was built for: a shoot grows out of the
+analysed bole itself, so leaf attachment is provable rather than assumed, and the extractor
+recorded six confirmed-attached observations. The graph computed `FOLIAGE` correctly — and
+then reported **family, low, 50–69/100**. Three defects, none of them in the adapters:
+
+- **A reviewer's recommendation could only lower a result, never hold it.** All three
+  reviewers recommended `genus`; two recommended `high`. The composed bound was `genus`, and
+  the `lower_resolution` findings that carried the recommendation were then applied on top of
+  it. Confidence fell one full step per accepted `lower_confidence` finding, three of which
+  described the same overclaim. See
+  [review-pipeline.md](review-pipeline.md), "A recommendation is a floor as well as a
+  ceiling".
+- **The deterministic attachment finding was subject-scoped.** Three peripheral observations
+  honestly marked `unknown` made "foliage could not be traced to this trunk" the headline
+  contradiction of a subject carrying six confirmed-attached observations.
+- **The nearest alternative was read off the runner-up alone.** The top two candidates were
+  two species of one genus, so at genus they collapsed into the verdict and the answer said
+  "none recorded" while the look-alike finding was naming two.
+
+After the fixes the same cached answers produce **Acer, genus, 85–94/100** — which is what
+section 6 of the domain prompt prescribes for foliage without fruit. The repair round is worth
+noting on its own: `notes` carries a `maxLength` that `schema_compat` strips for Gemini but
+Pydantic still enforces, so the first packet was rejected on a constraint the model could not
+see in the schema it was given. That is the repair path working, not failing, but it is the
+reason a first live packet often needs one round.

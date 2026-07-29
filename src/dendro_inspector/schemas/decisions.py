@@ -64,7 +64,14 @@ class FinalDecision(Contract):
     resolution: Resolution = Resolution.UNKNOWN
     confidence: Confidence = Confidence.LOW
     status: DecisionStatus = DecisionStatus.INSUFFICIENT_EVIDENCE
-    strongest_support: ShortText | None = None
+    supporting_evidence: tuple[ShortText, ...] = Field(
+        default=(),
+        description=(
+            "Every validated supporting observation, strongest first. A tuple rather than "
+            "one line: a verdict that cited only its first support displayed less evidence "
+            "than the abstention beside it, which reads as the weaker answer."
+        ),
+    )
     strongest_contradiction: ShortText | None = None
     nearest_alternative: Identifier | None = None
     unresolved_questions: tuple[ShortText, ...] = ()

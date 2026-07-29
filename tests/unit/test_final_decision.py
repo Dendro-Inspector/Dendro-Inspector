@@ -28,6 +28,7 @@ from dendro_inspector.schemas.input import DeclaredObjectType
 from dendro_inspector.schemas.reviews import (
     AdmittedRerank,
     FindingCategory,
+    FindingOrigin,
     FindingStatus,
     Impact,
     RequiredAction,
@@ -39,6 +40,7 @@ from dendro_inspector.schemas.reviews import (
     Severity,
 )
 from dendro_inspector.schemas.taxon import (
+    Confidence,
     Provenance,
     Resolution,
     SourceType,
@@ -530,3 +532,227 @@ class TestFindingBoundReranking:
         )
 
         assert apply_reranking(state, original) == original
+
+
+class TestRecommendationIsAFloor:
+    """A reviewer that names a level has said where its own findings stop.
+
+    Every reviewer writing up one overclaim used to charge for it separately: three
+    `lower_confidence` findings cost three steps, and a `lower_resolution` finding filed
+    alongside `recommended_resolution: genus` landed on family — one step below the answer
+    every reviewer asked for.
+    """
+
+    def _finding(
+        self,
+        finding_id: str,
+        action: RequiredAction,
+        *,
+        origin: FindingOrigin = FindingOrigin.MODEL,
+    ) -> ReviewFinding:
+        return ReviewFinding(
+            finding_id=finding_id,
+            category=FindingCategory.RESOLUTION_TOO_SPECIFIC,
+            severity=Severity.MAJOR,
+            origin=origin,
+            summary="The species candidate outruns the evidence; genus is defensible.",
+            evidence_ids=("support",),
+            subject_id="tree_1",
+            required_action=action,
+            impact=Impact.RESOLUTION_CHANGE,
+        )
+
+    def _decide(self, simple_case, node_context, synthesis: ReviewSynthesis):
+        support = _observation("support", "leaf.shape", "palmate_lobed")
+        leader = Candidate(
+            taxon="pinus",
+            resolution=Resolution.GENUS,
+            supporting_evidence_ids=("support",),
+            score=SupportStrength.STRONG,
+            rank=1,
+        )
+        candidates = CandidateSet(subject_id="tree_1", candidates=(leader,))
+        state = _state(simple_case, (support,), candidates.candidates).model_copy(
+            update={"synthesis": synthesis}
+        )
+        return decide_subject(state, node_context, candidates)
+
+    def test_model_lower_resolution_stops_at_the_recommended_level(self, simple_case, node_context):
+        decision = self._decide(
+            simple_case,
+            node_context,
+            ReviewSynthesis(
+                accepted_findings=(self._finding("model-one", RequiredAction.LOWER_RESOLUTION),),
+                resolution_delta=Resolution.GENUS,
+            ),
+        )
+
+        assert decision.resolution is Resolution.GENUS
+        assert decision.selected_taxon == "pinus"
+
+    def test_deterministic_lower_resolution_bites_past_the_recommendation(
+        self, simple_case, node_context
+    ):
+        decision = self._decide(
+            simple_case,
+            node_context,
+            ReviewSynthesis(
+                accepted_findings=(
+                    self._finding(
+                        "auto-one",
+                        RequiredAction.LOWER_RESOLUTION,
+                        origin=FindingOrigin.DETERMINISTIC,
+                    ),
+                ),
+                resolution_delta=Resolution.GENUS,
+            ),
+        )
+
+        assert decision.resolution is Resolution.FAMILY
+
+    def test_lower_resolution_without_a_recommendation_still_broadens(
+        self, simple_case, node_context
+    ):
+        decision = self._decide(
+            simple_case,
+            node_context,
+            ReviewSynthesis(
+                accepted_findings=(self._finding("model-one", RequiredAction.LOWER_RESOLUTION),),
+            ),
+        )
+
+        assert decision.resolution is Resolution.FAMILY
+
+    def test_repeated_model_downgrades_do_not_sink_below_the_recommendation(
+        self, simple_case, node_context
+    ):
+        decision = self._decide(
+            simple_case,
+            node_context,
+            ReviewSynthesis(
+                accepted_findings=tuple(
+                    self._finding(f"model-{index}", RequiredAction.LOWER_CONFIDENCE)
+                    for index in range(3)
+                ),
+                confidence_delta=Confidence.MEDIUM,
+            ),
+        )
+
+        assert decision.confidence is Confidence.MEDIUM
+
+    def test_deterministic_downgrade_bites_past_the_recommendation(self, simple_case, node_context):
+        decision = self._decide(
+            simple_case,
+            node_context,
+            ReviewSynthesis(
+                accepted_findings=(
+                    self._finding("model-one", RequiredAction.LOWER_CONFIDENCE),
+                    self._finding(
+                        "auto-one",
+                        RequiredAction.LOWER_CONFIDENCE,
+                        origin=FindingOrigin.DETERMINISTIC,
+                    ),
+                ),
+                confidence_delta=Confidence.MEDIUM,
+            ),
+        )
+
+        assert decision.confidence is Confidence.LOW
+
+    def test_downgrades_without_a_recommendation_still_compose(self, simple_case, node_context):
+        decision = self._decide(
+            simple_case,
+            node_context,
+            ReviewSynthesis(
+                accepted_findings=tuple(
+                    self._finding(f"model-{index}", RequiredAction.LOWER_CONFIDENCE)
+                    for index in range(2)
+                ),
+            ),
+        )
+
+        assert decision.confidence is Confidence.LOW
+
+
+class TestNearestAlternativeSearch:
+    def test_alternative_is_found_past_a_candidate_that_collapsed_into_the_verdict(
+        self, simple_case, node_context
+    ):
+        """Two species of one genus must not hide the alternative behind them."""
+        observation = _observation("support", "trunk.form", "straight_long")
+        candidates = CandidateSet(
+            subject_id="tree_1",
+            candidates=(
+                Candidate(
+                    taxon="pinus",
+                    resolution=Resolution.GENUS,
+                    supporting_evidence_ids=("support",),
+                    score=SupportStrength.MODERATE,
+                    rank=1,
+                ),
+                Candidate(
+                    taxon="picea",
+                    resolution=Resolution.GENUS,
+                    score=SupportStrength.WEAK,
+                    rank=2,
+                ),
+                Candidate(
+                    taxon="quercus",
+                    resolution=Resolution.GENUS,
+                    score=SupportStrength.WEAK,
+                    rank=3,
+                ),
+            ),
+        )
+
+        decision = decide_subject(
+            _state(simple_case, (observation,), candidates.candidates),
+            node_context,
+            candidates,
+        )
+
+        assert decision.selected_taxon == "pinaceae"
+        assert decision.nearest_alternative == "fagaceae"
+
+
+class TestSupportingEvidenceIsReportedInFull:
+    """A verdict must not display less evidence than an abstention.
+
+    `_supporting_evidence` fell back to every visible observation when no candidate supplied
+    a summary, and to a single line when one did — so the identified subject printed one
+    bullet and the insufficient-evidence subject beside it printed five.
+    """
+
+    def _decide(self, simple_case, node_context):
+        shape = _observation("shape", "leaf.shape", "palmate_lobed")
+        arrangement = _observation("arrangement", "leaf.arrangement", "opposite")
+        leader = Candidate(
+            taxon="acer",
+            resolution=Resolution.GENUS,
+            supporting_evidence_ids=("shape", "arrangement"),
+            score=SupportStrength.STRONG,
+            rank=1,
+        )
+        candidates = CandidateSet(subject_id="tree_1", candidates=(leader,))
+        state = _state(simple_case, (shape, arrangement), candidates.candidates)
+        return decide_subject(state, node_context, candidates), state
+
+    def test_every_validated_support_is_carried(self, simple_case, node_context):
+        decision, _ = self._decide(simple_case, node_context)
+
+        assert decision.selected_taxon == "acer"
+        assert len(decision.supporting_evidence) == 2
+        assert any("leaf.shape = palmate_lobed" in item for item in decision.supporting_evidence)
+        assert any("leaf.arrangement = opposite" in item for item in decision.supporting_evidence)
+
+    def test_rendered_result_lists_them_all(self, simple_case, node_context):
+        decision, state = self._decide(simple_case, node_context)
+
+        result = build_result(decision, "en", state)
+
+        assert len(result.supporting_evidence) == 2
+
+    def test_support_order_follows_the_candidate_citation_order(self, simple_case, node_context):
+        decision, _ = self._decide(simple_case, node_context)
+
+        assert decision.supporting_evidence[0].startswith("leaf.shape")

@@ -2,8 +2,8 @@
 
 - **Status:** Current
 - **Owner:** Dendro Inspector maintainers
-- **Date:** 2026-07-26
-- **Last-verified:** 2026-07-26
+- **Date:** 2026-07-29
+- **Last-verified:** 2026-07-29
 
 ## The rule
 
@@ -63,6 +63,14 @@ The look-alike check fires only when a comparison card actually declares the tax
 **and** none of that card's decisive features is resolvable in the evidence. Absence of a
 card means the project has no declared basis for the confusion, and inventing one from a name
 in a list would be exactly the guesswork this reviewer exists to catch.
+
+The attachment check is weighted by what else the subject has. When some foliage *was* traced
+to this trunk, the loose material was demoted and the verdict never rested on it, so the
+finding is `minor` / `no_material_change`. When nothing was traced, the same sentence is the
+most important thing on the page and it stays `major`. Without that split, honestly marking a
+peripheral observation `unknown` — which the extractor brief explicitly asks for — makes
+"foliage could not be traced to this trunk" the headline contradiction of a subject whose
+verdict was computed from foliage that *was* traced.
 
 ### Confidence
 
@@ -132,7 +140,7 @@ inert.
 | `escalation_recommended` | reviewer disagreement, or any accepted critical finding |
 
 Deltas take the most conservative recommendation. Downgrades compose; nothing here raises a
-claim.
+claim. A delta is also a **floor** — see below.
 
 ## Corrections vs caps
 
@@ -147,6 +155,27 @@ only when nothing else will apply it.**
 
 Related: `resolve_resolution` skips a `lower_resolution` action when the card cap already
 moved the claim.
+
+### A recommendation is a floor as well as a ceiling
+
+The card cap is not the only thing that can apply a correction before the finding does. A
+reviewer that fills in `recommended_resolution` or `recommended_confidence` has stated where
+its own findings stop, and the delta already carries that recommendation into the bounds. The
+finding raised alongside it is the *reason* for the recommendation, not a second, separate
+correction — so applying both charges once for the cap and once for the reason.
+
+Two symptoms, both observed on a live run:
+
+- three reviewers write up one species overclaim and each files `lower_confidence`; every
+  accepted finding costs a full step, so a claim all three recommended at `high` arrives at
+  `low`;
+- the same reviewers recommend `genus` as the highest defensible level and file
+  `lower_resolution` to say so; the composed bound is already `genus`, and the action takes it
+  to `family` — one step below the answer every reviewer asked for.
+
+`resolve_resolution` and `resolve_confidence` therefore treat the delta as the floor for
+findings the **models** raised. Deterministic findings keep biting past it: a model must
+never be able to waive the code's own guardrails by recommending a comfortable number.
 
 ## Status reflects the answer, not the history
 

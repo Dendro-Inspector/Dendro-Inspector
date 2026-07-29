@@ -243,6 +243,14 @@ overconfidence**, frozen in `evals/baselines/public-v0.4.0.json`. Every decision
 is identical to v0.3.0; this release changes provider reachability, image transport,
 observability and evidence-vocabulary diagnostics without moving the conformance boundary.
 
+The v0.5.0 result is unchanged again — **nineteen passing cases, zero failures, zero
+overconfidence**, frozen in `evals/baselines/public-v0.5.0.json`, every decision and metric
+identical to v0.4.0. That is worth stating plainly rather than quietly: v0.5.0 fixes four
+defects in how reviewer findings are composed into a verdict, and the suite did not notice
+any of them. All four were found on a live photograph, and all four are guarded by unit tests
+rather than by a conformance case. A suite that stays green across a real fix is telling you
+where its coverage ends.
+
 Read the result honestly: nineteen hand-built cases over recorded fixtures can show that the
 machinery follows these contracts. It says nothing about identification accuracy on real
 photographs, which has not been measured.

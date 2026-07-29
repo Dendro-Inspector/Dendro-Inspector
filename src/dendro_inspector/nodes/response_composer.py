@@ -244,8 +244,8 @@ def _supporting_evidence(
     state: GraphState | None,
 ) -> tuple[str, ...]:
     """Use admitted observations when an abstaining decision has no candidate summary."""
-    if decision.strongest_support:
-        return (decision.strongest_support,)
+    if decision.supporting_evidence:
+        return decision.supporting_evidence
     if state is None or state.evidence is None:
         return ()
     return tuple(

@@ -10,6 +10,47 @@ get entries.
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-07-29
+
+Four defects in how reviewer findings compose into a verdict, all found by one live
+photograph of a standing tree and none of them caught by the conformance suite, which returns
+byte-identical decisions before and after. The evaluation baseline is re-frozen as
+`evals/baselines/public-v0.5.0.json` with every case and metric unchanged from v0.4.0.
+
+### Changed
+
+- `FinalDecision.strongest_support` (a single line) is now
+  `FinalDecision.supporting_evidence` (an ordered tuple). Consumers reading the JSON result
+  see every validated supporting observation where they previously saw the first one.
+- The deterministic policy revision moves to `0.5.0`, because the composition rules above are
+  part of it. A deployment pinning its own prompt manifest must re-seal it
+  (`dendro prompt-seal --write`); a manifest still attesting `0.4.0` is rejected rather than
+  silently accepted against different policy.
+
+### Fixed
+
+- A reviewer's `recommended_resolution` and `recommended_confidence` now act as a floor for
+  that model's own findings, not only as a ceiling. Reviewers who agreed on "genus is the
+  highest defensible level" and filed a `lower_resolution` finding to say so had the finding
+  applied on top of the genus they asked for, and the answer came back at family; three
+  reviewers writing up one overclaim each cost a full confidence step, so a claim every
+  reviewer recommended at `high` was reported at `low`. Deterministic findings still apply
+  past the recommendation — a model cannot waive the code's own guardrails by recommending a
+  comfortable number.
+- Foliage that could not be traced to the analysed trunk no longer reports the whole
+  identification as unsupported when other foliage *was* traced. It is recorded as a minor,
+  no-material-change finding instead of becoming the subject's headline contradiction, so
+  honestly marking a peripheral observation `unknown` no longer contradicts the evidence tier
+  the verdict was computed from.
+- The nearest alternative now looks past a candidate that collapsed into the verdict. Two
+  species of one genus resolve to the same identity at genus level, which previously reported
+  "no alternative recorded" while the look-alike findings were naming one.
+- A verdict now lists every validated supporting observation instead of the first one. The
+  fallback for an abstaining subject already listed up to eight, so an identified subject
+  standing beside an insufficient-evidence one displayed *less* evidence than its neighbour —
+  the better-supported answer read as the weaker one. `FinalDecision.strongest_support`
+  (single line) is now `FinalDecision.supporting_evidence` (ordered tuple).
+
 ## [0.4.0] — 2026-07-28
 
 The first public release expands the live provider boundary and makes real-photo runs

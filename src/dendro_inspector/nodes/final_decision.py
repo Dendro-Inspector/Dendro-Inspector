@@ -12,6 +12,13 @@ Three rules are absolute here:
   broaden resolution. Nothing in this node ever raises either;
 * **species is never forced.** Falling back to genus, species group, family or ``unknown``
   is a valid terminal outcome.
+
+Composition has one limit. A reviewer that names a level in ``recommended_resolution`` or
+``recommended_confidence`` has stated where its own findings stop; applying those findings
+again on top of the recommendation charges the same correction twice, and three reviewers
+writing up one overclaim charge it three times. The recommendation is therefore a floor for
+model-raised findings — never for deterministic ones, which a model must not be able to
+waive by recommending a comfortable number.
 """
 
 from __future__ import annotations
@@ -43,6 +50,7 @@ from dendro_inspector.schemas.evidence import EvidencePacket
 from dendro_inspector.schemas.input import DeclaredObjectType
 from dendro_inspector.schemas.reviews import (
     FindingCategory,
+    FindingOrigin,
     RequiredAction,
     ReviewSynthesis,
     Severity,
@@ -98,6 +106,17 @@ def _actions_for(state: GraphState, subject_id: str) -> tuple[RequiredAction, ..
         for synthesis in _syntheses(state)
         for finding in synthesis.accepted_findings
         if finding.subject_id in (None, subject_id)
+    )
+
+
+def _deterministic_actions_for(state: GraphState, subject_id: str) -> tuple[RequiredAction, ...]:
+    """Actions the code raised against itself, which a model's recommendation cannot waive."""
+    return tuple(
+        finding.required_action
+        for synthesis in _syntheses(state)
+        for finding in synthesis.accepted_findings
+        if finding.subject_id in (None, subject_id)
+        and finding.origin is FindingOrigin.DETERMINISTIC
     )
 
 
@@ -229,6 +248,26 @@ def rule_on_user_claim(
     return UserClaimVerdict.DOUBTFUL
 
 
+def _broadest_recommendation(state: GraphState) -> Resolution | None:
+    """The broadest level any reviewer explicitly recommended, across both passes."""
+    recommendations = [
+        synthesis.resolution_delta
+        for synthesis in _syntheses(state)
+        if synthesis.resolution_delta is not None
+    ]
+    return min(recommendations, key=resolution_rank) if recommendations else None
+
+
+def _lowest_recommendation(state: GraphState) -> Confidence | None:
+    """The lowest confidence any reviewer explicitly recommended, across both passes."""
+    recommendations = [
+        synthesis.confidence_delta
+        for synthesis in _syntheses(state)
+        if synthesis.confidence_delta is not None
+    ]
+    return min(recommendations, key=confidence_rank) if recommendations else None
+
+
 def resolve_resolution(
     state: GraphState,
     subject_id: str,
@@ -237,22 +276,34 @@ def resolve_resolution(
     tier: EvidenceTier,
 ) -> Resolution:
     """Compose every upper bound first, then apply at most one explicit downgrade."""
+    recommended = _broadest_recommendation(state)
     bounds = [
         leader.resolution,
         cap_resolution(leader.resolution, card),
         resolution_ceiling(tier),
     ]
-    bounds.extend(
-        synthesis.resolution_delta
-        for synthesis in _syntheses(state)
-        if synthesis.resolution_delta is not None
-    )
+    if recommended is not None:
+        bounds.append(recommended)
     resolution = min(bounds, key=resolution_rank)
     already_broadened = resolution_rank(resolution) < resolution_rank(leader.resolution)
 
+    # A reviewer that names a level has said where to stop. Reviewers who write "species
+    # overreaches, genus is the highest defensible level" file a lower-resolution finding to
+    # say so, and applying that finding on top of the genus they asked for lands on family —
+    # one step below the answer every reviewer recommended. The recommendation is therefore a
+    # floor as well as a ceiling, for findings the models raised.
+    honoured = recommended is not None and resolution_rank(resolution) <= resolution_rank(
+        recommended
+    )
+    actions = (
+        _deterministic_actions_for(state, subject_id)
+        if honoured
+        else _actions_for(state, subject_id)
+    )
+
     # A lower-resolution finding commonly records the same overclaim already represented by
     # a card, evidence, or synthesis bound. Do not apply the same correction twice.
-    if not already_broadened and RequiredAction.LOWER_RESOLUTION in _actions_for(state, subject_id):
+    if not already_broadened and RequiredAction.LOWER_RESOLUTION in actions:
         resolution = lower_resolution(resolution)
     return resolution
 
@@ -266,18 +317,26 @@ def resolve_identity(card: TaxonCard | None, resolution: Resolution) -> TaxonIde
 
 def _nearest_alternative(
     ctx: NodeContext,
-    runner_up: Candidate | None,
+    contenders: tuple[Candidate, ...],
     resolution: Resolution,
     selected: TaxonIdentity,
 ) -> str | None:
-    if runner_up is None:
-        return None
-    alternative = resolve_identity(ctx.knowledge.try_taxon(runner_up.taxon), resolution)
-    if alternative is None or alternative.resolution is not resolution:
-        return None
-    if alternative.taxon_id == selected.taxon_id:
-        return None
-    return alternative.taxon_id
+    """The best-ranked contender that is still a different answer at the selected level.
+
+    Stopping at the runner-up loses the alternative whenever the top two candidates are two
+    species of one genus: at genus they resolve to the same identity, so the answer becomes
+    "no alternative recorded" while the look-alike findings are, at that very moment, naming
+    one. Rank order is preserved — this reaches past a candidate that collapsed into the
+    verdict, not past one that lost.
+    """
+    for contender in contenders:
+        alternative = resolve_identity(ctx.knowledge.try_taxon(contender.taxon), resolution)
+        if alternative is None or alternative.resolution is not resolution:
+            continue
+        if alternative.taxon_id == selected.taxon_id:
+            continue
+        return alternative.taxon_id
+    return None
 
 
 def resolve_confidence(
@@ -301,17 +360,30 @@ def resolve_confidence(
         if match.missing_for_high_confidence and confidence is Confidence.HIGH:
             confidence = Confidence.MEDIUM
 
-    for synthesis in _syntheses(state):
-        if synthesis.confidence_delta is not None and confidence_rank(
-            synthesis.confidence_delta
-        ) < confidence_rank(confidence):
-            confidence = synthesis.confidence_delta
+    recommended = _lowest_recommendation(state)
+    if recommended is not None and confidence_rank(recommended) < confidence_rank(confidence):
+        confidence = recommended
 
-    downgrades = sum(
+    # Each accepted finding costs a full step, and three reviewers writing up the same
+    # overclaim cost three — which is how a claim the reviewers themselves called `high`
+    # arrives as `low`. A model's own recommendation is the floor for the findings that
+    # model raised; the deterministic guardrails keep biting past it, because a model must
+    # never be able to waive them by recommending a comfortable number.
+    model_downgrades = sum(
         1 for action in _actions_for(state, subject_id) if action is RequiredAction.LOWER_CONFIDENCE
+    ) - sum(
+        1
+        for action in _deterministic_actions_for(state, subject_id)
+        if action is RequiredAction.LOWER_CONFIDENCE
     )
-    for _ in range(downgrades):
+    for _ in range(model_downgrades):
+        if recommended is not None and confidence_rank(confidence) <= confidence_rank(recommended):
+            break
         confidence = lower_confidence(confidence)
+
+    for action in _deterministic_actions_for(state, subject_id):
+        if action is RequiredAction.LOWER_CONFIDENCE:
+            confidence = lower_confidence(confidence)
 
     if state.abstained:
         confidence = Confidence.LOW
@@ -355,16 +427,19 @@ def decide_status(
     return DecisionStatus.PROBABLE
 
 
-def _support_summary(evidence: EvidencePacket, candidate: Candidate) -> str | None:
+def _support_summary(evidence: EvidencePacket, candidate: Candidate) -> tuple[str, ...]:
+    """Every surviving supporting observation, in the order the candidate cited them.
+
+    Validation has already removed the ids that do not match this candidate's card, so what
+    reaches here is the evidence the verdict actually rests on — all of it, not its first
+    entry.
+    """
     by_id = {o.observation_id: o for o in evidence.observations}
-    for evidence_id in candidate.supporting_evidence_ids:
-        observation = by_id.get(evidence_id)
-        if observation is not None:
-            return (
-                f"{observation.feature} = {observation.value} "
-                f"({observation.reliability.value} reliability)"
-            )
-    return None
+    return tuple(
+        f"{observation.feature} = {observation.value} ({observation.reliability.value} reliability)"
+        for evidence_id in candidate.supporting_evidence_ids
+        if (observation := by_id.get(evidence_id)) is not None
+    )
 
 
 def _contradiction_summary(
@@ -491,7 +566,7 @@ def decide_subject(
         return FinalDecision(
             subject_id=subject_id,
             status=DecisionStatus.INSUFFICIENT_EVIDENCE,
-            strongest_support=_support_summary(evidence, leader),
+            supporting_evidence=_support_summary(evidence, leader),
             unresolved_questions=_unresolved(state, evidence, subject_id, leader),
             best_next_photo=_next_photo(state, ctx, reranked, leader, tier, Confidence.LOW),
             arbiter_used=state.arbiter_used,
@@ -517,11 +592,11 @@ def decide_subject(
             confidence,
             selected.taxon_id,
         ),
-        strongest_support=_support_summary(evidence, leader),
+        supporting_evidence=_support_summary(evidence, leader),
         strongest_contradiction=_contradiction_summary(
             state, ctx, subject_id, evidence, selected, leader.taxon
         ),
-        nearest_alternative=_nearest_alternative(ctx, reranked.runner_up, resolution, selected),
+        nearest_alternative=_nearest_alternative(ctx, reranked.ordered[1:], resolution, selected),
         unresolved_questions=_unresolved(state, evidence, subject_id, leader),
         best_next_photo=_next_photo(state, ctx, reranked, leader, tier, confidence),
         arbiter_used=state.arbiter_used,
