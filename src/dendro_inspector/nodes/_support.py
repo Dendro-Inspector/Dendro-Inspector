@@ -156,7 +156,7 @@ async def review_call(
     *,
     node: str,
     reviewer: Reviewer,
-    role: Role = Role.PRIMARY,
+    role: Role = Role.REVIEWER,
 ) -> ReviewResult:
     """Run one reviewer against the current evidence and candidates.
 

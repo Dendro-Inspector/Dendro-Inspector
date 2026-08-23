@@ -237,7 +237,7 @@ class TestPromptInfoCommand:
         assert payload["version"] == "user-managed"
         assert payload["manifest_schema_version"] == "1"
         assert payload["policy_revision"] == "0.5.0"
-        assert payload["node_prompt_revision"] == "0.2.0"
+        assert payload["node_prompt_revision"] == "0.3.0"
         assert len(payload["manifest_sha256"]) == 64
         assert payload["compatibility_status"] == "compatible"
 

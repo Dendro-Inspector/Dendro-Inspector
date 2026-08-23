@@ -10,9 +10,11 @@ import json
 import time
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from dendro_inspector.observability.events import (
     GRAPH_VERSION,
+    ComponentProjection,
     NodeEvent,
     NodeStatus,
     PromptMetadata,
@@ -21,6 +23,9 @@ from dendro_inspector.observability.events import (
 )
 from dendro_inspector.observability.logging import get_logger
 from dendro_inspector.schemas.taxon import Confidence, Resolution
+
+if TYPE_CHECKING:
+    from dendro_inspector.schemas.evidence import EvidencePacket
 
 
 class TraceRecorder:
@@ -31,6 +36,7 @@ class TraceRecorder:
         self._events: list[NodeEvent] = []
         self._pending_calls: list[ProviderCallRecord] = []
         self._providers: dict[str, str] = {}
+        self._component_projections: tuple[ComponentProjection, ...] = ()
         self._prompt: PromptMetadata | None = None
         self._retries = 0
         self._escalation_triggered = False
@@ -54,6 +60,24 @@ class TraceRecorder:
         the first one and left the other two reading ``calls=0`` beside minutes of wall time.
         """
         self._pending_calls.append(record)
+
+    def record_component_projections(self, evidence: EvidencePacket) -> None:
+        """Record canonical identity mappings without prompts, image bytes or prose."""
+        grouped: dict[tuple[str, str], list[str]] = {}
+        for observation in evidence.observations:
+            component_id = observation.source_component_id
+            if component_id is None:
+                continue
+            key = (observation.subject_id, component_id)
+            grouped.setdefault(key, []).append(observation.observation_id)
+        self._component_projections = tuple(
+            ComponentProjection(
+                identity_subject_id=identity_id,
+                source_component_id=component_id,
+                observation_ids=tuple(observation_ids),
+            )
+            for (identity_id, component_id), observation_ids in grouped.items()
+        )
 
     def _claim_calls(self, node: str) -> tuple[ProviderCallRecord, ...]:
         """Take the pending calls this node made, leaving other nodes' calls alone."""
@@ -121,6 +145,7 @@ class TraceRecorder:
             domain_prompt=self._prompt,
             providers=dict(self._providers),
             events=tuple(self._events),
+            component_projections=self._component_projections,
             retries=self._retries,
             escalation_triggered=self._escalation_triggered,
             escalation_reasons=self._escalation_reasons,

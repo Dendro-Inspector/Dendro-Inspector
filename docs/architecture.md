@@ -2,8 +2,8 @@
 
 - **Status:** Current
 - **Owner:** Dendro Inspector maintainers
-- **Date:** 2026-07-27
-- **Last-verified:** 2026-07-28
+- **Date:** 2026-08-23
+- **Last-verified:** 2026-08-23
 
 ## The problem this shape solves
 
@@ -121,6 +121,24 @@ Declared split firewood is reconciled after model extraction: deterministic plan
 is not automatically rejected — corroborated pile-level evidence may support a conservative
 result, without asserting that every separable piece is the same taxon.
 
+### Identity scopes and anatomical components
+
+`Subject` means one taxonomic identity scope, not every visually distinct surface. An attached
+branch, an upper/lower bark zone or a wood face may declare `parent_subject_id` when it is
+visibly part of the same organism or material sample. The evidence contract rejects unknown
+parents and cycles. Generated packets are then normalized once: component observations are
+re-scoped to the independent identity root and component records are removed before evidence
+quality, candidate admission or review runs. Each re-scoped observation retains the internal
+`source_component_id`; the run trace groups those observation ids into explicit
+`source_component_id -> identity_subject_id` projection records. The extractor cannot author
+that provenance field itself.
+
+This is a narrow projection, not relaxed evidence sharing. Neighbouring or crossing branches,
+separable firewood pieces and objects that merely share a pile never receive a parent. Their
+evidence remains isolated by the existing same-subject boundary. Detachable observations still
+need `confirmed_attached`; re-scoping an observation with `unknown` or `confirmed_detached`
+attachment cannot make it positive evidence.
+
 ### Attachment provenance
 
 A leaf at the edge of the frame may belong to the tree next door. `Observation.attachment`
@@ -189,8 +207,8 @@ Adding a genus is a YAML file plus an entry in a comparison card. It is not a co
 
 ## Model providers
 
-Nodes depend on the `ModelProvider` Protocol and on the logical roles `primary` and
-`arbiter`. No node imports a vendor SDK or names a commercial model. `providers/registry.py`
+Nodes depend on the `ModelProvider` Protocol and on the logical roles `primary`, `reviewer`
+and `arbiter`. No node imports a vendor SDK or names a commercial model. `providers/registry.py`
 is the only module that knows those exist, and vendor SDKs are imported lazily inside the
 branch that selects them — so the package installs, imports and tests cleanly without them.
 

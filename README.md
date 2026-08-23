@@ -200,13 +200,14 @@ mode — the fixture supplies the evidence, and the missing file is recorded as 
 To use real models, copy `.env.example` to `.env` and set the provider and key:
 
 ```bash
-DENDRO_PRIMARY_PROVIDER=openai      # plan, extract, generate, review
-DENDRO_ARBITER_PROVIDER=anthropic   # independently challenge disputed results
+DENDRO_PRIMARY_PROVIDER=anthropic   # plan, extract, generate candidates
+DENDRO_REVIEWER_PROVIDER=openrouter # three concurrent first-pass reviews
+DENDRO_ARBITER_PROVIDER=openai      # independently challenge escalated results
 ```
 
 `.env` is read at startup; anything already exported in the environment wins over it.
 
-Either role can use `openai`, `anthropic`, `gemini`, `nvidia`, `openrouter` or `ollama`.
+Any role can use `openai`, `anthropic`, `gemini`, `nvidia`, `openrouter` or `ollama`.
 Every selected model must accept images. Hosted adapters read their own credential variable;
 OpenAI and Anthropic use optional SDK extras, Gemini and the OpenAI-compatible
 NVIDIA/OpenRouter adapters use direct HTTPS, and Ollama needs no key. Provider-specific

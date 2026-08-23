@@ -19,6 +19,7 @@ from dendro_inspector.providers.schema_compat import (
     normalize_pattern,
     to_gemini_schema,
     to_ollama_schema,
+    to_strict_openai_schema,
 )
 from dendro_inspector.schemas.base import (
     FEATURE_PATH_PATTERN,
@@ -167,3 +168,20 @@ class TestOllamaSchema:
             _Parent.model_validate(
                 {"child": {"token": "ok"}, "name": "Not A Token", "tags": []},
             )
+
+
+class TestStrictOpenAISchema:
+    def test_every_object_requires_every_property(self):
+        translated = to_strict_openai_schema(_Parent.model_json_schema())
+
+        assert translated["required"] == ["child", "name", "note", "tags"]
+        assert translated["additionalProperties"] is False
+        child = translated["$defs"]["_Child"]
+        assert child["required"] == ["token", "count"]
+        assert child["additionalProperties"] is False
+
+    def test_schema_defaults_are_transport_only_and_are_removed(self):
+        translated = to_strict_openai_schema(_Parent.model_json_schema())
+
+        assert "default" not in repr(translated)
+        assert _Parent.model_validate({"child": {"token": "ok"}, "name": "name"}).tags == []

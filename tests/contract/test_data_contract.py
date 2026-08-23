@@ -11,6 +11,7 @@ import json
 import pytest
 import yaml
 
+from dendro_inspector.config import Role
 from dendro_inspector.evaluation.runner import load_cases
 from dendro_inspector.schemas.taxon import (
     ComparisonCard,
@@ -190,11 +191,12 @@ class TestFixtures:
             assert payload["responses"], f"{path.name} scripts nothing"
 
     def test_fixture_keys_are_role_scoped(self, repo_root):
+        valid_roles = {role.value for role in Role}
         for path in sorted((repo_root / "evals" / "fixtures").glob("*.json")):
             payload = json.loads(path.read_text(encoding="utf-8"))
             for key in payload["responses"]:
                 role, _, node = key.partition(":")
-                assert role in {"primary", "arbiter"}, f"{path.name}: bad role in {key!r}"
+                assert role in valid_roles, f"{path.name}: bad role in {key!r}"
                 assert node, f"{path.name}: missing node in {key!r}"
 
     def test_fixtures_contain_no_real_email_addresses(self, repo_root):

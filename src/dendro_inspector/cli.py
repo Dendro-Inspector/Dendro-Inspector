@@ -50,6 +50,7 @@ def _fake_config(base: AppConfig, scenario: str) -> AppConfig:
         update={
             "providers": {
                 Role.PRIMARY: ProviderConfig(adapter=Adapter.FAKE, scenario=scenario),
+                Role.REVIEWER: ProviderConfig(adapter=Adapter.FAKE, scenario=scenario),
                 Role.ARBITER: ProviderConfig(adapter=Adapter.FAKE, scenario=scenario),
             }
         }

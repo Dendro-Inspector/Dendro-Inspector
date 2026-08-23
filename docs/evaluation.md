@@ -266,9 +266,9 @@ photographs, which has not been measured.
     "primary:planner": { },
     "primary:evidence_extractor": { },
     "primary:candidate_generator": { },
-    "primary:botanical_reviewer": { },
-    "primary:confusion_reviewer": { },
-    "primary:confidence_reviewer": { },
+    "reviewer:botanical_reviewer": { },
+    "reviewer:confusion_reviewer": { },
+    "reviewer:confidence_reviewer": { },
     "arbiter:arbiter": { }
   }
 }

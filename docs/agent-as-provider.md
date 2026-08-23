@@ -2,14 +2,15 @@
 
 - **Status:** Current
 - **Owner:** Dendro Inspector maintainers
-- **Date:** 2026-07-29
-- **Last-verified:** 2026-07-29
+- **Date:** 2026-08-23
+- **Last-verified:** 2026-08-23
 
-`scripts/agent-provider/bridge.py` is a local HTTP server that speaks the three wire dialects
-this project's adapters talk, and answers nothing by itself. It writes each request to disk —
-prompt, JSON schema, and the decoded image bytes — and blocks until an answer file appears.
-Whoever drives the session writes that file: a coding agent with vision (Claude Code, or any
-agent that can read an image and write JSON), or you with an editor.
+`scripts/agent-provider/bridge.py` is a local HTTP server that speaks the wire dialects this
+project's adapters talk, and answers nothing by itself. It writes each request to disk — prompt,
+JSON schema, and the decoded image bytes — and blocks until an answer file appears. In manual
+mode, a coding agent with vision or a person writes that file. In factory mode,
+`scripts/agent-provider/worker.py` claims the request and calls an explicitly configured CLI or
+HTTP upstream.
 
 The result is a real multimodal model, reached over a real socket, in the vendor's real wire
 format, without a vendor account.
@@ -42,7 +43,7 @@ In the second:
     -Image evals\golden\your-photo.jpg -ObjectType log -Location "Kyiv Oblast, Ukraine"
 ```
 
-The launcher binds both roles to one adapter and repoints that adapter's base URL at the
+The launcher binds all three roles to one adapter and repoints that adapter's base URL at the
 bridge, so a working vendor key sitting in `.env` cannot be used by accident. The credential it
 exports is a placeholder — the bridge only checks the adapter put one in the right place.
 
@@ -65,13 +66,69 @@ One inspection is seven calls — planner, evidence extractor, candidate generat
 reviewers, and the arbiter if the escalation gate fires. The three reviewers arrive
 concurrently, so three answer files can be written at once.
 
+## Automatic Ox factory
+
+The factory is still reached only through the Dendro-owned loopback bridge. Start the bridge,
+Claude main worker, three Ox reviewer transports and the Sol arbiter worker with:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File `
+    .\scripts\agent-provider\Start-OxFactory.ps1
+```
+
+Then bind primary work to Claude, concurrent review to Ox, and escalation to Sol:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File `
+    .\scripts\agent-provider\Invoke-BridgeInspect.ps1 `
+    -Dialect anthropic -BridgeModel claude-main -ReviewerBridgeModel ox-factory `
+    -ArbiterBridgeModel sol-judge `
+    -Image evals\golden\your-photo.jpg
+```
+
+The workers have distinct transport identities but not necessarily distinct model identities:
+
+| Worker | Route | Upstream model | Capacity group |
+| --- | --- | --- | --- |
+| `opencode-zen-ox` | `ox-factory` | `opencode/x-preview-f-free` | `opencode-zen` |
+| `openrouter-ox` | `ox-factory` | `stealth/ox-alpha` | `openrouter-account` |
+| `cline-ox` | `ox-factory` | Cline provider, `stealth/ox-alpha` | `cline-gateway` |
+| `codex-sol` | `sol-judge` | `gpt-5.6-sol` | `codex-sol` |
+| `claude-main` | `claude-main` | Claude Code, `opus` alias | `claude-code` |
+
+Every worker watches the same pending directory. It first obtains its upstream capacity lease,
+then creates the answer-key claim with an exclusive file create. The first eligible worker to
+create that claim owns the job. A failure removes the claim; a rate limit also places that
+worker in cooldown, allowing another upstream route to take the request. Workers sharing one
+account must share one capacity group, so two clients cannot pretend one rate limit is two.
+
+The Ox route is a throughput pool, not an ensemble. OpenCode, OpenRouter and Cline currently
+expose the same Ox model family, so their answers are not counted as independent scientific
+votes. The actual worker, upstream model, usage and route are recorded beside the answer and
+copied into cache provenance. Cache keys include the requested bridge model: a `claude-main`
+or `ox-factory` answer can never replay as a `sol-judge` answer.
+
+Claude Code authentication is consumed through its local CLI login, not an Anthropic API key.
+Its worker has only the `Read` tool, disables session persistence, and asks Claude Code to
+validate output against the node's JSON Schema. `claude-main` is the sole primary route;
+`sol-judge` is the independent arbiter route. Ox sees the original photographs plus the
+Claude-produced evidence and candidates during review, but it does not receive hidden Claude
+reasoning because Dendro stores none.
+
+Codex receives a strict OpenAI translation of the bridge schema: every object property is
+required for constrained decoding and schema defaults are removed. The answer still faces the
+original Pydantic contract in Dendro, so this changes transport syntax rather than admissibility.
+
+For the private sequential dataset workflow—one immutable run and trace per photograph,
+canary-first execution, resume and exact-process cleanup—follow
+[Running individual private-photo experiments](individual-photo-experiments.md).
+
 ### Answers are cached, so a second dialect costs nothing
 
-The cache key is a hash of the prompt, the schema's top-level field names, and the SHA-256 of
-every photograph served. The prompt already contains every upstream node's output, so an
-identical prompt means an identical position in an identical run — and replaying it in another
-dialect is the same model answering the same question at temperature 0. Any real divergence
-upstream changes the prompt and falls through to a fresh request.
+The cache key is a hash of the requested bridge model, prompt, schema's top-level field names,
+and SHA-256 of every photograph served. The prompt already contains every upstream node's
+output, so an identical prompt means an identical position in an identical run. A real
+divergence upstream changes the prompt and falls through to a fresh request.
 
 The photographs are hashed in because the prompt does **not** contain them: case context names
 each image by id and media type only. Two different photographs inspected with the same season,
@@ -96,6 +153,12 @@ dialect's schema translation and envelope. To re-author a call, move its file ou
 | `ollama` | `OLLAMA_TIMEOUT_SECONDS`, raised to 3600 by the launcher | authoring answers live, no credential at all |
 | `anthropic` | `ANTHROPIC_TIMEOUT_SECONDS`, raised to 3600 by the launcher | authoring answers live |
 | `nvidia`, `openrouter` | 300 s, fixed — the registry does not pass the constructor argument | replaying cached answers |
+
+Use `anthropic` or `gemini` for a live factory run. The bridge still routes by
+`claude-main`, `ox-factory` and `sol-judge`; the dialect changes only the loopback envelope.
+In the total-system role-split run, a Cline reviewer exceeded the OpenRouter adapter's fixed
+300-second client timeout, while the same graph completed through the Anthropic dialect's
+3600-second timeout.
 
 The `anthropic` dialect needs the optional extra: `pip install '.[anthropic]'`. It is the only
 dialect whose adapter is an SDK rather than a raw `urlopen`, so two behaviours differ. The SDK
@@ -168,8 +231,12 @@ by `tests/integration/test_provider_boundary.py` with a patched `urlopen`.
 
 ## Safety
 
-- Nothing leaves the machine. Every request goes to `127.0.0.1`, and the launcher overrides the
-  base URL of the adapter it selects.
+- In manual mode, nothing leaves the machine. Every adapter request goes to `127.0.0.1`.
+- Factory workers **do** send prompts and photographs to their named upstream services. Starting
+  them is not equivalent to starting the loopback bridge and requires the owner's current-session
+  approval under `AGENTS.md` §2. Check each route's retention policy before using private material.
+- Credentials remain in ignored `.env` or each CLI's local auth store. Launchers never accept or
+  record a credential argument.
 - `.bridge/` is git-ignored and holds **decoded copies of every photograph** the run served,
   along with prompts and answers. Treat it like `evals/golden/` — see
   [dataset-policy.md](dataset-policy.md) — and do not commit it.

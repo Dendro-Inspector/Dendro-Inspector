@@ -80,13 +80,13 @@
         }
       ]
     },
-    "primary:botanical_reviewer": {
+    "reviewer:botanical_reviewer": {
       "reviewer": "botanical",
       "status": "pass",
       "findings": [],
       "recommended_resolution": "genus"
     },
-    "primary:confusion_reviewer": {
+    "reviewer:confusion_reviewer": {
       "reviewer": "confusion",
       "status": "pass_with_findings",
       "findings": [
@@ -123,7 +123,7 @@
       ],
       "recommended_resolution": "genus"
     },
-    "primary:confidence_reviewer": {
+    "reviewer:confidence_reviewer": {
       "reviewer": "confidence",
       "status": "pass",
       "findings": [],

@@ -10,6 +10,29 @@ get entries.
 
 ## [Unreleased]
 
+### Fixed
+
+- Anatomical components visibly belonging to one tree or material sample can now declare a
+  parent identity and are deterministically folded into that root before candidate admission.
+  Attached shoots and upper/lower bark zones no longer become contradictory independent tree
+  identifications, while neighbouring branches and separate pile pieces remain isolated.
+  Canonical observations and run traces retain the original component id for auditability.
+- Bark-only abstentions now request neutral attached foliage or reproductive evidence instead
+  of assuming the subject is a conifer.
+
+### Added
+
+- A separate `reviewer` model role now owns the concurrent botanical, confusion and
+  confidence review fan-out. Configure it with `DENDRO_REVIEWER_PROVIDER` and
+  `DENDRO_REVIEWER_MODEL`; environment-loaded configurations inherit the primary binding
+  when those variables are omitted, and directly constructed legacy two-role configs keep
+  the same compatibility fallback in `AppConfig.provider_for()`.
+- The Dendro-owned loopback bridge factory now has one explicit three-role profile: Claude
+  Code on `claude-main` for primary analysis, the OpenCode/OpenRouter/Cline Ox pool on
+  `ox-factory` for concurrent review, and Codex Sol on `sol-judge` when the deterministic
+  escalation gate calls the arbiter. Route-specific cache keys and provenance prevent one
+  role's answer from being replayed as another's.
+
 ## [0.5.0] — 2026-07-29
 
 Four defects in how reviewer findings compose into a verdict, all found by one live

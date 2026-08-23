@@ -3,7 +3,7 @@
 Run `dendro inspect` against the local agent-provider bridge.
 
 .DESCRIPTION
-Binds both roles to one adapter and repoints that adapter's base URL at the bridge, so the
+Binds all model roles to one adapter and repoints that adapter's base URL at the bridge, so the
 request cannot reach a real vendor even when a working key for it sits in .env. The credential
 it exports is a placeholder: the bridge only checks that the adapter sent one in the right
 place.
@@ -59,6 +59,12 @@ param(
 
     [int]$StructuredRetries = 2,
 
+    [string]$BridgeModel = 'claude-main',
+
+    [string]$ReviewerBridgeModel = 'ox-factory',
+
+    [string]$ArbiterBridgeModel = 'sol-judge',
+
     [string]$TraceOut = ''
 )
 
@@ -68,9 +74,11 @@ $prefix = if ($Fault) { "/fault/$Fault" } else { '' }
 $root = "http://127.0.0.1:$Port$prefix"
 
 $env:DENDRO_PRIMARY_PROVIDER = $Dialect
+$env:DENDRO_REVIEWER_PROVIDER = $Dialect
 $env:DENDRO_ARBITER_PROVIDER = $Dialect
-$env:DENDRO_PRIMARY_MODEL = 'agent-bridge'
-$env:DENDRO_ARBITER_MODEL = 'agent-bridge'
+$env:DENDRO_PRIMARY_MODEL = $BridgeModel
+$env:DENDRO_REVIEWER_MODEL = $ReviewerBridgeModel
+$env:DENDRO_ARBITER_MODEL = $ArbiterBridgeModel
 $env:DENDRO_STRUCTURED_RETRIES = "$StructuredRetries"
 
 switch ($Dialect) {
@@ -113,6 +121,9 @@ if ($Location) { $dendroArgs += @('--location', $Location) }
 if ($TraceOut) { $dendroArgs += @('--trace-out', $TraceOut) }
 
 Write-Host "adapter  $Dialect -> $root" -ForegroundColor Cyan
+Write-Host "primary  $env:DENDRO_PRIMARY_MODEL" -ForegroundColor Cyan
+Write-Host "reviewer $env:DENDRO_REVIEWER_MODEL" -ForegroundColor Cyan
+Write-Host "arbiter  $env:DENDRO_ARBITER_MODEL" -ForegroundColor Cyan
 if ($Fault) { Write-Host "fault    $Fault" -ForegroundColor Yellow }
 Write-Host "command  $dendro $($dendroArgs -join ' ')" -ForegroundColor DarkGray
 

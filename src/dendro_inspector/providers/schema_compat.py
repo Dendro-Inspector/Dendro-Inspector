@@ -212,6 +212,42 @@ def to_openai_schema(schema: Mapping[str, Any]) -> dict[str, Any]:
     return walked
 
 
+def to_strict_openai_schema(schema: Mapping[str, Any]) -> dict[str, Any]:
+    """Make an OpenAI schema acceptable to strict structured-output decoders.
+
+    Codex and OpenAI strict schemas require every object property to appear in that
+    object's ``required`` list and reject schema defaults. Requiring a field in the decoder
+    does not make it semantically non-optional: nullable fields retain their null branch,
+    while fields with Pydantic defaults must be emitted explicitly. The original Pydantic
+    model still validates the returned object after transport.
+    """
+
+    def strict(node: Any) -> Any:
+        if isinstance(node, list):
+            return [strict(item) for item in node]
+        if not isinstance(node, dict):
+            return node
+        out: dict[str, Any] = {}
+        for key, value in node.items():
+            if key == "default":
+                continue
+            if key in {"properties", "$defs"} and isinstance(value, dict):
+                out[key] = {name: strict(sub) for name, sub in value.items()}
+            else:
+                out[key] = strict(value)
+        properties = out.get("properties")
+        if isinstance(properties, dict):
+            out["required"] = list(properties)
+            out["additionalProperties"] = False
+        return out
+
+    translated = strict(to_openai_schema(schema))
+    if not isinstance(translated, dict):  # pragma: no cover - strict preserves the root
+        msg = "strict schema root is not an object"
+        raise SchemaTranslationError(msg)
+    return translated
+
+
 def _collapse_nullable(node: dict[str, Any]) -> dict[str, Any]:
     """``anyOf: [X, {"type": "null"}]`` is Pydantic for optional; Gemini spells it ``nullable``."""
     options = node.get("anyOf")

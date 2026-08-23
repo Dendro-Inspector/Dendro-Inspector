@@ -49,7 +49,7 @@ def build_context(
     recorder = TraceRecorder(case_id)
 
     recorder.set_prompt_metadata(prompts.metadata())
-    for role in (Role.PRIMARY, Role.ARBITER):
+    for role in Role:
         provider = providers.get(role)
         recorder.set_provider(role.value, provider.adapter_name, provider.model)
 

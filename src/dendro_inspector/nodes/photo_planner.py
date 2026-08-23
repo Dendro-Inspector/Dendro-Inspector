@@ -27,8 +27,9 @@ NODE = "photo_planner"
 #: What to ask for when the input is a particular kind of close-up that cannot carry an ID.
 _BY_DECLARED_TYPE: dict[DeclaredObjectType, tuple[str, str]] = {
     DeclaredObjectType.BARK: (
-        "needle_or_leaf_macro",
-        "Bark alone rarely separates conifer genera; foliage usually does.",
+        "attached_foliage_or_reproductive_structure",
+        "Bark overlaps across many taxa. Photograph clear foliage, fruit, seed or cones "
+        "visibly attached to this same subject.",
     ),
     DeclaredObjectType.WOOD: (
         "prepared_end_grain_macro",
@@ -113,11 +114,8 @@ def choose_request(
     subject_id: str | None = None,
 ) -> PhotoRequest:
     """Pick the single most useful next photograph for one subject."""
-    follow_ups = ctx.knowledge.follow_up_for(ctx.knowledge.available_taxon_ids())
     object_type = effective_object_type(state, subject_id)
     target, reason = _BY_DECLARED_TYPE.get(object_type, _DEFAULT_REQUEST)
-    if object_type is DeclaredObjectType.UNKNOWN and follow_ups:
-        target = follow_ups[0]
     return PhotoRequest(target=target, reason=reason, subject_id=subject_id)
 
 

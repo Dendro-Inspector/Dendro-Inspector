@@ -13,7 +13,7 @@ from enum import StrEnum
 
 from pydantic import Field
 
-from dendro_inspector.schemas.base import Contract, ShortText
+from dendro_inspector.schemas.base import Contract, Identifier, ShortText
 from dendro_inspector.schemas.taxon import Confidence, Resolution
 
 GRAPH_VERSION = "0.5.0"
@@ -57,6 +57,14 @@ class NodeEvent(Contract):
     provider_calls: tuple[ProviderCallRecord, ...] = ()
 
 
+class ComponentProjection(Contract):
+    """Auditable component-to-identity mapping created by deterministic normalization."""
+
+    identity_subject_id: Identifier
+    source_component_id: Identifier
+    observation_ids: tuple[Identifier, ...] = Field(min_length=1)
+
+
 class PromptMetadata(Contract):
     """Identity and policy compatibility of the prompt bundle in force."""
 
@@ -84,6 +92,7 @@ class RunTrace(Contract):
         description="role -> 'adapter:model'. Never a credential.",
     )
     events: tuple[NodeEvent, ...] = ()
+    component_projections: tuple[ComponentProjection, ...] = ()
     retries: int = Field(default=0, ge=0)
     escalation_triggered: bool = False
     escalation_reasons: tuple[str, ...] = ()

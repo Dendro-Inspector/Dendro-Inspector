@@ -87,7 +87,7 @@ class ProviderRegistry:
         return cls(
             {
                 role: build_provider(config.provider_for(role), fixtures_root=fixtures_root)
-                for role in (Role.PRIMARY, Role.ARBITER)
+                for role in Role
             }
         )
 

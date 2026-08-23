@@ -15,7 +15,7 @@ domain_prompt:
 
 node_prompts:
   root: prompts/nodes
-  revision: "0.2.0"
+  revision: "0.3.0"
   files:
     - file: arbiter.md
       sha256: 7546c4bb888c4f8c50457e4ff430efe7f9e233c265971a709a62410eb151a11d
@@ -28,7 +28,7 @@ node_prompts:
     - file: confusion-reviewer.md
       sha256: da8c4d9d44e724f05822ee36b9719d1d42c3a5db3dff1f035a59de884096d026
     - file: evidence-extractor.md
-      sha256: 0e0617a72055a25bdd4c3c03ffbee7a83f850ca02bb206eabf8bc018933636ab
+      sha256: b711b0221544716c158824e7cd443b892d808c08de7834a25f9ed03e102a6131
     - file: planner.md
       sha256: c019496ccbd4d81124de4a5ad55d264d6e5ed294cab87f66f4b7f5fa84e9cf50
     - file: response-composer.md

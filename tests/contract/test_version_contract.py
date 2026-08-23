@@ -28,7 +28,7 @@ def test_release_identity_is_aligned(repo_root):
         baseline["baseline_version"],
     } == {"0.5.0"}
     assert manifest["schema_version"] == "1"
-    assert manifest["node_prompts"]["revision"] == "0.2.0"
+    assert manifest["node_prompts"]["revision"] == "0.3.0"
 
 
 def test_distribution_metadata_matches_the_shipped_package(repo_root):

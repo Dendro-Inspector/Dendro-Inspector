@@ -12,6 +12,9 @@ Two further distinctions the extractor must preserve:
   (the structure is judged genuinely absent). Treating the first as the second is how a
   photograph of a shaded trunk becomes a confident negative claim.
 * scale that is ``ABSENT`` is not scale that is ``APPROXIMATE``.
+* a taxonomic subject is not one of its anatomical components. Attached branches, bark
+  zones and wood surfaces may name a parent subject, then deterministic normalization
+  folds their observations into that identity before any candidate is admitted.
 """
 
 from __future__ import annotations
@@ -170,16 +173,25 @@ class SubjectKind(StrEnum):
 
 
 class Subject(Contract):
-    """One physically distinct thing in the frame.
+    """One taxonomic identity scope or a component of one.
 
     Conclusions are scoped per subject; evidence must never leak between subjects.
-    Example ids: ``foreground_log_1``, ``background_log_1``, ``standing_tree``.
+    ``parent_subject_id`` is only for a component visibly belonging to the same organism
+    or material sample. It is not containment: a neighbouring branch or one piece in a
+    mixed pile remains an independent root subject.
     """
 
     subject_id: Identifier
     kind: SubjectKind = SubjectKind.UNKNOWN
     description: ShortText | None = None
     image_ids: tuple[Identifier, ...] = ()
+    parent_subject_id: Identifier | None = Field(
+        default=None,
+        description=(
+            "Identity root this anatomical component visibly belongs to. Omit for an "
+            "independent tree, log, detached part or material sample."
+        ),
+    )
 
 
 class Observation(Contract):
@@ -189,6 +201,13 @@ class Observation(Contract):
     feature: FeaturePath
     value: ValueToken
     subject_id: Identifier
+    source_component_id: Identifier | None = Field(
+        default=None,
+        description=(
+            "Original anatomical component before deterministic identity normalization. "
+            "Provider-generated observations must omit it; code supplies it during collapse."
+        ),
+    )
     source: ObservationSource
     visibility: Visibility = Visibility.CLEAR
     reliability: Reliability = Reliability.MEDIUM
@@ -262,6 +281,13 @@ class GeneratedObservation(Observation):
     def _wood_surface_contract(cls, data: Any) -> Any:
         return _surface_payload(data, require_explicit=True)
 
+    @model_validator(mode="after")
+    def _component_provenance_is_internal(self) -> GeneratedObservation:
+        if self.source_component_id is not None:
+            msg = "generated observations must omit source_component_id"
+            raise ValueError(msg)
+        return self
+
 
 class Inference(Contract):
     """A claim derived from observations. Never stored as an observation."""
@@ -304,6 +330,7 @@ class EvidencePacket(Contract):
     @model_validator(mode="after")
     def _referential_integrity(self) -> EvidencePacket:
         subject_ids = {subject.subject_id for subject in self.subjects}
+        parent_by_id = {subject.subject_id: subject.parent_subject_id for subject in self.subjects}
         observation_ids = {observation.observation_id for observation in self.observations}
         limitation_ids = {limitation.image_id for limitation in self.image_limitations}
 
@@ -316,6 +343,23 @@ class EvidencePacket(Contract):
         if len(limitation_ids) != len(self.image_limitations):
             msg = "duplicate image limitation image_id in evidence packet"
             raise ValueError(msg)
+
+        for subject in self.subjects:
+            parent_id = subject.parent_subject_id
+            if parent_id is not None and parent_id not in subject_ids:
+                msg = (
+                    f"subject {subject.subject_id!r} references unknown parent subject "
+                    f"{parent_id!r}"
+                )
+                raise ValueError(msg)
+
+            visited = {subject.subject_id}
+            while parent_id is not None:
+                if parent_id in visited:
+                    msg = f"subject parent cycle includes {parent_id!r}"
+                    raise ValueError(msg)
+                visited.add(parent_id)
+                parent_id = parent_by_id[parent_id]
 
         for observation in self.observations:
             if observation.subject_id not in subject_ids:
@@ -339,6 +383,36 @@ class EvidencePacket(Contract):
                 )
                 raise ValueError(msg)
         return self
+
+    def identity_root_id(self, subject_id: str) -> str:
+        """Return the independent identity root for a validated subject id."""
+        parent_by_id = {subject.subject_id: subject.parent_subject_id for subject in self.subjects}
+        current = subject_id
+        while (parent_id := parent_by_id[current]) is not None:
+            current = parent_id
+        return current
+
+    def collapse_subject_components(self) -> EvidencePacket:
+        """Fold typed anatomical components into their identity roots.
+
+        The model proposes the parent relation; schema validation proves that relation is
+        closed and acyclic; this method performs the only downstream projection. After it,
+        every existing same-subject anti-leakage check continues to operate unchanged.
+        """
+        if not any(subject.parent_subject_id is not None for subject in self.subjects):
+            return self
+
+        roots = tuple(subject for subject in self.subjects if subject.parent_subject_id is None)
+        observations: list[Observation] = []
+        for observation in self.observations:
+            root_id = self.identity_root_id(observation.subject_id)
+            updates = {"subject_id": root_id}
+            if root_id != observation.subject_id:
+                updates["source_component_id"] = observation.subject_id
+            observations.append(observation.model_copy(update=updates))
+        payload = self.model_dump(mode="python")
+        payload.update({"subjects": roots, "observations": tuple(observations)})
+        return EvidencePacket.model_validate(payload)
 
     def observations_for(self, subject_id: str) -> tuple[Observation, ...]:
         """Return only this subject's observations — the anti-leakage accessor."""
@@ -367,4 +441,5 @@ class GeneratedEvidencePacket(EvidencePacket):
 
     def to_evidence_packet(self) -> EvidencePacket:
         """Return the canonical persistence/runtime contract after generated-output checks."""
-        return EvidencePacket.model_validate(self.model_dump(mode="python"))
+        packet = EvidencePacket.model_validate(self.model_dump(mode="python"))
+        return packet.collapse_subject_components()

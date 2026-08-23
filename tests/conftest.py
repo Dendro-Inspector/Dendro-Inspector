@@ -46,6 +46,7 @@ def config() -> AppConfig:
     return AppConfig(
         providers={
             Role.PRIMARY: ProviderConfig(adapter=Adapter.FAKE, scenario="primary-pass"),
+            Role.REVIEWER: ProviderConfig(adapter=Adapter.FAKE, scenario="primary-pass"),
             Role.ARBITER: ProviderConfig(adapter=Adapter.FAKE, scenario="primary-pass"),
         },
         prompts=PromptConfig(),
@@ -58,6 +59,7 @@ def make_config(scenario: str) -> AppConfig:
     return AppConfig(
         providers={
             Role.PRIMARY: ProviderConfig(adapter=Adapter.FAKE, scenario=scenario),
+            Role.REVIEWER: ProviderConfig(adapter=Adapter.FAKE, scenario=scenario),
             Role.ARBITER: ProviderConfig(adapter=Adapter.FAKE, scenario=scenario),
         }
     )
