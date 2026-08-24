@@ -466,7 +466,15 @@ def _contradiction_summary(
     selected: TaxonIdentity,
     source_taxon: str,
 ) -> str | None:
-    """Summarise contradictions against the selected identity, not its narrower source card."""
+    """Summarise contradictions against the selected identity, not its narrower source card.
+
+    A contradiction is evidence that argues *against* this identity. Missing decisive
+    features, regional assumptions and generic uncertainty are none of those — they are
+    reasons the answer is not stronger, not reasons the alternative was ruled out. The
+    response composer prints this line under "why not the nearest alternative", so any
+    accepted finding that reached here became a fabricated rebuttal of a taxon nobody
+    had argued against.
+    """
     card = ctx.knowledge.try_taxon(selected.taxon_id)
     if card is not None:
         by_id = {observation.observation_id: observation for observation in evidence.observations}
@@ -475,12 +483,13 @@ def _contradiction_summary(
             if observation is not None:
                 return f"{observation.feature} = {observation.value}"
 
+    # A contradiction raised against a narrower source card says nothing about the broader
+    # identity actually selected, so it is not carried across a collapse.
+    if selected.taxon_id != source_taxon:
+        return None
     for synthesis in _syntheses(state):
         for finding in synthesis.accepted_findings:
-            if (
-                selected.taxon_id != source_taxon
-                and finding.category is FindingCategory.BOTANICAL_CONTRADICTION
-            ):
+            if finding.category is not FindingCategory.BOTANICAL_CONTRADICTION:
                 continue
             if finding.subject_id in (None, subject_id) and finding.severity in (
                 Severity.CRITICAL,

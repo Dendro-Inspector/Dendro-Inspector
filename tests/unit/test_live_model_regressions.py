@@ -165,9 +165,11 @@ def test_weak_result_reports_visible_evidence_and_scoped_limitations(simple_case
     result = build_result(decision, "en", state)
 
     assert result.supporting_evidence == ("bark.texture = scaly_plates",)
-    assert "location_unknown" in result.limitations
+    # Reason codes reach the reader rendered, never as the identifiers they are internally.
+    assert "location unknown" in result.limitations
+    assert "location_unknown" not in result.limitations
     assert "crown_not_visible" in result.limitations
-    assert "img-1: scale_absent" in result.limitations
+    assert "img-1: no scale reference in the frame" in result.limitations
     assert "other_subject_only" not in result.limitations
 
 
