@@ -29,15 +29,20 @@ from dendro_inspector.knowledge.candidate_validation import (
     candidate_ranking_signature,
     candidate_support_tier,
 )
-from dendro_inspector.knowledge.comparison_cards import recommended_photos
+from dendro_inspector.knowledge.comparison_cards import (
+    drop_resolved_photos,
+    follow_up_photos,
+    photo_bindings,
+)
 from dendro_inspector.knowledge.evidence_hierarchy import (
     EvidenceTier,
     bark_only,
     confidence_band,
     confidence_ceiling,
+    full_positive_observations_for,
     resolution_ceiling,
 )
-from dendro_inspector.knowledge.taxon_cards import match_card
+from dendro_inspector.knowledge.taxon_cards import card_value_vocabulary, match_card
 from dendro_inspector.nodes.photo_planner import choose_request, effective_object_type
 from dendro_inspector.schemas.candidates import Candidate, CandidateSet, SupportStrength
 from dendro_inspector.schemas.decisions import (
@@ -477,6 +482,7 @@ def _contradiction_summary(
 def _next_photo(
     state: GraphState,
     ctx: NodeContext,
+    evidence: EvidencePacket,
     candidate_set: CandidateSet,
     leader: Candidate,
     tier: EvidenceTier,
@@ -486,7 +492,9 @@ def _next_photo(
 
     At the decisive tier with high confidence there is nothing left to ask for. Requesting
     a fruit photograph when the fruit is already in the frame is the kind of reflexive
-    hedging that teaches people to ignore the request entirely.
+    hedging that teaches people to ignore the request entirely — and so is asking for a
+    second bark macro of bark this run has already read, which is why the comparison's
+    declared discriminators are filtered by what the subject already resolves.
     """
     if tier is EvidenceTier.FRUIT_SEED and confidence is Confidence.HIGH:
         return None
@@ -502,9 +510,23 @@ def _next_photo(
         )
 
     taxa = frozenset(candidate.taxon for candidate in candidate_set.ordered)
-    photos = recommended_photos(ctx.knowledge.comparisons_for(taxa))
+    resolved = frozenset(
+        observation.feature
+        for observation in full_positive_observations_for(evidence, candidate_set.subject_id)
+    )
+    photos = follow_up_photos(ctx.knowledge.comparisons_for(taxa), taxa, resolved)
     if not photos:
-        photos = ctx.knowledge.follow_up_for((leader.taxon,))
+        # No look-alike group applies, so the leader's own follow-up list is all there is.
+        # It is a flat list of targets, and the only declared statement of what each target
+        # resolves lives on the comparison cards' discriminators — enough to drop a request
+        # whose every usable feature this subject has already answered.
+        card = ctx.knowledge.try_taxon(leader.taxon)
+        usable = frozenset(card_value_vocabulary((card,))) if card is not None else frozenset()
+        photos = drop_resolved_photos(
+            ctx.knowledge.follow_up_for((leader.taxon,)),
+            photo_bindings(ctx.knowledge.comparisons(), usable),
+            resolved,
+        )
     if not photos:
         return None
     return PhotoRequest(
@@ -568,7 +590,9 @@ def decide_subject(
             status=DecisionStatus.INSUFFICIENT_EVIDENCE,
             supporting_evidence=_support_summary(evidence, leader),
             unresolved_questions=_unresolved(state, evidence, subject_id, leader),
-            best_next_photo=_next_photo(state, ctx, reranked, leader, tier, Confidence.LOW),
+            best_next_photo=_next_photo(
+                state, ctx, evidence, reranked, leader, tier, Confidence.LOW
+            ),
             arbiter_used=state.arbiter_used,
             user_claim_verdict=verdict,
             evidence_tier=int(tier),
@@ -598,7 +622,7 @@ def decide_subject(
         ),
         nearest_alternative=_nearest_alternative(ctx, reranked.ordered[1:], resolution, selected),
         unresolved_questions=_unresolved(state, evidence, subject_id, leader),
-        best_next_photo=_next_photo(state, ctx, reranked, leader, tier, confidence),
+        best_next_photo=_next_photo(state, ctx, evidence, reranked, leader, tier, confidence),
         arbiter_used=state.arbiter_used,
         user_claim_verdict=verdict,
         evidence_tier=int(tier),

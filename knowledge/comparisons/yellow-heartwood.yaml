@@ -13,11 +13,13 @@ shared_features:
 
 decisive_differences:
   - feature: bark.texture
+    photo: bark_macro_mid_trunk
     separates:
       - robinia_pseudoacacia
       - morus
     note: Robinia's deep rope-like furrows are unlike mulberry's coarser, blockier bark.
   - feature: pod.presence
+    photo: fruit_photo
     separates:
       - robinia_pseudoacacia
       - morus
@@ -25,6 +27,7 @@ decisive_differences:
     favours: robinia_pseudoacacia
     note: Pods settle Robinia.
   - feature: lenticels.orientation
+    photo: bark_macro_mid_trunk
     separates:
       - prunus
       - prunus_cerasifera

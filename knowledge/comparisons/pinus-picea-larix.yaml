@@ -14,12 +14,14 @@ shared_features:
 
 decisive_differences:
   - feature: needles.attachment
+    photo: needle_attachment_macro
     separates:
       - pinus
       - picea
       - larix
     note: Fascicled and sheathed (Pinus) vs single on a woody peg (Picea) vs clustered on short shoots (Larix).
   - feature: needles.fascicles
+    photo: needle_fascicle_macro
     separates:
       - pinus
       - picea

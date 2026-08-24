@@ -51,7 +51,7 @@ common_confusions:
   - prunus_avium
 
 required_for_high_confidence:
-  - fruit_present
+  - fruit.type
 
 follow_up_evidence:
   - fruit_photo

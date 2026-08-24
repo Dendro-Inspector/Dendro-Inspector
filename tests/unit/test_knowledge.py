@@ -2,9 +2,15 @@
 
 from __future__ import annotations
 
+import pytest
+
 from dendro_inspector.knowledge.comparison_cards import (
     decisive_features_between,
+    drop_resolved_photos,
+    follow_up_photos,
     insufficient_features,
+    photo_bindings,
+    recommended_photos,
     relies_only_on_insufficient_features,
 )
 from dendro_inspector.knowledge.regional_packs import (
@@ -12,8 +18,14 @@ from dendro_inspector.knowledge.regional_packs import (
     region_assumption_risk,
     unlikely_in_region,
 )
-from dendro_inspector.knowledge.taxon_cards import match_card
+from dendro_inspector.knowledge.taxon_cards import (
+    card_value_vocabulary,
+    match_card,
+    requirement_selectors,
+    unreachable_selectors,
+)
 from dendro_inspector.schemas.evidence import (
+    AttachmentStatus,
     EvidencePacket,
     Observation,
     ObservationSource,
@@ -155,6 +167,148 @@ class TestCardMatching:
         assert match.missing_for_high_confidence == ()
 
 
+class TestRequirementGrammar:
+    """`required_for_high_confidence` is a two-operator expression, not a bare string.
+
+    `_and_` binds tighter than `_or_`, selectors are canonical feature paths or feature
+    families, and nothing turns an underscore into a dot. Every case below was reachable
+    only after the cards stopped inventing names like `bark_pattern`.
+    """
+
+    def test_exact_feature_path_satisfies_its_limb_of_a_disjunction(self, knowledge):
+        """Betula's own strong feature must satisfy Betula's own requirement.
+
+        The domain prompt's section 14 says white papery bark with black marks is enough to
+        name the genus. For weeks the deterministic output quoted that observation as
+        support and reported the same requirement as missing, in one decision.
+        """
+        match = match_card(
+            knowledge.taxon("betula"),
+            _packet(_obs("obs-1", "bark.pattern", "white_papery_with_black_marks")),
+            "log_1",
+        )
+        assert match.missing_for_high_confidence == ()
+
+    def test_a_family_selector_matches_any_feature_beneath_it(self, knowledge):
+        match = match_card(
+            knowledge.taxon("betula"),
+            _packet(_obs("obs-1", "leaf.shape", "small_triangular_serrate")),
+            "log_1",
+        )
+        assert match.missing_for_high_confidence == ()
+
+    def test_a_sibling_feature_does_not_satisfy_a_path_selector(self, knowledge):
+        """`bark.pattern` is the selector; other bark features are not it."""
+        match = match_card(
+            knowledge.taxon("betula"),
+            _packet(_obs("obs-1", "bark.peeling", "thin_layers")),
+            "log_1",
+        )
+        assert match.missing_for_high_confidence == ("bark.pattern_or_leaf",)
+
+    @pytest.mark.parametrize(
+        "attachment",
+        (AttachmentStatus.UNKNOWN, AttachmentStatus.CONFIRMED_DETACHED),
+    )
+    def test_unattached_foliage_cannot_satisfy_a_requirement(self, knowledge, attachment):
+        """The attachment rule outranks the grammar: unattached leaves prove nothing here."""
+        observation = _obs("obs-1", "leaf.shape", "small_triangular_serrate").model_copy(
+            update={"attachment": attachment}
+        )
+        match = match_card(
+            knowledge.taxon("betula"),
+            _packet(observation),
+            "log_1",
+        )
+        assert match.missing_for_high_confidence == ("bark.pattern_or_leaf",)
+
+    def test_a_conjunction_needs_every_selector(self, knowledge):
+        card = knowledge.taxon("populus_alba")
+        one_half = match_card(
+            card,
+            _packet(_obs("obs-1", "leaf.underside", "white_tomentose")),
+            "log_1",
+        )
+        assert one_half.missing_for_high_confidence == ("leaf.underside_and_leaf.arrangement",)
+
+        both = match_card(
+            card,
+            _packet(
+                _obs("obs-1", "leaf.underside", "white_tomentose"),
+                _obs("obs-2", "leaf.arrangement", "alternate"),
+            ),
+            "log_1",
+        )
+        assert both.missing_for_high_confidence == ()
+
+    def test_the_conjunction_holds_for_every_card_that_declares_one(self, knowledge):
+        card = knowledge.taxon("acer_saccharinum")
+        assert match_card(
+            card,
+            _packet(_obs("obs-1", "leaf.arrangement", "opposite")),
+            "log_1",
+        ).missing_for_high_confidence == ("leaf.underside_and_leaf.arrangement",)
+        assert (
+            match_card(
+                card,
+                _packet(
+                    _obs("obs-1", "leaf.underside", "pale_not_tomentose"),
+                    _obs("obs-2", "leaf.arrangement", "opposite"),
+                ),
+                "log_1",
+            ).missing_for_high_confidence
+            == ()
+        )
+
+    @pytest.mark.parametrize(
+        ("taxon_id", "value"),
+        (("carpinus", "fluted_muscular"), ("fagus", "straight_cylindrical")),
+    )
+    def test_a_non_leaf_limb_satisfies_a_disjunction_on_its_own(self, knowledge, taxon_id, value):
+        """Carpinus and Fagus requirements must both notice their trunk-form evidence."""
+        match = match_card(
+            knowledge.taxon(taxon_id),
+            _packet(_obs("obs-1", "trunk.form", value)),
+            "log_1",
+        )
+        assert match.missing_for_high_confidence == ()
+
+    @pytest.mark.parametrize(
+        ("taxon_id", "value"),
+        [("prunus_armeniaca", "apricot"), ("prunus_cerasifera", "small_round_drupe")],
+    )
+    def test_fruit_requirements_name_the_feature_that_carries_them(
+        self, knowledge, taxon_id, value
+    ):
+        """Both stone-fruit cards required `fruit_present`, which is not a feature.
+
+        "Плід закриває дискусію" — and the requirement has to be able to notice that the
+        fruit is in the frame.
+        """
+        match = match_card(
+            knowledge.taxon(taxon_id),
+            _packet(_obs("obs-1", "fruit.type", value)),
+            "log_1",
+        )
+        assert match.missing_for_high_confidence == ()
+
+    def test_the_grammar_reads_and_inside_or(self):
+        assert requirement_selectors("leaf.underside_and_leaf.arrangement_or_fruit.type") == (
+            ("leaf.underside", "leaf.arrangement"),
+            ("fruit.type",),
+        )
+
+    def test_no_card_requirement_can_go_unsatisfiable_unnoticed(self, knowledge):
+        """The repository-wide gate lives in `tests/contract/test_data_contract.py`.
+
+        This is the unit-level half: the helper it uses must actually report a dead limb,
+        including one hidden behind a limb that works.
+        """
+        card = knowledge.taxon("betula")
+        assert unreachable_selectors(card, ("bark.pattern", "leaf.shape")) == ()
+        assert unreachable_selectors(card, ("leaf.shape",)) == ("bark.pattern",)
+
+
 class TestComparisonHelpers:
     def test_colour_is_always_insufficient_even_without_a_card(self):
         assert "bark.colour" in insufficient_features(())
@@ -177,6 +331,53 @@ class TestComparisonHelpers:
             frozenset({"pinus", "picea"}),
         )
         assert "needles.attachment" in features
+
+
+class TestFollowUpPhotoSelection:
+    """Which photograph to ask for is chosen from declared data, not from list order.
+
+    Every discriminator that a photograph can resolve says so on the comparison card, so
+    the planner can tell a question apart from a question already answered.
+    """
+
+    def test_nothing_resolved_yet_keeps_the_declared_order(self, knowledge):
+        taxa = frozenset({"betula", "populus_alba"})
+        cards = knowledge.comparisons_for(taxa)
+        assert follow_up_photos(cards, taxa, ()) == recommended_photos(cards)
+
+    def test_a_resolved_discriminator_loses_its_photograph(self, knowledge):
+        """Bark peeling read off this trunk means another bark macro answers nothing."""
+        taxa = frozenset({"betula", "populus_alba"})
+        photos = follow_up_photos(knowledge.comparisons_for(taxa), taxa, ("bark.peeling",))
+        assert photos == ("leaf_underside_macro", "leaf_attachment_photo")
+
+    def test_a_photograph_answering_two_features_survives_one_of_them(self, knowledge):
+        """A bark macro bound to texture and to lenticels still has lenticels to answer."""
+        taxa = frozenset({"robinia_pseudoacacia", "morus", "prunus"})
+        photos = follow_up_photos(knowledge.comparisons_for(taxa), taxa, ("bark.texture",))
+        assert "bark_macro_mid_trunk" in photos
+
+    def test_bindings_ignore_features_the_card_in_hand_cannot_use(self, knowledge):
+        """Betula has no `bark.texture` rule, so a photograph of it proves nothing here.
+
+        What survives is every bark character Betula does declare — which is why a trunk
+        with all three of them read off it has nothing left to gain from a fourth bark macro.
+        """
+        usable = frozenset(card_value_vocabulary((knowledge.taxon("betula"),)))
+        bindings = photo_bindings(knowledge.comparisons(), usable)
+        assert bindings["bark_macro_mid_trunk"] == frozenset(
+            {"bark.pattern", "bark.peeling", "lenticels.orientation"}
+        )
+        assert "bark.texture" not in {
+            feature for features in bindings.values() for feature in features
+        }
+
+    def test_an_unbound_photograph_is_never_dropped(self):
+        """No declared binding means unknown value, and unknown is not zero."""
+        bindings = {"bark_macro_mid_trunk": frozenset({"bark.peeling"})}
+        photos = ("bark_macro_mid_trunk", "twig_photo")
+        assert drop_resolved_photos(photos, bindings, ("bark.peeling",)) == ("twig_photo",)
+        assert drop_resolved_photos(photos, bindings, ()) == photos
 
 
 class TestRegionalPriors:

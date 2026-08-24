@@ -133,6 +133,33 @@ class TestDirectionalDiscriminators:
         assert fascicles.favours == "pinus"
         assert set(fascicles.separates) == {"pinus", "picea"}
 
+    def test_a_photograph_binding_must_name_a_recommended_photograph(self):
+        """The binding annotates the card's own photo list; it may not extend it."""
+        with pytest.raises(ValidationError, match="recommended_follow_up_photos"):
+            ComparisonCard(
+                comparison_id="test-pair",
+                taxa=("pinus", "picea"),
+                decisive_differences=(
+                    DecisiveDifference(
+                        feature="needles.fascicles",
+                        separates=("pinus", "picea"),
+                        photo="invented_photo",
+                    ),
+                ),
+                recommended_follow_up_photos=("needle_fascicle_macro",),
+                provenance=Provenance(source="test fixture", source_type=SourceType.INFERRED),
+            )
+
+    def test_a_discriminator_no_photograph_resolves_stays_unbound(self, knowledge):
+        """Needle persistence needs another season, not a better macro. Say so, honestly."""
+        card = knowledge.comparison("pinus-picea-larix")
+        persistence = next(
+            difference
+            for difference in card.decisive_differences
+            if difference.feature == "needles.persistence"
+        )
+        assert persistence.photo is None
+
     def test_a_group_discriminator_may_favour_nobody(self, knowledge):
         card = knowledge.comparison("pinus-picea-larix")
         attachment = next(

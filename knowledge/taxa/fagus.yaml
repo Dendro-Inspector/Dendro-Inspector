@@ -46,7 +46,7 @@ common_confusions:
   - carpinus
 
 required_for_high_confidence:
-  - leaf_or_trunk_form
+  - leaf_or_trunk.form
 
 follow_up_evidence:
   - leaf_upper_macro

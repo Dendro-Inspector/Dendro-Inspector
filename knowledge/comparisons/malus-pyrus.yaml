@@ -13,11 +13,13 @@ shared_features:
 
 decisive_differences:
   - feature: fruit.type
+    photo: fruit_photo
     separates:
       - malus
       - pyrus
     note: The fruit closes the discussion. Nothing else here does.
   - feature: branch.arrangement
+    photo: crown_photo
     separates:
       - malus
       - pyrus

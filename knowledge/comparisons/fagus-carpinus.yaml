@@ -12,12 +12,14 @@ shared_features:
 
 decisive_differences:
   - feature: trunk.form
+    photo: trunk_full_height_photo
     separates:
       - fagus
       - carpinus
     favours: carpinus
     note: Carpinus is fluted and muscular; Fagus is cylindrical and even.
   - feature: leaf.shape
+    photo: leaf_upper_macro
     separates:
       - fagus
       - carpinus

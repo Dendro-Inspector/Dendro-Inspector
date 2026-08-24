@@ -7,7 +7,7 @@ checkable fact rather than a model opinion.
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Collection, Iterable, Mapping
 from dataclasses import dataclass
 
 from dendro_inspector.knowledge.evidence_hierarchy import (
@@ -84,15 +84,63 @@ def match_card(
     )
 
 
+#: Separators of the ``required_for_high_confidence`` grammar. ``_and_`` binds tighter than
+#: ``_or_``, so ``a_and_b_or_c`` reads as ``(a AND b) OR c``.
+_OR = "_or_"
+_AND = "_and_"
+
+
+def requirement_selectors(requirement: str) -> tuple[tuple[str, ...], ...]:
+    """Read one requirement token as alternatives of conjoined feature selectors.
+
+    This function is the only definition of that grammar. A selector is a canonical
+    feature path (``bark.pattern``) or a feature family (``leaf``), matched exactly or as a
+    namespace prefix — there is deliberately no underscore-to-dot fallback, because
+    ``bark_pattern`` and ``bark.pattern`` would then both be spellings of the same thing
+    and the next malformed token would be silently absorbed instead of failing a gate.
+
+    A selector that matches no observable feature is a requirement no evidence can ever
+    satisfy. :func:`unreachable_selectors` finds those; a contract test fails on them.
+    """
+    return tuple(tuple(alternative.split(_AND)) for alternative in requirement.split(_OR))
+
+
+def _selector_satisfied(selector: str, observations: tuple[Observation, ...]) -> bool:
+    """Whether one selector names a feature this evidence actually carries."""
+    return bool(selector) and any(
+        observation.feature == selector or observation.feature.startswith(f"{selector}.")
+        for observation in observations
+    )
+
+
 def _requirement_satisfied(requirement: str, observations: tuple[Observation, ...]) -> bool:
     """A token like ``needles_or_cones`` needs a full-trust named feature group."""
-    for alternative in requirement.split("_or_"):
-        if any(
-            observation.feature == alternative or observation.feature.startswith(f"{alternative}.")
-            for observation in observations
-        ):
-            return True
-    return False
+    return any(
+        all(_selector_satisfied(selector, observations) for selector in alternative)
+        for alternative in requirement_selectors(requirement)
+    )
+
+
+def unreachable_selectors(card: TaxonCard, features: Collection[str]) -> tuple[str, ...]:
+    """Selectors in this card's requirements that no observable feature could ever match.
+
+    ``features`` is the observable vocabulary — every feature any card declares, since that
+    is the complete set of observations the knowledge base is able to use. Order-stable and
+    de-duplicated. A live disjunction hides a dead limb perfectly: ``bark_pattern_or_leaf``
+    kept reporting Betula's bark requirement as missing while the same decision quoted
+    ``bark.pattern`` as support, because only the ``leaf`` limb was ever reachable.
+    """
+    return tuple(
+        dict.fromkeys(
+            selector
+            for requirement in card.required_for_high_confidence
+            for alternative in requirement_selectors(requirement)
+            for selector in alternative
+            if not any(
+                feature == selector or feature.startswith(f"{selector}.") for feature in features
+            )
+        )
+    )
 
 
 def missing_decisive_features(

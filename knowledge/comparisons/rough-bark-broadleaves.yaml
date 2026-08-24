@@ -18,17 +18,20 @@ shared_features:
 
 decisive_differences:
   - feature: leaf.type
+    photo: leaf_upper_macro
     separates:
       - quercus
       - fraxinus
       - juglans_regia
     note: Simple lobed (oak) vs compound pinnate (ash, walnut) settles it; bark does not.
   - feature: leaf.arrangement
+    photo: leaf_attachment_photo
     separates:
       - fraxinus
       - juglans_regia
     note: Ash is opposite, walnut alternate.
   - feature: acorn.presence
+    photo: acorn_photo
     separates:
       - quercus
       - fraxinus
@@ -37,6 +40,7 @@ decisive_differences:
     favours: quercus
     note: An acorn ends the discussion in Quercus' favour.
   - feature: pores.arrangement
+    photo: prepared_end_grain_macro
     separates:
       - quercus
       - populus

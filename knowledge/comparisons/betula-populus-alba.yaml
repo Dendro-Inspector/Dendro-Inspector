@@ -12,18 +12,21 @@ shared_features:
 
 decisive_differences:
   - feature: bark.peeling
+    photo: bark_macro_mid_trunk
     separates:
       - betula
       - populus_alba
     favours: betula
     note: Betula peels in thin papery layers; white poplar does not.
   - feature: leaf.underside
+    photo: leaf_underside_macro
     separates:
       - betula
       - populus_alba
     favours: populus_alba
     note: White poplar's leaf underside is white and felted.
   - feature: leaf.arrangement
+    photo: leaf_attachment_photo
     separates:
       - betula
       - populus_alba

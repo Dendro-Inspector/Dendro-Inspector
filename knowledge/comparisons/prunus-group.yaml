@@ -15,12 +15,14 @@ shared_features:
 
 decisive_differences:
   - feature: fruit.type
+    photo: fruit_photo
     separates:
       - prunus_cerasifera
       - prunus_avium
       - prunus_armeniaca
     note: Without the fruit, cherry plum, plum and blackthorn are near twins.
   - feature: bark.pattern
+    photo: bark_macro_mid_trunk
     separates:
       - prunus_avium
       - prunus_cerasifera

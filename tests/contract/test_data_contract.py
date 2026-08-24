@@ -13,6 +13,10 @@ import yaml
 
 from dendro_inspector.config import Role
 from dendro_inspector.evaluation.runner import load_cases
+from dendro_inspector.knowledge.taxon_cards import (
+    card_value_vocabulary,
+    unreachable_selectors,
+)
 from dendro_inspector.schemas.taxon import (
     ComparisonCard,
     Provenance,
@@ -151,6 +155,33 @@ class TestKnowledgeCards:
             for other in card.common_confusions:
                 assert other in cards, f"{taxon_id} names unknown taxon {other}"
                 assert taxon_id in cards[other].common_confusions
+
+    def test_every_requirement_selector_can_be_satisfied(self, repo_root):
+        """A high-confidence requirement no observation could ever satisfy is a dead rule.
+
+        The grammar is `_and_` inside `_or_` over canonical feature paths, and nothing
+        rewrites underscores into dots — so `bark_pattern` is not a spelling of
+        `bark.pattern`, it is a feature that does not exist. Betula shipped exactly that
+        for weeks: every decision quoted `bark.pattern` as support and reported the bark
+        requirement as missing in the same breath, because only the disjunction's `leaf`
+        limb was reachable. A live limb hides a dead one perfectly, which is why this
+        checks every selector rather than every requirement.
+
+        The vocabulary is deliberately the union across all cards, not each card's own
+        features: requirements are matched against the evidence packet, and the packet can
+        carry any feature the knowledge base declares anywhere.
+        """
+        cards = [
+            TaxonCard.model_validate(yaml.safe_load(path.read_text(encoding="utf-8")))
+            for path in _yaml_files(repo_root, "taxa")
+        ]
+        features = card_value_vocabulary(cards)
+        dead = {
+            card.taxon_id: unreachable_selectors(card, features)
+            for card in cards
+            if unreachable_selectors(card, features)
+        }
+        assert not dead, f"requirement selectors that no feature can ever match: {dead}"
 
     def test_placeholder_content_is_declared_honestly(self, repo_root):
         """Nothing here has been dendrologist-reviewed, and every card must say so."""

@@ -19,6 +19,22 @@ get entries.
   Canonical observations and run traces retain the original component id for auditability.
 - Bark-only abstentions now request neutral attached foliage or reproductive evidence instead
   of assuming the subject is a conifer.
+- A taxon card's `required_for_high_confidence` entries are read as an expression —
+  canonical feature paths or feature families joined by `_and_` and `_or_`, `_and_` binding
+  tighter — and eight cards that named features nothing could observe were migrated onto real
+  paths. Results no longer quote an observation as supporting evidence and report the
+  requirement it satisfies as missing in the same breath: a white-barked trunk stops asking
+  for `bark_pattern_or_leaf` while citing `bark.pattern`. Four cards had requirements no
+  evidence could ever satisfy (`fruit_present`, `leaf_underside_and_arrangement`) and so could
+  never reach high confidence however complete the photograph; a contract test now fails on
+  any requirement selector that matches no declared feature. Verdicts are unchanged where the
+  evidence hierarchy already capped them — bark still caps at genus and low confidence.
+- The requested next photograph is now chosen against what the subject has already resolved
+  instead of being the first entry of a declared list. Comparison cards bind each decisive
+  difference to the photograph that would resolve it, so a trunk whose bark characters are
+  all already read is asked for foliage rather than a second bark macro, and a discriminator
+  no photograph can settle (needle persistence) stays honestly unbound. A photograph with no
+  declared binding is still offered — unknown information value is not zero.
 
 ### Added
 

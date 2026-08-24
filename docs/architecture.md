@@ -190,6 +190,16 @@ contradictions:
 required_for_high_confidence: [needles_or_cones]
 ```
 
+`required_for_high_confidence` is the one place a card carries an expression rather than a
+plain token. Entries are canonical feature paths or feature families joined by `_and_` and
+`_or_`, where `_and_` binds tighter: `leaf.underside_and_leaf.arrangement_or_fruit.type`
+means "both leaf characters, or the fruit". A selector matches a feature exactly or as a
+namespace prefix, and nothing rewrites underscores into dots — `bark_pattern` is not a
+spelling of `bark.pattern`, it is a feature that does not exist. Requirements are checked
+against full-trust positive observations only, so detached foliage never satisfies one.
+`knowledge.taxon_cards.requirement_selectors` is the grammar's only implementation, and a
+contract test fails on any selector no declared feature could ever match.
+
 Why data:
 
 * **it is inspectable.** A dendrologist can review `pinus.yaml` without reading Python.
