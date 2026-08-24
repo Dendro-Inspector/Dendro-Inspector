@@ -309,6 +309,8 @@ def adjudicate(
         f"{rerank.candidate_set.subject_id}: finding {rerank.finding_id} admitted rerank"
         for rerank in admitted_reranks
     )
+    reviewer_disagreement = _reviewers_disagree(results) or _reranks_conflict(admitted_reranks)
+    critical_finding = any(finding.severity is Severity.CRITICAL for finding in accepted)
 
     return ReviewSynthesis(
         accepted_findings=tuple(accepted),
@@ -323,11 +325,8 @@ def adjudicate(
             {r.recommended_resolution for r in results if r.recommended_resolution}
         ),
         retry_required=retry_required,
-        escalation_recommended=(
-            _reviewers_disagree(results)
-            or _reranks_conflict(admitted_reranks)
-            or any(finding.severity is Severity.CRITICAL for finding in accepted)
-        ),
+        reviewer_disagreement=reviewer_disagreement,
+        escalation_recommended=reviewer_disagreement or critical_finding,
         unresolvable=unresolvable,
     )
 

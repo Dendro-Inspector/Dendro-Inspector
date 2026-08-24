@@ -2,8 +2,8 @@
 
 - **Status:** Current
 - **Owner:** Dendro Inspector maintainers
-- **Date:** 2026-08-23
-- **Last-verified:** 2026-08-23
+- **Date:** 2026-08-24
+- **Last-verified:** 2026-08-24
 
 Three logical roles. Business logic names only these; which vendor and model satisfies each is
 configuration.
@@ -245,7 +245,9 @@ escalation precision and recall.
 | `unresolved_contradiction` | yes | A critical finding survived adjudication |
 | `high_confidence_proposed` | no | Confidence is the claim worth double-checking |
 | `leading_candidates_close` | no | The ranking is doing work the evidence may not support |
-| `reviewers_disagree_or_critical_finding` | no | Internal review did not converge |
+| `reviewer_disagreement` | no | Reviewer recommendations or admitted reranks conflict |
+| `critical_finding` | no | An accepted reviewer finding has critical severity |
+| `escalation_provenance_unknown` | no | Compatibility fallback for an external/legacy synthesis that set only the combined flag |
 | `bark_colour_dependence` | no | The single most common overweighted feature |
 | `bark_only_input` | no | Structurally the weakest input class |
 | `forced_by_configuration` | yes | Explicit operator override |

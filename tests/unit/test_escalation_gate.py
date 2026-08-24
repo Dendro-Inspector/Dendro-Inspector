@@ -123,6 +123,75 @@ class TestTriggers:
         state = _state(guard=GuardReport(user_challenges_previous_result=True))
         assert decide(state, POLICY).required
 
+    def test_reviewer_disagreement_has_its_own_reason(self):
+        state = _state(
+            synthesis=ReviewSynthesis(
+                reviewer_disagreement=True,
+                escalation_recommended=True,
+                accepted_findings=(
+                    ReviewFinding(
+                        finding_id="f1",
+                        category=FindingCategory.MISSING_DECISIVE_FEATURE,
+                        severity=Severity.MINOR,
+                        summary="Needs another view.",
+                        required_action=RequiredAction.REQUEST_ADDITIONAL_PHOTO,
+                    ),
+                ),
+            )
+        )
+
+        decision = decide(state, POLICY)
+
+        assert decision.required
+        assert "reviewer_disagreement" in decision.reasons
+        assert "critical_finding" not in decision.reasons
+
+    def test_critical_finding_has_its_own_reason(self):
+        state = _state(
+            synthesis=ReviewSynthesis(
+                escalation_recommended=True,
+                accepted_findings=(
+                    ReviewFinding(
+                        finding_id="f1",
+                        category=FindingCategory.UNSUPPORTED_CLAIM,
+                        severity=Severity.CRITICAL,
+                        summary="The claim is unsupported.",
+                        required_action=RequiredAction.ABSTAIN,
+                    ),
+                ),
+            )
+        )
+
+        decision = decide(
+            state,
+            EscalationPolicy(on_unresolved_contradiction=False),
+        )
+
+        assert decision.required
+        assert "critical_finding" in decision.reasons
+        assert "reviewer_disagreement" not in decision.reasons
+
+    def test_legacy_combined_flag_preserves_behavior_but_names_unknown_provenance(self):
+        state = _state(
+            synthesis=ReviewSynthesis(
+                escalation_recommended=True,
+                accepted_findings=(
+                    ReviewFinding(
+                        finding_id="f1",
+                        category=FindingCategory.MISSING_DECISIVE_FEATURE,
+                        severity=Severity.MINOR,
+                        summary="Needs another view.",
+                        required_action=RequiredAction.REQUEST_ADDITIONAL_PHOTO,
+                    ),
+                ),
+            )
+        )
+
+        decision = decide(state, POLICY)
+
+        assert decision.required
+        assert "escalation_provenance_unknown" in decision.reasons
+
 
 class TestSuppressors:
     def test_insufficient_evidence_blocks_escalation(self):

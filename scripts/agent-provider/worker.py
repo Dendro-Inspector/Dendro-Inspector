@@ -94,6 +94,45 @@ def atomic_write_text(path: Path, text: str) -> None:
     os.replace(temporary, path)
 
 
+def utf8_subprocess_environment() -> dict[str, str]:
+    """Give local CLI children a strict, platform-independent text contract."""
+    environment = os.environ.copy()
+    environment.update({"PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8"})
+    return environment
+
+
+def codex_usage(stdout: str) -> dict[str, int] | None:
+    """Extract measured token counts from Codex ``--json`` turn completion events."""
+    usage: dict[str, int] | None = None
+    for line in stdout.splitlines():
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        raw = event.get("usage") if event.get("type") == "turn.completed" else None
+        if not isinstance(raw, dict):
+            continue
+        parsed = {
+            key: int(value)
+            for key, value in raw.items()
+            if key
+            in {
+                "input_tokens",
+                "cached_input_tokens",
+                "cache_write_input_tokens",
+                "output_tokens",
+                "reasoning_output_tokens",
+                "total_tokens",
+            }
+            and isinstance(value, int)
+            and not isinstance(value, bool)
+            and value >= 0
+        }
+        if parsed:
+            usage = parsed
+    return usage
+
+
 def _claim(path: Path, worker_id: str, ttl_seconds: float) -> bool:
     # Read the age in one call: two workers sharing a capacity group race here, and an
     # `exists()` that is true before the other worker releases the lease must not crash the
@@ -243,7 +282,8 @@ class OpenCodeBackend:
             input=compose_prompt(job),
             text=True,
             encoding="utf-8",
-            errors="replace",
+            errors="strict",
+            env=utf8_subprocess_environment(),
             capture_output=True,
             timeout=self._timeout,
             check=False,
@@ -391,6 +431,7 @@ class CodexBackend:
             "read-only",
             "--color",
             "never",
+            "--json",
             "--model",
             self._model,
             "--output-schema",
@@ -407,7 +448,8 @@ class CodexBackend:
                 input=compose_prompt(job),
                 text=True,
                 encoding="utf-8",
-                errors="replace",
+                errors="strict",
+                env=utf8_subprocess_environment(),
                 capture_output=True,
                 timeout=self._timeout,
                 check=False,
@@ -427,7 +469,11 @@ class CodexBackend:
             raise WorkerError("Codex returned an empty last message")
         return WorkerResult(
             text=text,
-            upstream={"provider": "codex", "model": self._model},
+            upstream={
+                "provider": "codex",
+                "model": self._model,
+                "usage": codex_usage(completed.stdout),
+            },
         )
 
 
@@ -488,7 +534,8 @@ class ClaudeBackend:
             stdin=subprocess.DEVNULL,
             text=True,
             encoding="utf-8",
-            errors="replace",
+            errors="strict",
+            env=utf8_subprocess_environment(),
             capture_output=True,
             timeout=self._timeout,
             check=False,
@@ -586,7 +633,8 @@ class ClineBackend:
             command,
             text=True,
             encoding="utf-8",
-            errors="replace",
+            errors="strict",
+            env=utf8_subprocess_environment(),
             capture_output=True,
             timeout=self._timeout + 30,
             check=False,
@@ -765,7 +813,7 @@ def main() -> int:
                 return 3
             time.sleep(cooldown)
             continue
-        except (OSError, subprocess.SubprocessError, WorkerError) as exc:
+        except (OSError, UnicodeError, subprocess.SubprocessError, WorkerError) as exc:
             _record_failure(state_dir, job, args.worker_id, exc)
             job.claim_path.unlink(missing_ok=True)
             capacity_path.unlink(missing_ok=True)

@@ -10,6 +10,27 @@ get entries.
 
 ## [Unreleased]
 
+### Fixed
+
+- Escalation traces now distinguish reviewer disagreement from accepted critical findings;
+  legacy/custom synthesis that supplies only the former combined boolean remains actionable
+  but is labelled with unknown provenance instead of inventing a disagreement. The gate's
+  trigger and suppressor behavior is unchanged.
+- The private photo-ledger runner forces UTF-8 mode in its Python child and decodes stdout
+  strictly, so an encoding mismatch fails the run instead of persisting replacement
+  characters as a successful JSON result. Local agent-provider CLI workers use the same
+  strict subprocess contract.
+
+### Added
+
+- Out-of-vocabulary evidence telemetry now separates intentionally weak colour/insufficient
+  features from potential knowledge-card gaps, and distinguishes missing feature paths from
+  unknown values on known paths.
+- The local Codex worker records token usage exposed by `codex exec --json`. The private
+  ledger runner can bind to one provider state directory and aggregate measured upstream
+  tokens and provider-reported cost per immutable run; it does not estimate prices when the
+  upstream reports no cost.
+
 ## [0.6.0] — 2026-08-24
 
 The deterministic policy, graph, package and public baseline move together to `0.6.0`.

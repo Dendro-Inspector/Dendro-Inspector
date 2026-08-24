@@ -32,13 +32,35 @@ from dendro_inspector.knowledge.taxon_cards import (
     unmatchable_observations,
 )
 from dendro_inspector.observability.logging import get_logger
-from dendro_inspector.schemas.evidence import EvidencePacket
+from dendro_inspector.schemas.evidence import EvidencePacket, Observation
 
 NODE = "evidence_quality"
 
 #: A subject whose visible evidence is at least half weak features is flagged as
 #: colour-dependent. Flagged, not rejected: the reviewers decide what it costs.
 COLOUR_DEPENDENCE_RATIO = 0.5
+
+
+def classify_vocabulary_diagnostics(
+    observations: tuple[Observation, ...],
+) -> tuple[tuple[Observation, ...], tuple[Observation, ...]]:
+    """Split unmatchable evidence into known-weak signals and possible card gaps.
+
+    This is diagnostic classification only. It does not admit or reject evidence. Colour
+    and the project's explicit insufficient-alone features are weak by existing policy;
+    every other trusted, resolvable unmatchable observation remains a possible knowledge
+    coverage gap until a card author reviews it.
+    """
+    weak: list[Observation] = []
+    possible_gaps: list[Observation] = []
+    for observation in observations:
+        target = (
+            weak
+            if observation.feature in INSUFFICIENT_ALONE or is_colour_feature(observation.feature)
+            else possible_gaps
+        )
+        target.append(observation)
+    return tuple(weak), tuple(possible_gaps)
 
 
 def _colour_dependent(evidence: EvidencePacket, subject_id: str) -> bool:
@@ -137,18 +159,38 @@ async def run(state: GraphState, ctx: NodeContext) -> GraphState:
         # gone: the candidate is simply rejected, and "the model saw nothing useful" and
         # "the cards describe nothing the model saw" look identical in the output.
         by_id = {o.observation_id: o for o in evidence.observations}
+        unmatchable = tuple(
+            by_id[observation_id]
+            for observation_id in report.unmatchable_evidence_ids
+            if observation_id in by_id
+        )
+        weak, possible_gaps = classify_vocabulary_diagnostics(unmatchable)
         get_logger(NODE).warning(
             "evidence_outside_card_vocabulary",
             extra={
                 "case_id": state.case.case_id,
                 "unmatchable": len(report.unmatchable_evidence_ids),
                 "observations": len(evidence.observations),
-                "features_absent_from_all_cards": sorted(
+                "intentionally_weak": len(weak),
+                "intentionally_weak_evidence_ids": sorted(
+                    observation.observation_id for observation in weak
+                ),
+                "potential_coverage_gaps": len(possible_gaps),
+                "potential_coverage_gap_evidence_ids": sorted(
+                    observation.observation_id for observation in possible_gaps
+                ),
+                "potential_gap_features_absent_from_all_cards": sorted(
                     {
-                        by_id[observation_id].feature
-                        for observation_id in report.unmatchable_evidence_ids
-                        if observation_id in by_id
-                        and by_id[observation_id].feature not in vocabulary
+                        observation.feature
+                        for observation in possible_gaps
+                        if observation.feature not in vocabulary
+                    }
+                ),
+                "potential_gap_features_with_unknown_values": sorted(
+                    {
+                        observation.feature
+                        for observation in possible_gaps
+                        if observation.feature in vocabulary
                     }
                 ),
             },

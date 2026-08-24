@@ -499,6 +499,24 @@ class TestDerivedActions:
             ),
         )
         assert synthesis.escalation_recommended
+        assert synthesis.reviewer_disagreement
+        assert not synthesis.has_critical
+
+    def test_critical_finding_records_distinct_escalation_provenance(self, knowledge):
+        synthesis = _adjudicate(
+            knowledge,
+            _result(
+                _finding(
+                    category=FindingCategory.UNSUPPORTED_CLAIM,
+                    severity=Severity.CRITICAL,
+                    required_action=RequiredAction.ABSTAIN,
+                )
+            ),
+        )
+
+        assert synthesis.escalation_recommended
+        assert not synthesis.reviewer_disagreement
+        assert synthesis.has_critical
 
     def test_deltas_take_the_most_conservative_recommendation(self, knowledge):
         synthesis = _adjudicate(

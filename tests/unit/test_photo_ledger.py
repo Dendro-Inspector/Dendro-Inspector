@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
 from pathlib import Path
-from types import ModuleType
+from types import ModuleType, SimpleNamespace
 
 import pytest
 
@@ -110,6 +111,133 @@ def test_combined_escalation_reason_does_not_invent_disagreement() -> None:
     trace = {"escalation_reasons": ["reviewers_disagree_or_critical_finding"]}
 
     assert LEDGER.reviewer_disagreement(trace) is None
+
+
+def test_distinct_escalation_reasons_project_disagreement_exactly() -> None:
+    assert LEDGER.reviewer_disagreement({"escalation_reasons": ["reviewer_disagreement"]})
+    assert not LEDGER.reviewer_disagreement({"escalation_reasons": ["critical_finding"]})
+
+
+def test_provider_metrics_aggregate_measured_tokens_and_reported_cost(tmp_path: Path) -> None:
+    codex = tmp_path / "codex.meta.json"
+    codex.write_text(
+        json.dumps(
+            {
+                "upstream": {
+                    "provider": "codex",
+                    "usage": {
+                        "input_tokens": 10,
+                        "cached_input_tokens": 3,
+                        "output_tokens": 2,
+                        "total_tokens": 12,
+                    },
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    claude = tmp_path / "claude.meta.json"
+    claude.write_text(
+        json.dumps(
+            {
+                "upstream": {
+                    "provider": "claude-code",
+                    "model_usage": {"opus": {"inputTokens": 4, "outputTokens": 5}},
+                    "total_cost_usd": 0.125,
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    metrics = LEDGER.provider_metrics(frozenset({codex, claude}))
+
+    assert metrics is not None
+    assert metrics["upstream_model_calls"] == 2
+    assert metrics["usage_reported_calls"] == 2
+    assert metrics["input_tokens"] == 14
+    assert metrics["cached_input_tokens"] == 3
+    assert metrics["output_tokens"] == 7
+    assert metrics["reported_cost_usd"] == 0.125
+
+
+def test_run_photo_forces_strict_utf8_child_contract(tmp_path: Path, monkeypatch) -> None:
+    root = tmp_path / "repo"
+    manifest_dir = root / "private"
+    manifest_dir.mkdir(parents=True)
+    executable = root / ".venv" / "Scripts" / "dendro.exe"
+    executable.parent.mkdir(parents=True)
+    executable.write_bytes(b"")
+    image = manifest_dir / "one.jpg"
+    image.write_bytes(b"image")
+    manifest = manifest_dir / "manifest.json"
+    _manifest(manifest)
+    photo = LEDGER.load_manifest(manifest)["photos"][0]
+    photo["sha256"] = hashlib.sha256(image.read_bytes()).hexdigest()
+    captured: dict[str, object] = {}
+
+    def fake_run(command, **kwargs):
+        captured["kwargs"] = kwargs
+        trace_dir = Path(command[command.index("--trace-out") + 1])
+        run_id = command[command.index("--case-id") + 1]
+        (trace_dir / f"{run_id}.trace.json").write_text("{}", encoding="utf-8")
+        return SimpleNamespace(
+            returncode=0,
+            stdout=json.dumps(
+                {
+                    "response": {"decisions": []},
+                    "trace": {"duration_ms": 1, "events": []},
+                }
+            ),
+            stderr="",
+        )
+
+    monkeypatch.setattr(LEDGER.subprocess, "run", fake_run)
+
+    run = LEDGER.run_photo(
+        root=root,
+        manifest_path=manifest,
+        photo=photo,
+        run_id="utf8-test-001",
+        configuration="codex_sol_all_v2",
+        port=9999,
+        timeout=60,
+        primary_route="sol-all",
+        reviewer_route="sol-all",
+        arbiter_route="sol-all",
+        lang="uk",
+        season="unknown",
+        object_type="unknown",
+    )
+
+    kwargs = captured["kwargs"]
+    assert isinstance(kwargs, dict)
+    assert kwargs["encoding"] == "utf-8"
+    assert kwargs["errors"] == "strict"
+    assert kwargs["env"]["PYTHONUTF8"] == "1"
+    assert kwargs["env"]["PYTHONIOENCODING"] == "utf-8"
+    assert run["status"] == "completed"
+
+    def invalid_utf8(*args, **kwargs):
+        raise UnicodeDecodeError("utf-8", b"\xff", 0, 1, "invalid start byte")
+
+    monkeypatch.setattr(LEDGER.subprocess, "run", invalid_utf8)
+    with pytest.raises(LEDGER.LedgerError, match=r"non-UTF-8.*not recorded"):
+        LEDGER.run_photo(
+            root=root,
+            manifest_path=manifest,
+            photo=photo,
+            run_id="utf8-test-002",
+            configuration="codex_sol_all_v2",
+            port=9999,
+            timeout=60,
+            primary_route="sol-all",
+            reviewer_route="sol-all",
+            arbiter_route="sol-all",
+            lang="uk",
+            season="unknown",
+            object_type="unknown",
+        )
 
 
 def test_repair_count_uses_provider_validation_failures() -> None:

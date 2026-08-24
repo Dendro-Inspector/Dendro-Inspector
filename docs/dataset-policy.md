@@ -2,8 +2,8 @@
 
 - **Status:** Current
 - **Owner:** Dendro Inspector maintainers
-- **Date:** 2026-07-26
-- **Last-verified:** 2026-07-26
+- **Date:** 2026-08-24
+- **Last-verified:** 2026-08-24
 
 This is a **public repository**. Everything committed is world-readable, permanently
 archived by third parties, and mirrored within minutes. Deleting a commit does not unpublish
@@ -99,10 +99,14 @@ around is confident content that nobody checked.
 Candidate validation matches evidence to cards by exact `(feature, value)` equality, so any
 observation outside the cards' combined vocabulary is silently unusable no matter how good
 the photograph was. Every run now measures this: the evidence-quality report carries
-`unmatchable_evidence_ids`, and the quality gate logs `evidence_outside_card_vocabulary`
-with the features absent from every card.
+`unmatchable_evidence_ids`, and the quality gate logs `evidence_outside_card_vocabulary`.
+The diagnostic splits those ids into existing-policy weak evidence (colour and explicit
+insufficient-alone features) and potential card coverage gaps; the latter are further split
+between absent feature paths and unknown values for known paths.
 
-Read it as a **card coverage** signal, not a model failure. The extractor is deliberately
+Read only the potential-gap bucket as a **card coverage** signal, not a model failure. The
+weak bucket is intentionally tracked separately so a frequent honest colour observation does
+not make the actionable knowledge gap look larger than it is. The extractor is deliberately
 told to prefer an honest out-of-vocabulary observation over a forced in-vocabulary one, so a
 recurring feature in that log is a request for a card rule, addressed to someone qualified
 to write one. On the first live nine-photograph run it was 30% of all extracted

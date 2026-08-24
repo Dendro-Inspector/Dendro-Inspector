@@ -192,12 +192,162 @@ def structured_repair_count(trace: dict[str, Any]) -> int:
     )
 
 
+def utf8_subprocess_environment() -> dict[str, str]:
+    """Force a Python child to keep UTF-8 on Windows pipes as well as files."""
+    environment = os.environ.copy()
+    environment.update({"PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8"})
+    return environment
+
+
+def _numeric(value: Any) -> int | float | None:
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        return None
+    return value
+
+
+def _usage_total(payload: Any, aliases: tuple[str, ...]) -> int | None:
+    """Read one token counter from a flat usage object or per-model child objects."""
+    if not isinstance(payload, dict):
+        return None
+    for alias in aliases:
+        direct = _numeric(payload.get(alias))
+        if direct is not None:
+            return int(direct)
+    children = [
+        _usage_total(child, aliases) for child in payload.values() if isinstance(child, dict)
+    ]
+    present = [value for value in children if value is not None]
+    return sum(present) if present else None
+
+
+def _upstream_usage(upstream: dict[str, Any]) -> dict[str, int] | None:
+    raw = upstream.get("usage") or upstream.get("model_usage") or upstream.get("tokens")
+    if not isinstance(raw, dict):
+        return None
+    input_tokens = _usage_total(raw, ("input_tokens", "inputTokens", "prompt_tokens"))
+    cached_input_tokens = _usage_total(
+        raw,
+        (
+            "cached_input_tokens",
+            "cachedInputTokens",
+            "cached_tokens",
+            "cache_read_input_tokens",
+            "cacheReadInputTokens",
+        ),
+    )
+    cache_write_input_tokens = _usage_total(
+        raw, ("cache_write_input_tokens", "cacheWriteInputTokens")
+    )
+    output_tokens = _usage_total(raw, ("output_tokens", "outputTokens", "completion_tokens"))
+    reasoning_output_tokens = _usage_total(
+        raw, ("reasoning_output_tokens", "reasoningOutputTokens", "reasoning_tokens")
+    )
+    total_tokens = _usage_total(raw, ("total_tokens", "totalTokens"))
+    values = {
+        "input_tokens": input_tokens,
+        "cached_input_tokens": cached_input_tokens,
+        "cache_write_input_tokens": cache_write_input_tokens,
+        "output_tokens": output_tokens,
+        "reasoning_output_tokens": reasoning_output_tokens,
+        "total_tokens": total_tokens,
+    }
+    present = {key: value for key, value in values.items() if value is not None}
+    return present or None
+
+
+def provider_metadata_files(state_dir: Path | None) -> frozenset[Path]:
+    if state_dir is None:
+        return frozenset()
+    return frozenset((state_dir / "answers").glob("*.meta.json"))
+
+
+def provider_metrics(meta_files: frozenset[Path]) -> dict[str, Any] | None:
+    """Aggregate measured upstream usage without applying a guessed price table."""
+    if not meta_files:
+        return None
+    input_tokens = 0
+    cached_input_tokens = 0
+    cache_write_input_tokens = 0
+    output_tokens = 0
+    reasoning_output_tokens = 0
+    total_tokens = 0
+    input_reported_calls = 0
+    cached_input_reported_calls = 0
+    cache_write_input_reported_calls = 0
+    output_reported_calls = 0
+    reasoning_output_reported_calls = 0
+    total_reported_calls = 0
+    usage_reported_calls = 0
+    reported_cost = 0.0
+    cost_reported_calls = 0
+    for path in sorted(meta_files):
+        try:
+            metadata = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        upstream = metadata.get("upstream")
+        if not isinstance(upstream, dict):
+            continue
+        usage = _upstream_usage(upstream)
+        if usage is not None:
+            usage_reported_calls += 1
+            if "input_tokens" in usage:
+                input_reported_calls += 1
+                input_tokens += usage["input_tokens"]
+            if "cached_input_tokens" in usage:
+                cached_input_reported_calls += 1
+                cached_input_tokens += usage["cached_input_tokens"]
+            if "cache_write_input_tokens" in usage:
+                cache_write_input_reported_calls += 1
+                cache_write_input_tokens += usage["cache_write_input_tokens"]
+            if "output_tokens" in usage:
+                output_reported_calls += 1
+                output_tokens += usage["output_tokens"]
+            if "reasoning_output_tokens" in usage:
+                reasoning_output_reported_calls += 1
+                reasoning_output_tokens += usage["reasoning_output_tokens"]
+            if "total_tokens" in usage:
+                total_reported_calls += 1
+                total_tokens += usage["total_tokens"]
+        cost = _numeric(upstream.get("total_cost_usd"))
+        if cost is None:
+            cost = _numeric(upstream.get("cost"))
+        if cost is not None:
+            cost_reported_calls += 1
+            reported_cost += float(cost)
+    return {
+        "upstream_model_calls": len(meta_files),
+        "usage_reported_calls": usage_reported_calls,
+        "input_tokens": input_tokens if input_reported_calls else None,
+        "input_tokens_reported_calls": input_reported_calls,
+        "cached_input_tokens": cached_input_tokens if cached_input_reported_calls else None,
+        "cached_input_tokens_reported_calls": cached_input_reported_calls,
+        "cache_write_input_tokens": (
+            cache_write_input_tokens if cache_write_input_reported_calls else None
+        ),
+        "cache_write_input_tokens_reported_calls": cache_write_input_reported_calls,
+        "output_tokens": output_tokens if output_reported_calls else None,
+        "output_tokens_reported_calls": output_reported_calls,
+        "reasoning_output_tokens": (
+            reasoning_output_tokens if reasoning_output_reported_calls else None
+        ),
+        "reasoning_output_tokens_reported_calls": reasoning_output_reported_calls,
+        "total_tokens": total_tokens if total_reported_calls else None,
+        "total_tokens_reported_calls": total_reported_calls,
+        "cost_reported_calls": cost_reported_calls,
+        "reported_cost_usd": round(reported_cost, 8) if cost_reported_calls else None,
+    }
+
+
 def reviewer_disagreement(trace: dict[str, Any]) -> bool | None:
     """Project only what the deterministic trace actually distinguishes."""
     reasons = {str(reason) for reason in trace.get("escalation_reasons", [])}
     if "reviewer_disagreement" in reasons:
         return True
-    if "reviewers_disagree_or_critical_finding" in reasons:
+    if reasons & {
+        "reviewers_disagree_or_critical_finding",
+        "escalation_provenance_unknown",
+    }:
         return None
     return False
 
@@ -209,6 +359,7 @@ def completed_run(
     payload: dict[str, Any],
     trace_path: str,
     elapsed: float,
+    upstream_metrics: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     response = payload.get("response", {})
     decisions = response.get("decisions", [])
@@ -247,13 +398,22 @@ def completed_run(
         "duration_seconds": duration,
         "model_calls": model_call_count(trace),
         "estimated_cost_usd": None,
+        "reported_cost_usd": (
+            upstream_metrics.get("reported_cost_usd") if upstream_metrics else None
+        ),
+        "upstream_usage": upstream_metrics,
         "trace_path": trace_path,
         "notes": notes,
     }
 
 
 def failed_run(
-    *, run_id: str, configuration: str, elapsed: float, exit_code: int
+    *,
+    run_id: str,
+    configuration: str,
+    elapsed: float,
+    exit_code: int,
+    upstream_metrics: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     return {
         "run_id": run_id,
@@ -267,6 +427,10 @@ def failed_run(
         "duration_seconds": round(elapsed, 3),
         "model_calls": None,
         "estimated_cost_usd": None,
+        "reported_cost_usd": (
+            upstream_metrics.get("reported_cost_usd") if upstream_metrics else None
+        ),
+        "upstream_usage": upstream_metrics,
         "trace_path": None,
         "notes": [f"Dendro exited with code {exit_code}; inspect the local run directory."],
     }
@@ -287,6 +451,7 @@ def run_photo(
     lang: str,
     season: str,
     object_type: str,
+    provider_state_dir: Path | None = None,
 ) -> dict[str, Any]:
     image = verify_image(manifest_path.parent, photo)
     run_dir = manifest_path.parent / "runs" / run_id
@@ -295,7 +460,7 @@ def run_photo(
     if not executable.is_file():
         raise LedgerError(f"Dendro executable does not exist: {executable}")
 
-    environment = os.environ.copy()
+    environment = utf8_subprocess_environment()
     environment.update(
         {
             "DENDRO_PRIMARY_PROVIDER": "anthropic",
@@ -328,18 +493,26 @@ def run_photo(
         "--json",
     ]
     started = time.monotonic()
-    completed = subprocess.run(
-        command,
-        cwd=root,
-        env=environment,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        timeout=timeout,
-        check=False,
-    )
+    metadata_before = provider_metadata_files(provider_state_dir)
+    try:
+        completed = subprocess.run(
+            command,
+            cwd=root,
+            env=environment,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="strict",
+            timeout=timeout,
+            check=False,
+        )
+    except UnicodeDecodeError as exc:
+        raise LedgerError(
+            f"Dendro emitted non-UTF-8 stdout or stderr for {run_id}; run was not recorded"
+        ) from exc
     elapsed = time.monotonic() - started
+    metadata_after = provider_metadata_files(provider_state_dir)
+    upstream_metrics = provider_metrics(metadata_after - metadata_before)
     (run_dir / "stdout.json").write_text(completed.stdout, encoding="utf-8")
     (run_dir / "stderr.log").write_text(completed.stderr, encoding="utf-8")
     if completed.returncode != 0:
@@ -348,6 +521,7 @@ def run_photo(
             configuration=configuration,
             elapsed=elapsed,
             exit_code=completed.returncode,
+            upstream_metrics=upstream_metrics,
         )
 
     try:
@@ -364,6 +538,7 @@ def run_photo(
         payload=payload,
         trace_path=trace_path,
         elapsed=elapsed,
+        upstream_metrics=upstream_metrics,
     )
 
 
@@ -394,6 +569,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--lang", default="en")
     parser.add_argument("--season", default="unknown")
     parser.add_argument("--object-type", default="unknown")
+    parser.add_argument(
+        "--provider-state-dir",
+        type=Path,
+        help="bridge worker state whose new answer metadata supplies measured usage/cost",
+    )
     return parser.parse_args()
 
 
@@ -409,6 +589,9 @@ def main() -> int:
     root = Path(__file__).resolve().parents[2]
     manifest_path = args.manifest.resolve()
     markdown_path = manifest_path.with_suffix(".md")
+    provider_state_dir = args.provider_state_dir.resolve() if args.provider_state_dir else None
+    if provider_state_dir is not None and not (provider_state_dir / "answers").is_dir():
+        raise LedgerError("--provider-state-dir must contain an answers directory")
     require_bridge(args.port)
     manifest = load_manifest(manifest_path)
     processed = 0
@@ -437,6 +620,7 @@ def main() -> int:
             lang=args.lang,
             season=args.season,
             object_type=args.object_type,
+            provider_state_dir=provider_state_dir,
         )
         append_run(manifest_path, photo_id=str(photo["id"]), run=run)
         regenerate_markdown(manifest_path, markdown_path)

@@ -176,6 +176,94 @@ def test_worker_prompt_carries_original_prompt_and_schema(tmp_path: Path) -> Non
     assert "Return exactly one JSON object" in prompt
 
 
+def test_codex_usage_reads_only_completed_turn_counters() -> None:
+    worker = _load_script("worker")
+    stdout = "\n".join(
+        (
+            json.dumps({"type": "thread.started", "usage": {"input_tokens": 999}}),
+            json.dumps(
+                {
+                    "type": "turn.completed",
+                    "usage": {
+                        "input_tokens": 120,
+                        "cached_input_tokens": 80,
+                        "cache_write_input_tokens": 7,
+                        "output_tokens": 15,
+                        "reasoning_output_tokens": 4,
+                    },
+                }
+            ),
+        )
+    )
+
+    assert worker.codex_usage(stdout) == {
+        "input_tokens": 120,
+        "cached_input_tokens": 80,
+        "cache_write_input_tokens": 7,
+        "output_tokens": 15,
+        "reasoning_output_tokens": 4,
+    }
+
+
+def test_codex_backend_requests_json_events_and_records_usage(tmp_path: Path, monkeypatch) -> None:
+    worker = _load_script("worker")
+    _pending_request(tmp_path, route="sol-all")
+    (tmp_path / "claims").mkdir()
+    job = worker.claim_next_job(
+        state_dir=tmp_path,
+        route="sol-all",
+        worker_id="codex-sol-all",
+        claim_ttl_seconds=60,
+    )
+    assert job is not None
+    captured: dict[str, object] = {}
+
+    def fake_run(command, **kwargs):
+        captured["command"] = command
+        captured["kwargs"] = kwargs
+        output = Path(command[command.index("--output-last-message") + 1])
+        output.write_text(json.dumps({"status": "CODEX_OK"}), encoding="utf-8")
+        return SimpleNamespace(
+            returncode=0,
+            stderr="",
+            stdout=json.dumps(
+                {
+                    "type": "turn.completed",
+                    "usage": {
+                        "input_tokens": 12,
+                        "cached_input_tokens": 3,
+                        "output_tokens": 4,
+                    },
+                }
+            ),
+        )
+
+    monkeypatch.setattr(worker.subprocess, "run", fake_run)
+    backend = worker.CodexBackend(
+        executable=sys.executable,
+        model="gpt-5.6-sol",
+        timeout_seconds=60,
+    )
+
+    result = backend.generate(job)
+
+    command = captured["command"]
+    assert isinstance(command, list)
+    assert "--json" in command
+    kwargs = captured["kwargs"]
+    assert isinstance(kwargs, dict)
+    assert kwargs["encoding"] == "utf-8"
+    assert kwargs["errors"] == "strict"
+    assert kwargs["env"]["PYTHONUTF8"] == "1"
+    assert kwargs["env"]["PYTHONIOENCODING"] == "utf-8"
+    assert json.loads(result.text) == {"status": "CODEX_OK"}
+    assert result.upstream["usage"] == {
+        "input_tokens": 12,
+        "cached_input_tokens": 3,
+        "output_tokens": 4,
+    }
+
+
 def test_bridge_cache_separates_model_routes() -> None:
     bridge = _load_script("bridge")
 
@@ -234,5 +322,9 @@ def test_claude_backend_uses_read_only_structured_output(tmp_path: Path, monkeyp
     kwargs = captured["kwargs"]
     assert isinstance(kwargs, dict)
     assert kwargs["stdin"] is worker.subprocess.DEVNULL
+    assert kwargs["encoding"] == "utf-8"
+    assert kwargs["errors"] == "strict"
+    assert kwargs["env"]["PYTHONUTF8"] == "1"
+    assert kwargs["env"]["PYTHONIOENCODING"] == "utf-8"
     assert json.loads(result.text) == {"status": "CLAUDE_OK"}
     assert result.upstream["provider"] == "claude-code"

@@ -175,6 +175,10 @@ class ReviewSynthesis(Contract):
     confidence_delta: Confidence | None = None
     resolution_delta: Resolution | None = None
     retry_required: bool = False
+    reviewer_disagreement: bool = Field(
+        default=False,
+        description="Review recommendations or admitted reranks conflict materially.",
+    )
     escalation_recommended: bool = False
     unresolvable: bool = Field(
         default=False,
