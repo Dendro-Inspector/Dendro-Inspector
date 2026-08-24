@@ -46,7 +46,7 @@ def build_context(
     prompts = PromptLibrary(resolved_config.prompts, root=base)
     prompts.validate_policy()
     providers = ProviderRegistry.from_config(resolved_config, root=base)
-    recorder = TraceRecorder(case_id)
+    recorder = TraceRecorder(case_id, root=base)
 
     recorder.set_prompt_metadata(prompts.metadata())
     for role in Role:

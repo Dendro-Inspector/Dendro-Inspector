@@ -25,13 +25,6 @@ decisive_differences:
       - populus_alba
     favours: populus_alba
     note: White poplar's leaf underside is white and felted.
-  - feature: leaf.arrangement
-    photo: leaf_attachment_photo
-    separates:
-      - betula
-      - populus_alba
-    note: Both alternate — useless here, recorded so nobody re-derives it.
-
 insufficient_features:
   - bark.colour
   - trunk.form
@@ -40,7 +33,6 @@ insufficient_features:
 recommended_follow_up_photos:
   - bark_macro_mid_trunk
   - leaf_underside_macro
-  - leaf_attachment_photo
 
 provenance:
   source: "Domain prompt sections 13, 14 and 16"

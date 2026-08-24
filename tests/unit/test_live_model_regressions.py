@@ -525,6 +525,9 @@ def test_a_resolved_bark_character_is_not_photographed_again(simple_case, node_c
     assert decision.best_next_photo is not None
     assert decision.best_next_photo.target != "bark_macro_mid_trunk"
     assert decision.best_next_photo.target == "leaf_upper_macro"
+    assert decision.best_next_photo.reason == (
+        "Would add missing organ-level evidence for the leading candidate."
+    )
 
 
 def test_an_unresolved_bark_character_is_still_worth_photographing(
@@ -549,3 +552,80 @@ def test_an_unresolved_bark_character_is_still_worth_photographing(
 
     assert decision.best_next_photo is not None
     assert decision.best_next_photo.target == "bark_macro_mid_trunk"
+
+
+def test_an_unknown_value_does_not_resolve_a_visible_discriminator(
+    simple_case, node_context, knowledge
+):
+    """Visibility is not information gain when no relevant card can interpret the value."""
+    evidence = _bark_only_packet()
+    observations = tuple(
+        observation.model_copy(update={"value": "some_unrecognised_pattern"})
+        if observation.feature == "bark.peeling"
+        else observation
+        for observation in evidence.observations
+    )
+    evidence = evidence.model_copy(update={"observations": observations})
+    state, validated = _betula_state(simple_case, evidence, knowledge)
+
+    decision = decide_subject(state, node_context, validated)
+
+    assert decision.best_next_photo is not None
+    assert decision.best_next_photo.target == "bark_macro_mid_trunk"
+
+
+def test_multi_candidate_photo_reason_names_an_unresolved_discriminator(
+    simple_case, node_context, knowledge
+):
+    """A real comparison request must not use the single-candidate fallback explanation."""
+    evidence = EvidencePacket(
+        subjects=(Subject(subject_id="main_trunk", kind=SubjectKind.STANDING_TREE),),
+        observations=(
+            Observation(
+                observation_id="obs-betula",
+                feature="bark.pattern",
+                value="white_papery_with_black_marks",
+                subject_id="main_trunk",
+                source=ObservationSource.IMAGE,
+                image_id="img-1",
+            ),
+            Observation(
+                observation_id="obs-populus",
+                feature="leaf.underside",
+                value="white_tomentose",
+                subject_id="main_trunk",
+                source=ObservationSource.IMAGE,
+                image_id="img-1",
+                attachment=AttachmentStatus.CONFIRMED_ATTACHED,
+            ),
+        ),
+    )
+    proposed = CandidateSet(
+        subject_id="main_trunk",
+        candidates=(
+            Candidate(
+                taxon="betula",
+                resolution=Resolution.GENUS,
+                supporting_evidence_ids=("obs-betula",),
+                score=SupportStrength.MODERATE,
+                rank=1,
+            ),
+            Candidate(
+                taxon="populus_alba",
+                resolution=Resolution.SPECIES,
+                supporting_evidence_ids=("obs-populus",),
+                score=SupportStrength.MODERATE,
+                rank=2,
+            ),
+        ),
+    )
+    validated = validate_candidate_set(proposed, evidence, knowledge)
+    state = GraphState(case=simple_case, evidence=evidence, candidate_sets=(validated,))
+
+    decision = decide_subject(state, node_context, validated)
+
+    assert decision.best_next_photo is not None
+    assert decision.best_next_photo.target == "bark_macro_mid_trunk"
+    assert decision.best_next_photo.reason == (
+        "Would resolve an unresolved discriminator among the leading candidates."
+    )

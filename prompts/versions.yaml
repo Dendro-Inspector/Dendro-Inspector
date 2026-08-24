@@ -7,7 +7,7 @@
 # policy_revision are pinned by the code that reads this file.
 
 schema_version: "1"
-policy_revision: "0.5.0"
+policy_revision: "0.6.0"
 
 domain_prompt:
   path: prompts/domain/system-prompt.md

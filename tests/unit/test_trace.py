@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dendro_inspector.observability.trace as trace_module
 from dendro_inspector.observability.trace import TraceRecorder
 from dendro_inspector.schemas.evidence import (
     AttachmentStatus,
@@ -43,3 +44,13 @@ def test_component_projection_provenance_survives_in_trace():
     assert trace.component_projections[0].identity_subject_id == "tree"
     assert trace.component_projections[0].source_component_id == "branch"
     assert trace.component_projections[0].observation_ids == ("leaf",)
+
+
+def test_code_revision_and_dirty_state_are_frozen_into_trace(monkeypatch):
+    commit = "a" * 40
+    monkeypatch.setattr(trace_module, "_discover_code_revision", lambda _root: (commit, False))
+
+    trace = TraceRecorder("revision-trace").build()
+
+    assert trace.code_commit_sha == commit
+    assert trace.code_dirty is False

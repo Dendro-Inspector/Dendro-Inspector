@@ -341,15 +341,27 @@ class TestFollowUpPhotoSelection:
     """
 
     def test_nothing_resolved_yet_keeps_the_declared_order(self, knowledge):
-        taxa = frozenset({"betula", "populus_alba"})
+        taxa = frozenset({"acer_saccharinum", "populus_alba"})
         cards = knowledge.comparisons_for(taxa)
+        assert recommended_photos(cards) == (
+            "leaf_underside_macro",
+            "leaf_attachment_photo",
+            "samara_photo",
+        )
         assert follow_up_photos(cards, taxa, ()) == recommended_photos(cards)
 
     def test_a_resolved_discriminator_loses_its_photograph(self, knowledge):
         """Bark peeling read off this trunk means another bark macro answers nothing."""
         taxa = frozenset({"betula", "populus_alba"})
         photos = follow_up_photos(knowledge.comparisons_for(taxa), taxa, ("bark.peeling",))
-        assert photos == ("leaf_underside_macro", "leaf_attachment_photo")
+        assert photos == ("leaf_underside_macro",)
+
+    def test_betula_populus_card_does_not_call_shared_arrangement_decisive(self, knowledge):
+        card = knowledge.comparison("betula-populus-alba")
+        assert "leaf.arrangement" not in {
+            difference.feature for difference in card.decisive_differences
+        }
+        assert "leaf_attachment_photo" not in card.recommended_follow_up_photos
 
     def test_a_photograph_answering_two_features_survives_one_of_them(self, knowledge):
         """A bark macro bound to texture and to lenticels still has lenticels to answer."""

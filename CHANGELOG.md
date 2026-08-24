@@ -10,6 +10,13 @@ get entries.
 
 ## [Unreleased]
 
+## [0.6.0] — 2026-08-24
+
+The deterministic policy, graph, package and public baseline move together to `0.6.0`.
+Unlike the earlier experiment branch, two runs can no longer claim the same policy identity
+while executing different requirement or next-photo semantics. Traces additionally record
+the Git commit and dirty state when that identity is available.
+
 ### Fixed
 
 - Anatomical components visibly belonging to one tree or material sample can now declare a
@@ -31,12 +38,19 @@ get entries.
   evidence hierarchy already capped them — bark still caps at genus and low confidence.
 - The requested next photograph is now chosen against what the subject has already resolved
   instead of being the first entry of a declared list. Comparison cards bind each decisive
-  difference to the photograph that would resolve it, so a trunk whose bark characters are
-  all already read is asked for foliage rather than a second bark macro, and a discriminator
-  no photograph can settle (needle persistence) stays honestly unbound. A photograph with no
-  declared binding is still offered — unknown information value is not zero.
+  difference to the photograph that would resolve it, while the cards' explicit photo order
+  remains authoritative. A feature counts as resolved only when its observed value belongs
+  to a relevant candidate card; an unknown but visible value cannot suppress the photograph
+  needed to interpret it. Single-candidate fallback requests and real comparison requests now
+  give different, truthful reasons. The Betula/Populus card no longer labels their shared
+  alternate leaf arrangement as a discriminator. A photograph with no declared binding is
+  still offered — unknown information value is not zero.
 
 ### Added
+
+- Run traces now carry `code_commit_sha` and `code_dirty` when executed from a Git checkout.
+  A clean commit is an immutable experiment build identity; a dirty run is marked as such
+  instead of silently borrowing its parent commit's provenance.
 
 - A separate `reviewer` model role now owns the concurrent botanical, confusion and
   confidence review fan-out. Configure it with `DENDRO_REVIEWER_PROVIDER` and

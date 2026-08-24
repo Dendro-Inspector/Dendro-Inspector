@@ -251,6 +251,12 @@ any of them. All four were found on a live photograph, and all four are guarded 
 rather than by a conformance case. A suite that stays green across a real fix is telling you
 where its coverage ends.
 
+The v0.6.0 result remains **nineteen passing cases, zero failures and zero overconfidence**,
+frozen in `evals/baselines/public-v0.6.0.json`. This revision changes deterministic
+high-confidence requirement parsing and evidence-aware next-photo planning without changing
+any frozen verdict. Every run trace now also records the source commit and dirty state when
+executed from a Git checkout, so unreleased benchmark runs remain attributable.
+
 Read the result honestly: nineteen hand-built cases over recorded fixtures can show that the
 machinery follows these contracts. It says nothing about identification accuracy on real
 photographs, which has not been measured.

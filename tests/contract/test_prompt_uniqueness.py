@@ -19,6 +19,7 @@ CANONICAL = Path("prompts/domain/system-prompt.md")
 SKIP_DIRS = frozenset(
     {
         ".git",
+        ".bridge",
         ".venv",
         "venv",
         "node_modules",

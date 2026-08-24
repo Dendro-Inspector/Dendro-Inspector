@@ -58,7 +58,7 @@ This is the fail-closed runtime compatibility manifest, not advisory release met
 frozen schema binds:
 
 - manifest schema version `1`;
-- deterministic policy revision `0.5.0`;
+- deterministic policy revision `0.6.0`;
 - canonical domain-prompt path and SHA-256;
 - node-prompt root and revision;
 - the exact node-prompt file set and every file's SHA-256.
@@ -68,7 +68,7 @@ registry. `dendro prompt-info` reports the prompt hash, manifest hash, revisions
 `compatible` status; an incompatible bundle exits before any provider can be called.
 
 A custom manifest is an operator attestation that the supplied natural-language prompt is
-compatible with policy `0.5.0`. Hash validation proves byte identity only; it does not prove
+compatible with policy `0.6.0`. Hash validation proves byte identity only; it does not prove
 semantic equivalence.
 
 This file is generated. `dendro prompt-seal --write` renders it from one template, so it
@@ -96,5 +96,5 @@ the same way as editing one.
 **Re-sealing attests bytes, not semantic compatibility.** It never rewrites `schema_version`
 or `policy_revision`: those stay pinned to what the code supports, and a manifest bound to a
 different revision is refused rather than upgraded. Whether the changed prompt still means
-what deterministic policy `0.5.0` expects is a review — the derivations listed in `AGENTS.md`
+what deterministic policy `0.6.0` expects is a review — the derivations listed in `AGENTS.md`
 and the evaluation suite are how that question gets answered, not a SHA-256.

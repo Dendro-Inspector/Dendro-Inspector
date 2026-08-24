@@ -510,11 +510,18 @@ def _next_photo(
         )
 
     taxa = frozenset(candidate.taxon for candidate in candidate_set.ordered)
+    candidate_cards = tuple(
+        card for taxon in taxa if (card := ctx.knowledge.try_taxon(taxon)) is not None
+    )
+    vocabulary = card_value_vocabulary(candidate_cards)
     resolved = frozenset(
         observation.feature
         for observation in full_positive_observations_for(evidence, candidate_set.subject_id)
+        if observation.value in vocabulary.get(observation.feature, frozenset())
     )
-    photos = follow_up_photos(ctx.knowledge.comparisons_for(taxa), taxa, resolved)
+    comparison_cards = ctx.knowledge.comparisons_for(taxa)
+    photos = follow_up_photos(comparison_cards, taxa, resolved)
+    comparison_request = bool(photos)
     if not photos:
         # No look-alike group applies, so the leader's own follow-up list is all there is.
         # It is a flat list of targets, and the only declared statement of what each target
@@ -531,7 +538,11 @@ def _next_photo(
         return None
     return PhotoRequest(
         target=photos[0],
-        reason="Would separate the leading candidate from its nearest alternative.",
+        reason=(
+            "Would resolve an unresolved discriminator among the leading candidates."
+            if comparison_request
+            else "Would add missing organ-level evidence for the leading candidate."
+        ),
         subject_id=candidate_set.subject_id,
     )
 

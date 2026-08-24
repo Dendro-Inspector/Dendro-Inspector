@@ -74,37 +74,31 @@ def follow_up_photos(
     taxa: frozenset[str],
     resolved: Collection[str],
 ) -> tuple[str, ...]:
-    """Photographs worth asking for, unresolved discriminators first.
+    """Photographs worth asking for, in the cards' declared priority order.
 
-    Same order as :func:`recommended_photos` when nothing is resolved yet, so a first
-    request is unchanged. What moves is the second one: a photograph bound only to features
-    this subject has already resolved carries no information left to gain, and asking for it
-    anyway is what teaches people to ignore the request. A white-barked trunk with
-    ``bark.peeling`` already read off it was still being asked for another bark macro, while
-    the leaf characters that actually separate birch from white poplar went unrequested.
+    The recommendation list is the knowledge author's priority statement. Decisive-feature
+    order only supplies bindings used to filter that list; it must never silently re-sort it.
+    A photograph bound only to features this subject has already resolved carries no
+    information left to gain, and asking for it anyway is what teaches people to ignore the
+    request. A white-barked trunk with ``bark.peeling`` already read off it was still being
+    asked for another bark macro, while the leaf characters that actually separate birch
+    from white poplar went unrequested.
 
     ``resolved`` is a set of feature paths — full-trust positive observations only, so a
     partial or detached reading of a discriminator still counts as worth re-photographing.
     A photograph bound to both a resolved and an unresolved discriminator stays: it has
     something left to answer.
     """
-    unresolved: list[str] = []
-    redundant: set[str] = set()
+    bindings: dict[str, set[str]] = {}
     for card in cards:
         for difference in card.decisive_differences:
             if difference.photo is None or len(set(difference.separates) & taxa) < 2:
                 continue
-            if difference.feature in resolved:
-                redundant.add(difference.photo)
-            elif difference.photo not in unresolved:
-                unresolved.append(difference.photo)
-    return (
-        *unresolved,
-        *(
-            photo
-            for photo in recommended_photos(cards)
-            if photo not in unresolved and photo not in redundant
-        ),
+            bindings.setdefault(difference.photo, set()).add(difference.feature)
+    return drop_resolved_photos(
+        recommended_photos(cards),
+        {photo: frozenset(features) for photo, features in bindings.items()},
+        resolved,
     )
 
 

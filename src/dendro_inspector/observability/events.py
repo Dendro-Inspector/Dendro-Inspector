@@ -16,7 +16,7 @@ from pydantic import Field
 from dendro_inspector.schemas.base import Contract, Identifier, ShortText
 from dendro_inspector.schemas.taxon import Confidence, Resolution
 
-GRAPH_VERSION = "0.5.0"
+GRAPH_VERSION = "0.6.0"
 
 
 class NodeStatus(StrEnum):
@@ -86,6 +86,20 @@ class RunTrace(Contract):
 
     case_id: str = Field(max_length=120)
     graph_version: str = GRAPH_VERSION
+    code_commit_sha: str | None = Field(
+        default=None,
+        min_length=40,
+        max_length=64,
+        pattern=r"^[0-9a-f]+$",
+        description="Immutable VCS revision, when the runtime can discover one.",
+    )
+    code_dirty: bool | None = Field(
+        default=None,
+        description=(
+            "Whether tracked or untracked repository files differed from code_commit_sha "
+            "when the run began; None means VCS identity was unavailable."
+        ),
+    )
     domain_prompt: PromptMetadata | None = None
     providers: dict[str, str] = Field(
         default_factory=dict,

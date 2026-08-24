@@ -7,6 +7,7 @@ A recorder accumulates events during a run and freezes them into an immutable
 from __future__ import annotations
 
 import json
+import subprocess
 import time
 from datetime import UTC, datetime
 from pathlib import Path
@@ -31,8 +32,9 @@ if TYPE_CHECKING:
 class TraceRecorder:
     """Mutable during a run, immutable afterwards."""
 
-    def __init__(self, case_id: str) -> None:
+    def __init__(self, case_id: str, *, root: Path | None = None) -> None:
         self._case_id = case_id
+        self._code_commit_sha, self._code_dirty = _discover_code_revision(root or Path.cwd())
         self._events: list[NodeEvent] = []
         self._pending_calls: list[ProviderCallRecord] = []
         self._providers: dict[str, str] = {}
@@ -142,6 +144,8 @@ class TraceRecorder:
         return RunTrace(
             case_id=self._case_id,
             graph_version=GRAPH_VERSION,
+            code_commit_sha=self._code_commit_sha,
+            code_dirty=self._code_dirty,
             domain_prompt=self._prompt,
             providers=dict(self._providers),
             events=tuple(self._events),
@@ -156,6 +160,43 @@ class TraceRecorder:
             finished_at=finished_at,
             duration_ms=(time.perf_counter() - self._started_perf) * 1000.0,
         )
+
+
+def _discover_code_revision(root: Path) -> tuple[str | None, bool | None]:
+    """Return the repository commit and dirty state without making Git a runtime dependency.
+
+    Release versions identify the deterministic policy. The VCS revision distinguishes two
+    experiment builds made between releases, while ``dirty`` prevents an uncommitted patch
+    from borrowing the identity of its parent commit. Installed wheels and source archives
+    legitimately have no ``.git`` directory, so inability to discover either value is
+    represented explicitly rather than guessed.
+    """
+
+    def git(*arguments: str) -> subprocess.CompletedProcess[str] | None:
+        try:
+            return subprocess.run(
+                ("git", "-C", str(root), *arguments),
+                check=False,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                timeout=5,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return None
+
+    revision = git("rev-parse", "--verify", "HEAD")
+    if revision is None or revision.returncode != 0:
+        return None, None
+    commit_sha = revision.stdout.strip().lower()
+    if not (40 <= len(commit_sha) <= 64) or any(
+        character not in "0123456789abcdef" for character in commit_sha
+    ):
+        return None, None
+
+    status = git("status", "--porcelain=v1", "--untracked-files=normal")
+    dirty = None if status is None or status.returncode != 0 else bool(status.stdout.strip())
+    return commit_sha, dirty
 
 
 def write_trace(trace: RunTrace, directory: Path) -> Path:
