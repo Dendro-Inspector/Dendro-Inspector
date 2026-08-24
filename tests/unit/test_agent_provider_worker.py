@@ -104,6 +104,59 @@ def test_workers_sharing_account_have_one_capacity_lease(tmp_path: Path) -> None
     assert second is None
 
 
+def test_capacity_lease_released_between_checks_does_not_crash(tmp_path: Path, monkeypatch) -> None:
+    """Two workers in one capacity group race on the same lease file; the loser must poll on."""
+    worker = _load_script("worker")
+    (tmp_path / "capacity").mkdir()
+    lease = tmp_path / "capacity" / "claude-code.json"
+    lease.write_text("{}", encoding="utf-8")
+
+    real_stat = Path.stat
+    real_exists = Path.exists
+
+    def stale_exists(self: Path, **kwargs):
+        return True if self == lease else real_exists(self, **kwargs)
+
+    def vanishing_stat(self: Path, *args, **kwargs):
+        if self == lease:
+            raise FileNotFoundError(2, "lease released between checks")
+        return real_stat(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "exists", stale_exists)
+    monkeypatch.setattr(Path, "stat", vanishing_stat)
+
+    assert (
+        worker.claim_capacity(
+            state_dir=tmp_path,
+            capacity_group="claude-code",
+            worker_id="opus-judge",
+            claim_ttl_seconds=0.0,
+        )
+        is None
+    )
+
+
+def test_capacity_lease_pending_deletion_does_not_crash(tmp_path: Path, monkeypatch) -> None:
+    """Windows reports a delete-pending lease as EACCES; that is a lost race, not a fault."""
+    worker = _load_script("worker")
+    (tmp_path / "capacity").mkdir()
+
+    def denied_open(*args, **kwargs):
+        raise PermissionError(13, "delete pending")
+
+    monkeypatch.setattr(worker.os, "open", denied_open)
+
+    assert (
+        worker.claim_capacity(
+            state_dir=tmp_path,
+            capacity_group="claude-code",
+            worker_id="opus-judge",
+            claim_ttl_seconds=60,
+        )
+        is None
+    )
+
+
 def test_worker_prompt_carries_original_prompt_and_schema(tmp_path: Path) -> None:
     worker = _load_script("worker")
     _pending_request(tmp_path)

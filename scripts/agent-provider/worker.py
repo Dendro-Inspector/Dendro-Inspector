@@ -95,12 +95,24 @@ def atomic_write_text(path: Path, text: str) -> None:
 
 
 def _claim(path: Path, worker_id: str, ttl_seconds: float) -> bool:
-    if path.exists() and time.time() - path.stat().st_mtime > ttl_seconds:
+    # Read the age in one call: two workers sharing a capacity group race here, and an
+    # `exists()` that is true before the other worker releases the lease must not crash the
+    # poll loop with the stat that follows it.
+    try:
+        expired = time.time() - path.stat().st_mtime > ttl_seconds
+    except FileNotFoundError:
+        expired = False
+    if expired:
         with contextlib.suppress(FileNotFoundError):
             path.unlink()
     try:
         descriptor = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
     except FileExistsError:
+        return False
+    except PermissionError:
+        # Windows reports a delete-pending file as EACCES rather than EEXIST: the holder
+        # unlinked the lease microseconds ago and the name is not free yet. That is a lost
+        # race like any other, not a broken directory, so poll again instead of dying.
         return False
     with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
         json.dump(
