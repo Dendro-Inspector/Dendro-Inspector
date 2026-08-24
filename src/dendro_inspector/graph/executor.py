@@ -139,6 +139,7 @@ async def run_graph(
         final_confidence=decision.confidence if decision else None,
         pre_correction_decisions=state.pre_correction_decisions,
         final_decisions=state.decisions,
+        authority_checks=state.authority_checks,
     )
     logger.info(
         "graph_complete",

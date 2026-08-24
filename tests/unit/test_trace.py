@@ -4,7 +4,13 @@ from __future__ import annotations
 
 import dendro_inspector.observability.trace as trace_module
 from dendro_inspector.observability.trace import TraceRecorder
-from dendro_inspector.schemas.decisions import DecisionStatus, FinalDecision
+from dendro_inspector.schemas.decisions import (
+    AuthorityCheckStatus,
+    AuthorityCheckTrace,
+    AuthorityOutcome,
+    DecisionStatus,
+    FinalDecision,
+)
 from dendro_inspector.schemas.evidence import (
     AttachmentStatus,
     EvidencePacket,
@@ -59,6 +65,13 @@ def test_code_revision_and_dirty_state_are_frozen_into_trace(monkeypatch):
 
 
 def test_trace_records_attachment_counterfactual_and_correction_marginal_utility():
+    """Authority is recorded per subject, because a union of subjects describes no world.
+
+    The flattened form this replaced took its critical evidence ids from every sensitive
+    decision and its counterfactual taxon from the first one. On a two-subject case that
+    produced a record in which the evidence belonged to one tree and the alternate verdict to
+    another — internally consistent, and about nothing.
+    """
     recorder = TraceRecorder("authority-trace")
     recorder.record_retry()
     before = FinalDecision(
@@ -68,19 +81,38 @@ def test_trace_records_attachment_counterfactual_and_correction_marginal_utility
         resolution=Resolution.GENUS,
         confidence=Confidence.MEDIUM,
         status=DecisionStatus.PROBABLE,
-        evidence_authority_sensitive=True,
-        critical_evidence_ids=("leaf",),
-        authority_policy_applied=True,
-        counterfactual_status=DecisionStatus.INSUFFICIENT_EVIDENCE,
-        counterfactual_resolution=Resolution.UNKNOWN,
-        counterfactual_confidence=Confidence.LOW,
-        counterfactual_attachment=AttachmentStatus.UNKNOWN,
     )
     after = FinalDecision(subject_id="tree")
+    checks = (
+        AuthorityCheckTrace(
+            subject_id="tree",
+            status=AuthorityCheckStatus.SENSITIVE,
+            critical_evidence_ids=("leaf",),
+            risk_evidence_ids=("leaf",),
+            policy_applied=True,
+            actual_outcome=AuthorityOutcome(
+                status=DecisionStatus.INSUFFICIENT_EVIDENCE,
+                resolution=Resolution.UNKNOWN,
+                confidence=Confidence.LOW,
+            ),
+            counterfactual_outcome=AuthorityOutcome(
+                status=DecisionStatus.PROBABLE,
+                taxon="tilia",
+                resolution=Resolution.GENUS,
+                confidence=Confidence.MEDIUM,
+            ),
+            counterfactual_attachment=AttachmentStatus.CONFIRMED_ATTACHED,
+        ),
+        AuthorityCheckTrace(
+            subject_id="neighbour",
+            status=AuthorityCheckStatus.NOT_TESTABLE,
+        ),
+    )
 
     trace = recorder.build(
         pre_correction_decisions=(before,),
         final_decisions=(after,),
+        authority_checks=checks,
     )
 
     assert trace.graph_retry_count == 1
@@ -90,10 +122,14 @@ def test_trace_records_attachment_counterfactual_and_correction_marginal_utility
     assert trace.correction_changed_resolution is True
     assert trace.correction_changed_confidence is True
     assert trace.evidence_authority_sensitive is True
-    assert trace.critical_evidence_ids == ("leaf",)
-    assert trace.authority_policy_applied is True
-    assert trace.counterfactual_status is DecisionStatus.INSUFFICIENT_EVIDENCE
-    assert trace.counterfactual_attachment is AttachmentStatus.UNKNOWN
+    assert tuple(check.subject_id for check in trace.authority_checks) == ("tree", "neighbour")
+    sensitive = trace.authority_checks[0]
+    assert sensitive.risk_evidence_ids == ("leaf",)
+    assert sensitive.policy_applied is True
+    assert sensitive.counterfactual_outcome is not None
+    assert sensitive.counterfactual_outcome.taxon == "tilia"
+    # A subject with nothing to test is not reported as a check that came back clean.
+    assert trace.authority_checks[1].status is AuthorityCheckStatus.NOT_TESTABLE
 
 
 def test_trace_reports_a_retry_that_did_not_change_the_outcome():

@@ -14,8 +14,7 @@ from enum import StrEnum
 from pydantic import Field
 
 from dendro_inspector.schemas.base import Contract, Identifier, ShortText
-from dendro_inspector.schemas.decisions import DecisionStatus
-from dendro_inspector.schemas.evidence import AttachmentStatus
+from dendro_inspector.schemas.decisions import AuthorityCheckTrace
 from dendro_inspector.schemas.taxon import Confidence, Resolution
 
 GRAPH_VERSION = "0.7.0"
@@ -120,14 +119,18 @@ class RunTrace(Contract):
     correction_changed_taxon: bool | None = None
     correction_changed_resolution: bool | None = None
     correction_changed_confidence: bool | None = None
-    evidence_authority_sensitive: bool = False
-    critical_evidence_ids: tuple[Identifier, ...] = ()
-    authority_policy_applied: bool = False
-    counterfactual_status: DecisionStatus | None = None
-    counterfactual_taxon: Identifier | None = None
-    counterfactual_resolution: Resolution | None = None
-    counterfactual_confidence: Confidence | None = None
-    counterfactual_attachment: AttachmentStatus | None = None
+    authority_checks: tuple[AuthorityCheckTrace, ...] = Field(
+        default=(),
+        description=(
+            "One attachment-authority record per subject. A run with two subjects has two "
+            "records; flattening them produced critical evidence ids from one subject "
+            "beside a counterfactual taxon from another, describing no world that existed."
+        ),
+    )
+    evidence_authority_sensitive: bool = Field(
+        default=False,
+        description="Convenience aggregate: any subject's check came back sensitive.",
+    )
     escalation_triggered: bool = False
     escalation_reasons: tuple[str, ...] = ()
     arbiter_used: bool = False

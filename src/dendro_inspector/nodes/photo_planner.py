@@ -12,23 +12,15 @@ from __future__ import annotations
 
 from dendro_inspector.graph.executor import NodeContext
 from dendro_inspector.graph.state import GraphState
-from dendro_inspector.knowledge.evidence_hierarchy import (
-    BAND_INSUFFICIENT,
-    family_of,
-    requires_attachment,
-)
+from dendro_inspector.knowledge.evidence_authority import attachment_risk_for
+from dendro_inspector.knowledge.evidence_hierarchy import BAND_INSUFFICIENT, family_of
 from dendro_inspector.schemas.decisions import (
     DecisionStatus,
     FinalDecision,
     PhotoRequest,
     UserClaimVerdict,
 )
-from dendro_inspector.schemas.evidence import (
-    AttachmentStatus,
-    Observation,
-    SubjectKind,
-    Visibility,
-)
+from dendro_inspector.schemas.evidence import Observation, SubjectKind
 from dendro_inspector.schemas.input import DeclaredObjectType
 
 NODE = "photo_planner"
@@ -69,7 +61,7 @@ _DEFAULT_REQUEST = (
     "single photograph for most identifications.",
 )
 
-_DIRECT_DETACHABLE_TYPES: frozenset[DeclaredObjectType] = frozenset(
+DIRECT_DETACHABLE_TYPES: frozenset[DeclaredObjectType] = frozenset(
     {
         DeclaredObjectType.LEAF,
         DeclaredObjectType.NEEDLE,
@@ -159,44 +151,22 @@ def effective_object_type(
     return inferred.pop() if len(inferred) == 1 else declared
 
 
-def _attachment_uncertain_observations(
+def attachment_uncertain_observations(
     state: GraphState,
     subject_id: str,
     object_type: DeclaredObjectType,
 ) -> tuple[Observation, ...]:
-    """Detachable observations whose ownership is still unresolved for this subject."""
-    evidence = state.evidence
-    if evidence is None or object_type in _DIRECT_DETACHABLE_TYPES:
-        return ()
+    """Detachable observations whose ownership is still unresolved for this subject.
 
-    by_subject = {subject.subject_id: subject for subject in evidence.subjects}
-    target = by_subject.get(subject_id)
-    uncertain: list[Observation] = []
-    for observation in evidence.observations:
-        if not requires_attachment(observation.feature) or observation.visibility in (
-            Visibility.OBSCURED,
-            Visibility.NOT_VISIBLE,
-        ):
-            continue
-        if (
-            observation.subject_id == subject_id
-            and observation.attachment is AttachmentStatus.UNKNOWN
-        ):
-            uncertain.append(observation)
-            continue
-        source = by_subject.get(observation.subject_id)
-        if (
-            evidence.possible_multiple_taxa
-            and target is not None
-            and target.kind in (SubjectKind.STANDING_TREE, SubjectKind.LOG)
-            and source is not None
-            and source.parent_subject_id is None
-            and source.kind in (SubjectKind.BRANCH, SubjectKind.DETACHED_PART)
-            and observation.attachment
-            in (AttachmentStatus.UNKNOWN, AttachmentStatus.CONFIRMED_ATTACHED)
-        ):
-            uncertain.append(observation)
-    return tuple(uncertain)
+    The rules live in :mod:`dendro_inspector.knowledge.evidence_authority`, shared with the
+    attachment authority gate. One definition of ambiguity feeds both the decision to hold a
+    claim back and the photograph asked for in exchange; when they were two similar
+    if-trees, they were one edit away from disagreeing.
+    """
+    evidence = state.evidence
+    if evidence is None or object_type in DIRECT_DETACHABLE_TYPES:
+        return ()
+    return attachment_risk_for(evidence, subject_id).observations
 
 
 def attachment_request(
@@ -218,9 +188,9 @@ def attachment_request(
             if observation.observation_id in critical
         )
         if critical
-        else _attachment_uncertain_observations(state, subject_id, object_type)
+        else attachment_uncertain_observations(state, subject_id, object_type)
     )
-    if not observations or object_type in _DIRECT_DETACHABLE_TYPES:
+    if not observations or object_type in DIRECT_DETACHABLE_TYPES:
         return None
 
     families = tuple(dict.fromkeys(family_of(observation.feature) for observation in observations))

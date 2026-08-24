@@ -23,10 +23,11 @@ from dendro_inspector.observability.events import (
     RunTrace,
 )
 from dendro_inspector.observability.logging import get_logger
+from dendro_inspector.schemas.decisions import AuthorityCheckStatus
 from dendro_inspector.schemas.taxon import Confidence, Resolution
 
 if TYPE_CHECKING:
-    from dendro_inspector.schemas.decisions import FinalDecision
+    from dendro_inspector.schemas.decisions import AuthorityCheckTrace, FinalDecision
     from dendro_inspector.schemas.evidence import EvidencePacket
 
 
@@ -146,6 +147,7 @@ class TraceRecorder:
         final_confidence: Confidence | None = None,
         pre_correction_decisions: tuple[FinalDecision, ...] = (),
         final_decisions: tuple[FinalDecision, ...] = (),
+        authority_checks: tuple[AuthorityCheckTrace, ...] = (),
     ) -> RunTrace:
         finished_at = datetime.now(UTC)
         if self._pending_calls:
@@ -169,19 +171,6 @@ class TraceRecorder:
             for field in ("status", "selected_taxon", "resolution", "confidence")
         }
         changed_values = tuple(value for value in correction_changes.values() if value is not None)
-        authority_decisions = tuple(
-            decision
-            for decision in (*final_decisions, *pre_correction_decisions)
-            if decision.evidence_authority_sensitive
-        )
-        authority = authority_decisions[0] if authority_decisions else None
-        critical_ids = tuple(
-            dict.fromkeys(
-                evidence_id
-                for decision in authority_decisions
-                for evidence_id in decision.critical_evidence_ids
-            )
-        )
         return RunTrace(
             case_id=self._case_id,
             graph_version=GRAPH_VERSION,
@@ -198,16 +187,10 @@ class TraceRecorder:
             correction_changed_taxon=correction_changes["selected_taxon"],
             correction_changed_resolution=correction_changes["resolution"],
             correction_changed_confidence=correction_changes["confidence"],
-            evidence_authority_sensitive=authority is not None,
-            critical_evidence_ids=critical_ids,
-            authority_policy_applied=any(
-                decision.authority_policy_applied for decision in authority_decisions
+            authority_checks=authority_checks,
+            evidence_authority_sensitive=any(
+                check.status is AuthorityCheckStatus.SENSITIVE for check in authority_checks
             ),
-            counterfactual_status=(authority.counterfactual_status if authority else None),
-            counterfactual_taxon=(authority.counterfactual_taxon if authority else None),
-            counterfactual_resolution=(authority.counterfactual_resolution if authority else None),
-            counterfactual_confidence=(authority.counterfactual_confidence if authority else None),
-            counterfactual_attachment=(authority.counterfactual_attachment if authority else None),
             escalation_triggered=self._escalation_triggered,
             escalation_reasons=self._escalation_reasons,
             arbiter_used=self._arbiter_used,

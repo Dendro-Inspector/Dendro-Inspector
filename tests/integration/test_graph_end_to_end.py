@@ -26,6 +26,7 @@ class TestHappyPath:
             "evidence_extractor",
             "evidence_quality",
             "candidate_generator",
+            "attachment_authority_gate",
             "botanical_reviewer",
             "confusion_reviewer",
             "confidence_reviewer",

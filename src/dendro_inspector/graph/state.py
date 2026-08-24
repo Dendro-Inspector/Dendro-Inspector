@@ -14,7 +14,7 @@ from pydantic import Field
 
 from dendro_inspector.schemas.base import Contract, FeaturePath, Identifier, ShortText, ValueToken
 from dendro_inspector.schemas.candidates import CandidateSet
-from dendro_inspector.schemas.decisions import CaseResponse, FinalDecision
+from dendro_inspector.schemas.decisions import AuthorityCheckTrace, CaseResponse, FinalDecision
 from dendro_inspector.schemas.evidence import EvidencePacket
 from dendro_inspector.schemas.input import CaseInput
 from dendro_inspector.schemas.reviews import CorrectionDirective, ReviewResult, ReviewSynthesis
@@ -101,7 +101,17 @@ class GraphState(Contract):
             "evaluate an attachment counterfactual without making another model call."
         ),
     )
-    candidate_sets: tuple[CandidateSet, ...] = ()
+    candidate_sets: tuple[CandidateSet, ...] = Field(
+        default=(),
+        description=(
+            "The candidate world the rest of the graph is allowed to reason about. The "
+            "attachment authority gate narrows it before any reviewer sees it."
+        ),
+    )
+    authority_checks: tuple[AuthorityCheckTrace, ...] = Field(
+        default=(),
+        description="One deterministic attachment-authority record per subject.",
+    )
     reviews: tuple[ReviewResult, ...] = ()
     synthesis: ReviewSynthesis | None = None
     corrections: tuple[CorrectionDirective, ...] = ()
@@ -131,6 +141,12 @@ class GraphState(Contract):
         for candidate_set in self.candidate_sets:
             if candidate_set.subject_id == subject_id:
                 return candidate_set
+        return None
+
+    def authority_check_for(self, subject_id: str) -> AuthorityCheckTrace | None:
+        for check in self.authority_checks:
+            if check.subject_id == subject_id:
+                return check
         return None
 
     def proposed_candidates_for(self, subject_id: str) -> CandidateSet | None:

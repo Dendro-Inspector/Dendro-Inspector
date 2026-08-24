@@ -66,6 +66,9 @@ def next_step(current: NodeName, state: GraphState, config: GraphConfig) -> Node
             return NodeName.RESPONSE_COMPOSER
 
         case NodeName.CANDIDATE_GENERATOR:
+            return NodeName.ATTACHMENT_AUTHORITY_GATE
+
+        case NodeName.ATTACHMENT_AUTHORITY_GATE:
             return NodeName.BOTANICAL_REVIEWER
 
         case (
