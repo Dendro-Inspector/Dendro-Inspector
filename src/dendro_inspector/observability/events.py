@@ -14,9 +14,11 @@ from enum import StrEnum
 from pydantic import Field
 
 from dendro_inspector.schemas.base import Contract, Identifier, ShortText
+from dendro_inspector.schemas.decisions import DecisionStatus
+from dendro_inspector.schemas.evidence import AttachmentStatus
 from dendro_inspector.schemas.taxon import Confidence, Resolution
 
-GRAPH_VERSION = "0.6.0"
+GRAPH_VERSION = "0.7.0"
 
 
 class NodeStatus(StrEnum):
@@ -108,6 +110,24 @@ class RunTrace(Contract):
     events: tuple[NodeEvent, ...] = ()
     component_projections: tuple[ComponentProjection, ...] = ()
     retries: int = Field(default=0, ge=0)
+    graph_retry_count: int = Field(
+        default=0,
+        ge=0,
+        description="Graph correction-loop retries; distinct from provider validation attempts.",
+    )
+    correction_changed_outcome: bool | None = None
+    correction_changed_status: bool | None = None
+    correction_changed_taxon: bool | None = None
+    correction_changed_resolution: bool | None = None
+    correction_changed_confidence: bool | None = None
+    evidence_authority_sensitive: bool = False
+    critical_evidence_ids: tuple[Identifier, ...] = ()
+    authority_policy_applied: bool = False
+    counterfactual_status: DecisionStatus | None = None
+    counterfactual_taxon: Identifier | None = None
+    counterfactual_resolution: Resolution | None = None
+    counterfactual_confidence: Confidence | None = None
+    counterfactual_attachment: AttachmentStatus | None = None
     escalation_triggered: bool = False
     escalation_reasons: tuple[str, ...] = ()
     arbiter_used: bool = False

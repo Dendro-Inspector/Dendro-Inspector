@@ -38,6 +38,7 @@ from dendro_inspector.schemas.evidence import (
     SubjectKind,
     Visibility,
 )
+from dendro_inspector.schemas.input import DeclaredObjectType
 from dendro_inspector.schemas.reviews import Reviewer, ReviewResult, ReviewStatus, ReviewSynthesis
 from dendro_inspector.schemas.taxon import Confidence, Resolution
 
@@ -629,3 +630,167 @@ def test_multi_candidate_photo_reason_names_an_unresolved_discriminator(
     assert decision.best_next_photo.reason == (
         "Would resolve an unresolved discriminator among the leading candidates."
     )
+
+
+def _tilia_attachment_packet(
+    attachment: AttachmentStatus,
+    *,
+    independently_traced: bool = False,
+) -> EvidencePacket:
+    subjects = [Subject(subject_id="tree_1", kind=SubjectKind.STANDING_TREE)]
+    leaf_subject = "tree_1"
+    if independently_traced:
+        subjects.append(
+            Subject(
+                subject_id="leafy_branch_1",
+                kind=SubjectKind.BRANCH,
+                parent_subject_id="tree_1",
+            )
+        )
+        leaf_subject = "leafy_branch_1"
+    packet = EvidencePacket(
+        subjects=tuple(subjects),
+        observations=(
+            Observation(
+                observation_id="obs-leaf",
+                feature="leaf.shape",
+                value="cordate_serrate",
+                subject_id=leaf_subject,
+                source=ObservationSource.IMAGE,
+                image_id="img-1",
+                visibility=Visibility.CLEAR,
+                reliability=Reliability.HIGH,
+                attachment=attachment,
+            ),
+            Observation(
+                observation_id="obs-trunk",
+                feature="trunk.form",
+                value="straight",
+                subject_id="tree_1",
+                source=ObservationSource.IMAGE,
+                image_id="img-1",
+                visibility=Visibility.CLEAR,
+                reliability=Reliability.HIGH,
+            ),
+        ),
+    )
+    return packet.collapse_subject_components() if independently_traced else packet
+
+
+def _tilia_proposal() -> CandidateSet:
+    return CandidateSet(
+        subject_id="tree_1",
+        candidates=(
+            Candidate(
+                taxon="tilia",
+                resolution=Resolution.GENUS,
+                supporting_evidence_ids=("obs-leaf",),
+                score=SupportStrength.MODERATE,
+                rank=1,
+            ),
+        ),
+    )
+
+
+def _standing_tree_case(simple_case):
+    return simple_case.model_copy(update={"declared_object_type": DeclaredObjectType.STANDING_TREE})
+
+
+def test_attachment_counterfactual_keeps_a_single_stochastic_label_from_deciding_the_claim(
+    simple_case, node_context, knowledge
+):
+    """The same visible morphology cannot silently alternate between a claim and abstention."""
+    proposed = _tilia_proposal()
+    attached = _tilia_attachment_packet(AttachmentStatus.CONFIRMED_ATTACHED)
+    admitted = validate_candidate_set(proposed, attached, knowledge)
+
+    assert admitted.leader is not None
+    assert admitted.leader.taxon == "tilia"
+
+    attached_state = GraphState(
+        case=_standing_tree_case(simple_case),
+        evidence=attached,
+        proposed_candidate_sets=(proposed,),
+        candidate_sets=(admitted,),
+    )
+    guarded = decide_subject(attached_state, node_context, admitted)
+
+    assert guarded.status is DecisionStatus.INSUFFICIENT_EVIDENCE
+    assert guarded.selected_taxon is None
+    assert guarded.evidence_authority_sensitive is True
+    assert guarded.critical_evidence_ids == ("obs-leaf",)
+    assert guarded.authority_policy_applied is True
+    assert guarded.counterfactual_status is DecisionStatus.INSUFFICIENT_EVIDENCE
+    assert guarded.counterfactual_attachment is AttachmentStatus.UNKNOWN
+    assert guarded.best_next_photo is not None
+    assert guarded.best_next_photo.target == "leaf_attachment_photo"
+
+
+def test_unknown_attachment_records_the_stronger_counterfactual_but_returns_abstention(
+    simple_case, node_context, knowledge
+):
+    """A conservative first pass still records that attachment is the verdict's hinge."""
+    proposed = _tilia_proposal()
+    unknown = _tilia_attachment_packet(AttachmentStatus.UNKNOWN)
+    rejected = validate_candidate_set(proposed, unknown, knowledge)
+    state = GraphState(
+        case=_standing_tree_case(simple_case),
+        evidence=unknown,
+        proposed_candidate_sets=(proposed,),
+        candidate_sets=(rejected,),
+    )
+
+    decision = decide_subject(state, node_context, rejected)
+
+    assert rejected.leader is None
+    assert decision.status is DecisionStatus.INSUFFICIENT_EVIDENCE
+    assert decision.selected_taxon is None
+    assert decision.evidence_authority_sensitive is True
+    assert decision.critical_evidence_ids == ("obs-leaf",)
+    assert decision.authority_policy_applied is True
+    assert decision.counterfactual_status is DecisionStatus.PROBABLE
+    assert decision.counterfactual_taxon == "tilia"
+    assert decision.counterfactual_resolution is Resolution.GENUS
+    assert decision.counterfactual_attachment is AttachmentStatus.CONFIRMED_ATTACHED
+    assert decision.best_next_photo is not None
+    assert decision.best_next_photo.target == "leaf_attachment_photo"
+
+
+def test_component_to_root_provenance_can_corroborate_critical_attached_evidence(
+    simple_case, node_context, knowledge
+):
+    """A visible branch-to-trunk chain is independent code-owned attachment provenance."""
+    proposed = _tilia_proposal()
+    evidence = _tilia_attachment_packet(
+        AttachmentStatus.CONFIRMED_ATTACHED,
+        independently_traced=True,
+    )
+    admitted = validate_candidate_set(proposed, evidence, knowledge)
+    state = GraphState(
+        case=_standing_tree_case(simple_case),
+        evidence=evidence,
+        proposed_candidate_sets=(proposed,),
+        candidate_sets=(admitted,),
+    )
+
+    decision = decide_subject(state, node_context, admitted)
+
+    assert decision.selected_taxon == "tilia"
+    assert decision.status is DecisionStatus.PROBABLE
+    assert decision.evidence_authority_sensitive is True
+    assert decision.authority_policy_applied is False
+    assert decision.counterfactual_attachment is AttachmentStatus.UNKNOWN
+
+
+def test_bark_only_decision_has_no_attachment_sensitivity_or_confidence_boost(
+    simple_case, node_context, knowledge
+):
+    evidence = _bark_only_packet()
+    state, validated = _betula_state(simple_case, evidence, knowledge)
+
+    decision = decide_subject(state, node_context, validated)
+
+    assert decision.evidence_authority_sensitive is False
+    assert decision.critical_evidence_ids == ()
+    assert decision.selected_taxon == "betula"
+    assert decision.confidence is Confidence.LOW

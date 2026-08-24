@@ -32,6 +32,24 @@
           "image_ids": [
             "img-1"
           ]
+        },
+        {
+          "subject_id": "foreground_shoot_1",
+          "kind": "branch",
+          "description": "Needle-bearing shoot visibly continuous with the foreground log.",
+          "image_ids": [
+            "img-1"
+          ],
+          "parent_subject_id": "foreground_log_1"
+        },
+        {
+          "subject_id": "background_shoot_1",
+          "kind": "branch",
+          "description": "Needle-bearing shoot visibly continuous with the background log.",
+          "image_ids": [
+            "img-1"
+          ],
+          "parent_subject_id": "background_log_1"
         }
       ],
       "observations": [
@@ -39,7 +57,7 @@
           "observation_id": "obs-1",
           "feature": "needles.fascicles",
           "value": "two",
-          "subject_id": "foreground_log_1",
+          "subject_id": "foreground_shoot_1",
           "source": "image",
           "visibility": "clear",
           "reliability": "high",
@@ -60,7 +78,7 @@
           "observation_id": "obs-3",
           "feature": "needles.attachment",
           "value": "single_on_woody_peg",
-          "subject_id": "background_log_1",
+          "subject_id": "background_shoot_1",
           "source": "image",
           "visibility": "partial",
           "reliability": "medium",
@@ -229,4 +247,3 @@
     }
   }
 }
-

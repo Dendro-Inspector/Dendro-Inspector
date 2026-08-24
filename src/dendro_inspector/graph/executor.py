@@ -137,6 +137,8 @@ async def run_graph(
     trace = ctx.recorder.build(
         final_resolution=decision.resolution if decision else None,
         final_confidence=decision.confidence if decision else None,
+        pre_correction_decisions=state.pre_correction_decisions,
+        final_decisions=state.decisions,
     )
     logger.info(
         "graph_complete",

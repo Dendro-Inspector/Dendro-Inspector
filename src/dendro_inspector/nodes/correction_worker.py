@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from dendro_inspector.graph.executor import NodeContext
 from dendro_inspector.graph.state import GraphState
+from dendro_inspector.nodes.final_decision import decide_subject
 from dendro_inspector.observability.logging import get_logger
 
 NODE = "correction_worker"
@@ -20,6 +21,9 @@ NODE = "correction_worker"
 async def run(state: GraphState, ctx: NodeContext) -> GraphState:
     synthesis = state.synthesis
     corrections = synthesis.required_corrections if synthesis else ()
+    baseline = tuple(
+        decide_subject(state, ctx, candidate_set) for candidate_set in state.candidate_sets
+    )
 
     ctx.recorder.record_retry()
     get_logger(NODE).info(
@@ -34,7 +38,9 @@ async def run(state: GraphState, ctx: NodeContext) -> GraphState:
     return state.evolve(
         retries=state.retries + 1,
         corrections=corrections,
+        pre_correction_decisions=state.pre_correction_decisions or baseline,
         # Everything derived from the rejected extraction is dropped on purpose.
+        proposed_candidate_sets=(),
         candidate_sets=(),
         reviews=(),
         synthesis=None,

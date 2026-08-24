@@ -10,8 +10,23 @@ get entries.
 
 ## [Unreleased]
 
+## [0.7.0] — 2026-08-24
+
+The package, graph, deterministic policy and public baseline move together to `0.7.0`
+because attachment authority can now change the returned scientific claim. Prompt bytes and
+model routing are unchanged.
+
 ### Fixed
 
+- Decision-critical detachable evidence is now tested counterfactually. If demoting one
+  uncorroborated model-authored `confirmed_attached` observation changes status, taxon,
+  resolution or confidence, the conservative outcome wins. The inverse, telemetry-only
+  counterfactual records when confirming an `unknown` observation cited by a model proposal
+  would change the verdict, without permitting it to strengthen the returned claim. A
+  deterministic component-to-root projection remains valid independent corroboration, and
+  direct photographs of detached organs remain scoped to the photographed object.
+- Next-photo planning now asks for a continuous attachment view before a morphology macro
+  when foliage or reproductive evidence ownership is unresolved or decision-critical.
 - Escalation traces now distinguish reviewer disagreement from accepted critical findings;
   legacy/custom synthesis that supplies only the former combined boolean remains actionable
   but is labelled with unknown provenance instead of inventing a disagreement. The gate's
@@ -23,6 +38,11 @@ get entries.
 
 ### Added
 
+- Run traces record evidence-authority sensitivity, critical evidence ids, the alternate
+  attachment state and outcome, correction-loop retry count, and whether correction changed
+  status, taxon, resolution or confidence. Model proposals are retained only as internal
+  graph state so both sides of the deterministic authority counterfactual can be evaluated
+  without another provider call.
 - Out-of-vocabulary evidence telemetry now separates intentionally weak colour/insufficient
   features from potential knowledge-card gaps, and distinguishes missing feature paths from
   unknown values on known paths.

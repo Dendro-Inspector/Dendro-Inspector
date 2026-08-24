@@ -2,8 +2,8 @@
 
 - **Status:** Current
 - **Owner:** Dendro Inspector maintainers
-- **Date:** 2026-08-23
-- **Last-verified:** 2026-08-23
+- **Date:** 2026-08-24
+- **Last-verified:** 2026-08-24
 
 ## The problem this shape solves
 
@@ -150,6 +150,22 @@ Only `confirmed_attached` evidence may support identification. The other states 
 packet, appear in the report, and can justify a finding or photo request, but project to
 context and cannot move the verdict.
 
+`confirmed_attached` is still a perception claim produced by the extractor. The final-decision
+engine therefore tests any detachable observation that is a hinge for the scientific outcome:
+it revalidates the proposed candidates with that observation demoted to `unknown` and compares
+taxon, status, resolution and confidence. It also records the opposite counterfactual when an
+otherwise matching model-proposed observation is currently `unknown`; that alternate outcome
+is telemetry only and can never strengthen the returned claim.
+
+When the outcome changes and the extractor supplied no independently normalized
+component-to-root chain, the conservative branch wins. A leaf on a branch that was visibly
+parented to the trunk and then folded into the root carries `source_component_id`; that
+code-owned projection corroborates attachment without banning useful foliage evidence as a
+class. The decision and run trace record the critical observation ids, the alternate outcome,
+the attachment state used for it and whether the authority policy changed the result.
+Acquisition follows the same priority: proving which tree owns potentially decisive foliage
+precedes a leaf-surface macro or another morphological discriminator.
+
 ### Candidate admission
 
 `knowledge/candidate_validation.py` is the shared boundary for primary candidates and
@@ -235,7 +251,7 @@ rather than degrading to a low-confidence guess.
 
 The dendrology prompt is an **opaque, user-managed artifact**, but it is not admitted alone.
 `prompts/versions.yaml` is a frozen compatibility manifest that binds schema `1`, deterministic
-policy revision `0.6.0`, the canonical domain path/hash, node-prompt root/revision, and the
+policy revision `0.7.0`, the canonical domain path/hash, node-prompt root/revision, and the
 exact node-prompt file set and hashes.
 
 `runner.build_context()` validates the complete bundle before constructing

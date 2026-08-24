@@ -24,6 +24,15 @@
           "image_ids": [
             "img-1"
           ]
+        },
+        {
+          "subject_id": "retained_branch_1",
+          "kind": "branch",
+          "description": "Retained conifer branch visibly continuous with the foreground log.",
+          "image_ids": [
+            "img-1"
+          ],
+          "parent_subject_id": "foreground_log_1"
         }
       ],
       "observations": [
@@ -31,7 +40,7 @@
           "observation_id": "obs-1",
           "feature": "needles.attachment",
           "value": "single_on_woody_peg",
-          "subject_id": "foreground_log_1",
+          "subject_id": "retained_branch_1",
           "source": "image",
           "visibility": "clear",
           "reliability": "high",
@@ -204,4 +213,3 @@
     }
   }
 }
-

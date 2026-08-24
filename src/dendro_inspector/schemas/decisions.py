@@ -12,6 +12,7 @@ from enum import StrEnum
 from pydantic import Field, model_validator
 
 from dendro_inspector.schemas.base import Contract, Identifier, ShortText, ValueToken
+from dendro_inspector.schemas.evidence import AttachmentStatus
 from dendro_inspector.schemas.taxon import Confidence, Resolution
 
 
@@ -89,6 +90,36 @@ class FinalDecision(Contract):
         max_length=16,
         description="Confidence on the domain prompt's X/100 scale, as a band never a point.",
     )
+    evidence_authority_sensitive: bool = Field(
+        default=False,
+        description=(
+            "Whether demoting decision-critical detachable evidence changes the scientific "
+            "outcome. This records a deterministic counterfactual, not a model opinion."
+        ),
+    )
+    critical_evidence_ids: tuple[Identifier, ...] = Field(
+        default=(),
+        description="Detachable observation ids whose authority materially changes the verdict.",
+    )
+    authority_policy_applied: bool = Field(
+        default=False,
+        description=(
+            "Whether insufficient attachment provenance made the conservative counterfactual "
+            "the returned outcome."
+        ),
+    )
+    counterfactual_status: DecisionStatus | None = None
+    counterfactual_taxon: Identifier | None = None
+    counterfactual_resolution: Resolution | None = None
+    counterfactual_confidence: Confidence | None = None
+    counterfactual_attachment: AttachmentStatus | None = Field(
+        default=None,
+        description=(
+            "Attachment state used for the alternate deterministic outcome. Unknown means "
+            "admitted evidence was demoted; confirmed_attached means untrusted evidence was "
+            "admitted only for the counterfactual."
+        ),
+    )
 
     @model_validator(mode="after")
     def _taxon_identity_matches_resolution(self) -> FinalDecision:
@@ -102,6 +133,27 @@ class FinalDecision(Contract):
             raise ValueError(msg)
         if self.resolution is not Resolution.UNKNOWN and not has_taxon:
             msg = "a non-unknown resolution requires a selected taxon identity"
+            raise ValueError(msg)
+        if self.evidence_authority_sensitive:
+            if (
+                not self.critical_evidence_ids
+                or self.counterfactual_status is None
+                or self.counterfactual_attachment is None
+            ):
+                msg = (
+                    "evidence-authority sensitivity requires critical evidence ids and a "
+                    "counterfactual outcome and attachment state"
+                )
+                raise ValueError(msg)
+        elif (
+            self.critical_evidence_ids
+            or self.authority_policy_applied
+            or self.counterfactual_attachment is not None
+        ):
+            msg = "authority metadata requires evidence_authority_sensitive=true"
+            raise ValueError(msg)
+        if self.authority_policy_applied and self.counterfactual_status is None:
+            msg = "an applied authority policy requires a counterfactual outcome"
             raise ValueError(msg)
         return self
 

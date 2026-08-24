@@ -15,6 +15,13 @@
           "kind": "log",
           "description": "A felled conifer log with flaking bark and one needle spray still attached at the upper edge.",
           "image_ids": ["img-1"]
+        },
+        {
+          "subject_id": "attached_shoot_1",
+          "kind": "branch",
+          "description": "Needle spray visibly continuous with the foreground log.",
+          "image_ids": ["img-1"],
+          "parent_subject_id": "foreground_log_1"
         }
       ],
       "observations": [
@@ -33,7 +40,7 @@
           "observation_id": "obs-fascicles",
           "feature": "needles.fascicles",
           "value": "two",
-          "subject_id": "foreground_log_1",
+          "subject_id": "attached_shoot_1",
           "source": "image",
           "visibility": "clear",
           "reliability": "medium",

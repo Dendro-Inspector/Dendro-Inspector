@@ -28,6 +28,7 @@ from dendro_inspector.graph.state import GraphState
 from dendro_inspector.knowledge.candidate_validation import (
     candidate_ranking_signature,
     candidate_support_tier,
+    validate_candidate_set,
 )
 from dendro_inspector.knowledge.comparison_cards import (
     drop_resolved_photos,
@@ -40,10 +41,16 @@ from dendro_inspector.knowledge.evidence_hierarchy import (
     confidence_band,
     confidence_ceiling,
     full_positive_observations_for,
+    requires_attachment,
     resolution_ceiling,
+    resolve_evidence_observations,
 )
 from dendro_inspector.knowledge.taxon_cards import card_value_vocabulary, match_card
-from dendro_inspector.nodes.photo_planner import choose_request, effective_object_type
+from dendro_inspector.nodes.photo_planner import (
+    attachment_request,
+    choose_request,
+    effective_object_type,
+)
 from dendro_inspector.schemas.candidates import Candidate, CandidateSet, SupportStrength
 from dendro_inspector.schemas.decisions import (
     DecisionStatus,
@@ -51,7 +58,7 @@ from dendro_inspector.schemas.decisions import (
     PhotoRequest,
     UserClaimVerdict,
 )
-from dendro_inspector.schemas.evidence import EvidencePacket
+from dendro_inspector.schemas.evidence import AttachmentStatus, EvidencePacket, Observation
 from dendro_inspector.schemas.input import DeclaredObjectType
 from dendro_inspector.schemas.reviews import (
     FindingCategory,
@@ -90,6 +97,17 @@ _DECLARED_FEATURE_FAMILY: dict[DeclaredObjectType, str] = {
     DeclaredObjectType.BARK: "bark",
     DeclaredObjectType.WOOD: "wood",
 }
+
+_DIRECT_DETACHABLE_TYPES: frozenset[DeclaredObjectType] = frozenset(
+    {
+        DeclaredObjectType.LEAF,
+        DeclaredObjectType.NEEDLE,
+        DeclaredObjectType.FRUIT,
+        DeclaredObjectType.CONE,
+        DeclaredObjectType.BRANCH,
+        DeclaredObjectType.SEED,
+    }
+)
 
 
 def _syntheses(state: GraphState) -> tuple[ReviewSynthesis, ...]:
@@ -509,6 +527,10 @@ def _next_photo(
             subject_id=candidate_set.subject_id,
         )
 
+    authority_first = attachment_request(state, candidate_set.subject_id)
+    if authority_first is not None:
+        return authority_first
+
     taxa = frozenset(candidate.taxon for candidate in candidate_set.ordered)
     candidate_cards = tuple(
         card for taxon in taxa if (card := ctx.knowledge.try_taxon(taxon)) is not None
@@ -571,15 +593,19 @@ def _unresolved(
     return tuple(dict.fromkeys(questions))[:8]
 
 
-def decide_subject(
-    state: GraphState, ctx: NodeContext, candidate_set: CandidateSet
+def _decide_subject_base(
+    state: GraphState,
+    ctx: NodeContext,
+    candidate_set: CandidateSet,
+    *,
+    already_reranked: bool = False,
 ) -> FinalDecision:
     evidence = state.evidence
     if evidence is None:  # pragma: no cover - routing guarantees this; loud if it ever breaks
         msg = "final decision reached without an evidence packet"
         raise RuntimeError(msg)
 
-    reranked = apply_reranking(state, candidate_set)
+    reranked = candidate_set if already_reranked else apply_reranking(state, candidate_set)
     leader = reranked.leader
     subject_id = reranked.subject_id
     if leader is None:
@@ -638,6 +664,322 @@ def decide_subject(
         user_claim_verdict=verdict,
         evidence_tier=int(tier),
         confidence_band=confidence_band(confidence, tier),
+    )
+
+
+def _outcome_signature(decision: FinalDecision) -> tuple[object, ...]:
+    """Fields whose change makes attachment authority material to the scientific verdict."""
+    return (
+        decision.selected_taxon,
+        decision.status,
+        decision.resolution,
+        decision.confidence,
+    )
+
+
+def _detachable_support_observations(
+    evidence: EvidencePacket,
+    candidate: Candidate,
+    subject_id: str,
+) -> tuple[Observation, ...]:
+    found: list[Observation] = []
+    seen: set[str] = set()
+    for evidence_id in candidate.supporting_evidence_ids:
+        for observation in resolve_evidence_observations(evidence, evidence_id, subject_id):
+            if (
+                observation.observation_id not in seen
+                and requires_attachment(observation.feature)
+                and observation.attachment is AttachmentStatus.CONFIRMED_ATTACHED
+            ):
+                seen.add(observation.observation_id)
+                found.append(observation)
+    return tuple(found)
+
+
+def _demote_attachment(
+    evidence: EvidencePacket,
+    evidence_ids: frozenset[str],
+) -> EvidencePacket:
+    observations = tuple(
+        observation.model_copy(update={"attachment": AttachmentStatus.UNKNOWN})
+        if observation.observation_id in evidence_ids
+        else observation
+        for observation in evidence.observations
+    )
+    return evidence.model_copy(update={"observations": observations})
+
+
+def _promote_attachment(
+    evidence: EvidencePacket,
+    evidence_ids: frozenset[str],
+) -> EvidencePacket:
+    observations = tuple(
+        observation.model_copy(update={"attachment": AttachmentStatus.CONFIRMED_ATTACHED})
+        if observation.observation_id in evidence_ids
+        else observation
+        for observation in evidence.observations
+    )
+    return evidence.model_copy(update={"observations": observations})
+
+
+def _counterfactual_decision(
+    state: GraphState,
+    ctx: NodeContext,
+    candidate_set: CandidateSet,
+    evidence_ids: frozenset[str],
+) -> FinalDecision:
+    evidence = state.evidence
+    if evidence is None:  # pragma: no cover - caller already proves this
+        msg = "attachment counterfactual reached without evidence"
+        raise RuntimeError(msg)
+    counterfactual_evidence = _demote_attachment(evidence, evidence_ids)
+    counterfactual_candidates = validate_candidate_set(
+        candidate_set,
+        counterfactual_evidence,
+        ctx.knowledge,
+    )
+    counterfactual_state = state.evolve(evidence=counterfactual_evidence)
+    return _decide_subject_base(
+        counterfactual_state,
+        ctx,
+        counterfactual_candidates,
+        already_reranked=True,
+    )
+
+
+def _authority_metadata(
+    counterfactual: FinalDecision,
+    critical_ids: tuple[str, ...],
+    *,
+    policy_applied: bool,
+    counterfactual_attachment: AttachmentStatus,
+) -> dict[str, object]:
+    return {
+        "evidence_authority_sensitive": True,
+        "critical_evidence_ids": critical_ids,
+        "authority_policy_applied": policy_applied,
+        "counterfactual_status": counterfactual.status,
+        "counterfactual_taxon": counterfactual.selected_taxon,
+        "counterfactual_resolution": counterfactual.resolution,
+        "counterfactual_confidence": counterfactual.confidence,
+        "counterfactual_attachment": counterfactual_attachment,
+    }
+
+
+def _promoted_counterfactual(
+    state: GraphState,
+    ctx: NodeContext,
+    proposed: CandidateSet,
+    evidence_ids: frozenset[str],
+) -> FinalDecision:
+    evidence = state.evidence
+    if evidence is None:  # pragma: no cover - caller already proves this
+        msg = "attachment counterfactual reached without evidence"
+        raise RuntimeError(msg)
+    counterfactual_evidence = _promote_attachment(evidence, evidence_ids)
+    counterfactual_candidates = validate_candidate_set(
+        proposed,
+        counterfactual_evidence,
+        ctx.knowledge,
+    )
+    counterfactual_state = state.evolve(evidence=counterfactual_evidence)
+    return _decide_subject_base(
+        counterfactual_state,
+        ctx,
+        counterfactual_candidates,
+        already_reranked=True,
+    )
+
+
+def _unknown_proposed_support(
+    evidence: EvidencePacket,
+    proposed: CandidateSet,
+) -> tuple[Observation, ...]:
+    observations: list[Observation] = []
+    seen: set[str] = set()
+    for candidate in proposed.ordered:
+        for evidence_id in candidate.supporting_evidence_ids:
+            for observation in resolve_evidence_observations(
+                evidence,
+                evidence_id,
+                proposed.subject_id,
+            ):
+                if (
+                    observation.observation_id not in seen
+                    and requires_attachment(observation.feature)
+                    and observation.attachment is AttachmentStatus.UNKNOWN
+                ):
+                    seen.add(observation.observation_id)
+                    observations.append(observation)
+    return tuple(observations)
+
+
+def _prospective_authority_decision(
+    state: GraphState,
+    ctx: NodeContext,
+    normal: FinalDecision,
+    proposed: CandidateSet,
+) -> FinalDecision | None:
+    """Record when confirming currently untrusted evidence would change the verdict.
+
+    The counterfactual never becomes the returned claim. It makes the latent attachment
+    hinge observable even when the conservative branch was selected on the first pass.
+    """
+    evidence = state.evidence
+    if evidence is None:
+        return None
+    unknown = _unknown_proposed_support(evidence, proposed)
+    if not unknown:
+        return None
+
+    critical: list[Observation] = []
+    for observation in unknown:
+        alternate = _promoted_counterfactual(
+            state,
+            ctx,
+            proposed,
+            frozenset({observation.observation_id}),
+        )
+        if _outcome_signature(alternate) != _outcome_signature(normal):
+            critical.append(observation)
+    if not critical and len(unknown) > 1:
+        alternate = _promoted_counterfactual(
+            state,
+            ctx,
+            proposed,
+            frozenset(observation.observation_id for observation in unknown),
+        )
+        if _outcome_signature(alternate) != _outcome_signature(normal):
+            critical = list(unknown)
+    if not critical:
+        return None
+
+    critical_ids = tuple(observation.observation_id for observation in critical)
+    alternate = _promoted_counterfactual(state, ctx, proposed, frozenset(critical_ids))
+    authority_first = attachment_request(
+        state,
+        proposed.subject_id,
+        critical_evidence_ids=critical_ids,
+    )
+    return normal.model_copy(
+        update={
+            **_authority_metadata(
+                alternate,
+                critical_ids,
+                policy_applied=True,
+                counterfactual_attachment=AttachmentStatus.CONFIRMED_ATTACHED,
+            ),
+            "best_next_photo": authority_first or normal.best_next_photo,
+        }
+    )
+
+
+def decide_subject(
+    state: GraphState, ctx: NodeContext, candidate_set: CandidateSet
+) -> FinalDecision:
+    """Return the deterministic verdict after testing attachment authority counterfactually."""
+    evidence = state.evidence
+    normal = _decide_subject_base(state, ctx, candidate_set)
+    if (
+        evidence is None
+        or effective_object_type(state, candidate_set.subject_id) in _DIRECT_DETACHABLE_TYPES
+    ):
+        return normal
+
+    proposed = state.proposed_candidates_for(candidate_set.subject_id)
+    if proposed is None:
+        return normal
+    if normal.selected_taxon is None:
+        return _prospective_authority_decision(state, ctx, normal, proposed) or normal
+
+    reranked = apply_reranking(state, candidate_set)
+    leader = reranked.leader
+    if leader is None:
+        return normal
+    detachable = _detachable_support_observations(evidence, leader, reranked.subject_id)
+    if not detachable:
+        return _prospective_authority_decision(state, ctx, normal, proposed) or normal
+
+    critical: list[Observation] = []
+    for observation in detachable:
+        counterfactual = _counterfactual_decision(
+            state,
+            ctx,
+            reranked,
+            frozenset({observation.observation_id}),
+        )
+        if _outcome_signature(counterfactual) != _outcome_signature(normal):
+            critical.append(observation)
+
+    if not critical and len(detachable) > 1:
+        combined = _counterfactual_decision(
+            state,
+            ctx,
+            reranked,
+            frozenset(observation.observation_id for observation in detachable),
+        )
+        if _outcome_signature(combined) != _outcome_signature(normal):
+            critical = list(detachable)
+    if not critical:
+        return _prospective_authority_decision(state, ctx, normal, proposed) or normal
+
+    critical_ids = tuple(observation.observation_id for observation in critical)
+    uncorroborated = tuple(
+        observation for observation in critical if observation.source_component_id is None
+    )
+    all_counterfactual = _counterfactual_decision(
+        state,
+        ctx,
+        reranked,
+        frozenset(critical_ids),
+    )
+    uncorroborated_counterfactual = (
+        _counterfactual_decision(
+            state,
+            ctx,
+            reranked,
+            frozenset(observation.observation_id for observation in uncorroborated),
+        )
+        if uncorroborated
+        else None
+    )
+    if uncorroborated_counterfactual is not None and _outcome_signature(
+        uncorroborated_counterfactual
+    ) != _outcome_signature(normal):
+        policy_applied = True
+        counterfactual = uncorroborated_counterfactual
+    else:
+        policy_applied = False
+        counterfactual = all_counterfactual
+    metadata = _authority_metadata(
+        counterfactual,
+        critical_ids,
+        policy_applied=policy_applied,
+        counterfactual_attachment=AttachmentStatus.UNKNOWN,
+    )
+    if not policy_applied:
+        return normal.model_copy(update=metadata)
+
+    authority_first = attachment_request(
+        state,
+        reranked.subject_id,
+        critical_evidence_ids=tuple(observation.observation_id for observation in uncorroborated),
+    )
+    unresolved = tuple(
+        dict.fromkeys(
+            (
+                *counterfactual.unresolved_questions,
+                "The verdict changes when detachable evidence is demoted; confirm that "
+                "evidence is continuously attached to this subject before making a stronger claim.",
+            )
+        )
+    )
+    return counterfactual.model_copy(
+        update={
+            **metadata,
+            "unresolved_questions": unresolved,
+            "best_next_photo": authority_first or counterfactual.best_next_photo,
+        }
     )
 
 

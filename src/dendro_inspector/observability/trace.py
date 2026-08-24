@@ -26,7 +26,24 @@ from dendro_inspector.observability.logging import get_logger
 from dendro_inspector.schemas.taxon import Confidence, Resolution
 
 if TYPE_CHECKING:
+    from dendro_inspector.schemas.decisions import FinalDecision
     from dendro_inspector.schemas.evidence import EvidencePacket
+
+
+def _decision_field_changed(
+    before: tuple[FinalDecision, ...],
+    after: tuple[FinalDecision, ...],
+    field: str,
+) -> bool | None:
+    if not before:
+        return None
+    missing = object()
+    prior = {decision.subject_id: getattr(decision, field) for decision in before}
+    current = {decision.subject_id: getattr(decision, field) for decision in after}
+    return any(
+        prior.get(subject_id, missing) != current.get(subject_id, missing)
+        for subject_id in prior.keys() | current.keys()
+    )
 
 
 class TraceRecorder:
@@ -127,6 +144,8 @@ class TraceRecorder:
         *,
         final_resolution: Resolution | None = None,
         final_confidence: Confidence | None = None,
+        pre_correction_decisions: tuple[FinalDecision, ...] = (),
+        final_decisions: tuple[FinalDecision, ...] = (),
     ) -> RunTrace:
         finished_at = datetime.now(UTC)
         if self._pending_calls:
@@ -141,6 +160,28 @@ class TraceRecorder:
                     "count": len(self._pending_calls),
                 },
             )
+        correction_changes = {
+            field: _decision_field_changed(
+                pre_correction_decisions,
+                final_decisions,
+                field,
+            )
+            for field in ("status", "selected_taxon", "resolution", "confidence")
+        }
+        changed_values = tuple(value for value in correction_changes.values() if value is not None)
+        authority_decisions = tuple(
+            decision
+            for decision in (*final_decisions, *pre_correction_decisions)
+            if decision.evidence_authority_sensitive
+        )
+        authority = authority_decisions[0] if authority_decisions else None
+        critical_ids = tuple(
+            dict.fromkeys(
+                evidence_id
+                for decision in authority_decisions
+                for evidence_id in decision.critical_evidence_ids
+            )
+        )
         return RunTrace(
             case_id=self._case_id,
             graph_version=GRAPH_VERSION,
@@ -151,6 +192,22 @@ class TraceRecorder:
             events=tuple(self._events),
             component_projections=self._component_projections,
             retries=self._retries,
+            graph_retry_count=self._retries,
+            correction_changed_outcome=(any(changed_values) if changed_values else None),
+            correction_changed_status=correction_changes["status"],
+            correction_changed_taxon=correction_changes["selected_taxon"],
+            correction_changed_resolution=correction_changes["resolution"],
+            correction_changed_confidence=correction_changes["confidence"],
+            evidence_authority_sensitive=authority is not None,
+            critical_evidence_ids=critical_ids,
+            authority_policy_applied=any(
+                decision.authority_policy_applied for decision in authority_decisions
+            ),
+            counterfactual_status=(authority.counterfactual_status if authority else None),
+            counterfactual_taxon=(authority.counterfactual_taxon if authority else None),
+            counterfactual_resolution=(authority.counterfactual_resolution if authority else None),
+            counterfactual_confidence=(authority.counterfactual_confidence if authority else None),
+            counterfactual_attachment=(authority.counterfactual_attachment if authority else None),
             escalation_triggered=self._escalation_triggered,
             escalation_reasons=self._escalation_reasons,
             arbiter_used=self._arbiter_used,

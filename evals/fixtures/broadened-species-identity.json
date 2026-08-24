@@ -15,6 +15,13 @@
           "kind": "standing_tree",
           "description": "A maple crown with deeply dissected leaves on attached twigs.",
           "image_ids": ["img-1"]
+        },
+        {
+          "subject_id": "attached_twig",
+          "kind": "branch",
+          "description": "Leaf-bearing twig visibly continuous with the standing tree.",
+          "image_ids": ["img-1"],
+          "parent_subject_id": "standing_tree"
         }
       ],
       "observations": [
@@ -22,7 +29,7 @@
           "observation_id": "leaf-shape",
           "feature": "leaf.dissection",
           "value": "deeply_dissected_narrow_lobes",
-          "subject_id": "standing_tree",
+          "subject_id": "attached_twig",
           "source": "image",
           "visibility": "clear",
           "reliability": "high",
@@ -33,7 +40,7 @@
           "observation_id": "leaf-arrangement",
           "feature": "leaf.arrangement",
           "value": "opposite",
-          "subject_id": "standing_tree",
+          "subject_id": "attached_twig",
           "source": "image",
           "visibility": "clear",
           "reliability": "medium",
