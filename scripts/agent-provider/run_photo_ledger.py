@@ -281,6 +281,9 @@ def run_photo(
     configuration: str,
     port: int,
     timeout: float,
+    primary_route: str,
+    reviewer_route: str,
+    arbiter_route: str,
     lang: str,
     season: str,
     object_type: str,
@@ -298,9 +301,9 @@ def run_photo(
             "DENDRO_PRIMARY_PROVIDER": "anthropic",
             "DENDRO_REVIEWER_PROVIDER": "anthropic",
             "DENDRO_ARBITER_PROVIDER": "anthropic",
-            "DENDRO_PRIMARY_MODEL": "claude-main",
-            "DENDRO_REVIEWER_MODEL": "ox-factory",
-            "DENDRO_ARBITER_MODEL": "sol-judge",
+            "DENDRO_PRIMARY_MODEL": primary_route,
+            "DENDRO_REVIEWER_MODEL": reviewer_route,
+            "DENDRO_ARBITER_MODEL": arbiter_route,
             "DENDRO_STRUCTURED_RETRIES": "2",
             "ANTHROPIC_BASE_URL": f"http://127.0.0.1:{port}",
             "ANTHROPIC_API_KEY": "bridge-local-placeholder",
@@ -373,6 +376,21 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--port", type=int, default=8799)
     parser.add_argument("--limit", type=int, default=1)
     parser.add_argument("--timeout", type=float, default=7200.0)
+    parser.add_argument(
+        "--primary-route",
+        default="claude-main",
+        help="bridge route the planner, extractor, and candidate generator are sent to",
+    )
+    parser.add_argument(
+        "--reviewer-route",
+        default="ox-factory",
+        help="bridge route the three concurrent review nodes are sent to",
+    )
+    parser.add_argument(
+        "--arbiter-route",
+        default="sol-judge",
+        help="bridge route the escalation arbiter is sent to",
+    )
     parser.add_argument("--lang", default="en")
     parser.add_argument("--season", default="unknown")
     parser.add_argument("--object-type", default="unknown")
@@ -413,6 +431,9 @@ def main() -> int:
             configuration=args.configuration,
             port=args.port,
             timeout=args.timeout,
+            primary_route=args.primary_route,
+            reviewer_route=args.reviewer_route,
+            arbiter_route=args.arbiter_route,
             lang=args.lang,
             season=args.season,
             object_type=args.object_type,
