@@ -10,6 +10,37 @@ get entries.
 
 ## [Unreleased]
 
+## [0.8.0] — 2026-08-30
+
+The package, graph, deterministic policy and public baseline move together to `0.8.0` because
+what a reviewer model is allowed to cite is now part of the deterministic contract. Prompt
+bytes and model routing are unchanged, and every baseline metric and per-case decision is
+identical to `0.7.0`.
+
+### Changed
+
+- Reviewer model calls no longer receive the graph state. Orchestration builds an explicit
+  projection for each reviewer, and the returned result is bound by code to the evidence ids
+  that projection carried, so a model finding can cite only what the model was shown. A
+  provider that supplies its own scope has it overwritten. Case photographs and evidence
+  remain pass-through for now: candidate generation is under review and must not decide which
+  subjects a reviewer may inspect.
+- Rejected findings distinguish an invented evidence id from a cross-subject citation again.
+  Citations are resolved before they are scope-checked; the reverse order reported every
+  unknown id as out-of-scope and made the two failures indistinguishable in a trace.
+- A review result carrying no recorded scope is treated as unscoped rather than empty-scoped.
+  A rerank recommendation attached to such a result previously lost all of its supporting
+  evidence and was rejected with no reason code that explained why.
+- Withheld knowledge-card classes render as `null` rather than an empty list, so a model
+  cannot read "you were not shown any" as "none exist".
+
+### Added
+
+- Run traces record the bounded input each reviewer received: reviewer, evidence ids,
+  transmitted image ids, candidate subjects, taxon ids and knowledge-card selection. The
+  image ids are the photographs that actually reached the provider, not the ones the case
+  declared, so an unreadable file cannot appear in a trace as evidence a reviewer saw.
+
 ## [0.7.0] — 2026-08-24
 
 The package, graph, deterministic policy and public baseline move together to `0.7.0`

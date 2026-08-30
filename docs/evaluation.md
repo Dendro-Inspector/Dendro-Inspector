@@ -263,6 +263,12 @@ label can no longer silently switch a claim between a taxon and abstention. The 
 records correction-loop outcome deltas and asks for attachment provenance before finer
 morphology when evidence ownership is the unresolved hinge.
 
+The v0.8.0 result is frozen in `evals/baselines/public-v0.8.0.json`. Reviewer model calls now
+receive an explicit projection instead of the whole graph state, and each returned result is
+bound by code to the evidence ids that projection carried. Every metric and every per-case
+decision is identical to v0.7.0, which is the point: a boundary that changes what a reviewer
+may cite should not change what the system concludes on cases where reviewers cited honestly.
+
 Read the result honestly: nineteen hand-built cases over recorded fixtures can show that the
 machinery follows these contracts. It says nothing about identification accuracy on real
 photographs, which has not been measured.

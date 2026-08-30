@@ -233,7 +233,7 @@ dendro prompt-info      # prompt/manifest hashes, policy revision and compatibil
 ```
 
 The runtime validates `prompts/versions.yaml` before constructing any provider. That manifest
-pins policy revision `0.7.0`, the canonical domain prompt path and hash, the node-prompt root
+pins policy revision `0.8.0`, the canonical domain prompt path and hash, the node-prompt root
 and revision, and the exact node-prompt file set and hashes. Composition uses the cached
 validated bytes, so a prompt changed after validation cannot silently enter a request.
 
@@ -281,16 +281,16 @@ bundle.
 
 ## Status
 
-v0.7.0 — a public, provider-complete vertical slice, not a production system. The graph runs
+v0.8.0 — a public, provider-complete vertical slice, not a production system. The graph runs
 end to end through OpenAI, Anthropic, Gemini, NVIDIA, OpenRouter and Ollama adapters; live
 calls can be exercised without an SDK client through the agent-as-provider bridge.
 Image-aware caching, bounded image transport, reviewer-call attribution, evidence vocabulary
-diagnostics and prompt-policy compatibility are enforced in code. This release adds a
-deterministic counterfactual for decision-critical detachable evidence: an uncorroborated
-attachment label cannot silently decide whether the system claims a taxon or abstains, and
-attachment-proving photographs outrank finer morphology when ownership is the hinge. The
-public suite defines nineteen deterministic conformance
-cases, all passing with zero overconfidence against the frozen `public-v0.7.0` baseline — the
+diagnostics and prompt-policy compatibility are enforced in code. This release closes the
+reviewer input boundary: a reviewer model receives an explicit projection rather than the
+graph's whole state, its result is bound by code to the evidence that projection carried, and
+the trace records the photographs actually transmitted rather than the ones the case declared.
+The public suite defines nineteen deterministic conformance
+cases, all passing with zero overconfidence against the frozen `public-v0.8.0` baseline — the
 same decisions as v0.4.0, which is also a statement about that suite's reach. The knowledge
 pack remains 25 taxa of demonstration content that no dendrologist has reviewed — every card
 says so in its `provenance` block.

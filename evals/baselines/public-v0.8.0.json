@@ -1,0 +1,219 @@
+{
+  "baseline_version": "0.8.0",
+  "suite": "public",
+  "passed": 19,
+  "failed": 0,
+  "metrics": {
+    "cases": 19,
+    "top_1_accuracy": 1.0,
+    "top_3_recall": 1.0,
+    "correct_resolution_rate": 1.0,
+    "overconfidence_rate": 0.0,
+    "abstention_quality": 1.0,
+    "schema_validity": 1.0,
+    "escalation_precision": 1.0,
+    "escalation_recall": 1.0,
+    "unnecessary_arbiter_call_rate": 0.0,
+    "scored_top_1": 13,
+    "scored_top_3": 4,
+    "scored_resolution": 18,
+    "scored_abstention": 4,
+    "escalations_expected": 9,
+    "escalations_observed": 9,
+    "escalation_decisions_correct": 19
+  },
+  "cases": {
+    "apple-with-fruit-001": {
+      "selected_taxon": "malus",
+      "selected_taxon_display_name": "Malus (яблуня)",
+      "resolution": "genus",
+      "confidence": "high",
+      "evidence_tier": 7,
+      "admitted_rerank_finding_ids": [],
+      "arbiter_used": false,
+      "retries": 0
+    },
+    "arbiter-ranking-001": {
+      "selected_taxon": "picea",
+      "selected_taxon_display_name": "Picea (ялина, смерека)",
+      "resolution": "genus",
+      "confidence": "low",
+      "evidence_tier": 6,
+      "admitted_rerank_finding_ids": [
+        "arb-rerank-1"
+      ],
+      "arbiter_used": true,
+      "retries": 0
+    },
+    "broadened-species-identity-001": {
+      "selected_taxon": "acer",
+      "selected_taxon_display_name": "Acer (клен)",
+      "resolution": "genus",
+      "confidence": "low",
+      "evidence_tier": 6,
+      "admitted_rerank_finding_ids": [],
+      "arbiter_used": true,
+      "retries": 0
+    },
+    "candidate-sanitization-001": {
+      "selected_taxon": null,
+      "selected_taxon_display_name": null,
+      "resolution": "unknown",
+      "confidence": "low",
+      "evidence_tier": 1,
+      "admitted_rerank_finding_ids": [],
+      "arbiter_used": false,
+      "retries": 0
+    },
+    "colour-overweighting-001": {
+      "selected_taxon": "pinus",
+      "selected_taxon_display_name": "Pinus (сосна)",
+      "resolution": "genus",
+      "confidence": "low",
+      "evidence_tier": 3,
+      "admitted_rerank_finding_ids": [],
+      "arbiter_used": true,
+      "retries": 0
+    },
+    "conifer-log-001": {
+      "selected_taxon": "pinus",
+      "selected_taxon_display_name": "Pinus (сосна)",
+      "resolution": "genus",
+      "confidence": "medium",
+      "evidence_tier": 6,
+      "admitted_rerank_finding_ids": [],
+      "arbiter_used": false,
+      "retries": 0
+    },
+    "deterministic-preemption-001": {
+      "selected_taxon": "pinus",
+      "selected_taxon_display_name": "Pinus (сосна)",
+      "resolution": "genus",
+      "confidence": "low",
+      "evidence_tier": 3,
+      "admitted_rerank_finding_ids": [],
+      "arbiter_used": true,
+      "retries": 0
+    },
+    "edge-foliage-001": {
+      "selected_taxon": "fraxinus",
+      "selected_taxon_display_name": "Fraxinus (ясен)",
+      "resolution": "genus",
+      "confidence": "low",
+      "evidence_tier": 3,
+      "admitted_rerank_finding_ids": [],
+      "arbiter_used": true,
+      "retries": 0
+    },
+    "insufficient-bark-001": {
+      "selected_taxon": null,
+      "selected_taxon_display_name": null,
+      "resolution": "unknown",
+      "confidence": "low",
+      "evidence_tier": 3,
+      "admitted_rerank_finding_ids": [],
+      "arbiter_used": false,
+      "retries": 0
+    },
+    "light-trunk-birch-001": {
+      "selected_taxon": "betula",
+      "selected_taxon_display_name": "Betula (береза)",
+      "resolution": "genus",
+      "confidence": "low",
+      "evidence_tier": 3,
+      "admitted_rerank_finding_ids": [],
+      "arbiter_used": true,
+      "retries": 0
+    },
+    "log-pile-pinus-001": {
+      "selected_taxon": "pinus",
+      "selected_taxon_display_name": "Pinus (сосна)",
+      "resolution": "genus",
+      "confidence": "low",
+      "evidence_tier": 3,
+      "admitted_rerank_finding_ids": [],
+      "arbiter_used": false,
+      "retries": 0
+    },
+    "mixed-taxa-001": {
+      "selected_taxon": "pinus",
+      "selected_taxon_display_name": "Pinus (сосна)",
+      "resolution": "genus",
+      "confidence": "medium",
+      "evidence_tier": 6,
+      "admitted_rerank_finding_ids": [],
+      "arbiter_used": true,
+      "retries": 0
+    },
+    "near-miss-vocabulary-001": {
+      "selected_taxon": "pinus",
+      "selected_taxon_display_name": "Pinus (сосна)",
+      "resolution": "genus",
+      "confidence": "medium",
+      "evidence_tier": 6,
+      "admitted_rerank_finding_ids": [],
+      "arbiter_used": false,
+      "retries": 0
+    },
+    "partial-visibility-cap-001": {
+      "selected_taxon": "pinus",
+      "selected_taxon_display_name": "Pinus (сосна)",
+      "resolution": "genus",
+      "confidence": "low",
+      "evidence_tier": 3,
+      "admitted_rerank_finding_ids": [],
+      "arbiter_used": false,
+      "retries": 0
+    },
+    "rough-bark-oak-claim-001": {
+      "selected_taxon": "fraxinus",
+      "selected_taxon_display_name": "Fraxinus (ясен)",
+      "resolution": "genus",
+      "confidence": "low",
+      "evidence_tier": 3,
+      "admitted_rerank_finding_ids": [],
+      "arbiter_used": true,
+      "retries": 0
+    },
+    "rough-end-grain-anatomy-001": {
+      "selected_taxon": null,
+      "selected_taxon_display_name": null,
+      "resolution": "unknown",
+      "confidence": "low",
+      "evidence_tier": 1,
+      "admitted_rerank_finding_ids": [],
+      "arbiter_used": false,
+      "retries": 0
+    },
+    "split-face-colour-only-001": {
+      "selected_taxon": null,
+      "selected_taxon_display_name": null,
+      "resolution": "unknown",
+      "confidence": "low",
+      "evidence_tier": 3,
+      "admitted_rerank_finding_ids": [],
+      "arbiter_used": false,
+      "retries": 0
+    },
+    "unbound-rerank-001": {
+      "selected_taxon": "pinus",
+      "selected_taxon_display_name": "Pinus (сосна)",
+      "resolution": "genus",
+      "confidence": "low",
+      "evidence_tier": 3,
+      "admitted_rerank_finding_ids": [],
+      "arbiter_used": true,
+      "retries": 0
+    },
+    "unrelated-high-tier-001": {
+      "selected_taxon": "pinus",
+      "selected_taxon_display_name": "Pinus (сосна)",
+      "resolution": "genus",
+      "confidence": "low",
+      "evidence_tier": 3,
+      "admitted_rerank_finding_ids": [],
+      "arbiter_used": false,
+      "retries": 0
+    }
+  }
+}

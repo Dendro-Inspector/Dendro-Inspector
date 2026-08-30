@@ -17,7 +17,7 @@ from dendro_inspector.schemas.base import Contract, Identifier, ShortText
 from dendro_inspector.schemas.decisions import AuthorityCheckTrace
 from dendro_inspector.schemas.taxon import Confidence, Resolution
 
-GRAPH_VERSION = "0.7.0"
+GRAPH_VERSION = "0.8.0"
 
 
 class NodeStatus(StrEnum):
