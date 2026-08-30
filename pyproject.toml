@@ -49,6 +49,39 @@ Issues = "https://github.com/Dendro-Inspector/Dendro-Inspector/issues"
 [tool.hatch.build.targets.wheel]
 packages = ["src/dendro_inspector"]
 
+# An sdist is built from whatever is on disk, so without an explicit list a scratch file
+# in the working tree ships to a registry and cannot be unpublished. Name the inputs.
+[tool.hatch.build.targets.sdist]
+include = [
+  "src/",
+  "tests/",
+  "prompts/",
+  "knowledge/",
+  "scripts/",
+  "docs/",
+  "evals/public/",
+  "evals/fixtures/",
+  "evals/baselines/",
+  ".github/",
+  "AGENTS.md",
+  "CHANGELOG.md",
+  "CLAUDE.md",
+  "CODE_OF_CONDUCT.md",
+  "CONTRIBUTING.md",
+  "README.md",
+  "SECURITY.md",
+  "LICENSE",
+  "pyproject.toml",
+  ".editorconfig",
+  ".env.example",
+  ".gitattributes",
+]
+exclude = [
+  "docs/articles/**",
+  "docs/assets/**",
+  "evals/golden/**",
+]
+
 # prompts/, knowledge/ and evals/ are resolved relative to the working directory, not
 # bundled into the wheel. The domain prompt is user-managed and the knowledge cards are
 # meant to be edited; vendoring either into site-packages would make both harder to change

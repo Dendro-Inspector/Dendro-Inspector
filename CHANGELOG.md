@@ -10,6 +10,13 @@ get entries.
 
 ## [Unreleased]
 
+### Fixed
+
+- The source distribution now names its inputs instead of sweeping the working directory.
+  A local build previously packaged any untracked file sitting in the tree, so working
+  notes could reach a published artifact that cannot be unpublished. Build assets, draft
+  articles and the golden corpus are excluded, and `log.md` is ignored outright.
+
 ## [0.8.0] — 2026-08-30
 
 The package, graph, deterministic policy and public baseline move together to `0.8.0` because

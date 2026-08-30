@@ -25,6 +25,9 @@ htmlcov/
 # Evaluation baselines are tracked artifacts - they are the regression guard.
 !evals/baselines/**
 
+# Working notes. Never committed, and never swept into an sdist by a local build.
+/log.md
+
 # Local run output
 traces/
 runs/
