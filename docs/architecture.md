@@ -2,8 +2,8 @@
 
 - **Status:** Current
 - **Owner:** Dendro Inspector maintainers
-- **Date:** 2026-07-27
-- **Last-verified:** 2026-07-28
+- **Date:** 2026-08-30
+- **Last-verified:** 2026-08-30
 
 ## The problem this shape solves
 
@@ -121,6 +121,24 @@ Declared split firewood is reconciled after model extraction: deterministic plan
 is not automatically rejected — corroborated pile-level evidence may support a conservative
 result, without asserting that every separable piece is the same taxon.
 
+### Identity scopes and anatomical components
+
+`Subject` means one taxonomic identity scope, not every visually distinct surface. An attached
+branch, an upper/lower bark zone or a wood face may declare `parent_subject_id` when it is
+visibly part of the same organism or material sample. The evidence contract rejects unknown
+parents and cycles. Generated packets are then normalized once: component observations are
+re-scoped to the independent identity root and component records are removed before evidence
+quality, candidate admission or review runs. Each re-scoped observation retains the internal
+`source_component_id`; the run trace groups those observation ids into explicit
+`source_component_id -> identity_subject_id` projection records. The extractor cannot author
+that provenance field itself.
+
+This is a narrow projection, not relaxed evidence sharing. Neighbouring or crossing branches,
+separable firewood pieces and objects that merely share a pile never receive a parent. Their
+evidence remains isolated by the existing same-subject boundary. Detachable observations still
+need `confirmed_attached`; re-scoping an observation with `unknown` or `confirmed_detached`
+attachment cannot make it positive evidence.
+
 ### Attachment provenance
 
 A leaf at the edge of the frame may belong to the tree next door. `Observation.attachment`
@@ -131,6 +149,22 @@ question defaults to a hopeful yes in practice, so the contract will not let it 
 Only `confirmed_attached` evidence may support identification. The other states remain in the
 packet, appear in the report, and can justify a finding or photo request, but project to
 context and cannot move the verdict.
+
+`confirmed_attached` is still a perception claim produced by the extractor. The final-decision
+engine therefore tests any detachable observation that is a hinge for the scientific outcome:
+it revalidates the proposed candidates with that observation demoted to `unknown` and compares
+taxon, status, resolution and confidence. It also records the opposite counterfactual when an
+otherwise matching model-proposed observation is currently `unknown`; that alternate outcome
+is telemetry only and can never strengthen the returned claim.
+
+When the outcome changes and the extractor supplied no independently normalized
+component-to-root chain, the conservative branch wins. A leaf on a branch that was visibly
+parented to the trunk and then folded into the root carries `source_component_id`; that
+code-owned projection corroborates attachment without banning useful foliage evidence as a
+class. The decision and run trace record the critical observation ids, the alternate outcome,
+the attachment state used for it and whether the authority policy changed the result.
+Acquisition follows the same priority: proving which tree owns potentially decisive foliage
+precedes a leaf-surface macro or another morphological discriminator.
 
 ### Candidate admission
 
@@ -172,6 +206,16 @@ contradictions:
 required_for_high_confidence: [needles_or_cones]
 ```
 
+`required_for_high_confidence` is the one place a card carries an expression rather than a
+plain token. Entries are canonical feature paths or feature families joined by `_and_` and
+`_or_`, where `_and_` binds tighter: `leaf.underside_and_leaf.arrangement_or_fruit.type`
+means "both leaf characters, or the fruit". A selector matches a feature exactly or as a
+namespace prefix, and nothing rewrites underscores into dots — `bark_pattern` is not a
+spelling of `bark.pattern`, it is a feature that does not exist. Requirements are checked
+against full-trust positive observations only, so detached foliage never satisfies one.
+`knowledge.taxon_cards.requirement_selectors` is the grammar's only implementation, and a
+contract test fails on any selector no declared feature could ever match.
+
 Why data:
 
 * **it is inspectable.** A dendrologist can review `pinus.yaml` without reading Python.
@@ -189,8 +233,8 @@ Adding a genus is a YAML file plus an entry in a comparison card. It is not a co
 
 ## Model providers
 
-Nodes depend on the `ModelProvider` Protocol and on the logical roles `primary` and
-`arbiter`. No node imports a vendor SDK or names a commercial model. `providers/registry.py`
+Nodes depend on the `ModelProvider` Protocol and on the logical roles `primary`, `reviewer`
+and `arbiter`. No node imports a vendor SDK or names a commercial model. `providers/registry.py`
 is the only module that knows those exist, and vendor SDKs are imported lazily inside the
 branch that selects them — so the package installs, imports and tests cleanly without them.
 
@@ -207,7 +251,7 @@ rather than degrading to a low-confidence guess.
 
 The dendrology prompt is an **opaque, user-managed artifact**, but it is not admitted alone.
 `prompts/versions.yaml` is a frozen compatibility manifest that binds schema `1`, deterministic
-policy revision `0.5.0`, the canonical domain path/hash, node-prompt root/revision, and the
+policy revision `0.8.0`, the canonical domain path/hash, node-prompt root/revision, and the
 exact node-prompt file set and hashes.
 
 `runner.build_context()` validates the complete bundle before constructing
@@ -270,6 +314,15 @@ contradictions, colour dependence, unsupported resolution, invalid negative evid
 findings first. Material duplicate detection includes subject, action, impact, evidence ids and
 proposed taxon, so a model restatement cannot preempt a deterministic finding by sharing only
 its category.
+
+Reviewer model calls do not receive `GraphState`. Orchestration constructs a typed
+`ReviewProjection` containing the case, evidence, admitted candidates, knowledge-selection
+flags and (for arbitration) the deterministic proposed assessment. The initial boundary is
+intentionally pass-through for case photographs and evidence: candidate output is under
+review and therefore cannot decide which subjects or photographs the reviewers may inspect.
+Each returned `ReviewResult` is code-bound to the projection's evidence ids before synthesis.
+The projection reports the photographs that actually reach the provider, not the ones the case
+declares, so an unreadable file cannot appear in the trace as evidence a reviewer saw.
 
 Candidate changes cross an additional boundary: the exact `rerank_candidates` finding and its
 same-result recommendation are validated and stored together as `AdmittedRerank`. Final

@@ -51,6 +51,7 @@ flowchart TD
     EVIDENCE_QUALITY{Evidence quality gate}
     PHOTO_PLANNER[Additional photo planner]
     CANDIDATE_GENERATOR[Candidate generator]
+    ATTACHMENT_AUTHORITY_GATE[Attachment authority gate]
     BOTANICAL_REVIEWER[Botanical reviewer]
     CONFUSION_REVIEWER[Confusion reviewer]
     CONFIDENCE_REVIEWER[Confidence reviewer]
@@ -73,9 +74,10 @@ flowchart TD
     EVIDENCE_QUALITY -->|insufficient| PHOTO_PLANNER
     PHOTO_PLANNER --> RESPONSE_COMPOSER
     EVIDENCE_QUALITY -->|usable| CANDIDATE_GENERATOR
-    CANDIDATE_GENERATOR --> BOTANICAL_REVIEWER
-    CANDIDATE_GENERATOR --> CONFUSION_REVIEWER
-    CANDIDATE_GENERATOR --> CONFIDENCE_REVIEWER
+    CANDIDATE_GENERATOR --> ATTACHMENT_AUTHORITY_GATE
+    ATTACHMENT_AUTHORITY_GATE --> BOTANICAL_REVIEWER
+    ATTACHMENT_AUTHORITY_GATE --> CONFUSION_REVIEWER
+    ATTACHMENT_AUTHORITY_GATE --> CONFIDENCE_REVIEWER
     BOTANICAL_REVIEWER --> REVIEW_SYNTHESIZER
     CONFUSION_REVIEWER --> REVIEW_SYNTHESIZER
     CONFIDENCE_REVIEWER --> REVIEW_SYNTHESIZER
@@ -200,13 +202,14 @@ mode — the fixture supplies the evidence, and the missing file is recorded as 
 To use real models, copy `.env.example` to `.env` and set the provider and key:
 
 ```bash
-DENDRO_PRIMARY_PROVIDER=openai      # plan, extract, generate, review
-DENDRO_ARBITER_PROVIDER=anthropic   # independently challenge disputed results
+DENDRO_PRIMARY_PROVIDER=anthropic   # plan, extract, generate candidates
+DENDRO_REVIEWER_PROVIDER=openrouter # three concurrent first-pass reviews
+DENDRO_ARBITER_PROVIDER=openai      # independently challenge escalated results
 ```
 
 `.env` is read at startup; anything already exported in the environment wins over it.
 
-Either role can use `openai`, `anthropic`, `gemini`, `nvidia`, `openrouter` or `ollama`.
+Any role can use `openai`, `anthropic`, `gemini`, `nvidia`, `openrouter` or `ollama`.
 Every selected model must accept images. Hosted adapters read their own credential variable;
 OpenAI and Anthropic use optional SDK extras, Gemini and the OpenAI-compatible
 NVIDIA/OpenRouter adapters use direct HTTPS, and Ollama needs no key. Provider-specific
@@ -230,7 +233,7 @@ dendro prompt-info      # prompt/manifest hashes, policy revision and compatibil
 ```
 
 The runtime validates `prompts/versions.yaml` before constructing any provider. That manifest
-pins policy revision `0.5.0`, the canonical domain prompt path and hash, the node-prompt root
+pins policy revision `0.8.0`, the canonical domain prompt path and hash, the node-prompt root
 and revision, and the exact node-prompt file set and hashes. Composition uses the cached
 validated bytes, so a prompt changed after validation cannot silently enter a request.
 
@@ -278,15 +281,16 @@ bundle.
 
 ## Status
 
-v0.5.0 — a public, provider-complete vertical slice, not a production system. The graph runs
+v0.8.0 — a public, provider-complete vertical slice, not a production system. The graph runs
 end to end through OpenAI, Anthropic, Gemini, NVIDIA, OpenRouter and Ollama adapters; live
 calls can be exercised without an SDK client through the agent-as-provider bridge.
 Image-aware caching, bounded image transport, reviewer-call attribution, evidence vocabulary
-diagnostics and prompt-policy compatibility are enforced in code. This release corrects how
-reviewer findings compose into a verdict: a reviewer's recommended level now bounds its own
-findings in both directions, so agreeing reviewers can no longer drive a claim below the
-answer all of them recommended. The public suite defines nineteen deterministic conformance
-cases, all passing with zero overconfidence against the frozen `public-v0.5.0` baseline — the
+diagnostics and prompt-policy compatibility are enforced in code. This release closes the
+reviewer input boundary: a reviewer model receives an explicit projection rather than the
+graph's whole state, its result is bound by code to the evidence that projection carried, and
+the trace records the photographs actually transmitted rather than the ones the case declared.
+The public suite defines nineteen deterministic conformance
+cases, all passing with zero overconfidence against the frozen `public-v0.8.0` baseline — the
 same decisions as v0.4.0, which is also a statement about that suite's reach. The knowledge
 pack remains 25 taxa of demonstration content that no dendrologist has reviewed — every card
 says so in its `provenance` block.

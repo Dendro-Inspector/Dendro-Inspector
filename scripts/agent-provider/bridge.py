@@ -206,7 +206,12 @@ REJECTORS = {
 }
 
 
-def cache_key(prompt: str, properties: list[str], image_digests: list[str]) -> str:
+def cache_key(
+    prompt: str,
+    properties: list[str],
+    image_digests: list[str],
+    model_namespace: str,
+) -> str:
     """Identity of a model call, independent of the dialect that carried it.
 
     The prompt carries every upstream node's output, so an identical prompt means an identical
@@ -220,8 +225,14 @@ def cache_key(prompt: str, properties: list[str], image_digests: list[str]) -> s
     the prompt alone, the second run silently received answers authored while looking at the
     first run's picture — a wrong result that looked like a fast one, visible only by
     comparing the digest in the pending metadata against the file on disk.
+
+    ``model_namespace`` separates answer producers. A cached Ox-factory proposal must never
+    become a Sol or Opus proposal merely because both were asked the same question through
+    the same local wire dialect.
     """
     digest = hashlib.sha256()
+    digest.update(model_namespace.encode("utf-8"))
+    digest.update(b"\x00")
     digest.update(prompt.encode("utf-8"))
     digest.update(b"\x00")
     digest.update(",".join(properties).encode("utf-8"))
@@ -347,6 +358,7 @@ class Handler(BaseHTTPRequestHandler):
                 prompt,
                 stats["top_level_properties"],
                 [str(image["sha256"]) for image in saved],
+                model,
             )
             answer, source = self._answer(
                 request_id,
@@ -356,6 +368,7 @@ class Handler(BaseHTTPRequestHandler):
                 saved,
                 key,
                 wanted,
+                model,
                 stub_on_miss=fault in CORRUPTING_FAULTS,
             )
             if fault:
@@ -582,16 +595,29 @@ class Handler(BaseHTTPRequestHandler):
         images: list[dict[str, Any]],
         key: str,
         wanted: str,
+        requested_model: str,
         stub_on_miss: bool = False,
     ) -> tuple[str, str]:
         cached = self.state.cache / f"{key}.json"
         if cached.is_file():
             print(f"[bridge] req-{request_id:03d} {dialect} cache hit {key}", flush=True)
-            return cached.read_text(encoding="utf-8"), "cache"
+            return (
+                cached.read_text(encoding="utf-8"),
+                self._answer_source(cached.with_suffix(".meta.json"), "cache"),
+            )
         if stub_on_miss:
             # A corrupting fault is about to damage this text anyway.
             return "{}", "stub"
-        self._write_pending(request_id, dialect, prompt, schema, images, key, wanted)
+        self._write_pending(
+            request_id,
+            dialect,
+            prompt,
+            schema,
+            images,
+            key,
+            wanted,
+            requested_model,
+        )
         answer = self.state.answers / f"{key}.json"
         deadline = time.monotonic() + self.state.wait_timeout
         print(
@@ -601,8 +627,12 @@ class Handler(BaseHTTPRequestHandler):
             if answer.is_file():
                 text = answer.read_text(encoding="utf-8")
                 cached.write_text(text, encoding="utf-8")
+                answer_meta = answer.with_suffix(".meta.json")
+                cache_meta = cached.with_suffix(".meta.json")
+                if answer_meta.is_file():
+                    cache_meta.write_text(answer_meta.read_text(encoding="utf-8"), encoding="utf-8")
                 print(f"[bridge] req-{request_id:03d} answered ({len(text)} chars)", flush=True)
-                return text, "live"
+                return text, self._answer_source(answer_meta, "live")
             time.sleep(POLL_SECONDS)
         raise DialectRejectionError(
             504,
@@ -619,6 +649,7 @@ class Handler(BaseHTTPRequestHandler):
         images: list[dict[str, Any]],
         key: str,
         wanted: str,
+        requested_model: str,
     ) -> None:
         stem = f"req-{request_id:03d}"
         (self.state.pending / f"{stem}-prompt.txt").write_text(prompt, encoding="utf-8")
@@ -630,7 +661,9 @@ class Handler(BaseHTTPRequestHandler):
                 {
                     "request_id": request_id,
                     "dialect": dialect,
+                    "requested_model": requested_model,
                     "response_model": wanted,
+                    "cache_key": key,
                     "answer_file": str(self.state.answers / f"{key}.json"),
                     "images": images,
                     "prompt_chars": len(prompt),
@@ -639,6 +672,18 @@ class Handler(BaseHTTPRequestHandler):
             ),
             encoding="utf-8",
         )
+
+    @staticmethod
+    def _answer_source(meta_path: Path, prefix: str) -> str:
+        """Name the worker without making provenance availability a response dependency."""
+        if not meta_path.is_file():
+            return f"{prefix}:manual"
+        try:
+            metadata = json.loads(meta_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return f"{prefix}:unknown"
+        worker_id = metadata.get("worker_id")
+        return f"{prefix}:{worker_id}" if isinstance(worker_id, str) else f"{prefix}:unknown"
 
     def _log(
         self,

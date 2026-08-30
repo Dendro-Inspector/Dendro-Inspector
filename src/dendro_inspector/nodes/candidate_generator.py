@@ -56,10 +56,12 @@ async def run(state: GraphState, ctx: NodeContext) -> GraphState:
 
     logger = get_logger(NODE)
     usable = set(quality.usable_subject_ids)
+    proposed_sets: list[CandidateSet] = []
     final_sets: list[CandidateSet] = []
     for candidate_set in proposal.sets:
         if candidate_set.subject_id not in usable:
             continue
+        proposed_sets.append(candidate_set)
         validation = validate_candidate_set_with_report(candidate_set, evidence, ctx.knowledge)
         if validation.dropped_evidence_ids or validation.rejected_taxa:
             logger.warning(
@@ -73,4 +75,7 @@ async def run(state: GraphState, ctx: NodeContext) -> GraphState:
             )
         final_sets.append(validation.candidate_set)
 
-    return state.evolve(candidate_sets=tuple(final_sets))
+    return state.evolve(
+        proposed_candidate_sets=tuple(proposed_sets),
+        candidate_sets=tuple(final_sets),
+    )

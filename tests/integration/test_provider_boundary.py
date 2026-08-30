@@ -11,7 +11,7 @@ import urllib.request
 
 import pytest
 
-from dendro_inspector.config import Adapter, ProviderConfig
+from dendro_inspector.config import Adapter, AppConfig, ProviderConfig, Role, load_config
 from dendro_inspector.observability.trace import TraceRecorder
 from dendro_inspector.providers.base import (
     ProviderError,
@@ -141,8 +141,33 @@ class TestRegistry:
     def test_roles_resolve_to_the_configured_adapters(self, config, repo_root):
         registry = ProviderRegistry.from_config(config, root=repo_root)
         described = registry.describe()
-        assert set(described) == {"primary", "arbiter"}
+        assert set(described) == {"primary", "reviewer", "arbiter"}
         assert all(value.startswith("fake") for value in described.values())
+
+    def test_reviewer_falls_back_to_primary_for_released_two_role_configs(self):
+        primary = ProviderConfig(adapter=Adapter.FAKE, scenario="primary-pass")
+        config = AppConfig(
+            providers={
+                Role.PRIMARY: primary,
+                Role.ARBITER: ProviderConfig(adapter=Adapter.FAKE, scenario="primary-pass"),
+            }
+        )
+
+        assert config.provider_for(Role.REVIEWER) is primary
+
+    def test_environment_can_bind_all_three_roles_independently(self, monkeypatch):
+        monkeypatch.setenv("DENDRO_PRIMARY_PROVIDER", "anthropic")
+        monkeypatch.setenv("DENDRO_PRIMARY_MODEL", "claude-main")
+        monkeypatch.setenv("DENDRO_REVIEWER_PROVIDER", "openrouter")
+        monkeypatch.setenv("DENDRO_REVIEWER_MODEL", "ox-factory")
+        monkeypatch.setenv("DENDRO_ARBITER_PROVIDER", "openai")
+        monkeypatch.setenv("DENDRO_ARBITER_MODEL", "sol-judge")
+
+        config = load_config()
+
+        assert config.provider_for(Role.PRIMARY).model == "claude-main"
+        assert config.provider_for(Role.REVIEWER).model == "ox-factory"
+        assert config.provider_for(Role.ARBITER).model == "sol-judge"
 
     def test_describe_never_leaks_a_credential(self, config, repo_root):
         described = ProviderRegistry.from_config(config, root=repo_root).describe()

@@ -56,11 +56,12 @@ def load_cases(suite_dir: Path) -> tuple[EvalCase, ...]:
 
 
 def _scenario_config(base: AppConfig, scenario: str) -> AppConfig:
-    """Pin both roles to the fake adapter replaying this case's scenario."""
+    """Pin all model roles to the fake adapter replaying this case's scenario."""
     return base.model_copy(
         update={
             "providers": {
                 Role.PRIMARY: ProviderConfig(adapter=Adapter.FAKE, scenario=scenario),
+                Role.REVIEWER: ProviderConfig(adapter=Adapter.FAKE, scenario=scenario),
                 Role.ARBITER: ProviderConfig(adapter=Adapter.FAKE, scenario=scenario),
             }
         }

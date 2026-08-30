@@ -2,22 +2,37 @@
 
 - **Status:** Current
 - **Owner:** Dendro Inspector maintainers
-- **Date:** 2026-07-27
-- **Last-verified:** 2026-07-28
+- **Date:** 2026-08-24
+- **Last-verified:** 2026-08-24
 
-Two logical roles. Business logic names only these; which vendor and model satisfies each is
+Three logical roles. Business logic names only these; which vendor and model satisfies each is
 configuration.
 
 ## `primary`
 
-Plans, inspects the image, extracts evidence, generates candidates, performs the first-pass
-reviews, and (in a future revision) composes the answer. Needs strong multimodal grounding
-and reliable structured output.
+Plans, inspects the image, extracts evidence, and generates candidates. Needs strong
+multimodal grounding and reliable structured output.
 
 ```bash
-DENDRO_PRIMARY_PROVIDER=openai
-DENDRO_PRIMARY_MODEL=gpt-5.6
+DENDRO_PRIMARY_PROVIDER=anthropic
+DENDRO_PRIMARY_MODEL=claude-opus-5
 ```
+
+## `reviewer`
+
+Runs the botanical, confusion and confidence reviews concurrently. The three nodes are
+independent tasks over the same evidence, but a gateway may satisfy them from a pool of
+equivalent transports. Needs vision and reliable `ReviewResult` output.
+
+```bash
+DENDRO_REVIEWER_PROVIDER=openrouter
+DENDRO_REVIEWER_MODEL=stealth/ox-alpha
+```
+
+For compatibility, an `AppConfig` constructed with only the released `primary` and
+`arbiter` entries uses `primary` for review. `load_config()` always materializes all three
+roles; when reviewer environment variables are omitted, it inherits the primary adapter and
+model. The fallback lives only in `AppConfig.provider_for()`.
 
 ## `arbiter`
 
@@ -26,13 +41,28 @@ finds overlooked alternatives, assesses overconfidence, and recommends the highe
 defensible taxonomic level.
 
 ```bash
-DENDRO_ARBITER_PROVIDER=anthropic
-DENDRO_ARBITER_MODEL=claude-opus-5
+DENDRO_ARBITER_PROVIDER=openai
+DENDRO_ARBITER_MODEL=gpt-5.6-sol
 ```
 
 **Bind the arbiter to a different model family than the primary.** Two instances of the same
 model share failure modes, and a model that agrees with itself is not a second opinion — it
 is the same opinion, billed twice.
+
+## Ox factory profile
+
+The local agent-provider bridge exposes `claude-main` for the primary role, backed by the
+authenticated Claude Code `opus` alias. It exposes `ox-factory` for the reviewer role,
+backed by OpenCode Zen, direct OpenRouter and the authenticated Cline gateway. The three
+reviewer nodes arrive concurrently; each call is claimed by the first available Ox worker.
+Those workers are transport alternatives for one Ox model family, not three independent
+votes. Provider diversity improves availability; it does not create epistemic diversity.
+
+Escalation uses the separate `sol-judge` route backed by Codex `gpt-5.6-sol`. The graph sees
+the canonical `primary`, `reviewer` and `arbiter` roles, while deterministic synthesis and
+final decision still own every admissibility and claim-inflation decision. Setup and verified
+route details live in
+[agent-as-provider.md](agent-as-provider.md), the canonical bridge workflow.
 
 ## Adapter matrix
 
@@ -45,7 +75,7 @@ is the same opinion, billed twice.
 | `openrouter` | `OPENROUTER_API_KEY` | Direct HTTPS; OpenAI-compatible chat-completions dialect |
 | `ollama` | none | Local HTTP; Ollama schema format after compatibility translation |
 
-Both logical roles accept any adapter in this table. The selected model must support image
+All three logical roles accept any adapter in this table. The selected model must support image
 input; a text-only model cannot serve even a reviewer because every model call receives the
 case photographs. The `fake` adapter is reserved for deterministic tests and evaluations.
 
@@ -125,7 +155,7 @@ range `a-z`; a test asserts the rewritten pattern matches exactly the same strin
 
 ## Local models via Ollama
 
-For offline or credential-free runs, either role can be bound to a locally hosted model
+For offline or credential-free runs, any role can be bound to a locally hosted model
 through the `ollama` adapter. It needs no API key and no SDK — it talks to a running
 `ollama serve` over plain HTTP — but it is only as reliable as the local model's
 structured-output following, which is generally weaker than the hosted frontier models
@@ -215,7 +245,9 @@ escalation precision and recall.
 | `unresolved_contradiction` | yes | A critical finding survived adjudication |
 | `high_confidence_proposed` | no | Confidence is the claim worth double-checking |
 | `leading_candidates_close` | no | The ranking is doing work the evidence may not support |
-| `reviewers_disagree_or_critical_finding` | no | Internal review did not converge |
+| `reviewer_disagreement` | no | Reviewer recommendations or admitted reranks conflict |
+| `critical_finding` | no | An accepted reviewer finding has critical severity |
+| `escalation_provenance_unknown` | no | Compatibility fallback for an external/legacy synthesis that set only the combined flag |
 | `bark_colour_dependence` | no | The single most common overweighted feature |
 | `bark_only_input` | no | Structurally the weakest input class |
 | `forced_by_configuration` | yes | Explicit operator override |

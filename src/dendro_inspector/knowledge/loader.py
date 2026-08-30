@@ -79,14 +79,17 @@ class KnowledgeBase:
             )
         return self._comparisons[comparison_id]
 
+    def comparisons(self) -> tuple[ComparisonCard, ...]:
+        """Every comparison card, in id order.
+
+        Unlike taxon cards these are not loaded lazily by taxon, because selecting them
+        already requires reading each one's ``taxa``.
+        """
+        return tuple(self.comparison(path) for path in sorted(self.available_comparison_ids()))
+
     def comparisons_for(self, taxon_ids: frozenset[str]) -> tuple[ComparisonCard, ...]:
         """Return comparison cards that mention at least two of ``taxon_ids``."""
-        found: list[ComparisonCard] = []
-        for path in sorted(self.available_comparison_ids()):
-            card = self.comparison(path)
-            if len(set(card.taxa) & taxon_ids) >= 2:
-                found.append(card)
-        return tuple(found)
+        return tuple(card for card in self.comparisons() if len(set(card.taxa) & taxon_ids) >= 2)
 
     def region(self) -> RegionalPack | None:
         if self._region_id is None:

@@ -47,6 +47,22 @@ def test_unknown_declared_type_uses_extracted_wood_surface(simple_case, node_con
     assert request.target == "prepared_end_grain_macro"
 
 
+def test_bark_follow_up_is_neutral_without_a_taxon_candidate(simple_case, node_context):
+    case = simple_case.model_copy(update={"declared_object_type": DeclaredObjectType.UNKNOWN})
+    state = GraphState(
+        case=case,
+        evidence=EvidencePacket(
+            subjects=(Subject(subject_id="bark_1", kind=SubjectKind.BARK_SURFACE),)
+        ),
+    )
+
+    request = choose_request(state, node_context, "bark_1")
+
+    assert request.target == "attached_foliage_or_reproductive_structure"
+    assert "conifer" not in request.reason.lower()
+    assert "same subject" in request.reason.lower()
+
+
 def test_inferred_photo_type_is_scoped_to_each_subject(simple_case, node_context):
     case = simple_case.model_copy(update={"declared_object_type": DeclaredObjectType.UNKNOWN})
     state = GraphState(

@@ -38,6 +38,7 @@ eval-report-*.json
 # Private evaluation material (see docs/dataset-policy.md)
 evals/golden/**
 !evals/golden/README.md
+evals/100 top/**
 
 # Editors / OS
 .vscode/
@@ -50,4 +51,3 @@ examples/*.jpg
 examples/*.jpeg
 examples/*.png
 examples/*.webp
-

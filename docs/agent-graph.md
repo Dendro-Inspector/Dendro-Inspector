@@ -2,8 +2,8 @@
 
 - **Status:** Current
 - **Owner:** Dendro Inspector maintainers
-- **Date:** 2026-07-26
-- **Last-verified:** 2026-07-28
+- **Date:** 2026-08-23
+- **Last-verified:** 2026-08-23
 
 The graph is declared once in
 [`graph/definition.py`](../src/dendro_inspector/graph/definition.py). The diagram below,
@@ -20,6 +20,7 @@ flowchart TD
     EVIDENCE_QUALITY{Evidence quality gate}
     PHOTO_PLANNER[Additional photo planner]
     CANDIDATE_GENERATOR[Candidate generator]
+    ATTACHMENT_AUTHORITY_GATE[Attachment authority gate]
     BOTANICAL_REVIEWER[Botanical reviewer]
     CONFUSION_REVIEWER[Confusion reviewer]
     CONFIDENCE_REVIEWER[Confidence reviewer]
@@ -42,9 +43,10 @@ flowchart TD
     EVIDENCE_QUALITY -->|insufficient| PHOTO_PLANNER
     PHOTO_PLANNER --> RESPONSE_COMPOSER
     EVIDENCE_QUALITY -->|usable| CANDIDATE_GENERATOR
-    CANDIDATE_GENERATOR --> BOTANICAL_REVIEWER
-    CANDIDATE_GENERATOR --> CONFUSION_REVIEWER
-    CANDIDATE_GENERATOR --> CONFIDENCE_REVIEWER
+    CANDIDATE_GENERATOR --> ATTACHMENT_AUTHORITY_GATE
+    ATTACHMENT_AUTHORITY_GATE --> BOTANICAL_REVIEWER
+    ATTACHMENT_AUTHORITY_GATE --> CONFUSION_REVIEWER
+    ATTACHMENT_AUTHORITY_GATE --> CONFIDENCE_REVIEWER
     BOTANICAL_REVIEWER --> REVIEW_SYNTHESIZER
     CONFUSION_REVIEWER --> REVIEW_SYNTHESIZER
     CONFIDENCE_REVIEWER --> REVIEW_SYNTHESIZER
@@ -73,13 +75,13 @@ node with side effects.
 | --- | --- | --- | --- |
 | `input_guard` | no | Record instruction-like content, missing files, user pushback | `GuardReport` |
 | `planner` | primary | Decide which features to look for | `InspectionPlan` |
-| `evidence_extractor` | primary | Enumerate subjects, observations, inferences, limitations | `EvidencePacket` |
+| `evidence_extractor` | primary | Enumerate identity scopes/components and normalize components to their roots | `EvidencePacket` |
 | `evidence_quality` | no | Decide whether any claim is possible | `EvidenceQualityReport` |
 | `photo_planner` | no | Convert "not enough" into a specific photo request | `FinalDecision[]` |
 | `candidate_generator` | primary | Propose rankings; admit only known, same-subject, card-matched support | `CandidateSet[]` |
-| `botanical_reviewer` | primary | Botany; card-declared contradictions | `ReviewResult` |
-| `confusion_reviewer` | primary | Look-alikes, colour dependence, region assumptions | `ReviewResult` |
-| `confidence_reviewer` | primary | Calibration, earned resolution, invalid negatives | `ReviewResult` |
+| `botanical_reviewer` | reviewer | Botany; card-declared contradictions | `ReviewResult` |
+| `confusion_reviewer` | reviewer | Look-alikes, colour dependence, region assumptions | `ReviewResult` |
+| `confidence_reviewer` | reviewer | Calibration, earned resolution, invalid negatives | `ReviewResult` |
 | `review_synthesizer` | no | Deterministic-first finding admission; bind validated reranks | `ReviewSynthesis` |
 | `correction_worker` | no | Spend one retry, clear derived state | state |
 | `abstain` | no | Lower the claim, mark the run abstained | state |

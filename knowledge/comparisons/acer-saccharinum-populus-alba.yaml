@@ -13,11 +13,13 @@ shared_features:
 
 decisive_differences:
   - feature: leaf.arrangement
+    photo: leaf_attachment_photo
     separates:
       - acer_saccharinum
       - populus_alba
     note: Maple leaves are opposite; poplar leaves are alternate.
   - feature: leaf.underside
+    photo: leaf_underside_macro
     separates:
       - acer_saccharinum
       - populus_alba

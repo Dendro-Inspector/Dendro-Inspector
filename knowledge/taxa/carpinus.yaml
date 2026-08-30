@@ -40,7 +40,7 @@ common_confusions:
   - fagus
 
 required_for_high_confidence:
-  - leaf_or_trunk_form
+  - leaf_or_trunk.form
 
 follow_up_evidence:
   - trunk_full_height_photo

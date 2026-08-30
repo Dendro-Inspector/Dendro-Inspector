@@ -13,10 +13,11 @@ from enum import StrEnum
 
 from pydantic import Field
 
-from dendro_inspector.schemas.base import Contract, ShortText
+from dendro_inspector.schemas.base import Contract, Identifier, ShortText
+from dendro_inspector.schemas.decisions import AuthorityCheckTrace
 from dendro_inspector.schemas.taxon import Confidence, Resolution
 
-GRAPH_VERSION = "0.5.0"
+GRAPH_VERSION = "0.8.0"
 
 
 class NodeStatus(StrEnum):
@@ -46,6 +47,18 @@ class ProviderCallRecord(Contract):
     duration_ms: float | None = Field(default=None, ge=0)
 
 
+class ReviewerProjectionRecord(Contract):
+    """Audit-safe summary of the bounded input supplied to one reviewer."""
+
+    reviewer: str = Field(max_length=40)
+    evidence_ids: tuple[Identifier, ...] = ()
+    image_ids: tuple[Identifier, ...] = ()
+    candidate_subject_ids: tuple[Identifier, ...] = ()
+    taxon_ids: tuple[Identifier, ...] = ()
+    include_comparison_cards: bool = True
+    include_regional_pack: bool = True
+
+
 class NodeEvent(Contract):
     """One executed node."""
 
@@ -55,6 +68,15 @@ class NodeEvent(Contract):
     detail: ShortText | None = None
     duration_ms: float | None = Field(default=None, ge=0)
     provider_calls: tuple[ProviderCallRecord, ...] = ()
+    reviewer_projection: ReviewerProjectionRecord | None = None
+
+
+class ComponentProjection(Contract):
+    """Auditable component-to-identity mapping created by deterministic normalization."""
+
+    identity_subject_id: Identifier
+    source_component_id: Identifier
+    observation_ids: tuple[Identifier, ...] = Field(min_length=1)
 
 
 class PromptMetadata(Contract):
@@ -78,13 +100,50 @@ class RunTrace(Contract):
 
     case_id: str = Field(max_length=120)
     graph_version: str = GRAPH_VERSION
+    code_commit_sha: str | None = Field(
+        default=None,
+        min_length=40,
+        max_length=64,
+        pattern=r"^[0-9a-f]+$",
+        description="Immutable VCS revision, when the runtime can discover one.",
+    )
+    code_dirty: bool | None = Field(
+        default=None,
+        description=(
+            "Whether tracked or untracked repository files differed from code_commit_sha "
+            "when the run began; None means VCS identity was unavailable."
+        ),
+    )
     domain_prompt: PromptMetadata | None = None
     providers: dict[str, str] = Field(
         default_factory=dict,
         description="role -> 'adapter:model'. Never a credential.",
     )
     events: tuple[NodeEvent, ...] = ()
+    component_projections: tuple[ComponentProjection, ...] = ()
     retries: int = Field(default=0, ge=0)
+    graph_retry_count: int = Field(
+        default=0,
+        ge=0,
+        description="Graph correction-loop retries; distinct from provider validation attempts.",
+    )
+    correction_changed_outcome: bool | None = None
+    correction_changed_status: bool | None = None
+    correction_changed_taxon: bool | None = None
+    correction_changed_resolution: bool | None = None
+    correction_changed_confidence: bool | None = None
+    authority_checks: tuple[AuthorityCheckTrace, ...] = Field(
+        default=(),
+        description=(
+            "One attachment-authority record per subject. A run with two subjects has two "
+            "records; flattening them produced critical evidence ids from one subject "
+            "beside a counterfactual taxon from another, describing no world that existed."
+        ),
+    )
+    evidence_authority_sensitive: bool = Field(
+        default=False,
+        description="Convenience aggregate: any subject's check came back sensitive.",
+    )
     escalation_triggered: bool = False
     escalation_reasons: tuple[str, ...] = ()
     arbiter_used: bool = False

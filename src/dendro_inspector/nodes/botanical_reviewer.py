@@ -102,6 +102,6 @@ def card_contradiction_findings(state: GraphState, ctx: NodeContext) -> tuple[Re
 
 
 async def run(state: GraphState, ctx: NodeContext) -> GraphState:
-    result = await review_call(state, ctx, node=NODE, reviewer=Reviewer.BOTANICAL)
+    result = await review_call(ctx, node=NODE, reviewer=Reviewer.BOTANICAL)
     result = merge_findings(result, card_contradiction_findings(state, ctx))
     return state.evolve(reviews=(*state.reviews, result))

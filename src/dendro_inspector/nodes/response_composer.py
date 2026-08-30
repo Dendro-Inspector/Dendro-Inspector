@@ -90,6 +90,32 @@ _RESOLUTION_PHRASE: dict[str, dict[Resolution, str]] = {
     },
 }
 
+#: Internal reason codes this code emits. They are identifiers, not sentences, and a reader
+#: shown ``scale_absent`` under "what remains uncertain" is being handed a variable name.
+#: The extractor's own limitation vocabulary is open, so anything unmapped is de-coded
+#: rather than printed raw — a renderer boundary, not an exhaustive dictionary.
+_REASON_PHRASE: dict[str, dict[str, str]] = {
+    "uk": {
+        "possible_multiple_taxa": "у кадрі може бути більше ніж одна порода",
+        "scale_absent": "у кадрі немає масштабного орієнтира",
+        "scale_approximate": "масштаб у кадрі лише приблизний",
+    },
+    "en": {
+        "possible_multiple_taxa": "the frame may hold more than one taxon",
+        "scale_absent": "no scale reference in the frame",
+        "scale_approximate": "scale in the frame is only approximate",
+    },
+}
+
+
+def render_reason_code(token: str, locale: str) -> str:
+    """Render one internal reason code for a reader. Codes never reach the page raw."""
+    phrase = _REASON_PHRASE[locale].get(token)
+    if phrase is not None:
+        return phrase
+    return token.replace("_", " ").strip()
+
+
 _LABELS: dict[str, dict[str, str]] = {
     "uk": {
         "subject": "Об'єкт",
@@ -234,7 +260,7 @@ def build_result(
         ruled_out=ruled_out,
         strongest_contradiction=decision.strongest_contradiction,
         nearest_alternative=decision.nearest_alternative,
-        limitations=_limitations(decision, state),
+        limitations=_limitations(decision, state, locale),
         best_next_photo=decision.best_next_photo,
     )
 
@@ -257,16 +283,21 @@ def _supporting_evidence(
 def _limitations(
     decision: FinalDecision,
     state: GraphState | None,
+    locale: str,
 ) -> tuple[str, ...]:
-    """Combine decision questions with limitations already recorded in the evidence packet."""
+    """Combine decision questions with limitations already recorded in the evidence packet.
+
+    Two channels meet here: prose the graph already wrote, and reason codes. The codes go
+    through :func:`render_reason_code`, because this tuple is printed to a person.
+    """
     items = list(decision.unresolved_questions)
     if state is None or state.evidence is None:
         return tuple(items)
 
     evidence = state.evidence
-    items.extend(evidence.context_limitations)
+    items.extend(render_reason_code(token, locale) for token in evidence.context_limitations)
     if evidence.possible_multiple_taxa:
-        items.append("possible_multiple_taxa")
+        items.append(render_reason_code("possible_multiple_taxa", locale))
 
     subject = next(
         (item for item in evidence.subjects if item.subject_id == decision.subject_id),
@@ -281,7 +312,8 @@ def _limitations(
         if limitation.notes:
             items.append(limitation.notes)
         if limitation.scale is not ScaleQuality.EXACT:
-            items.append(f"{limitation.image_id}: scale_{limitation.scale.value}")
+            rendered = render_reason_code(f"scale_{limitation.scale.value}", locale)
+            items.append(f"{limitation.image_id}: {rendered}")
 
     return tuple(dict.fromkeys(items))[:8]
 

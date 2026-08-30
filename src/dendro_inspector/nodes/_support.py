@@ -11,12 +11,14 @@ import json
 
 from dendro_inspector.config import Role
 from dendro_inspector.graph.executor import NodeContext
+from dendro_inspector.graph.projections import ReviewProjectionError
 from dendro_inspector.graph.state import GraphState
 from dendro_inspector.knowledge.taxon_cards import card_value_vocabulary
 from dendro_inspector.providers.base import ImageInput, request_structured
 from dendro_inspector.schemas.candidates import CandidateSet
 from dendro_inspector.schemas.evidence import EvidencePacket
 from dendro_inspector.schemas.input import CaseInput
+from dendro_inspector.schemas.review_context import ProposedAssessment
 from dendro_inspector.schemas.reviews import (
     FindingOrigin,
     Reviewer,
@@ -35,10 +37,15 @@ SUPPORTED_LOCALES: frozenset[str] = frozenset({"uk", "en"})
 DEFAULT_LOCALE = "uk"
 
 
+def locale_of_case(case: CaseInput) -> str:
+    """Output locale for a case-shaped context."""
+    configured = case.metadata.get("locale", DEFAULT_LOCALE).lower()
+    return configured if configured in SUPPORTED_LOCALES else DEFAULT_LOCALE
+
+
 def locale_of(state: GraphState) -> str:
     """Output locale for this case. Ukrainian by default, per the domain prompt."""
-    configured = state.case.metadata.get("locale", DEFAULT_LOCALE).lower()
-    return configured if configured in SUPPORTED_LOCALES else DEFAULT_LOCALE
+    return locale_of_case(state.case)
 
 
 def image_inputs(
@@ -100,16 +107,29 @@ def candidates_context(candidate_sets: tuple[CandidateSet, ...]) -> str:
     return f"## Candidate sets (produced by this system)\n\n```json\n{body}\n```"
 
 
-def knowledge_context(ctx: NodeContext, taxon_ids: tuple[str, ...]) -> str:
+def knowledge_context(
+    ctx: NodeContext,
+    taxon_ids: tuple[str, ...],
+    *,
+    include_comparisons: bool = True,
+    include_region: bool = True,
+) -> str:
     """Render only the cards actually in play, never the whole catalogue."""
     cards = [card.model_dump(mode="json") for card in ctx.knowledge.taxa(_known(ctx, taxon_ids))]
-    comparisons = [
-        card.model_dump(mode="json") for card in ctx.knowledge.comparisons_for(frozenset(taxon_ids))
-    ]
-    region = ctx.knowledge.region()
+    comparisons = (
+        [
+            card.model_dump(mode="json")
+            for card in ctx.knowledge.comparisons_for(frozenset(taxon_ids))
+        ]
+        if include_comparisons
+        else []
+    )
+    region = ctx.knowledge.region() if include_region else None
+    # `null` where a class was withheld, `[]` where the catalogue simply had none. A model
+    # cannot tell "no comparison cards exist" from "you were not shown any" if both render [].
     payload = {
         "taxon_cards": cards,
-        "comparison_cards": comparisons,
+        "comparison_cards": comparisons if include_comparisons else None,
         "regional_pack": region.model_dump(mode="json") if region else None,
     }
     body = json.dumps(payload, indent=2, ensure_ascii=False)
@@ -151,44 +171,51 @@ def mark_model_findings(result: ReviewResult) -> ReviewResult:
 
 
 async def review_call(
-    state: GraphState,
     ctx: NodeContext,
     *,
     node: str,
     reviewer: Reviewer,
-    role: Role = Role.PRIMARY,
+    role: Role = Role.REVIEWER,
 ) -> ReviewResult:
-    """Run one reviewer against the current evidence and candidates.
-
-    All reviewers see the case, evidence, candidates, and relevant cards. The arbiter also
-    receives the deterministic pre-arbitration assessment its prompt asks it to challenge.
-    It never receives hidden reasoning from the primary model (none is ever stored).
-    """
-    evidence = state.evidence
-    if evidence is None:
-        return ReviewResult(reviewer=reviewer, status=ReviewStatus.PASS)
+    """Run one reviewer using only the projection supplied by orchestration."""
+    projection = ctx.review_projection
+    if projection is None:
+        msg = f"{node} called without a reviewer projection"
+        raise ReviewProjectionError(msg)
+    if projection.reviewer is not reviewer:
+        msg = (
+            f"{node} received {projection.reviewer.value!r} projection, expected {reviewer.value!r}"
+        )
+        raise ReviewProjectionError(msg)
 
     context_parts = [
-        case_context(state.case),
-        evidence_context(evidence),
-        candidates_context(state.candidate_sets),
-        knowledge_context(ctx, proposed_taxa(state.candidate_sets)),
+        case_context(projection.case),
+        evidence_context(projection.evidence),
+        candidates_context(projection.candidate_sets),
+        knowledge_context(
+            ctx,
+            projection.taxon_ids,
+            include_comparisons=projection.include_comparison_cards,
+            include_region=projection.include_regional_pack,
+        ),
     ]
-    if reviewer is Reviewer.ARBITER:
-        context_parts.append(proposed_assessment_context(state, ctx))
+    if projection.proposed_assessments:
+        context_parts.append(projected_assessment_context(projection.proposed_assessments))
     context = "\n\n".join(context_parts)
+    locale = locale_of_case(projection.case)
     result = await request_structured(
         provider=ctx.providers.get(role),
         role=role.value,
         node=node,
-        prompt=ctx.prompts.compose(node, context=context, locale=locale_of(state)),
-        images=case_image_inputs(state, ctx),
+        prompt=ctx.prompts.compose(node, context=context, locale=locale),
+        images=image_inputs(projection.case, max_edge_px=ctx.config.graph.image_max_edge_px),
         response_model=ReviewResult,
         recorder=ctx.recorder,
-        cache_prefix_chars=ctx.prompts.cacheable_prefix_chars(locale_of(state)),
+        cache_prefix_chars=ctx.prompts.cacheable_prefix_chars(locale),
         max_retries=ctx.config.provider_for(role).max_structured_retries,
     )
-    return mark_model_findings(result)
+    bounded = mark_model_findings(result)
+    return bounded.model_copy(update={"reviewed_evidence_ids": projection.evidence_ids})
 
 
 def merge_findings(result: ReviewResult, extra: tuple[ReviewFinding, ...]) -> ReviewResult:
@@ -206,36 +233,13 @@ def merge_findings(result: ReviewResult, extra: tuple[ReviewFinding, ...]) -> Re
     )
 
 
-def proposed_taxa(candidate_sets: tuple[CandidateSet, ...]) -> tuple[str, ...]:
-    """Every taxon mentioned across all candidate sets, order-stable."""
-    seen: list[str] = []
-    for candidate_set in candidate_sets:
-        for candidate in candidate_set.ordered:
-            if candidate.taxon not in seen:
-                seen.append(candidate.taxon)
-    return tuple(seen)
-
-
-def proposed_assessment_context(state: GraphState, ctx: NodeContext) -> str:
-    """Render the deterministic verdict that would stand if arbitration made no change."""
-    # Local import keeps the shared context module below the decision layer at import time.
-    from dendro_inspector.nodes.final_decision import decide_subject
-
-    decisions = tuple(
-        decide_subject(state, ctx, candidate_set) for candidate_set in state.candidate_sets
+def projected_assessment_context(assessments: tuple[ProposedAssessment, ...]) -> str:
+    """Render the deterministic pre-arbitration assessment from a typed projection."""
+    body = json.dumps(
+        [assessment.model_dump(mode="json") for assessment in assessments],
+        indent=2,
+        ensure_ascii=False,
     )
-    payload = [
-        {
-            "subject_id": decision.subject_id,
-            "selected_taxon": decision.selected_taxon,
-            "resolution": decision.resolution.value,
-            "confidence": decision.confidence.value,
-            "confidence_band": decision.confidence_band,
-            "status": decision.status.value,
-        }
-        for decision in decisions
-    ]
-    body = json.dumps(payload, indent=2, ensure_ascii=False)
     return (
         "## Proposed assessment (deterministic pre-arbitration result)\n\n"
         "This is the result that would stand if arbitration made no admissible change.\n\n"

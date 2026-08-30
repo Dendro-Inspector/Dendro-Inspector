@@ -128,6 +128,13 @@ class ReviewResult(Contract):
     recommended_resolution: Resolution | None = None
     recommended_confidence: Confidence | None = None
     subject_id: Identifier | None = None
+    reviewed_evidence_ids: tuple[Identifier, ...] | None = Field(
+        default=None,
+        description=(
+            "Code-owned evidence scope bound at the reviewer model boundary. Provider "
+            "values are ignored; model findings may cite only ids in this tuple."
+        ),
+    )
 
 
 class CorrectionDirective(Contract):
@@ -175,6 +182,10 @@ class ReviewSynthesis(Contract):
     confidence_delta: Confidence | None = None
     resolution_delta: Resolution | None = None
     retry_required: bool = False
+    reviewer_disagreement: bool = Field(
+        default=False,
+        description="Review recommendations or admitted reranks conflict materially.",
+    )
     escalation_recommended: bool = False
     unresolvable: bool = Field(
         default=False,

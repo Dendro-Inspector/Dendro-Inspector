@@ -12,6 +12,7 @@ from dendro_inspector.knowledge.candidate_validation import (
 from dendro_inspector.knowledge.evidence_hierarchy import EvidenceTier
 from dendro_inspector.schemas.candidates import Candidate, CandidateSet, SupportStrength
 from dendro_inspector.schemas.evidence import (
+    AttachmentStatus,
     EvidencePacket,
     Inference,
     Observation,
@@ -109,6 +110,57 @@ def test_matching_inference_support_is_admitted(knowledge):
     assert validated.leader is not None
     assert validated.leader.supporting_evidence_ids == ("i1",)
     assert candidate_support_tier(validated.leader, evidence, "log_1") is EvidenceTier.FOLIAGE
+
+
+def test_attached_component_support_is_admitted_for_its_identity_root(knowledge):
+    evidence = _packet(
+        _obs("leaf", "leaf.shape", "simple_lobed", subject_id="shoot_1"),
+        subjects=(
+            Subject(subject_id="tree_1", kind=SubjectKind.STANDING_TREE),
+            Subject(
+                subject_id="shoot_1",
+                kind=SubjectKind.BRANCH,
+                parent_subject_id="tree_1",
+            ),
+        ),
+    ).collapse_subject_components()
+    candidate_set = CandidateSet(
+        subject_id="tree_1", candidates=(_candidate("quercus", 1, "leaf"),)
+    )
+
+    validated = validate_candidate_set(candidate_set, evidence, knowledge)
+
+    assert validated.leader is not None
+    assert validated.leader.taxon == "quercus"
+    assert validated.leader.supporting_evidence_ids == ("leaf",)
+
+
+@pytest.mark.parametrize(
+    "attachment",
+    (AttachmentStatus.UNKNOWN, AttachmentStatus.CONFIRMED_DETACHED),
+)
+def test_non_attached_component_evidence_stays_context_only(knowledge, attachment):
+    leaf = _obs("leaf", "leaf.shape", "simple_lobed", subject_id="shoot_1").model_copy(
+        update={"attachment": attachment}
+    )
+    evidence = _packet(
+        leaf,
+        subjects=(
+            Subject(subject_id="tree_1", kind=SubjectKind.STANDING_TREE),
+            Subject(
+                subject_id="shoot_1",
+                kind=SubjectKind.BRANCH,
+                parent_subject_id="tree_1",
+            ),
+        ),
+    ).collapse_subject_components()
+    candidate_set = CandidateSet(
+        subject_id="tree_1", candidates=(_candidate("quercus", 1, "leaf"),)
+    )
+
+    validated = validate_candidate_set(candidate_set, evidence, knowledge)
+
+    assert validated.candidates == ()
 
 
 def test_partial_matching_support_is_admitted_at_a_capped_tier(knowledge):

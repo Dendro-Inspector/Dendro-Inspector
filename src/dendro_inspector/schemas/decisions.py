@@ -12,6 +12,7 @@ from enum import StrEnum
 from pydantic import Field, model_validator
 
 from dendro_inspector.schemas.base import Contract, Identifier, ShortText, ValueToken
+from dendro_inspector.schemas.evidence import AttachmentStatus
 from dendro_inspector.schemas.taxon import Confidence, Resolution
 
 
@@ -45,6 +46,111 @@ class UserClaimVerdict(StrEnum):
     POSSIBLE = "possible"
     DOUBTFUL = "doubtful"
     REJECTED = "rejected"
+
+
+class AuthorityCheckStatus(StrEnum):
+    """Outcome of the deterministic attachment-authority check for one subject.
+
+    A boolean could not say *why* it was false. "We ran the counterfactual and the verdict
+    did not move" and "there was no counterfactual to run" are different scientific facts,
+    and reporting the second as the first credits the run with a check it never performed.
+    """
+
+    NOT_APPLICABLE = "not_applicable"
+    NOT_TESTABLE = "not_testable"
+    NOT_SENSITIVE = "not_sensitive"
+    SENSITIVE = "sensitive"
+
+
+class AuthorityOutcome(Contract):
+    """The scientific outcome of one evidence world, reduced to what authority can move."""
+
+    status: DecisionStatus
+    taxon: Identifier | None = None
+    resolution: Resolution = Resolution.UNKNOWN
+    confidence: Confidence = Confidence.LOW
+
+
+class AuthorityCheckTrace(Contract):
+    """Per-subject record of the attachment-authority counterfactual.
+
+    One record per subject, never a union across subjects: a run whose critical evidence
+    ids came from one subject and whose counterfactual taxon came from another describes
+    no world that ever existed.
+    """
+
+    subject_id: Identifier
+    status: AuthorityCheckStatus = AuthorityCheckStatus.NOT_APPLICABLE
+    critical_evidence_ids: tuple[Identifier, ...] = Field(
+        default=(),
+        description=(
+            "Sensitivity: detachable observation ids whose authority moves the verdict. "
+            "Nearly every honest organ-level identification is sensitive in this sense — "
+            "that a leaf decides the answer is what leaves are for."
+        ),
+    )
+    risk_evidence_ids: tuple[Identifier, ...] = Field(
+        default=(),
+        description=(
+            "Risk: the subset of the above whose ownership is *structurally* ambiguous. "
+            "Sensitivity alone never withdraws a claim; sensitivity plus risk does."
+        ),
+    )
+    policy_applied: bool = Field(
+        default=False,
+        description=(
+            "Whether the conservative evidence world became the one the graph used. True "
+            "only when a risky observation is also the hinge, and demoting it moves the "
+            "outcome."
+        ),
+    )
+    actual_outcome: AuthorityOutcome | None = Field(
+        default=None,
+        description="Outcome under evidence exactly as extracted, before the gate acted.",
+    )
+    counterfactual_outcome: AuthorityOutcome | None = Field(
+        default=None,
+        description="Outcome under the attachment world the gate did NOT hand to the graph.",
+    )
+    counterfactual_attachment: AttachmentStatus | None = Field(
+        default=None,
+        description="Attachment state that produced counterfactual_outcome.",
+    )
+
+    @model_validator(mode="after")
+    def _sensitivity_carries_its_evidence(self) -> AuthorityCheckTrace:
+        sensitive = self.status is AuthorityCheckStatus.SENSITIVE
+        if sensitive:
+            if (
+                not self.critical_evidence_ids
+                or self.counterfactual_outcome is None
+                or self.counterfactual_attachment is None
+            ):
+                msg = (
+                    "a sensitive authority check requires critical evidence ids and a "
+                    "counterfactual outcome and attachment state"
+                )
+                raise ValueError(msg)
+            if not set(self.risk_evidence_ids) <= set(self.critical_evidence_ids):
+                msg = "risk evidence ids must be a subset of the critical evidence ids"
+                raise ValueError(msg)
+            if self.policy_applied and not self.risk_evidence_ids:
+                msg = (
+                    "the conservative world may only be applied for structurally ambiguous "
+                    "evidence; sensitivity on its own is not a reason to withdraw a claim"
+                )
+                raise ValueError(msg)
+            return self
+        if (
+            self.critical_evidence_ids
+            or self.risk_evidence_ids
+            or self.policy_applied
+            or self.counterfactual_outcome is not None
+            or self.counterfactual_attachment is not None
+        ):
+            msg = "authority metadata requires status=sensitive"
+            raise ValueError(msg)
+        return self
 
 
 class PhotoRequest(Contract):
@@ -89,6 +195,36 @@ class FinalDecision(Contract):
         max_length=16,
         description="Confidence on the domain prompt's X/100 scale, as a band never a point.",
     )
+    authority_check_status: AuthorityCheckStatus = Field(
+        default=AuthorityCheckStatus.NOT_APPLICABLE,
+        description=(
+            "What the deterministic attachment-authority gate found for this subject. "
+            "Copied from the gate's per-subject record; never a model opinion."
+        ),
+    )
+    critical_evidence_ids: tuple[Identifier, ...] = Field(
+        default=(),
+        description="Detachable observation ids whose authority materially changes the verdict.",
+    )
+    authority_policy_applied: bool = Field(
+        default=False,
+        description=(
+            "Whether insufficient attachment provenance made the conservative evidence world "
+            "the one this verdict was computed from."
+        ),
+    )
+    counterfactual_status: DecisionStatus | None = None
+    counterfactual_taxon: Identifier | None = None
+    counterfactual_resolution: Resolution | None = None
+    counterfactual_confidence: Confidence | None = None
+    counterfactual_attachment: AttachmentStatus | None = Field(
+        default=None,
+        description=(
+            "Attachment state behind the alternate outcome — the world the gate did not "
+            "hand to the graph. Confirmed_attached means the claim this verdict declines "
+            "to make is the one that would follow if that evidence were proven attached."
+        ),
+    )
 
     @model_validator(mode="after")
     def _taxon_identity_matches_resolution(self) -> FinalDecision:
@@ -103,7 +239,33 @@ class FinalDecision(Contract):
         if self.resolution is not Resolution.UNKNOWN and not has_taxon:
             msg = "a non-unknown resolution requires a selected taxon identity"
             raise ValueError(msg)
+        if self.evidence_authority_sensitive:
+            if (
+                not self.critical_evidence_ids
+                or self.counterfactual_status is None
+                or self.counterfactual_attachment is None
+            ):
+                msg = (
+                    "evidence-authority sensitivity requires critical evidence ids and a "
+                    "counterfactual outcome and attachment state"
+                )
+                raise ValueError(msg)
+        elif (
+            self.critical_evidence_ids
+            or self.authority_policy_applied
+            or self.counterfactual_attachment is not None
+        ):
+            msg = "authority metadata requires authority_check_status=sensitive"
+            raise ValueError(msg)
+        if self.authority_policy_applied and self.counterfactual_status is None:
+            msg = "an applied authority policy requires a counterfactual outcome"
+            raise ValueError(msg)
         return self
+
+    @property
+    def evidence_authority_sensitive(self) -> bool:
+        """Convenience view of :attr:`authority_check_status`, for readers that only ask."""
+        return self.authority_check_status is AuthorityCheckStatus.SENSITIVE
 
     @property
     def claims_species(self) -> bool:

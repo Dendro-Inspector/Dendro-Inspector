@@ -6,6 +6,8 @@ observations?" — is answered here from declared data rather than from a model'
 
 from __future__ import annotations
 
+from collections.abc import Collection, Mapping
+
 from dendro_inspector.knowledge.evidence_hierarchy import (
     is_colour_feature,
     positive_observations_for,
@@ -65,3 +67,72 @@ def recommended_photos(cards: tuple[ComparisonCard, ...]) -> tuple[str, ...]:
             if photo not in found:
                 found.append(photo)
     return tuple(found)
+
+
+def follow_up_photos(
+    cards: tuple[ComparisonCard, ...],
+    taxa: frozenset[str],
+    resolved: Collection[str],
+) -> tuple[str, ...]:
+    """Photographs worth asking for, in the cards' declared priority order.
+
+    The recommendation list is the knowledge author's priority statement. Decisive-feature
+    order only supplies bindings used to filter that list; it must never silently re-sort it.
+    A photograph bound only to features this subject has already resolved carries no
+    information left to gain, and asking for it anyway is what teaches people to ignore the
+    request. A white-barked trunk with ``bark.peeling`` already read off it was still being
+    asked for another bark macro, while the leaf characters that actually separate birch
+    from white poplar went unrequested.
+
+    ``resolved`` is a set of feature paths — full-trust positive observations only, so a
+    partial or detached reading of a discriminator still counts as worth re-photographing.
+    A photograph bound to both a resolved and an unresolved discriminator stays: it has
+    something left to answer.
+    """
+    bindings: dict[str, set[str]] = {}
+    for card in cards:
+        for difference in card.decisive_differences:
+            if difference.photo is None or len(set(difference.separates) & taxa) < 2:
+                continue
+            bindings.setdefault(difference.photo, set()).add(difference.feature)
+    return drop_resolved_photos(
+        recommended_photos(cards),
+        {photo: frozenset(features) for photo, features in bindings.items()},
+        resolved,
+    )
+
+
+def photo_bindings(
+    cards: tuple[ComparisonCard, ...], usable: Collection[str]
+) -> dict[str, frozenset[str]]:
+    """Photograph target -> the features these cards declare it resolves, kept to ``usable``.
+
+    ``usable`` is the feature set that could actually change the assessment in hand — in
+    practice one taxon card's own declared features. A bark macro that resolves
+    ``bark.texture`` answers nothing about a card carrying no ``bark.texture`` rule, so
+    keeping it in the binding would make the photograph look informative when it is not.
+    """
+    bindings: dict[str, set[str]] = {}
+    for card in cards:
+        for difference in card.decisive_differences:
+            if difference.photo is None or difference.feature not in usable:
+                continue
+            bindings.setdefault(difference.photo, set()).add(difference.feature)
+    return {photo: frozenset(features) for photo, features in bindings.items()}
+
+
+def drop_resolved_photos(
+    photos: tuple[str, ...],
+    bindings: Mapping[str, frozenset[str]],
+    resolved: Collection[str],
+) -> tuple[str, ...]:
+    """Photographs that still have a declared, unresolved feature to answer.
+
+    A photograph with no binding at all is kept: unknown information value is not the same
+    as none, and failing open means asking one redundant question rather than silently
+    withholding the request that would have resolved the case.
+    """
+    already = set(resolved)
+    return tuple(
+        photo for photo in photos if not bindings.get(photo) or not bindings[photo] <= already
+    )

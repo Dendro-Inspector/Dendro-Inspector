@@ -55,7 +55,7 @@ common_confusions:
   - populus_alba
 
 required_for_high_confidence:
-  - leaf_underside_and_arrangement
+  - leaf.underside_and_leaf.arrangement
 
 follow_up_evidence:
   - leaf_underside_macro

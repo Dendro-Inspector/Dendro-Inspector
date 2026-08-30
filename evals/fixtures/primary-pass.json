@@ -23,6 +23,15 @@
           "image_ids": [
             "img-1"
           ]
+        },
+        {
+          "subject_id": "attached_shoot_1",
+          "kind": "branch",
+          "description": "Needle-bearing shoot visibly continuous with the foreground log.",
+          "image_ids": [
+            "img-1"
+          ],
+          "parent_subject_id": "foreground_log_1"
         }
       ],
       "observations": [
@@ -40,7 +49,7 @@
           "observation_id": "obs-2",
           "feature": "needles.fascicles",
           "value": "two",
-          "subject_id": "foreground_log_1",
+          "subject_id": "attached_shoot_1",
           "source": "image",
           "visibility": "clear",
           "reliability": "medium",
@@ -129,21 +138,21 @@
         }
       ]
     },
-    "primary:botanical_reviewer": {
+    "reviewer:botanical_reviewer": {
       "reviewer": "botanical",
       "status": "pass",
       "findings": [],
       "recommended_candidates": [],
       "recommended_resolution": "genus"
     },
-    "primary:confusion_reviewer": {
+    "reviewer:confusion_reviewer": {
       "reviewer": "confusion",
       "status": "pass",
       "findings": [],
       "recommended_candidates": [],
       "recommended_resolution": "genus"
     },
-    "primary:confidence_reviewer": {
+    "reviewer:confidence_reviewer": {
       "reviewer": "confidence",
       "status": "pass",
       "findings": [],
@@ -153,4 +162,3 @@
     }
   }
 }
-

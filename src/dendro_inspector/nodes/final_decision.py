@@ -29,18 +29,28 @@ from dendro_inspector.knowledge.candidate_validation import (
     candidate_ranking_signature,
     candidate_support_tier,
 )
-from dendro_inspector.knowledge.comparison_cards import recommended_photos
+from dendro_inspector.knowledge.comparison_cards import (
+    drop_resolved_photos,
+    follow_up_photos,
+    photo_bindings,
+)
 from dendro_inspector.knowledge.evidence_hierarchy import (
     EvidenceTier,
     bark_only,
     confidence_band,
     confidence_ceiling,
+    full_positive_observations_for,
     resolution_ceiling,
 )
-from dendro_inspector.knowledge.taxon_cards import match_card
-from dendro_inspector.nodes.photo_planner import choose_request, effective_object_type
+from dendro_inspector.knowledge.taxon_cards import card_value_vocabulary, match_card
+from dendro_inspector.nodes.photo_planner import (
+    attachment_request,
+    choose_request,
+    effective_object_type,
+)
 from dendro_inspector.schemas.candidates import Candidate, CandidateSet, SupportStrength
 from dendro_inspector.schemas.decisions import (
+    AuthorityCheckStatus,
     DecisionStatus,
     FinalDecision,
     PhotoRequest,
@@ -85,6 +95,12 @@ _DECLARED_FEATURE_FAMILY: dict[DeclaredObjectType, str] = {
     DeclaredObjectType.BARK: "bark",
     DeclaredObjectType.WOOD: "wood",
 }
+
+#: Stated on a verdict whose evidence world was narrowed by the attachment authority gate.
+_ATTACHMENT_UNRESOLVED = (
+    "The verdict changes when detachable evidence is demoted; confirm that evidence is "
+    "continuously attached to this subject before making a stronger claim."
+)
 
 
 def _syntheses(state: GraphState) -> tuple[ReviewSynthesis, ...]:
@@ -450,7 +466,15 @@ def _contradiction_summary(
     selected: TaxonIdentity,
     source_taxon: str,
 ) -> str | None:
-    """Summarise contradictions against the selected identity, not its narrower source card."""
+    """Summarise contradictions against the selected identity, not its narrower source card.
+
+    A contradiction is evidence that argues *against* this identity. Missing decisive
+    features, regional assumptions and generic uncertainty are none of those — they are
+    reasons the answer is not stronger, not reasons the alternative was ruled out. The
+    response composer prints this line under "why not the nearest alternative", so any
+    accepted finding that reached here became a fabricated rebuttal of a taxon nobody
+    had argued against.
+    """
     card = ctx.knowledge.try_taxon(selected.taxon_id)
     if card is not None:
         by_id = {observation.observation_id: observation for observation in evidence.observations}
@@ -459,12 +483,13 @@ def _contradiction_summary(
             if observation is not None:
                 return f"{observation.feature} = {observation.value}"
 
+    # A contradiction raised against a narrower source card says nothing about the broader
+    # identity actually selected, so it is not carried across a collapse.
+    if selected.taxon_id != source_taxon:
+        return None
     for synthesis in _syntheses(state):
         for finding in synthesis.accepted_findings:
-            if (
-                selected.taxon_id != source_taxon
-                and finding.category is FindingCategory.BOTANICAL_CONTRADICTION
-            ):
+            if finding.category is not FindingCategory.BOTANICAL_CONTRADICTION:
                 continue
             if finding.subject_id in (None, subject_id) and finding.severity in (
                 Severity.CRITICAL,
@@ -477,6 +502,7 @@ def _contradiction_summary(
 def _next_photo(
     state: GraphState,
     ctx: NodeContext,
+    evidence: EvidencePacket,
     candidate_set: CandidateSet,
     leader: Candidate,
     tier: EvidenceTier,
@@ -486,7 +512,9 @@ def _next_photo(
 
     At the decisive tier with high confidence there is nothing left to ask for. Requesting
     a fruit photograph when the fruit is already in the frame is the kind of reflexive
-    hedging that teaches people to ignore the request entirely.
+    hedging that teaches people to ignore the request entirely — and so is asking for a
+    second bark macro of bark this run has already read, which is why the comparison's
+    declared discriminators are filtered by what the subject already resolves.
     """
     if tier is EvidenceTier.FRUIT_SEED and confidence is Confidence.HIGH:
         return None
@@ -501,15 +529,44 @@ def _next_photo(
             subject_id=candidate_set.subject_id,
         )
 
+    authority_first = attachment_request(state, candidate_set.subject_id)
+    if authority_first is not None:
+        return authority_first
+
     taxa = frozenset(candidate.taxon for candidate in candidate_set.ordered)
-    photos = recommended_photos(ctx.knowledge.comparisons_for(taxa))
+    candidate_cards = tuple(
+        card for taxon in taxa if (card := ctx.knowledge.try_taxon(taxon)) is not None
+    )
+    vocabulary = card_value_vocabulary(candidate_cards)
+    resolved = frozenset(
+        observation.feature
+        for observation in full_positive_observations_for(evidence, candidate_set.subject_id)
+        if observation.value in vocabulary.get(observation.feature, frozenset())
+    )
+    comparison_cards = ctx.knowledge.comparisons_for(taxa)
+    photos = follow_up_photos(comparison_cards, taxa, resolved)
+    comparison_request = bool(photos)
     if not photos:
-        photos = ctx.knowledge.follow_up_for((leader.taxon,))
+        # No look-alike group applies, so the leader's own follow-up list is all there is.
+        # It is a flat list of targets, and the only declared statement of what each target
+        # resolves lives on the comparison cards' discriminators — enough to drop a request
+        # whose every usable feature this subject has already answered.
+        card = ctx.knowledge.try_taxon(leader.taxon)
+        usable = frozenset(card_value_vocabulary((card,))) if card is not None else frozenset()
+        photos = drop_resolved_photos(
+            ctx.knowledge.follow_up_for((leader.taxon,)),
+            photo_bindings(ctx.knowledge.comparisons(), usable),
+            resolved,
+        )
     if not photos:
         return None
     return PhotoRequest(
         target=photos[0],
-        reason="Would separate the leading candidate from its nearest alternative.",
+        reason=(
+            "Would resolve an unresolved discriminator among the leading candidates."
+            if comparison_request
+            else "Would add missing organ-level evidence for the leading candidate."
+        ),
         subject_id=candidate_set.subject_id,
     )
 
@@ -538,15 +595,19 @@ def _unresolved(
     return tuple(dict.fromkeys(questions))[:8]
 
 
-def decide_subject(
-    state: GraphState, ctx: NodeContext, candidate_set: CandidateSet
+def decide_subject_base(
+    state: GraphState,
+    ctx: NodeContext,
+    candidate_set: CandidateSet,
+    *,
+    already_reranked: bool = False,
 ) -> FinalDecision:
     evidence = state.evidence
     if evidence is None:  # pragma: no cover - routing guarantees this; loud if it ever breaks
         msg = "final decision reached without an evidence packet"
         raise RuntimeError(msg)
 
-    reranked = apply_reranking(state, candidate_set)
+    reranked = candidate_set if already_reranked else apply_reranking(state, candidate_set)
     leader = reranked.leader
     subject_id = reranked.subject_id
     if leader is None:
@@ -568,7 +629,9 @@ def decide_subject(
             status=DecisionStatus.INSUFFICIENT_EVIDENCE,
             supporting_evidence=_support_summary(evidence, leader),
             unresolved_questions=_unresolved(state, evidence, subject_id, leader),
-            best_next_photo=_next_photo(state, ctx, reranked, leader, tier, Confidence.LOW),
+            best_next_photo=_next_photo(
+                state, ctx, evidence, reranked, leader, tier, Confidence.LOW
+            ),
             arbiter_used=state.arbiter_used,
             user_claim_verdict=verdict,
             evidence_tier=int(tier),
@@ -598,12 +661,62 @@ def decide_subject(
         ),
         nearest_alternative=_nearest_alternative(ctx, reranked.ordered[1:], resolution, selected),
         unresolved_questions=_unresolved(state, evidence, subject_id, leader),
-        best_next_photo=_next_photo(state, ctx, reranked, leader, tier, confidence),
+        best_next_photo=_next_photo(state, ctx, evidence, reranked, leader, tier, confidence),
         arbiter_used=state.arbiter_used,
         user_claim_verdict=verdict,
         evidence_tier=int(tier),
         confidence_band=confidence_band(confidence, tier),
     )
+
+
+def decide_subject(
+    state: GraphState, ctx: NodeContext, candidate_set: CandidateSet
+) -> FinalDecision:
+    """Return the deterministic verdict, carrying this subject's authority record with it.
+
+    The attachment counterfactual itself already ran, before the reviewers, in
+    :mod:`dendro_inspector.nodes.attachment_authority_gate`. What is left here is to state
+    the finding on the verdict: which observations were the hinge, whether the conservative
+    evidence world is the one this answer was computed from, and what the alternate world
+    would have said. The claim is not recomputed from that record — it cannot be, because
+    the record describes the world every model downstream has already been reasoning in.
+    """
+    decision = decide_subject_base(state, ctx, candidate_set)
+    check = state.authority_check_for(candidate_set.subject_id)
+    if check is None or check.status is not AuthorityCheckStatus.SENSITIVE:
+        return decision.model_copy(
+            update={
+                "authority_check_status": (
+                    check.status if check is not None else AuthorityCheckStatus.NOT_APPLICABLE
+                )
+            }
+        )
+
+    counterfactual = check.counterfactual_outcome
+    updates: dict[str, object] = {
+        "authority_check_status": check.status,
+        "critical_evidence_ids": check.critical_evidence_ids,
+        "authority_policy_applied": check.policy_applied,
+        "counterfactual_status": counterfactual.status if counterfactual else None,
+        "counterfactual_taxon": counterfactual.taxon if counterfactual else None,
+        "counterfactual_resolution": counterfactual.resolution if counterfactual else None,
+        "counterfactual_confidence": counterfactual.confidence if counterfactual else None,
+        "counterfactual_attachment": check.counterfactual_attachment,
+    }
+    if not check.policy_applied:
+        return decision.model_copy(update=updates)
+
+    updates["unresolved_questions"] = tuple(
+        dict.fromkeys((*decision.unresolved_questions, _ATTACHMENT_UNRESOLVED))
+    )[:8]
+    authority_first = attachment_request(
+        state,
+        candidate_set.subject_id,
+        critical_evidence_ids=check.risk_evidence_ids or check.critical_evidence_ids,
+    )
+    if authority_first is not None:
+        updates["best_next_photo"] = authority_first
+    return decision.model_copy(update=updates)
 
 
 async def run(state: GraphState, ctx: NodeContext) -> GraphState:

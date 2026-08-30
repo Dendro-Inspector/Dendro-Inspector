@@ -1,8 +1,8 @@
 """Runtime configuration.
 
 Configuration is data. No business logic reads ``os.environ`` directly, and no commercial
-model name appears in a node — nodes ask for the logical roles ``primary`` and ``arbiter``
-and get whatever the registry is configured to hand them.
+model name appears in a node — nodes ask for the logical roles ``primary``, ``reviewer``
+and ``arbiter`` and get whatever the registry is configured to hand them.
 """
 
 from __future__ import annotations
@@ -26,6 +26,7 @@ class Role(StrEnum):
     """Logical model roles. Business logic only ever names these."""
 
     PRIMARY = "primary"
+    REVIEWER = "reviewer"
     ARBITER = "arbiter"
 
 
@@ -150,6 +151,7 @@ class AppConfig(Contract):
     providers: dict[Role, ProviderConfig] = Field(
         default_factory=lambda: {
             Role.PRIMARY: ProviderConfig(),
+            Role.REVIEWER: ProviderConfig(),
             Role.ARBITER: ProviderConfig(),
         }
     )
@@ -164,6 +166,12 @@ class AppConfig(Contract):
         try:
             return self.providers[role]
         except KeyError as exc:  # pragma: no cover - configuration error path
+            # Compatibility for callers that construct the released two-role AppConfig
+            # directly. Environment-loaded configurations always materialize reviewer.
+            # Keep the alias in this one mapping layer so old configs continue to mean
+            # "use primary for first-pass review" rather than failing at startup.
+            if role is Role.REVIEWER and Role.PRIMARY in self.providers:
+                return self.providers[Role.PRIMARY]
             msg = f"no provider configured for role {role.value!r}"
             raise KeyError(msg) from exc
 
@@ -225,6 +233,9 @@ def load_config(overrides: AppConfig | None = None) -> AppConfig:
     primary_adapter = Adapter(
         _env("DENDRO_PRIMARY_PROVIDER", Adapter.FAKE.value) or Adapter.FAKE.value
     )
+    reviewer_adapter = Adapter(
+        _env("DENDRO_REVIEWER_PROVIDER", primary_adapter.value) or primary_adapter.value
+    )
     arbiter_adapter = Adapter(
         _env("DENDRO_ARBITER_PROVIDER", Adapter.FAKE.value) or Adapter.FAKE.value
     )
@@ -232,6 +243,13 @@ def load_config(overrides: AppConfig | None = None) -> AppConfig:
         adapter=primary_adapter,
         model=_env("DENDRO_PRIMARY_MODEL"),
         api_key_env=DEFAULT_KEY_ENV.get(primary_adapter),
+        scenario=scenario,
+        max_structured_retries=retries,
+    )
+    reviewer = ProviderConfig(
+        adapter=reviewer_adapter,
+        model=_env("DENDRO_REVIEWER_MODEL", primary.model),
+        api_key_env=DEFAULT_KEY_ENV.get(reviewer_adapter),
         scenario=scenario,
         max_structured_retries=retries,
     )
@@ -245,7 +263,7 @@ def load_config(overrides: AppConfig | None = None) -> AppConfig:
     trace_dir = _env("DENDRO_TRACE_DIR")
 
     return AppConfig(
-        providers={Role.PRIMARY: primary, Role.ARBITER: arbiter},
+        providers={Role.PRIMARY: primary, Role.REVIEWER: reviewer, Role.ARBITER: arbiter},
         prompts=PromptConfig(
             domain_prompt_path=Path(
                 _env("DENDRO_DOMAIN_PROMPT_PATH", str(DEFAULT_DOMAIN_PROMPT_PATH))

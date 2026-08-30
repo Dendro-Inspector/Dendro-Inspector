@@ -84,6 +84,7 @@ def _effective_subject(
     finding: ReviewFinding,
     result: ReviewResult,
     evidence: EvidencePacket | None,
+    reviewed_evidence_ids: frozenset[str] | None,
 ) -> tuple[str | None, ReasonCode | None]:
     """Resolve one unambiguous subject and reject foreign evidence references."""
     if (
@@ -96,9 +97,15 @@ def _effective_subject(
     subject_id = finding.subject_id or result.subject_id
     referenced_subjects: set[str] = set()
     for evidence_id in finding.evidence_ids:
+        # Resolution first, scope second. The projection currently carries the whole packet,
+        # so checking scope first would report every invented id as out_of_scope and retire
+        # `evidence_id_unknown` for model findings - collapsing "the model hallucinated an id"
+        # and "the model reached into another subject" into one code the evals cannot separate.
         sources = _evidence_sources(evidence, evidence_id)
         if sources is None:
             return subject_id, ReasonCode.EVIDENCE_ID_UNKNOWN
+        if reviewed_evidence_ids is not None and evidence_id not in reviewed_evidence_ids:
+            return subject_id, ReasonCode.OUT_OF_SCOPE
         referenced_subjects.update(source.subject_id for source in sources)
 
     if subject_id is not None and referenced_subjects - {subject_id}:
@@ -124,11 +131,23 @@ def _material_signature(finding: ReviewFinding) -> MaterialSignature:
     )
 
 
+def _in_scope(
+    evidence_ids: tuple[str, ...], reviewed_evidence_ids: frozenset[str] | None
+) -> tuple[str, ...]:
+    """Drop citations the reviewer was never shown. `None` means no scope was recorded."""
+    if reviewed_evidence_ids is None:
+        return evidence_ids
+    return tuple(
+        evidence_id for evidence_id in evidence_ids if evidence_id in reviewed_evidence_ids
+    )
+
+
 def _validated_recommendation(
     result: ReviewResult,
     subject_id: str | None,
     evidence: EvidencePacket | None,
     knowledge: KnowledgeBase,
+    reviewed_evidence_ids: frozenset[str] | None,
 ) -> CandidateSet | None:
     if subject_id is None or evidence is None or not result.recommended_candidates:
         return None
@@ -140,7 +159,19 @@ def _validated_recommendation(
         if candidate.taxon in seen_taxa:
             continue
         seen_taxa.add(candidate.taxon)
-        unique.append(candidate.model_copy(update={"rank": len(unique) + 1}))
+        unique.append(
+            candidate.model_copy(
+                update={
+                    "supporting_evidence_ids": _in_scope(
+                        candidate.supporting_evidence_ids, reviewed_evidence_ids
+                    ),
+                    "contradicting_evidence_ids": _in_scope(
+                        candidate.contradicting_evidence_ids, reviewed_evidence_ids
+                    ),
+                    "rank": len(unique) + 1,
+                }
+            )
+        )
 
     proposed = CandidateSet(subject_id=subject_id, candidates=tuple(unique))
     validated = validate_candidate_set(proposed, evidence, knowledge)
@@ -256,10 +287,26 @@ def adjudicate(
     )
 
     for _, _, result, finding in entries:
-        subject_id, subject_error = _effective_subject(finding, result, evidence)
+        reviewed_evidence_ids = (
+            None
+            if result.reviewed_evidence_ids is None
+            else frozenset(result.reviewed_evidence_ids)
+        )
+        subject_id, subject_error = _effective_subject(
+            finding,
+            result,
+            evidence,
+            None if finding.origin is FindingOrigin.DETERMINISTIC else reviewed_evidence_ids,
+        )
         effective = finding.model_copy(update={"subject_id": subject_id})
         rerank = (
-            _validated_recommendation(result, subject_id, evidence, knowledge)
+            _validated_recommendation(
+                result,
+                subject_id,
+                evidence,
+                knowledge,
+                reviewed_evidence_ids,
+            )
             if finding.required_action is RequiredAction.RERANK_CANDIDATES
             else None
         )
@@ -309,6 +356,8 @@ def adjudicate(
         f"{rerank.candidate_set.subject_id}: finding {rerank.finding_id} admitted rerank"
         for rerank in admitted_reranks
     )
+    reviewer_disagreement = _reviewers_disagree(results) or _reranks_conflict(admitted_reranks)
+    critical_finding = any(finding.severity is Severity.CRITICAL for finding in accepted)
 
     return ReviewSynthesis(
         accepted_findings=tuple(accepted),
@@ -323,11 +372,8 @@ def adjudicate(
             {r.recommended_resolution for r in results if r.recommended_resolution}
         ),
         retry_required=retry_required,
-        escalation_recommended=(
-            _reviewers_disagree(results)
-            or _reranks_conflict(admitted_reranks)
-            or any(finding.severity is Severity.CRITICAL for finding in accepted)
-        ),
+        reviewer_disagreement=reviewer_disagreement,
+        escalation_recommended=reviewer_disagreement or critical_finding,
         unresolvable=unresolvable,
     )
 

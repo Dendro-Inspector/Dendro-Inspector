@@ -4,7 +4,12 @@ from __future__ import annotations
 
 from dendro_inspector.graph.state import EvidenceQualityReport
 from dendro_inspector.knowledge.evidence_hierarchy import EvidenceTier
-from dendro_inspector.nodes.evidence_quality import assess as assess_quality
+from dendro_inspector.nodes.evidence_quality import (
+    assess as assess_quality,
+)
+from dendro_inspector.nodes.evidence_quality import (
+    classify_vocabulary_diagnostics,
+)
 from dendro_inspector.schemas.evidence import (
     EvidencePacket,
     Observation,
@@ -128,6 +133,16 @@ def test_tone_suffix_is_classified_as_colour_dependence():
     )
     assert report.sufficient
     assert report.colour_dependence_detected
+
+
+def test_vocabulary_diagnostic_separates_weak_colour_from_possible_card_gap():
+    colour = _obs("obs-colour", "bark.colour")
+    structural = _obs("obs-structure", "bark.surface_cover")
+
+    weak, possible_gaps = classify_vocabulary_diagnostics((colour, structural))
+
+    assert tuple(observation.observation_id for observation in weak) == ("obs-colour",)
+    assert tuple(observation.observation_id for observation in possible_gaps) == ("obs-structure",)
 
 
 def test_corroborated_material_group_is_not_blanket_rejected():

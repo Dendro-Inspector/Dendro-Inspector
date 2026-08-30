@@ -16,7 +16,7 @@ def test_release_identity_is_aligned(repo_root):
     project = tomllib.loads((repo_root / "pyproject.toml").read_text(encoding="utf-8"))
     manifest = yaml.safe_load((repo_root / "prompts" / "versions.yaml").read_text(encoding="utf-8"))
     baseline = json.loads(
-        (repo_root / "evals" / "baselines" / "public-v0.5.0.json").read_text(encoding="utf-8")
+        (repo_root / "evals" / "baselines" / "public-v0.8.0.json").read_text(encoding="utf-8")
     )
 
     assert {
@@ -26,9 +26,9 @@ def test_release_identity_is_aligned(repo_root):
         DETERMINISTIC_POLICY_REVISION,
         manifest["policy_revision"],
         baseline["baseline_version"],
-    } == {"0.5.0"}
+    } == {"0.8.0"}
     assert manifest["schema_version"] == "1"
-    assert manifest["node_prompts"]["revision"] == "0.2.0"
+    assert manifest["node_prompts"]["revision"] == "0.3.0"
 
 
 def test_distribution_metadata_matches_the_shipped_package(repo_root):

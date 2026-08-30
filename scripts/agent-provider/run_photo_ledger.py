@@ -1,0 +1,648 @@
+"""Run private photo-ledger cases sequentially through the local provider bridge.
+
+The manifest is the experiment's canonical data. This helper verifies the recorded image
+digest before transmission, runs one image at a time, and appends a new immutable run record
+only after the process exits. It never rewrites or merges an existing run.
+"""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import os
+import re
+import socket
+import subprocess
+import sys
+import time
+from pathlib import Path
+from typing import Any
+
+CONFIGURATION_ID = re.compile(r"^[a-z][a-z0-9]*(?:_[a-z0-9]+)*_v[1-9][0-9]*$")
+BATCH_ID = re.compile(r"^[a-z0-9][a-z0-9-]{0,79}$")
+DATASET_VERSION = 1
+
+
+class LedgerError(RuntimeError):
+    """The ledger or requested append violates an experiment invariant."""
+
+
+def load_manifest(path: Path) -> dict[str, Any]:
+    payload = json.loads(path.read_text(encoding="utf-8-sig"))
+    if payload.get("dataset_version") != DATASET_VERSION:
+        raise LedgerError(
+            f"unsupported dataset_version={payload.get('dataset_version')!r}; "
+            f"expected {DATASET_VERSION}"
+        )
+    photos = payload.get("photos")
+    if not isinstance(photos, list):
+        raise LedgerError("manifest.photos must be an array")
+    return payload
+
+
+def atomic_write_json(path: Path, payload: dict[str, Any]) -> None:
+    temporary = path.with_name(f".{path.name}.tmp")
+    temporary.write_text(
+        json.dumps(payload, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+    os.replace(temporary, path)
+
+
+def append_run(path: Path, *, photo_id: str, run: dict[str, Any]) -> None:
+    """Append one run, refusing duplicate IDs anywhere in the ledger."""
+    configuration = run.get("configuration")
+    if not isinstance(configuration, str) or not CONFIGURATION_ID.fullmatch(configuration):
+        raise LedgerError("configuration must be a stable versioned ID such as claude_ox_sol_v1")
+    run_id = run.get("run_id")
+    if not isinstance(run_id, str) or not run_id:
+        raise LedgerError("run_id must be a non-empty string")
+
+    manifest = load_manifest(path)
+    all_runs = [
+        existing
+        for photo in manifest["photos"]
+        for existing in photo.get("runs", [])
+        if isinstance(existing, dict)
+    ]
+    if any(existing.get("run_id") == run_id for existing in all_runs):
+        raise LedgerError(f"run_id already exists and is immutable: {run_id}")
+
+    matches = [photo for photo in manifest["photos"] if photo.get("id") == photo_id]
+    if len(matches) != 1:
+        raise LedgerError(f"expected exactly one photo with id={photo_id!r}; found {len(matches)}")
+    runs = matches[0].get("runs")
+    if not isinstance(runs, list):
+        raise LedgerError(f"photo {photo_id!r} has a non-array runs field")
+    runs.append(run)
+    atomic_write_json(path, manifest)
+
+
+def _table_text(value: Any) -> str:
+    if value is None or value == "":
+        return "—"
+    return str(value).replace("|", "\\|").replace("\r", " ").replace("\n", " ")
+
+
+def render_markdown(manifest: dict[str, Any]) -> str:
+    lines = [
+        "# Top 100 experiment ledger",
+        "",
+        "> Generated from manifest.json. Read-only. Do not edit manually.",
+        "",
+        (
+            "| Photo | Filename | Capture group | Reference | Runs | Latest result | "
+            "Escalated | Time (s) | Cost (USD) | Notes |"
+        ),
+        "|---|---|---|---|---:|---|---|---:|---:|---|",
+    ]
+    for photo in manifest["photos"]:
+        runs = photo.get("runs", [])
+        latest = runs[-1] if runs else None
+        result = latest.get("result", {}) if latest else {}
+        taxon = result.get("taxon") if result else None
+        decision = result.get("decision") if result else None
+        latest_result = (
+            " / ".join(_table_text(value) for value in (taxon, decision) if value is not None)
+            or "—"
+        )
+        reference = photo.get("reference_label", {})
+        reference_text = reference.get("taxon") or reference.get("status") or "—"
+        notes = [*photo.get("notes", []), *(latest.get("notes", []) if latest else [])]
+        notes_text = "; ".join(str(note) for note in notes) if notes else None
+        lines.append(
+            "| "
+            + " | ".join(
+                (
+                    _table_text(photo.get("id")),
+                    _table_text(photo.get("filename")),
+                    _table_text(photo.get("capture_group")),
+                    _table_text(reference_text),
+                    str(len(runs)),
+                    _table_text(latest_result),
+                    _table_text(latest.get("escalated") if latest else None),
+                    _table_text(latest.get("duration_seconds") if latest else None),
+                    _table_text(latest.get("estimated_cost_usd") if latest else None),
+                    _table_text(notes_text),
+                )
+            )
+            + " |"
+        )
+    return "\n".join(lines) + "\n"
+
+
+def regenerate_markdown(manifest_path: Path, markdown_path: Path) -> None:
+    markdown_path.write_text(
+        render_markdown(load_manifest(manifest_path)),
+        encoding="utf-8",
+    )
+
+
+def select_photo_records(
+    manifest: dict[str, Any], photo_id: str | None
+) -> list[tuple[int, dict[str, Any]]]:
+    indexed = list(enumerate(manifest["photos"], start=1))
+    if photo_id is None:
+        return indexed
+    selected = [(index, photo) for index, photo in indexed if photo.get("id") == photo_id]
+    if len(selected) != 1:
+        raise LedgerError(f"expected exactly one photo with id={photo_id!r}; found {len(selected)}")
+    return selected
+
+
+def verify_image(manifest_dir: Path, photo: dict[str, Any]) -> Path:
+    filename = photo.get("filename")
+    expected = photo.get("sha256")
+    if not isinstance(filename, str) or not isinstance(expected, str):
+        raise LedgerError(f"photo {photo.get('id')!r} lacks filename or sha256")
+    root = manifest_dir.resolve()
+    image = (root / filename).resolve()
+    if image.parent != root:
+        raise LedgerError(f"photo path escapes manifest directory: {filename!r}")
+    if not image.is_file():
+        raise LedgerError(f"photo file does not exist: {image}")
+    actual = hashlib.sha256(image.read_bytes()).hexdigest()
+    if actual != expected.lower():
+        raise LedgerError(f"sha256 mismatch for {filename!r}")
+    return image
+
+
+def require_bridge(port: int) -> None:
+    try:
+        with socket.create_connection(("127.0.0.1", port), timeout=2):
+            return
+    except OSError as exc:
+        raise LedgerError(f"bridge is not listening on 127.0.0.1:{port}") from exc
+
+
+def model_call_count(trace: dict[str, Any]) -> int:
+    return sum(
+        int(call.get("attempts", 1))
+        for event in trace.get("events", [])
+        for call in event.get("provider_calls", [])
+    )
+
+
+def structured_repair_count(trace: dict[str, Any]) -> int:
+    return sum(
+        int(call.get("validation_failures", 0))
+        for event in trace.get("events", [])
+        for call in event.get("provider_calls", [])
+    )
+
+
+def utf8_subprocess_environment() -> dict[str, str]:
+    """Force a Python child to keep UTF-8 on Windows pipes as well as files."""
+    environment = os.environ.copy()
+    environment.update({"PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8"})
+    return environment
+
+
+def _numeric(value: Any) -> int | float | None:
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        return None
+    return value
+
+
+def _usage_total(payload: Any, aliases: tuple[str, ...]) -> int | None:
+    """Read one token counter from a flat usage object or per-model child objects."""
+    if not isinstance(payload, dict):
+        return None
+    for alias in aliases:
+        direct = _numeric(payload.get(alias))
+        if direct is not None:
+            return int(direct)
+    children = [
+        _usage_total(child, aliases) for child in payload.values() if isinstance(child, dict)
+    ]
+    present = [value for value in children if value is not None]
+    return sum(present) if present else None
+
+
+def _upstream_usage(upstream: dict[str, Any]) -> dict[str, int] | None:
+    raw = upstream.get("usage") or upstream.get("model_usage") or upstream.get("tokens")
+    if not isinstance(raw, dict):
+        return None
+    input_tokens = _usage_total(raw, ("input_tokens", "inputTokens", "prompt_tokens"))
+    cached_input_tokens = _usage_total(
+        raw,
+        (
+            "cached_input_tokens",
+            "cachedInputTokens",
+            "cached_tokens",
+            "cache_read_input_tokens",
+            "cacheReadInputTokens",
+        ),
+    )
+    cache_write_input_tokens = _usage_total(
+        raw, ("cache_write_input_tokens", "cacheWriteInputTokens")
+    )
+    output_tokens = _usage_total(raw, ("output_tokens", "outputTokens", "completion_tokens"))
+    reasoning_output_tokens = _usage_total(
+        raw, ("reasoning_output_tokens", "reasoningOutputTokens", "reasoning_tokens")
+    )
+    total_tokens = _usage_total(raw, ("total_tokens", "totalTokens"))
+    values = {
+        "input_tokens": input_tokens,
+        "cached_input_tokens": cached_input_tokens,
+        "cache_write_input_tokens": cache_write_input_tokens,
+        "output_tokens": output_tokens,
+        "reasoning_output_tokens": reasoning_output_tokens,
+        "total_tokens": total_tokens,
+    }
+    present = {key: value for key, value in values.items() if value is not None}
+    return present or None
+
+
+def provider_metadata_files(state_dir: Path | None) -> frozenset[Path]:
+    if state_dir is None:
+        return frozenset()
+    return frozenset((state_dir / "answers").glob("*.meta.json"))
+
+
+def provider_metrics(meta_files: frozenset[Path]) -> dict[str, Any] | None:
+    """Aggregate measured upstream usage without applying a guessed price table."""
+    if not meta_files:
+        return None
+    input_tokens = 0
+    cached_input_tokens = 0
+    cache_write_input_tokens = 0
+    output_tokens = 0
+    reasoning_output_tokens = 0
+    total_tokens = 0
+    input_reported_calls = 0
+    cached_input_reported_calls = 0
+    cache_write_input_reported_calls = 0
+    output_reported_calls = 0
+    reasoning_output_reported_calls = 0
+    total_reported_calls = 0
+    usage_reported_calls = 0
+    reported_cost = 0.0
+    cost_reported_calls = 0
+    for path in sorted(meta_files):
+        try:
+            metadata = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        upstream = metadata.get("upstream")
+        if not isinstance(upstream, dict):
+            continue
+        usage = _upstream_usage(upstream)
+        if usage is not None:
+            usage_reported_calls += 1
+            if "input_tokens" in usage:
+                input_reported_calls += 1
+                input_tokens += usage["input_tokens"]
+            if "cached_input_tokens" in usage:
+                cached_input_reported_calls += 1
+                cached_input_tokens += usage["cached_input_tokens"]
+            if "cache_write_input_tokens" in usage:
+                cache_write_input_reported_calls += 1
+                cache_write_input_tokens += usage["cache_write_input_tokens"]
+            if "output_tokens" in usage:
+                output_reported_calls += 1
+                output_tokens += usage["output_tokens"]
+            if "reasoning_output_tokens" in usage:
+                reasoning_output_reported_calls += 1
+                reasoning_output_tokens += usage["reasoning_output_tokens"]
+            if "total_tokens" in usage:
+                total_reported_calls += 1
+                total_tokens += usage["total_tokens"]
+        cost = _numeric(upstream.get("total_cost_usd"))
+        if cost is None:
+            cost = _numeric(upstream.get("cost"))
+        if cost is not None:
+            cost_reported_calls += 1
+            reported_cost += float(cost)
+    return {
+        "upstream_model_calls": len(meta_files),
+        "usage_reported_calls": usage_reported_calls,
+        "input_tokens": input_tokens if input_reported_calls else None,
+        "input_tokens_reported_calls": input_reported_calls,
+        "cached_input_tokens": cached_input_tokens if cached_input_reported_calls else None,
+        "cached_input_tokens_reported_calls": cached_input_reported_calls,
+        "cache_write_input_tokens": (
+            cache_write_input_tokens if cache_write_input_reported_calls else None
+        ),
+        "cache_write_input_tokens_reported_calls": cache_write_input_reported_calls,
+        "output_tokens": output_tokens if output_reported_calls else None,
+        "output_tokens_reported_calls": output_reported_calls,
+        "reasoning_output_tokens": (
+            reasoning_output_tokens if reasoning_output_reported_calls else None
+        ),
+        "reasoning_output_tokens_reported_calls": reasoning_output_reported_calls,
+        "total_tokens": total_tokens if total_reported_calls else None,
+        "total_tokens_reported_calls": total_reported_calls,
+        "cost_reported_calls": cost_reported_calls,
+        "reported_cost_usd": round(reported_cost, 8) if cost_reported_calls else None,
+    }
+
+
+def reviewer_disagreement(trace: dict[str, Any]) -> bool | None:
+    """Project only what the deterministic trace actually distinguishes."""
+    reasons = {str(reason) for reason in trace.get("escalation_reasons", [])}
+    if "reviewer_disagreement" in reasons:
+        return True
+    if reasons & {
+        "reviewers_disagree_or_critical_finding",
+        "escalation_provenance_unknown",
+    }:
+        return None
+    return False
+
+
+def completed_run(
+    *,
+    run_id: str,
+    configuration: str,
+    payload: dict[str, Any],
+    trace_path: str,
+    elapsed: float,
+    upstream_metrics: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    response = payload.get("response", {})
+    decisions = response.get("decisions", [])
+    decision = decisions[0] if decisions else {}
+    trace = payload.get("trace", {})
+    notes: list[str] = []
+    if len(decisions) > 1:
+        notes.append(
+            f"System returned {len(decisions)} subjects; result summarizes the first subject."
+        )
+    disagreement = reviewer_disagreement(trace)
+    if disagreement is None:
+        notes.append(
+            "Trace combines reviewer disagreement with critical findings; "
+            "reviewer disagreement alone is unknown."
+        )
+    duration_ms = trace.get("duration_ms")
+    duration = (
+        round(float(duration_ms) / 1000.0, 3) if duration_ms is not None else round(elapsed, 3)
+    )
+    taxon = decision.get("selected_taxon")
+    return {
+        "run_id": run_id,
+        "configuration": configuration,
+        "status": "completed",
+        "result": {
+            "taxon": taxon,
+            "rank": decision.get("resolution"),
+            "confidence": decision.get("confidence"),
+            "decision": decision.get("status"),
+        },
+        "escalated": bool(trace.get("escalation_triggered")),
+        "abstained": taxon is None,
+        "reviewer_disagreement": disagreement,
+        "repair_count": structured_repair_count(trace),
+        "duration_seconds": duration,
+        "model_calls": model_call_count(trace),
+        "estimated_cost_usd": None,
+        "reported_cost_usd": (
+            upstream_metrics.get("reported_cost_usd") if upstream_metrics else None
+        ),
+        "upstream_usage": upstream_metrics,
+        "trace_path": trace_path,
+        "notes": notes,
+    }
+
+
+def failed_run(
+    *,
+    run_id: str,
+    configuration: str,
+    elapsed: float,
+    exit_code: int,
+    upstream_metrics: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    return {
+        "run_id": run_id,
+        "configuration": configuration,
+        "status": "failed",
+        "result": {"taxon": None, "rank": None, "confidence": None, "decision": None},
+        "escalated": None,
+        "abstained": None,
+        "reviewer_disagreement": None,
+        "repair_count": 0,
+        "duration_seconds": round(elapsed, 3),
+        "model_calls": None,
+        "estimated_cost_usd": None,
+        "reported_cost_usd": (
+            upstream_metrics.get("reported_cost_usd") if upstream_metrics else None
+        ),
+        "upstream_usage": upstream_metrics,
+        "trace_path": None,
+        "notes": [f"Dendro exited with code {exit_code}; inspect the local run directory."],
+    }
+
+
+def run_photo(
+    *,
+    root: Path,
+    manifest_path: Path,
+    photo: dict[str, Any],
+    run_id: str,
+    configuration: str,
+    port: int,
+    timeout: float,
+    primary_route: str,
+    reviewer_route: str,
+    arbiter_route: str,
+    lang: str,
+    season: str,
+    object_type: str,
+    provider_state_dir: Path | None = None,
+) -> dict[str, Any]:
+    image = verify_image(manifest_path.parent, photo)
+    run_dir = manifest_path.parent / "runs" / run_id
+    run_dir.mkdir(parents=True, exist_ok=False)
+    executable = root / ".venv" / "Scripts" / "dendro.exe"
+    if not executable.is_file():
+        raise LedgerError(f"Dendro executable does not exist: {executable}")
+
+    environment = utf8_subprocess_environment()
+    environment.update(
+        {
+            "DENDRO_PRIMARY_PROVIDER": "anthropic",
+            "DENDRO_REVIEWER_PROVIDER": "anthropic",
+            "DENDRO_ARBITER_PROVIDER": "anthropic",
+            "DENDRO_PRIMARY_MODEL": primary_route,
+            "DENDRO_REVIEWER_MODEL": reviewer_route,
+            "DENDRO_ARBITER_MODEL": arbiter_route,
+            "DENDRO_STRUCTURED_RETRIES": "2",
+            "ANTHROPIC_BASE_URL": f"http://127.0.0.1:{port}",
+            "ANTHROPIC_API_KEY": "bridge-local-placeholder",
+            "ANTHROPIC_TIMEOUT_SECONDS": "3600",
+        }
+    )
+    command = [
+        str(executable),
+        "inspect",
+        "--case-id",
+        run_id,
+        "--image",
+        str(image),
+        "--lang",
+        lang,
+        "--season",
+        season,
+        "--object-type",
+        object_type,
+        "--trace-out",
+        str(run_dir),
+        "--json",
+    ]
+    started = time.monotonic()
+    metadata_before = provider_metadata_files(provider_state_dir)
+    try:
+        completed = subprocess.run(
+            command,
+            cwd=root,
+            env=environment,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="strict",
+            timeout=timeout,
+            check=False,
+        )
+    except UnicodeDecodeError as exc:
+        raise LedgerError(
+            f"Dendro emitted non-UTF-8 stdout or stderr for {run_id}; run was not recorded"
+        ) from exc
+    elapsed = time.monotonic() - started
+    metadata_after = provider_metadata_files(provider_state_dir)
+    upstream_metrics = provider_metrics(metadata_after - metadata_before)
+    (run_dir / "stdout.json").write_text(completed.stdout, encoding="utf-8")
+    (run_dir / "stderr.log").write_text(completed.stderr, encoding="utf-8")
+    if completed.returncode != 0:
+        return failed_run(
+            run_id=run_id,
+            configuration=configuration,
+            elapsed=elapsed,
+            exit_code=completed.returncode,
+            upstream_metrics=upstream_metrics,
+        )
+
+    try:
+        payload = json.loads(completed.stdout)
+    except json.JSONDecodeError as exc:
+        raise LedgerError(f"Dendro returned non-JSON stdout for {run_id}") from exc
+    trace_file = run_dir / f"{run_id}.trace.json"
+    if not trace_file.is_file():
+        raise LedgerError(f"Dendro did not write the expected trace: {trace_file}")
+    trace_path = trace_file.relative_to(manifest_path.parent).as_posix()
+    return completed_run(
+        run_id=run_id,
+        configuration=configuration,
+        payload=payload,
+        trace_path=trace_path,
+        elapsed=elapsed,
+        upstream_metrics=upstream_metrics,
+    )
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--manifest", type=Path, required=True)
+    parser.add_argument("--configuration", default="claude_ox_sol_v1")
+    parser.add_argument("--batch-id", required=True)
+    parser.add_argument("--photo-id", help="Run only this manifest photo ID.")
+    parser.add_argument("--port", type=int, default=8799)
+    parser.add_argument("--limit", type=int, default=1)
+    parser.add_argument("--timeout", type=float, default=7200.0)
+    parser.add_argument(
+        "--primary-route",
+        default="claude-main",
+        help="bridge route the planner, extractor, and candidate generator are sent to",
+    )
+    parser.add_argument(
+        "--reviewer-route",
+        default="ox-factory",
+        help="bridge route the three concurrent review nodes are sent to",
+    )
+    parser.add_argument(
+        "--arbiter-route",
+        default="sol-judge",
+        help="bridge route the escalation arbiter is sent to",
+    )
+    parser.add_argument("--lang", default="en")
+    parser.add_argument("--season", default="unknown")
+    parser.add_argument("--object-type", default="unknown")
+    parser.add_argument(
+        "--provider-state-dir",
+        type=Path,
+        help="bridge worker state whose new answer metadata supplies measured usage/cost",
+    )
+    return parser.parse_args()
+
+
+def main() -> int:
+    args = parse_args()
+    if not CONFIGURATION_ID.fullmatch(args.configuration):
+        raise LedgerError("--configuration must be a stable versioned ID")
+    if not BATCH_ID.fullmatch(args.batch_id):
+        raise LedgerError("--batch-id must contain only lowercase letters, digits, and hyphens")
+    if args.limit < 1:
+        raise LedgerError("--limit must be at least 1")
+
+    root = Path(__file__).resolve().parents[2]
+    manifest_path = args.manifest.resolve()
+    markdown_path = manifest_path.with_suffix(".md")
+    provider_state_dir = args.provider_state_dir.resolve() if args.provider_state_dir else None
+    if provider_state_dir is not None and not (provider_state_dir / "answers").is_dir():
+        raise LedgerError("--provider-state-dir must contain an answers directory")
+    require_bridge(args.port)
+    manifest = load_manifest(manifest_path)
+    processed = 0
+    for index, photo in select_photo_records(manifest, args.photo_id):
+        run_id = f"{args.batch_id}-{index:03d}"
+        existing_ids = {
+            run.get("run_id")
+            for candidate in manifest["photos"]
+            for run in candidate.get("runs", [])
+            if isinstance(run, dict)
+        }
+        if run_id in existing_ids:
+            continue
+        print(f"START {photo.get('id')} {photo.get('filename')} run_id={run_id}", flush=True)
+        run = run_photo(
+            root=root,
+            manifest_path=manifest_path,
+            photo=photo,
+            run_id=run_id,
+            configuration=args.configuration,
+            port=args.port,
+            timeout=args.timeout,
+            primary_route=args.primary_route,
+            reviewer_route=args.reviewer_route,
+            arbiter_route=args.arbiter_route,
+            lang=args.lang,
+            season=args.season,
+            object_type=args.object_type,
+            provider_state_dir=provider_state_dir,
+        )
+        append_run(manifest_path, photo_id=str(photo["id"]), run=run)
+        regenerate_markdown(manifest_path, markdown_path)
+        print(
+            f"RECORDED {photo.get('id')} status={run['status']} "
+            f"duration={run['duration_seconds']}s",
+            flush=True,
+        )
+        processed += 1
+        if run["status"] != "completed":
+            print("STOP failed run recorded; remaining photos were not sent", file=sys.stderr)
+            return 1
+        if processed >= args.limit:
+            break
+        manifest = load_manifest(manifest_path)
+    print(f"FINISHED processed={processed}", flush=True)
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main())
+    except (LedgerError, OSError, subprocess.SubprocessError) as exc:
+        print(f"ledger runner: {exc}", file=sys.stderr)
+        raise SystemExit(2) from exc

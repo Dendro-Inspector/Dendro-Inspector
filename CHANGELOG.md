@@ -10,6 +10,131 @@ get entries.
 
 ## [Unreleased]
 
+## [0.8.0] — 2026-08-30
+
+The package, graph, deterministic policy and public baseline move together to `0.8.0` because
+what a reviewer model is allowed to cite is now part of the deterministic contract. Prompt
+bytes and model routing are unchanged, and every baseline metric and per-case decision is
+identical to `0.7.0`.
+
+### Changed
+
+- Reviewer model calls no longer receive the graph state. Orchestration builds an explicit
+  projection for each reviewer, and the returned result is bound by code to the evidence ids
+  that projection carried, so a model finding can cite only what the model was shown. A
+  provider that supplies its own scope has it overwritten. Case photographs and evidence
+  remain pass-through for now: candidate generation is under review and must not decide which
+  subjects a reviewer may inspect.
+- Rejected findings distinguish an invented evidence id from a cross-subject citation again.
+  Citations are resolved before they are scope-checked; the reverse order reported every
+  unknown id as out-of-scope and made the two failures indistinguishable in a trace.
+- A review result carrying no recorded scope is treated as unscoped rather than empty-scoped.
+  A rerank recommendation attached to such a result previously lost all of its supporting
+  evidence and was rejected with no reason code that explained why.
+- Withheld knowledge-card classes render as `null` rather than an empty list, so a model
+  cannot read "you were not shown any" as "none exist".
+
+### Added
+
+- Run traces record the bounded input each reviewer received: reviewer, evidence ids,
+  transmitted image ids, candidate subjects, taxon ids and knowledge-card selection. The
+  image ids are the photographs that actually reached the provider, not the ones the case
+  declared, so an unreadable file cannot appear in a trace as evidence a reviewer saw.
+
+## [0.7.0] — 2026-08-24
+
+The package, graph, deterministic policy and public baseline move together to `0.7.0`
+because attachment authority can now change the returned scientific claim. Prompt bytes and
+model routing are unchanged.
+
+### Fixed
+
+- Decision-critical detachable evidence is now tested counterfactually. If demoting one
+  uncorroborated model-authored `confirmed_attached` observation changes status, taxon,
+  resolution or confidence, the conservative outcome wins. The inverse, telemetry-only
+  counterfactual records when confirming an `unknown` observation cited by a model proposal
+  would change the verdict, without permitting it to strengthen the returned claim. A
+  deterministic component-to-root projection remains valid independent corroboration, and
+  direct photographs of detached organs remain scoped to the photographed object.
+- Next-photo planning now asks for a continuous attachment view before a morphology macro
+  when foliage or reproductive evidence ownership is unresolved or decision-critical.
+- Escalation traces now distinguish reviewer disagreement from accepted critical findings;
+  legacy/custom synthesis that supplies only the former combined boolean remains actionable
+  but is labelled with unknown provenance instead of inventing a disagreement. The gate's
+  trigger and suppressor behavior is unchanged.
+- The private photo-ledger runner forces UTF-8 mode in its Python child and decodes stdout
+  strictly, so an encoding mismatch fails the run instead of persisting replacement
+  characters as a successful JSON result. Local agent-provider CLI workers use the same
+  strict subprocess contract.
+
+### Added
+
+- Run traces record evidence-authority sensitivity, critical evidence ids, the alternate
+  attachment state and outcome, correction-loop retry count, and whether correction changed
+  status, taxon, resolution or confidence. Model proposals are retained only as internal
+  graph state so both sides of the deterministic authority counterfactual can be evaluated
+  without another provider call.
+- Out-of-vocabulary evidence telemetry now separates intentionally weak colour/insufficient
+  features from potential knowledge-card gaps, and distinguishes missing feature paths from
+  unknown values on known paths.
+- The local Codex worker records token usage exposed by `codex exec --json`. The private
+  ledger runner can bind to one provider state directory and aggregate measured upstream
+  tokens and provider-reported cost per immutable run; it does not estimate prices when the
+  upstream reports no cost.
+
+## [0.6.0] — 2026-08-24
+
+The deterministic policy, graph, package and public baseline move together to `0.6.0`.
+Unlike the earlier experiment branch, two runs can no longer claim the same policy identity
+while executing different requirement or next-photo semantics. Traces additionally record
+the Git commit and dirty state when that identity is available.
+
+### Fixed
+
+- Anatomical components visibly belonging to one tree or material sample can now declare a
+  parent identity and are deterministically folded into that root before candidate admission.
+  Attached shoots and upper/lower bark zones no longer become contradictory independent tree
+  identifications, while neighbouring branches and separate pile pieces remain isolated.
+  Canonical observations and run traces retain the original component id for auditability.
+- Bark-only abstentions now request neutral attached foliage or reproductive evidence instead
+  of assuming the subject is a conifer.
+- A taxon card's `required_for_high_confidence` entries are read as an expression —
+  canonical feature paths or feature families joined by `_and_` and `_or_`, `_and_` binding
+  tighter — and eight cards that named features nothing could observe were migrated onto real
+  paths. Results no longer quote an observation as supporting evidence and report the
+  requirement it satisfies as missing in the same breath: a white-barked trunk stops asking
+  for `bark_pattern_or_leaf` while citing `bark.pattern`. Four cards had requirements no
+  evidence could ever satisfy (`fruit_present`, `leaf_underside_and_arrangement`) and so could
+  never reach high confidence however complete the photograph; a contract test now fails on
+  any requirement selector that matches no declared feature. Verdicts are unchanged where the
+  evidence hierarchy already capped them — bark still caps at genus and low confidence.
+- The requested next photograph is now chosen against what the subject has already resolved
+  instead of being the first entry of a declared list. Comparison cards bind each decisive
+  difference to the photograph that would resolve it, while the cards' explicit photo order
+  remains authoritative. A feature counts as resolved only when its observed value belongs
+  to a relevant candidate card; an unknown but visible value cannot suppress the photograph
+  needed to interpret it. Single-candidate fallback requests and real comparison requests now
+  give different, truthful reasons. The Betula/Populus card no longer labels their shared
+  alternate leaf arrangement as a discriminator. A photograph with no declared binding is
+  still offered — unknown information value is not zero.
+
+### Added
+
+- Run traces now carry `code_commit_sha` and `code_dirty` when executed from a Git checkout.
+  A clean commit is an immutable experiment build identity; a dirty run is marked as such
+  instead of silently borrowing its parent commit's provenance.
+
+- A separate `reviewer` model role now owns the concurrent botanical, confusion and
+  confidence review fan-out. Configure it with `DENDRO_REVIEWER_PROVIDER` and
+  `DENDRO_REVIEWER_MODEL`; environment-loaded configurations inherit the primary binding
+  when those variables are omitted, and directly constructed legacy two-role configs keep
+  the same compatibility fallback in `AppConfig.provider_for()`.
+- The Dendro-owned loopback bridge factory now has one explicit three-role profile: Claude
+  Code on `claude-main` for primary analysis, the OpenCode/OpenRouter/Cline Ox pool on
+  `ox-factory` for concurrent review, and Codex Sol on `sol-judge` when the deterministic
+  escalation gate calls the arbiter. Route-specific cache keys and provenance prevent one
+  role's answer from being replayed as another's.
+
 ## [0.5.0] — 2026-07-29
 
 Four defects in how reviewer findings compose into a verdict, all found by one live

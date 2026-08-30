@@ -40,7 +40,7 @@ common_confusions:
   - populus_alba
 
 required_for_high_confidence:
-  - bark_pattern_or_leaf
+  - bark.pattern_or_leaf
 
 follow_up_evidence:
   - bark_macro_mid_trunk

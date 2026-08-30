@@ -14,7 +14,7 @@ from pydantic import Field
 
 from dendro_inspector.schemas.base import Contract, FeaturePath, Identifier, ShortText, ValueToken
 from dendro_inspector.schemas.candidates import CandidateSet
-from dendro_inspector.schemas.decisions import CaseResponse, FinalDecision
+from dendro_inspector.schemas.decisions import AuthorityCheckTrace, CaseResponse, FinalDecision
 from dendro_inspector.schemas.evidence import EvidencePacket
 from dendro_inspector.schemas.input import CaseInput
 from dendro_inspector.schemas.reviews import CorrectionDirective, ReviewResult, ReviewSynthesis
@@ -94,13 +94,37 @@ class GraphState(Contract):
     plan: InspectionPlan | None = None
     evidence: EvidencePacket | None = None
     quality: EvidenceQualityReport | None = None
-    candidate_sets: tuple[CandidateSet, ...] = ()
+    proposed_candidate_sets: tuple[CandidateSet, ...] = Field(
+        default=(),
+        description=(
+            "Model-proposed candidate sets retained so deterministic authority checks can "
+            "evaluate an attachment counterfactual without making another model call."
+        ),
+    )
+    candidate_sets: tuple[CandidateSet, ...] = Field(
+        default=(),
+        description=(
+            "The candidate world the rest of the graph is allowed to reason about. The "
+            "attachment authority gate narrows it before any reviewer sees it."
+        ),
+    )
+    authority_checks: tuple[AuthorityCheckTrace, ...] = Field(
+        default=(),
+        description="One deterministic attachment-authority record per subject.",
+    )
     reviews: tuple[ReviewResult, ...] = ()
     synthesis: ReviewSynthesis | None = None
     corrections: tuple[CorrectionDirective, ...] = ()
     escalation: EscalationDecision | None = None
     arbiter_reviews: tuple[ReviewResult, ...] = ()
     arbiter_synthesis: ReviewSynthesis | None = None
+    pre_correction_decisions: tuple[FinalDecision, ...] = Field(
+        default=(),
+        description=(
+            "Deterministic decisions immediately before the correction loop. Used only to "
+            "measure whether the retry changed the scientific outcome."
+        ),
+    )
     decisions: tuple[FinalDecision, ...] = ()
     response: CaseResponse | None = None
     final_response: CaseResponse | None = None
@@ -115,6 +139,18 @@ class GraphState(Contract):
 
     def candidates_for(self, subject_id: str) -> CandidateSet | None:
         for candidate_set in self.candidate_sets:
+            if candidate_set.subject_id == subject_id:
+                return candidate_set
+        return None
+
+    def authority_check_for(self, subject_id: str) -> AuthorityCheckTrace | None:
+        for check in self.authority_checks:
+            if check.subject_id == subject_id:
+                return check
+        return None
+
+    def proposed_candidates_for(self, subject_id: str) -> CandidateSet | None:
+        for candidate_set in self.proposed_candidate_sets:
             if candidate_set.subject_id == subject_id:
                 return candidate_set
         return None

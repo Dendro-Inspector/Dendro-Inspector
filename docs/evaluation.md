@@ -2,8 +2,8 @@
 
 - **Status:** Current
 - **Owner:** Dendro Inspector maintainers
-- **Date:** 2026-07-28
-- **Last-verified:** 2026-07-28
+- **Date:** 2026-08-24
+- **Last-verified:** 2026-08-24
 
 ```bash
 dendro eval --suite public            # summary
@@ -251,6 +251,24 @@ any of them. All four were found on a live photograph, and all four are guarded 
 rather than by a conformance case. A suite that stays green across a real fix is telling you
 where its coverage ends.
 
+The v0.6.0 result remains **nineteen passing cases, zero failures and zero overconfidence**,
+frozen in `evals/baselines/public-v0.6.0.json`. This revision changes deterministic
+high-confidence requirement parsing and evidence-aware next-photo planning without changing
+any frozen verdict. Every run trace now also records the source commit and dirty state when
+executed from a Git checkout, so unreleased benchmark runs remain attributable.
+
+The v0.7.0 result is frozen in `evals/baselines/public-v0.7.0.json`. It adds a deterministic
+counterfactual around decision-critical detachable evidence: a single uncorroborated model
+label can no longer silently switch a claim between a taxon and abstention. The same revision
+records correction-loop outcome deltas and asks for attachment provenance before finer
+morphology when evidence ownership is the unresolved hinge.
+
+The v0.8.0 result is frozen in `evals/baselines/public-v0.8.0.json`. Reviewer model calls now
+receive an explicit projection instead of the whole graph state, and each returned result is
+bound by code to the evidence ids that projection carried. Every metric and every per-case
+decision is identical to v0.7.0, which is the point: a boundary that changes what a reviewer
+may cite should not change what the system concludes on cases where reviewers cited honestly.
+
 Read the result honestly: nineteen hand-built cases over recorded fixtures can show that the
 machinery follows these contracts. It says nothing about identification accuracy on real
 photographs, which has not been measured.
@@ -266,9 +284,9 @@ photographs, which has not been measured.
     "primary:planner": { },
     "primary:evidence_extractor": { },
     "primary:candidate_generator": { },
-    "primary:botanical_reviewer": { },
-    "primary:confusion_reviewer": { },
-    "primary:confidence_reviewer": { },
+    "reviewer:botanical_reviewer": { },
+    "reviewer:confusion_reviewer": { },
+    "reviewer:confidence_reviewer": { },
     "arbiter:arbiter": { }
   }
 }

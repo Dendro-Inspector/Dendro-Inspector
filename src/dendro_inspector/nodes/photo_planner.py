@@ -12,14 +12,15 @@ from __future__ import annotations
 
 from dendro_inspector.graph.executor import NodeContext
 from dendro_inspector.graph.state import GraphState
-from dendro_inspector.knowledge.evidence_hierarchy import BAND_INSUFFICIENT
+from dendro_inspector.knowledge.evidence_authority import attachment_risk_for
+from dendro_inspector.knowledge.evidence_hierarchy import BAND_INSUFFICIENT, family_of
 from dendro_inspector.schemas.decisions import (
     DecisionStatus,
     FinalDecision,
     PhotoRequest,
     UserClaimVerdict,
 )
-from dendro_inspector.schemas.evidence import SubjectKind
+from dendro_inspector.schemas.evidence import Observation, SubjectKind
 from dendro_inspector.schemas.input import DeclaredObjectType
 
 NODE = "photo_planner"
@@ -27,8 +28,9 @@ NODE = "photo_planner"
 #: What to ask for when the input is a particular kind of close-up that cannot carry an ID.
 _BY_DECLARED_TYPE: dict[DeclaredObjectType, tuple[str, str]] = {
     DeclaredObjectType.BARK: (
-        "needle_or_leaf_macro",
-        "Bark alone rarely separates conifer genera; foliage usually does.",
+        "attached_foliage_or_reproductive_structure",
+        "Bark overlaps across many taxa. Photograph clear foliage, fruit, seed or cones "
+        "visibly attached to this same subject.",
     ),
     DeclaredObjectType.WOOD: (
         "prepared_end_grain_macro",
@@ -58,6 +60,48 @@ _DEFAULT_REQUEST = (
     "A sharp, evenly lit close-up of foliage with a scale reference is the highest-value "
     "single photograph for most identifications.",
 )
+
+DIRECT_DETACHABLE_TYPES: frozenset[DeclaredObjectType] = frozenset(
+    {
+        DeclaredObjectType.LEAF,
+        DeclaredObjectType.NEEDLE,
+        DeclaredObjectType.FRUIT,
+        DeclaredObjectType.CONE,
+        DeclaredObjectType.BRANCH,
+        DeclaredObjectType.SEED,
+    }
+)
+
+_ATTACHMENT_PHOTOS: dict[str, tuple[str, str]] = {
+    "leaf": (
+        "leaf_attachment_photo",
+        "Show one leafy branch continuously from the foliage back to this subject's trunk.",
+    ),
+    "leaflet": (
+        "leaf_attachment_photo",
+        "Show one leafy branch continuously from the foliage back to this subject's trunk.",
+    ),
+    "needles": (
+        "needle_shoot_attachment_photo",
+        "Show the needles on a shoot continuously connected to this subject.",
+    ),
+    "fruit": (
+        "fruit_attachment_photo",
+        "Show the fruit and its branch continuously connected to this subject.",
+    ),
+    "seed": (
+        "fruit_attachment_photo",
+        "Show the seed-bearing structure continuously connected to this subject.",
+    ),
+    "cones": (
+        "cone_attachment_photo",
+        "Show the cone and its branch continuously connected to this subject.",
+    ),
+    "branch": (
+        "branch_attachment_photo",
+        "Show the branch continuously connected to this subject's trunk.",
+    ),
+}
 
 _REASON_TEXT: dict[str, str] = {
     "no_subject_identified": "No distinct subject could be separated from the background.",
@@ -107,17 +151,68 @@ def effective_object_type(
     return inferred.pop() if len(inferred) == 1 else declared
 
 
+def attachment_uncertain_observations(
+    state: GraphState,
+    subject_id: str,
+    object_type: DeclaredObjectType,
+) -> tuple[Observation, ...]:
+    """Detachable observations whose ownership is still unresolved for this subject.
+
+    The rules live in :mod:`dendro_inspector.knowledge.evidence_authority`, shared with the
+    attachment authority gate. One definition of ambiguity feeds both the decision to hold a
+    claim back and the photograph asked for in exchange; when they were two similar
+    if-trees, they were one edit away from disagreeing.
+    """
+    evidence = state.evidence
+    if evidence is None or object_type in DIRECT_DETACHABLE_TYPES:
+        return ()
+    return attachment_risk_for(evidence, subject_id).observations
+
+
+def attachment_request(
+    state: GraphState,
+    subject_id: str,
+    *,
+    critical_evidence_ids: tuple[str, ...] = (),
+) -> PhotoRequest | None:
+    """Ask for evidence ownership before morphology when attachment can move the verdict."""
+    evidence = state.evidence
+    if evidence is None:
+        return None
+    object_type = effective_object_type(state, subject_id)
+    critical = set(critical_evidence_ids)
+    observations = (
+        tuple(
+            observation
+            for observation in evidence.observations
+            if observation.observation_id in critical
+        )
+        if critical
+        else attachment_uncertain_observations(state, subject_id, object_type)
+    )
+    if not observations or object_type in DIRECT_DETACHABLE_TYPES:
+        return None
+
+    families = tuple(dict.fromkeys(family_of(observation.feature) for observation in observations))
+    for family in ("leaf", "leaflet", "needles", "fruit", "seed", "cones", "branch"):
+        if family in families:
+            target, reason = _ATTACHMENT_PHOTOS[family]
+            return PhotoRequest(target=target, reason=reason, subject_id=subject_id)
+    return None
+
+
 def choose_request(
     state: GraphState,
     ctx: NodeContext,
     subject_id: str | None = None,
 ) -> PhotoRequest:
     """Pick the single most useful next photograph for one subject."""
-    follow_ups = ctx.knowledge.follow_up_for(ctx.knowledge.available_taxon_ids())
     object_type = effective_object_type(state, subject_id)
+    if object_type is not DeclaredObjectType.SPLIT_FIREWOOD and subject_id is not None:
+        authority_first = attachment_request(state, subject_id)
+        if authority_first is not None:
+            return authority_first
     target, reason = _BY_DECLARED_TYPE.get(object_type, _DEFAULT_REQUEST)
-    if object_type is DeclaredObjectType.UNKNOWN and follow_ups:
-        target = follow_ups[0]
     return PhotoRequest(target=target, reason=reason, subject_id=subject_id)
 
 

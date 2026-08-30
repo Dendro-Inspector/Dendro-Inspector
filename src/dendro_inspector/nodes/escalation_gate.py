@@ -96,12 +96,19 @@ def _triggers(state: GraphState, policy: EscalationPolicy) -> tuple[str, ...]:
         and synthesis.confidence_delta is Confidence.HIGH
     ):
         reasons.append("high_confidence_proposed")
-    if (
-        policy.on_reviewer_disagreement
-        and synthesis is not None
-        and synthesis.escalation_recommended
-    ):
-        reasons.append("reviewers_disagree_or_critical_finding")
+    if policy.on_reviewer_disagreement and synthesis is not None:
+        if synthesis.reviewer_disagreement:
+            reasons.append("reviewer_disagreement")
+        if synthesis.has_critical:
+            reasons.append("critical_finding")
+        if (
+            synthesis.escalation_recommended
+            and not synthesis.reviewer_disagreement
+            and not synthesis.has_critical
+        ):
+            # Compatibility for a synthesis produced by older/custom code that only set
+            # the combined flag. New Dendro synthesis always records the exact provenance.
+            reasons.append("escalation_provenance_unknown")
     if policy.on_unresolved_contradiction and synthesis is not None and synthesis.has_critical:
         reasons.append("unresolved_contradiction")
     if (

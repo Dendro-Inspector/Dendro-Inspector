@@ -111,10 +111,26 @@ def _candidate(taxon: str, rank: int, support_id: str) -> Candidate:
     )
 
 
+def _bound(result: ReviewResult, packet: EvidencePacket) -> ReviewResult:
+    """Bind the evidence scope the way `review_call` does: the projection is the whole packet.
+
+    Deriving the scope from what the findings happen to cite would put an invented id inside
+    the projection, so a test for `evidence_id_unknown` would pass without ever reaching that
+    branch. Tests that want a narrower scope set `reviewed_evidence_ids` themselves.
+    """
+    if result.reviewed_evidence_ids is not None:
+        return result
+    packet_ids = tuple(observation.observation_id for observation in packet.observations) + tuple(
+        inference.inference_id for inference in packet.inferences
+    )
+    return result.model_copy(update={"reviewed_evidence_ids": packet_ids})
+
+
 def _adjudicate(knowledge, *results: ReviewResult, evidence=None):
+    packet = evidence if evidence is not None else _evidence()
     return adjudicate(
-        tuple(results),
-        evidence=evidence if evidence is not None else _evidence(),
+        tuple(_bound(result, packet) for result in results),
+        evidence=packet,
         knowledge=knowledge,
     )
 
@@ -138,6 +154,18 @@ class TestAdmissibility:
         )
         assert not synthesis.accepted_findings
         assert synthesis.rejected_findings[0].reason_code is ReasonCode.EVIDENCE_ID_UNKNOWN
+
+    def test_finding_cannot_cite_evidence_outside_recorded_projection(self, knowledge):
+        synthesis = _adjudicate(
+            knowledge,
+            _result(
+                _finding(evidence_ids=("obs-1",)),
+                reviewed_evidence_ids=(),
+            ),
+        )
+
+        assert not synthesis.accepted_findings
+        assert synthesis.rejected_findings[0].reason_code is ReasonCode.OUT_OF_SCOPE
 
     def test_material_duplicate_ignores_id_prose_and_model_severity(self, knowledge):
         synthesis = _adjudicate(
@@ -312,6 +340,28 @@ class TestFindingBoundReranks:
             "pinus",
         ]
 
+    def test_recommendation_cannot_use_evidence_outside_recorded_projection(self, knowledge):
+        finding = _finding(
+            finding_id="out-of-scope-rerank",
+            category=FindingCategory.BOTANICAL_CONTRADICTION,
+            subject_id="log_1",
+            evidence_ids=("picea-support",),
+            proposed_taxon="picea",
+            required_action=RequiredAction.RERANK_CANDIDATES,
+            impact=Impact.CANDIDATE_CHANGE,
+        )
+        result = _result(
+            finding,
+            subject_id="log_1",
+            reviewed_evidence_ids=("picea-support",),
+            recommended_candidates=(_candidate("picea", 1, "pinus-support"),),
+        )
+
+        synthesis = _adjudicate(knowledge, result, evidence=_rerank_evidence())
+
+        assert not synthesis.admitted_reranks
+        assert synthesis.rejected_findings[0].reason_code is ReasonCode.NOT_ACTIONABLE
+
     def test_recommendation_without_rerank_finding_is_inert(self, knowledge):
         result = _result(
             _finding(required_action=RequiredAction.LOWER_CONFIDENCE),
@@ -451,7 +501,7 @@ class TestArbiterSynthesis:
         state = GraphState(
             case=CaseInput(case_id="arbiter-case"),
             evidence=_rerank_evidence(),
-            arbiter_reviews=(review,),
+            arbiter_reviews=(_bound(review, _rerank_evidence()),),
         )
 
         updated = asyncio.run(run_arbiter_synthesizer(state, node_context))
@@ -499,6 +549,24 @@ class TestDerivedActions:
             ),
         )
         assert synthesis.escalation_recommended
+        assert synthesis.reviewer_disagreement
+        assert not synthesis.has_critical
+
+    def test_critical_finding_records_distinct_escalation_provenance(self, knowledge):
+        synthesis = _adjudicate(
+            knowledge,
+            _result(
+                _finding(
+                    category=FindingCategory.UNSUPPORTED_CLAIM,
+                    severity=Severity.CRITICAL,
+                    required_action=RequiredAction.ABSTAIN,
+                )
+            ),
+        )
+
+        assert synthesis.escalation_recommended
+        assert not synthesis.reviewer_disagreement
+        assert synthesis.has_critical
 
     def test_deltas_take_the_most_conservative_recommendation(self, knowledge):
         synthesis = _adjudicate(

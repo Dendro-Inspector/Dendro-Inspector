@@ -218,7 +218,17 @@ class TaxonCard(Contract):
     supporting_features: tuple[FeatureExpectation, ...] = ()
     contradictions: tuple[FeatureExpectation, ...] = ()
     common_confusions: tuple[Identifier, ...] = ()
-    required_for_high_confidence: tuple[ValueToken, ...] = ()
+    required_for_high_confidence: tuple[ValueToken, ...] = Field(
+        default=(),
+        description=(
+            "Evidence a claim at this card's own resolution cannot be strong without. Each "
+            "entry is a requirement expression: canonical feature paths or feature families "
+            "joined by `_and_` and `_or_`, where `_and_` binds tighter — "
+            "`leaf.underside_and_leaf.arrangement_or_fruit.type`. "
+            "`knowledge.taxon_cards.requirement_selectors` is the grammar's one definition; "
+            "a selector no observable feature can match fails a contract test."
+        ),
+    )
     follow_up_evidence: tuple[ValueToken, ...] = ()
     provenance: Provenance
     placeholder_content: bool = Field(
@@ -308,6 +318,15 @@ class DecisiveDifference(Contract):
             "distinguishes the group without favouring any single member."
         ),
     )
+    photo: ValueToken | None = Field(
+        default=None,
+        description=(
+            "Which of the card's recommended follow-up photographs would resolve this "
+            "feature. None means no photograph in this card can: needle persistence needs a "
+            "second visit in another season, not a better macro. The binding is what lets "
+            "the planner skip a photograph whose feature is already resolved."
+        ),
+    )
     note: ShortText | None = None
     provenance: Provenance | None = None
 
@@ -330,6 +349,24 @@ class ComparisonCard(Contract):
     recommended_follow_up_photos: tuple[ValueToken, ...] = ()
     provenance: Provenance
     placeholder_content: bool = True
+
+    @model_validator(mode="after")
+    def _photo_bindings_name_a_recommended_photo(self) -> ComparisonCard:
+        """A discriminator may only point at a photograph this card actually recommends.
+
+        Otherwise the binding is a second, unreviewed list of photograph targets living
+        inside the first one.
+        """
+        for difference in self.decisive_differences:
+            if difference.photo is not None and (
+                difference.photo not in self.recommended_follow_up_photos
+            ):
+                msg = (
+                    f"{self.comparison_id}: {difference.feature} points at photo "
+                    f"{difference.photo!r}, which is not in recommended_follow_up_photos"
+                )
+                raise ValueError(msg)
+        return self
 
 
 class RegionalPack(Contract):

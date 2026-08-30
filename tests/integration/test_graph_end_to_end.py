@@ -26,6 +26,7 @@ class TestHappyPath:
             "evidence_extractor",
             "evidence_quality",
             "candidate_generator",
+            "attachment_authority_gate",
             "botanical_reviewer",
             "confusion_reviewer",
             "confidence_reviewer",
@@ -40,6 +41,23 @@ class TestHappyPath:
         result = run_scenario(simple_case, "primary-pass")
         assert not result.trace.arbiter_used
         assert "arbiter" not in result.trace.executed_nodes
+
+    def test_first_pass_reviewers_use_the_reviewer_role(self, simple_case, run_scenario):
+        result = run_scenario(simple_case, "primary-pass")
+        reviewer_nodes = {
+            "botanical_reviewer",
+            "confusion_reviewer",
+            "confidence_reviewer",
+        }
+        calls = [
+            call
+            for event in result.trace.events
+            if event.node in reviewer_nodes
+            for call in event.provider_calls
+        ]
+
+        assert len(calls) == 3
+        assert {call.role for call in calls} == {"reviewer"}
 
     def test_response_is_toned_and_structured(self, simple_case, run_scenario):
         result = run_scenario(simple_case, "primary-pass")
