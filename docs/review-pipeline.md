@@ -2,8 +2,8 @@
 
 - **Status:** Current
 - **Owner:** Dendro Inspector maintainers
-- **Date:** 2026-07-29
-- **Last-verified:** 2026-07-29
+- **Date:** 2026-08-30
+- **Last-verified:** 2026-08-30
 
 ## The rule
 
@@ -85,15 +85,30 @@ requirements are not visible, and `invalid_negative_evidence` when a feature app
 ## Admissibility
 
 Synthesis first resolves one effective subject from the finding, review result and referenced
-evidence. Unknown/ambiguous ids fail with `evidence_id_unknown`; evidence whose source
-observations belong to another subject fails with `out_of_scope`. An inference is checked
-through every source observation, so it cannot hide a cross-subject citation.
+evidence. At the model boundary, code overwrites `ReviewResult.reviewed_evidence_ids` with the
+ids in that reviewer's `ReviewProjection`.
+
+Each cited id is then tested in a fixed order, and the order is load-bearing. **Resolution
+first:** an id that names nothing in the packet, or names two things, fails with
+`evidence_id_unknown`. **Scope second:** an id that resolves but was not in the reviewer's
+projection fails with `out_of_scope`, as does evidence whose source observations belong to
+another subject. Testing scope first would be simpler and wrong: the projection currently
+carries the whole packet, so every invented id would report `out_of_scope` and
+`evidence_id_unknown` would never fire for a model finding — merging "the model hallucinated
+an id" and "the model reached into another subject" into one bucket the evaluations cannot
+separate.
+
+An inference is checked through every source observation, so it cannot hide a cross-subject
+citation. Code-generated deterministic findings are adjudicated against canonical evidence
+because they did not originate from the bounded model call; a result carrying no recorded
+scope at all is treated as unscoped rather than as empty-scoped, at both the finding and the
+rerank-recommendation check.
 
 A finding is **accepted** when one of these holds, in order:
 
 | Test | Reason code |
 | --- | --- |
-| Cites evidence ids that exist and belong to the effective subject | `references_visible_evidence` |
+| Cites evidence ids in the recorded projection that exist and belong to the effective subject | `references_visible_evidence` |
 | Category is `contract_violation` | `identifies_contract_violation` |
 | Category is a contradiction class | `identifies_contradiction` |
 | Category is a calibration class | `improves_calibration` |
@@ -104,7 +119,7 @@ A finding is **accepted** when one of these holds, in order:
 | Cause | Reason code |
 | --- | --- |
 | Unknown or ambiguous evidence id | `evidence_id_unknown` |
-| Evidence/result/finding subjects conflict | `out_of_scope` |
+| Evidence id was outside the review projection, or evidence/result/finding subjects conflict | `out_of_scope` |
 | Materially duplicates an already-adjudicated finding | `restates_existing_finding` |
 | An alternative or rerank with nothing admissible behind it | `not_actionable` |
 | No evidence reference and no qualifying category | `no_evidence_reference` |

@@ -2,8 +2,8 @@
 
 - **Status:** Current
 - **Owner:** Dendro Inspector maintainers
-- **Date:** 2026-08-24
-- **Last-verified:** 2026-08-24
+- **Date:** 2026-08-30
+- **Last-verified:** 2026-08-30
 
 ## The problem this shape solves
 
@@ -314,6 +314,15 @@ contradictions, colour dependence, unsupported resolution, invalid negative evid
 findings first. Material duplicate detection includes subject, action, impact, evidence ids and
 proposed taxon, so a model restatement cannot preempt a deterministic finding by sharing only
 its category.
+
+Reviewer model calls do not receive `GraphState`. Orchestration constructs a typed
+`ReviewProjection` containing the case, evidence, admitted candidates, knowledge-selection
+flags and (for arbitration) the deterministic proposed assessment. The initial boundary is
+intentionally pass-through for case photographs and evidence: candidate output is under
+review and therefore cannot decide which subjects or photographs the reviewers may inspect.
+Each returned `ReviewResult` is code-bound to the projection's evidence ids before synthesis.
+The projection reports the photographs that actually reach the provider, not the ones the case
+declares, so an unreadable file cannot appear in the trace as evidence a reviewer saw.
 
 Candidate changes cross an additional boundary: the exact `rerank_candidates` finding and its
 same-result recommendation are validated and stored together as `AdmittedRerank`. Final

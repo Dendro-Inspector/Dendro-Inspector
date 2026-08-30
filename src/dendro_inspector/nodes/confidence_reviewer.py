@@ -184,7 +184,7 @@ def invalid_negative_evidence_findings(state: GraphState) -> tuple[ReviewFinding
 
 
 async def run(state: GraphState, ctx: NodeContext) -> GraphState:
-    result = await review_call(state, ctx, node=NODE, reviewer=Reviewer.CONFIDENCE)
+    result = await review_call(ctx, node=NODE, reviewer=Reviewer.CONFIDENCE)
     result = merge_findings(
         result,
         unsupported_resolution_findings(state, ctx)

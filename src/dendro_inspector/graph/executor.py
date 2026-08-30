@@ -11,7 +11,7 @@ from __future__ import annotations
 import asyncio
 import time
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Protocol
 
 from dendro_inspector.config import AppConfig
@@ -21,6 +21,7 @@ from dendro_inspector.graph.definition import (
     TERMINAL_NODE,
     NodeName,
 )
+from dendro_inspector.graph.projections import REVIEWER_NODES, build_review_projection
 from dendro_inspector.graph.routing import next_step
 from dendro_inspector.graph.state import GraphState
 from dendro_inspector.knowledge.loader import KnowledgeBase
@@ -30,6 +31,7 @@ from dendro_inspector.observability.trace import TraceRecorder
 from dendro_inspector.prompts.library import PromptLibrary
 from dendro_inspector.providers.registry import ProviderRegistry
 from dendro_inspector.schemas.input import CaseInput
+from dendro_inspector.schemas.review_context import ReviewProjection
 
 
 class GraphExecutionError(RuntimeError):
@@ -45,6 +47,7 @@ class NodeContext:
     knowledge: KnowledgeBase
     prompts: PromptLibrary
     recorder: TraceRecorder
+    review_projection: ReviewProjection | None = None
 
 
 class NodeRunner(Protocol):
@@ -57,6 +60,15 @@ class NodeRunner(Protocol):
 class GraphRunResult:
     state: GraphState
     trace: RunTrace
+
+
+def _context_for_node(node: NodeName, state: GraphState, ctx: NodeContext) -> NodeContext:
+    """Attach a bounded reviewer projection at the orchestration boundary."""
+    if node not in REVIEWER_NODES:
+        return ctx
+    projection = build_review_projection(node, state, ctx)
+    ctx.recorder.record_review_projection(node.value, projection)
+    return replace(ctx, review_projection=projection)
 
 
 async def _run_fanout(
@@ -75,7 +87,8 @@ async def _run_fanout(
 
     async def _run(member: NodeName) -> tuple[NodeName, GraphState, float]:
         started = time.perf_counter()
-        produced = await registry[member](state, ctx)
+        member_ctx = _context_for_node(member, state, ctx)
+        produced = await registry[member](state, member_ctx)
         return member, produced, (time.perf_counter() - started) * 1000.0
 
     outcomes = await asyncio.gather(*(_run(member) for member in members))
@@ -122,7 +135,8 @@ async def run_graph(
 
         started = time.perf_counter()
         try:
-            state = await runner(state, ctx)
+            node_ctx = _context_for_node(current, state, ctx)
+            state = await runner(state, node_ctx)
         except Exception:
             ctx.recorder.record_node(current.value, status=NodeStatus.FAILED)
             logger.exception("node_failed", extra={"node": current.value, "case_id": case.case_id})

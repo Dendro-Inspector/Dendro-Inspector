@@ -20,10 +20,12 @@ from dendro_inspector.observability.events import (
     NodeStatus,
     PromptMetadata,
     ProviderCallRecord,
+    ReviewerProjectionRecord,
     RunTrace,
 )
 from dendro_inspector.observability.logging import get_logger
 from dendro_inspector.schemas.decisions import AuthorityCheckStatus
+from dendro_inspector.schemas.review_context import ReviewProjection
 from dendro_inspector.schemas.taxon import Confidence, Resolution
 
 if TYPE_CHECKING:
@@ -55,6 +57,7 @@ class TraceRecorder:
         self._code_commit_sha, self._code_dirty = _discover_code_revision(root or Path.cwd())
         self._events: list[NodeEvent] = []
         self._pending_calls: list[ProviderCallRecord] = []
+        self._pending_review_projections: dict[str, ReviewerProjectionRecord] = {}
         self._providers: dict[str, str] = {}
         self._component_projections: tuple[ComponentProjection, ...] = ()
         self._prompt: PromptMetadata | None = None
@@ -99,6 +102,18 @@ class TraceRecorder:
             for (identity_id, component_id), observation_ids in grouped.items()
         )
 
+    def record_review_projection(self, node: str, projection: ReviewProjection) -> None:
+        """Record IDs and countable inputs without storing prompt text or private metadata."""
+        self._pending_review_projections[node] = ReviewerProjectionRecord(
+            reviewer=projection.reviewer.value,
+            evidence_ids=projection.evidence_ids,
+            image_ids=projection.image_ids,
+            candidate_subject_ids=projection.candidate_subject_ids,
+            taxon_ids=projection.taxon_ids,
+            include_comparison_cards=projection.include_comparison_cards,
+            include_regional_pack=projection.include_regional_pack,
+        )
+
     def _claim_calls(self, node: str) -> tuple[ProviderCallRecord, ...]:
         """Take the pending calls this node made, leaving other nodes' calls alone."""
         claimed = tuple(record for record in self._pending_calls if record.node == node)
@@ -115,6 +130,7 @@ class TraceRecorder:
         duration_ms: float | None = None,
     ) -> None:
         calls = self._claim_calls(node)
+        projection = self._pending_review_projections.pop(node, None)
         self._events.append(
             NodeEvent(
                 node=node,
@@ -123,6 +139,7 @@ class TraceRecorder:
                 detail=detail,
                 duration_ms=duration_ms,
                 provider_calls=calls,
+                reviewer_projection=projection,
             )
         )
 
@@ -150,6 +167,18 @@ class TraceRecorder:
         authority_checks: tuple[AuthorityCheckTrace, ...] = (),
     ) -> RunTrace:
         finished_at = datetime.now(UTC)
+        if self._pending_review_projections:
+            # Same reasoning as unattributed provider calls below: a projection built for a
+            # node that never recorded an event would leave the audit trail claiming the
+            # reviewer saw the full state.
+            get_logger("trace").warning(
+                "unattributed_review_projections",
+                extra={
+                    "case_id": self._case_id,
+                    "nodes": sorted(self._pending_review_projections),
+                },
+            )
+            self._pending_review_projections.clear()
         if self._pending_calls:
             # A call whose node never recorded an event would vanish from the trace. That is
             # a wiring bug in the caller, and a silently short provider-call count is exactly

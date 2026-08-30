@@ -259,7 +259,7 @@ def region_findings(state: GraphState, ctx: NodeContext) -> tuple[ReviewFinding,
 
 
 async def run(state: GraphState, ctx: NodeContext) -> GraphState:
-    result = await review_call(state, ctx, node=NODE, reviewer=Reviewer.CONFUSION)
+    result = await review_call(ctx, node=NODE, reviewer=Reviewer.CONFUSION)
     result = merge_findings(
         result,
         colour_findings(state)

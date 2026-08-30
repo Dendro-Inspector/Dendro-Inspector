@@ -23,7 +23,6 @@ NODE = "arbiter"
 
 async def run(state: GraphState, ctx: NodeContext) -> GraphState:
     result = await review_call(
-        state,
         ctx,
         node=NODE,
         reviewer=Reviewer.ARBITER,

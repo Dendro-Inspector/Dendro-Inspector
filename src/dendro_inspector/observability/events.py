@@ -47,6 +47,18 @@ class ProviderCallRecord(Contract):
     duration_ms: float | None = Field(default=None, ge=0)
 
 
+class ReviewerProjectionRecord(Contract):
+    """Audit-safe summary of the bounded input supplied to one reviewer."""
+
+    reviewer: str = Field(max_length=40)
+    evidence_ids: tuple[Identifier, ...] = ()
+    image_ids: tuple[Identifier, ...] = ()
+    candidate_subject_ids: tuple[Identifier, ...] = ()
+    taxon_ids: tuple[Identifier, ...] = ()
+    include_comparison_cards: bool = True
+    include_regional_pack: bool = True
+
+
 class NodeEvent(Contract):
     """One executed node."""
 
@@ -56,6 +68,7 @@ class NodeEvent(Contract):
     detail: ShortText | None = None
     duration_ms: float | None = Field(default=None, ge=0)
     provider_calls: tuple[ProviderCallRecord, ...] = ()
+    reviewer_projection: ReviewerProjectionRecord | None = None
 
 
 class ComponentProjection(Contract):

@@ -5,12 +5,15 @@ from __future__ import annotations
 import asyncio
 import io
 import json
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
 import dendro_inspector.nodes._support as support
 from dendro_inspector.config import Role
+from dendro_inspector.graph.definition import NodeName
+from dendro_inspector.graph.projections import build_review_projection
 from dendro_inspector.graph.state import GraphState
 from dendro_inspector.knowledge.candidate_validation import validate_candidate_set
 from dendro_inspector.knowledge.evidence_hierarchy import EvidenceTier
@@ -85,7 +88,11 @@ def test_arbiter_receives_deterministic_proposed_resolution_and_confidence(
 
     async def capture_request(**kwargs):
         prompts.append(kwargs["prompt"])
-        return ReviewResult(reviewer=Reviewer.ARBITER, status=ReviewStatus.PASS)
+        return ReviewResult(
+            reviewer=Reviewer.ARBITER,
+            status=ReviewStatus.PASS,
+            reviewed_evidence_ids=("provider-spoofed-id",),
+        )
 
     monkeypatch.setattr(support, "request_structured", capture_request)
     candidate = Candidate(
@@ -111,10 +118,14 @@ def test_arbiter_receives_deterministic_proposed_resolution_and_confidence(
         synthesis=ReviewSynthesis(),
     )
 
-    asyncio.run(
+    arbiter_ctx = replace(
+        node_context,
+        review_projection=build_review_projection(NodeName.ARBITER, state, node_context),
+    )
+
+    result = asyncio.run(
         support.review_call(
-            state,
-            node_context,
+            arbiter_ctx,
             node="arbiter",
             reviewer=Reviewer.ARBITER,
             role=Role.ARBITER,
@@ -127,6 +138,7 @@ def test_arbiter_receives_deterministic_proposed_resolution_and_confidence(
     assert '"selected_taxon": "pinus"' in prompt
     assert '"resolution": "genus"' in prompt
     assert '"confidence": "low"' in prompt
+    assert result.reviewed_evidence_ids == ("obs-1",)
 
 
 def test_weak_result_reports_visible_evidence_and_scoped_limitations(simple_case):
