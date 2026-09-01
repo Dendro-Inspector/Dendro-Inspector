@@ -216,9 +216,10 @@ adjudicated. `leaders_are_close()` compares adjudicated strengths, so
 recommendations pass through the same validator, so a rerank cannot smuggle a `strong` label
 either. The model's label is never raised.
 
-**Tests.** Unit: the three-row matrix above; a `strong` label on supporting-only hits
-returns `moderate`; a `strong` label with a missing requirement returns `moderate`; a
-`weak` label is never raised. Public case `strong-label-thin-support-001`: primary labels a
+**Tests.** Unit: the three-row matrix above; a `strong` label on one supporting-only hit
+returns `weak` and on two returns `moderate`; a `strong` label with a missing requirement
+returns `moderate`; a `weak` label is never raised. Public case
+`strong-label-thin-support-001`: primary labels a
 candidate `strong` on one supporting-feature hit, reviewers pass silently, expected
 confidence ≤ `medium`, no `identified`.
 
@@ -662,7 +663,7 @@ regression guard. Each test is written against the pure function, with no provid
 
 | Finding | File | Test name | Given / when / then |
 | --- | --- | --- | --- |
-| F1 | `test_candidate_validation.py` | `test_strong_label_on_supporting_only_hit_is_demoted` | candidate `score=strong`, its only validated support matches a `supporting_features` entry → admitted `score` is `moderate` |
+| F1 | `test_candidate_validation.py` | `test_strong_label_on_supporting_only_hit_is_demoted` | candidate `score=strong`, its only validated support matches a `supporting_features` entry → admitted `score` is `weak`, since the C1 table needs two supporting hits for `moderate` |
 | F1 | `test_final_decision.py` | `test_the_same_evidence_yields_the_same_confidence_whatever_the_model_said` | P5 setup, `score` in `{strong, moderate, weak}` → identical confidence and status |
 | F2 | `test_escalation_gate.py` | `test_strong_leader_with_silent_reviewers_escalates` | P3a state → `required` and `high_confidence_proposed` in `reasons` |
 | F4 | `test_user_claim.py` | `test_an_unattached_contradiction_cannot_reject_a_version` | P2 setup → verdict is not `rejected` |

@@ -13,7 +13,13 @@ from dendro_inspector.graph.state import (
 )
 from dendro_inspector.nodes.escalation_gate import decide
 from dendro_inspector.schemas.candidates import Candidate, CandidateSet, SupportStrength
-from dendro_inspector.schemas.evidence import EvidencePacket, Subject
+from dendro_inspector.schemas.evidence import (
+    AttachmentStatus,
+    EvidencePacket,
+    Observation,
+    ObservationSource,
+    Subject,
+)
 from dendro_inspector.schemas.input import CaseInput
 from dendro_inspector.schemas.reviews import (
     FindingCategory,
@@ -258,3 +264,55 @@ class TestPrecedence:
     )
     def test_every_trigger_is_individually_switchable(self, field):
         assert getattr(EscalationPolicy(**{field: False}), field) is False
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "F2 (docs/specs/core-logic-hardening.md): the gate reads a reviewer recommendation "
+        "rather than the verdict, so silent reviewers read as modest confidence while the "
+        "deterministic decision for the same state is high/identified."
+    ),
+)
+def test_strong_leader_with_silent_reviewers_escalates():
+    """`high_confidence_proposed` must describe the claim, not a reviewer's opinion of it.
+
+    Attached, clearly visible fascicles carry foliage authority, so this state's
+    deterministic verdict is `high` / `identified`. Three reviewers that pass without
+    recommending anything leave `confidence_delta` unset, which the cost suppressor
+    currently reads as modest confidence.
+    """
+    observation = Observation(
+        observation_id="obs-1",
+        feature="needles.fascicles",
+        value="two",
+        subject_id="log_1",
+        source=ObservationSource.IMAGE,
+        image_id="img-1",
+        attachment=AttachmentStatus.CONFIRMED_ATTACHED,
+    )
+    state = _state(
+        evidence=EvidencePacket(
+            subjects=(Subject(subject_id="log_1"),),
+            observations=(observation,),
+        ),
+        candidate_sets=(
+            CandidateSet(
+                subject_id="log_1",
+                candidates=(
+                    Candidate(
+                        taxon="pinus",
+                        resolution=Resolution.GENUS,
+                        rank=1,
+                        score=SupportStrength.STRONG,
+                        supporting_evidence_ids=("obs-1",),
+                    ),
+                ),
+            ),
+        ),
+    )
+
+    decision = decide(state, POLICY)
+
+    assert decision.required
+    assert "high_confidence_proposed" in decision.reasons

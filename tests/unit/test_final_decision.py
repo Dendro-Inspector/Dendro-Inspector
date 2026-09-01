@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import asyncio
+
 import pytest
 from pydantic import ValidationError
 
 from dendro_inspector.graph.state import GraphState
+from dendro_inspector.nodes import abstain
 from dendro_inspector.nodes.final_decision import (
     apply_reranking,
     cap_resolution,
@@ -756,3 +759,119 @@ class TestSupportingEvidenceIsReportedInFull:
         decision, _ = self._decide(simple_case, node_context)
 
         assert decision.supporting_evidence[0].startswith("leaf.shape")
+
+
+class TestPhaseZeroHardeningGates:
+    """Failing gates for the findings in `docs/specs/core-logic-hardening.md`.
+
+    Each is strict, so the marker has to be removed in the same commit that fixes the
+    finding. Until then these record, executably, what the evidence says is wrong.
+    """
+
+    @pytest.mark.xfail(
+        strict=True,
+        reason=(
+            "F1: `_SCORE_TO_CONFIDENCE[leader.score]` seeds confidence from the primary "
+            "model's own label, so the same evidence returns low, medium or high."
+        ),
+    )
+    def test_the_same_evidence_yields_the_same_confidence_whatever_the_model_said(
+        self, simple_case, node_context
+    ):
+        support = _observation("support", "needles.fascicles", "two")
+        confidences = set()
+        for score in SupportStrength:
+            candidates = CandidateSet(
+                subject_id="tree_1",
+                candidates=(
+                    Candidate(
+                        taxon="pinus",
+                        resolution=Resolution.GENUS,
+                        supporting_evidence_ids=("support",),
+                        score=score,
+                        rank=1,
+                    ),
+                ),
+            )
+            state = _state(simple_case, (support,), candidates.candidates)
+            confidences.add(decide_subject(state, node_context, candidates).confidence)
+
+        assert len(confidences) == 1
+
+    @pytest.mark.xfail(
+        strict=True,
+        reason=(
+            "F4: `decide_status` reads `has_contradiction`, which matches every visible "
+            "observation regardless of whether it could support a claim at all."
+        ),
+    )
+    def test_conflicting_evidence_status_needs_a_disqualifying_hit(self, simple_case, node_context):
+        """Foliage that could not be traced to this trunk cannot convict the answer.
+
+        The Picea card declares `needles.fascicles` disqualifying. Here that observation
+        carries `attachment: unknown`, so the evidence hierarchy projects it to context and
+        it could not have supported any candidate.
+        """
+        support = _observation("support", "needles.attachment", "single_on_woody_peg")
+        loose = Observation(
+            observation_id="loose",
+            feature="needles.fascicles",
+            value="two",
+            subject_id="tree_1",
+            source=ObservationSource.IMAGE,
+            image_id="img-1",
+            attachment=AttachmentStatus.UNKNOWN,
+        )
+        candidates = CandidateSet(
+            subject_id="tree_1",
+            candidates=(
+                Candidate(
+                    taxon="picea",
+                    resolution=Resolution.GENUS,
+                    supporting_evidence_ids=("support",),
+                    score=SupportStrength.MODERATE,
+                    rank=1,
+                ),
+            ),
+        )
+        state = _state(simple_case, (support, loose), candidates.candidates)
+
+        decision = decide_subject(state, node_context, candidates)
+
+        assert decision.status is not DecisionStatus.CONFLICTING_EVIDENCE
+
+    @pytest.mark.xfail(
+        strict=True,
+        reason=(
+            "F6: `FinalDecision` has no `abstained` field, and the abstention step is "
+            "computed from the proposed resolution the card cap has already broadened."
+        ),
+    )
+    def test_an_abstained_verdict_says_so_and_is_broader(self, simple_case, node_context):
+        """A species proposal capped to genus must not abstain to the same genus.
+
+        The card supports genus only, so the composed bound is already genus before
+        abstention. Lowering one step from the *proposed* species lands back on genus, and
+        the returned verdict is then indistinguishable from the confident one.
+        """
+        support = _observation("support", "needles.fascicles", "two")
+        candidates = CandidateSet(
+            subject_id="tree_1",
+            candidates=(
+                Candidate(
+                    taxon="pinus",
+                    resolution=Resolution.SPECIES,
+                    supporting_evidence_ids=("support",),
+                    score=SupportStrength.MODERATE,
+                    rank=1,
+                ),
+            ),
+        )
+        state = _state(simple_case, (support,), candidates.candidates)
+        abstained = asyncio.run(abstain.run(state, node_context))
+
+        decision = decide_subject(abstained, node_context, candidates)
+
+        # Reached through `getattr` so the gate type-checks before the field exists.
+        assert getattr(decision, "abstained", False)
+        assert decision.resolution is Resolution.FAMILY

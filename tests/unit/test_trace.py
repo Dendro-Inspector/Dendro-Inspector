@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 import dendro_inspector.observability.trace as trace_module
 from dendro_inspector.observability.trace import TraceRecorder
 from dendro_inspector.schemas.decisions import (
@@ -148,3 +150,23 @@ def test_trace_reports_a_retry_that_did_not_change_the_outcome():
     assert trace.correction_changed_taxon is False
     assert trace.correction_changed_resolution is False
     assert trace.correction_changed_confidence is False
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "F7 (docs/specs/core-logic-hardening.md): the decision engine's docstring promises "
+        "the derivation is inspectable in the trace, but nothing records which bound bound "
+        "or which confidence steps applied."
+    ),
+)
+def test_every_final_decision_has_a_derivation(simple_case, run_scenario):
+    """A disputed verdict must be auditable without re-running the engine."""
+    result = run_scenario(simple_case, "primary-pass")
+
+    derivations = result.trace.decision_derivations
+
+    assert len(derivations) == len(result.state.decisions)
+    assert {item.subject_id for item in derivations} == {
+        decision.subject_id for decision in result.state.decisions
+    }

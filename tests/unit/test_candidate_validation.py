@@ -406,3 +406,37 @@ def test_corroborated_material_group_candidate_remains_admissible(knowledge):
     assert validated.leader is not None
     assert validated.leader.taxon == "pinus"
     assert candidate_support_tier(validated.leader, evidence, "pile") is EvidenceTier.BARK
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "F1 (docs/specs/core-logic-hardening.md): the model's own support-strength label "
+        "is passed through admission untouched, so it still seeds confidence and status."
+    ),
+)
+def test_strong_label_on_supporting_only_hit_is_demoted(knowledge):
+    """A `strong` label is not evidence. Only what the card admits decides strength.
+
+    `bark.texture = scaly_plates` is one `supporting_features` entry of the Pinus card and
+    matches no `strong_positive_features` entry, so C1's table derives `weak`: `moderate`
+    needs a strong-feature hit or two supporting hits.
+    """
+    evidence = _packet(_obs("bark", "bark.texture", "scaly_plates"))
+    candidate_set = CandidateSet(
+        subject_id="log_1",
+        candidates=(
+            Candidate(
+                taxon="pinus",
+                resolution=Resolution.GENUS,
+                supporting_evidence_ids=("bark",),
+                score=SupportStrength.STRONG,
+                rank=1,
+            ),
+        ),
+    )
+
+    validated = validate_candidate_set(candidate_set, evidence, knowledge)
+
+    assert validated.leader is not None
+    assert validated.leader.score is SupportStrength.WEAK

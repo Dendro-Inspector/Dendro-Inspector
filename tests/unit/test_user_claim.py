@@ -7,6 +7,8 @@ was felled, may have watched it for twenty years. So their version is checked, n
 
 from __future__ import annotations
 
+import importlib
+
 import pytest
 
 from dendro_inspector.graph.state import GraphState
@@ -14,6 +16,7 @@ from dendro_inspector.nodes.final_decision import normalise_claim, rule_on_user_
 from dendro_inspector.schemas.candidates import Candidate, CandidateSet, SupportStrength
 from dendro_inspector.schemas.decisions import UserClaimVerdict
 from dendro_inspector.schemas.evidence import (
+    AttachmentStatus,
     EvidencePacket,
     Observation,
     ObservationSource,
@@ -205,3 +208,93 @@ class TestNotEvaluable:
     def test_the_vocabulary_distinguishes_no_opinion_from_a_negative_one(self):
         values = {verdict.value for verdict in UserClaimVerdict}
         assert {"not_evaluable", "doubtful", "rejected"} <= values
+
+
+class TestPhaseZeroClaimGates:
+    """Failing gates for F4 and F5 in `docs/specs/core-logic-hardening.md`.
+
+    Strict, so the marker must be removed by the commit that fixes the finding.
+    """
+
+    @pytest.mark.xfail(
+        strict=True,
+        reason=(
+            "F4: `contradicted` reads `match_card(...).has_contradiction`, which matches "
+            "every visible observation whether or not it could support a claim."
+        ),
+    )
+    def test_an_unattached_contradiction_cannot_reject_a_version(self, node_context):
+        """FAILURE 6 cuts both ways.
+
+        Foliage that cannot be traced to this trunk may not raise a claim, so it may not
+        demolish the user's claim either. Here the only observation contradicting Picea
+        carries `attachment: unknown`; the evidence hierarchy projects it to context.
+        """
+        loose = Observation(
+            observation_id="o2",
+            feature="needles.fascicles",
+            value="two",
+            subject_id="log_1",
+            source=ObservationSource.IMAGE,
+            image_id="img-1",
+            attachment=AttachmentStatus.UNKNOWN,
+        )
+        verdict = rule_on_user_claim(
+            _state(user_claim="ялина"),
+            node_context,
+            "log_1",
+            _candidates("pinus"),
+            _evidence(_obs("o1", "needles.persistence", "evergreen"), loose),
+            "pinus",
+        )
+
+        assert verdict is not UserClaimVerdict.REJECTED
+
+    @pytest.mark.xfail(
+        strict=True,
+        reason=(
+            "F5: `_claim_matches` takes the first card in catalogue order, so a claim "
+            "naming two taxa is resolved alphabetically rather than as a disjunction."
+        ),
+    )
+    def test_a_hedged_claim_is_accepted_when_either_member_is_selected(self, node_context):
+        """A user who hedges is not to be punished for it."""
+        verdict = rule_on_user_claim(
+            _state(user_claim="дуб або ясен"),
+            node_context,
+            "log_1",
+            _candidates("quercus"),
+            _evidence(_obs("o1", "bark.pattern", "diamond_fissures")),
+            "quercus",
+        )
+
+        assert verdict is UserClaimVerdict.ACCEPTED
+
+    @pytest.mark.xfail(
+        strict=True,
+        reason="F5: substring matching resolves a negated claim to the taxon it denies.",
+    )
+    def test_a_negated_claim_does_not_name_the_taxon_it_denies(self, node_context):
+        verdict = rule_on_user_claim(
+            _state(user_claim="не дуб"),
+            node_context,
+            "log_1",
+            _candidates("quercus"),
+            _evidence(_obs("o1", "bark.pattern", "diamond_fissures")),
+            "quercus",
+        )
+
+        assert verdict is not UserClaimVerdict.ACCEPTED
+
+    @pytest.mark.xfail(
+        strict=True,
+        reason="F5: `resolve_user_claim` does not exist; matching is substring-based.",
+    )
+    def test_a_one_letter_claim_matches_nothing(self, knowledge):
+        """`a` currently matches 22 of the 25 cards as a substring."""
+        # Looked up dynamically so the gate type-checks before the function exists.
+        module = importlib.import_module("dendro_inspector.nodes.final_decision")
+        resolve_user_claim = getattr(module, "resolve_user_claim", None)
+
+        assert resolve_user_claim is not None, "C4 has not landed yet"
+        assert resolve_user_claim("a", knowledge) == ()
