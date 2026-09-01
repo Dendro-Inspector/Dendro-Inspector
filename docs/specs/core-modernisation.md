@@ -40,7 +40,8 @@ What a feature path *means* to the system is spread across four modules:
 The two detachable sets are equal today and nothing asserts that they stay equal. The
 *vocabulary* of features and values has no declaration at all: it is whatever the union of
 the 25 cards' expectations happens to be — 35 feature paths and 106 value tokens. Prompts
-ask the extractor for `bark.flake_geometry`, which no card declares, a mismatch recorded on
+ask for `bark.flake_geometry` and `wood.resin_canals`, neither of which any card declares.
+The first is a mismatch recorded on
 2026-07-26 and still open. On 116 live evidence packets, a median 48 % of resolvable
 observations fall outside that union: the extractor is describing things the knowledge
 layer has no word for, and nothing can say whether the gap is a missing card value, a
@@ -162,7 +163,11 @@ non-detachable, non-colour — exactly today's unknown-family behaviour — and 
   feature is `open`;
 - every comparison-card feature is registered;
 - every feature path in a fenced code span of a node prompt is registered (this fails
-  today on `bark.flake_geometry`; see Open decision 1);
+  today on `bark.flake_geometry` and `wood.resin_canals`; see Open decision 1). Colour paths
+  are exempt: `bark.colour` and `inner_bark.colour` are requested deliberately, capped to
+  bark authority wherever they appear, and reported as intentionally weak rather than as a
+  card gap. A separate test pins that carve-out to exactly those two, so the gate above
+  cannot be made green by widening it;
 - the registry reproduces the current Python tables exactly for the 35 declared features
   and every family they belong to, so N1 changes no behaviour;
 - one detachable set exists.
@@ -295,7 +300,7 @@ The only benefit is a per-subject retry budget, which touches the termination ar
 
 | Phase | Contents | Behaviour change | Data migration |
 | --- | --- | --- | --- |
-| 0 | Contract tests that can fail today: prompt feature paths ⊆ card vocabulary (fails on `bark.flake_geometry`), one detachable set, retrieval-equals-admission harness (passes trivially) | no | no |
+| 0 | Contract tests that can fail today: non-colour prompt feature paths ⊆ card vocabulary (fails on `bark.flake_geometry` and `wood.resin_canals`), the colour carve-out pinned to exactly two paths, no invented feature namespace, one detachable set, and the admission-inside-the-pre-filter harness | no | no |
 | 1 | N1 registry; Python tables deleted; extractor vocabulary from the registry | no — table equality asserted | `features.yaml` authored from the current tables and cards |
 | 2 | N2 retrieval | no — equality proven and tested; prompt *content* shrinks | no |
 | 3 | N3 requirements, N4 taxonomy | no — per-card equality asserted | 22 requirement lines, 16 identity blocks |
@@ -341,7 +346,8 @@ All five §4.5 gates on every phase. In addition:
 
 ## Open decisions
 
-1. **`bark.flake_geometry`** (Phase 0 makes it a red gate). Register it with declared values
+1. **`bark.flake_geometry` and `wood.resin_canals`** (Phase 0 makes both a red gate).
+   Register them with declared values
    and give at least one card a rule for it, or remove it from the two prompts and the
    comparison card. A dendrology judgement; the §12 conformance process.
 2. **Registry location.** Package data under `vocabulary/` (recommended, policy moves with
@@ -365,8 +371,12 @@ packets=116 cards kept by exact pre-filter: med=3.0 p90=5 max=7 zero=1
 share of resolvable observations outside card vocabulary: med=0.48
 requirement lines using _and_/_or_: 22
 family placements repeated in broader_identities: 16
-flake_geometry: prompts/nodes/evidence-extractor.md:148, prompts/nodes/planner.md:13,
-                knowledge/comparisons/pinus-picea-larix.yaml:10; no taxon card
+backticked feature-path tokens in node prompts: 26; not matchable by any card: 4
+  bark.flake_geometry   planner.md            <- genuine gap, Open decision 1
+  wood.resin_canals     planner.md            <- genuine gap, Open decision 1
+  bark.colour           evidence-extractor.md <- colour, deliberate
+  inner_bark.colour     evidence-extractor.md <- colour, deliberate
+flake_geometry is also named by knowledge/comparisons/pinus-picea-larix.yaml:10
 __init__.__all__ == ["__version__"]
 adapters: urllib.request.urlopen inside asyncio.to_thread (openai_compatible, gemini, ollama)
 ```

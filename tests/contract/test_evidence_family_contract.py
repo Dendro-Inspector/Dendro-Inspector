@@ -16,11 +16,16 @@ import pytest
 from dendro_inspector.knowledge.evidence_hierarchy import (
     _FAMILY_TIERS,
     _PREPARED_END_GRAIN_PREFIXES,
+    DETACHABLE_FAMILIES,
     EvidenceTier,
     family_of,
     tier_of_feature,
 )
-from dendro_inspector.schemas.evidence import _WOOD_SURFACE_FAMILIES, requires_wood_surface
+from dendro_inspector.schemas.evidence import (
+    _DETACHABLE_FAMILIES,
+    _WOOD_SURFACE_FAMILIES,
+    requires_wood_surface,
+)
 
 pytestmark = pytest.mark.contract
 
@@ -49,3 +54,18 @@ def test_prepared_end_grain_prefixes_are_themselves_surface_bearing():
     for prefix in _PREPARED_END_GRAIN_PREFIXES:
         assert family_of(prefix) in _WOOD_SURFACE_FAMILIES
         assert requires_wood_surface(prefix)
+
+
+def test_one_detachable_family_set():
+    """Two modules answer "can this belong to the neighbouring tree?" and must agree.
+
+    `evidence_hierarchy.DETACHABLE_FAMILIES` decides whether an observation projects to
+    context without confirmed attachment. `schemas.evidence._DETACHABLE_FAMILIES` decides
+    whether the contract demands an attachment answer at all. A family in the second but not
+    the first would be interrogated and then trusted anyway; a family in the first but not
+    the second would be demoted for failing to answer a question it was never asked.
+
+    They are equal today, and nothing at runtime couples them. Phase 0 of
+    `docs/specs/core-modernisation.md` (finding M1); N1's registry replaces both.
+    """
+    assert DETACHABLE_FAMILIES == _DETACHABLE_FAMILIES
