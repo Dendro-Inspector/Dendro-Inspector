@@ -89,11 +89,19 @@ class State:
         self.answers = root / "answers"
         self.cache = root / "cache"
         self.images = root / "images"
+        self.failures = root / "failures"
         self.log = root / "log.jsonl"
         self.wait_timeout = wait_timeout
         self.counter = 0
         self.fault_calls: dict[str, int] = {}
-        for directory in (self.root, self.pending, self.answers, self.cache, self.images):
+        for directory in (
+            self.root,
+            self.pending,
+            self.answers,
+            self.cache,
+            self.images,
+            self.failures,
+        ):
             directory.mkdir(parents=True, exist_ok=True)
 
     def next_id(self) -> int:
@@ -633,6 +641,15 @@ class Handler(BaseHTTPRequestHandler):
                     cache_meta.write_text(answer_meta.read_text(encoding="utf-8"), encoding="utf-8")
                 print(f"[bridge] req-{request_id:03d} answered ({len(text)} chars)", flush=True)
                 return text, self._answer_source(answer_meta, "live")
+            terminal = self._terminal_failure(request_id, key)
+            if terminal is not None:
+                error_type = str(terminal.get("error_type") or "WorkerTerminalError")
+                message = str(terminal.get("message") or "upstream worker failed")[:500]
+                raise DialectRejectionError(
+                    424,
+                    {"error": {"message": f"upstream worker failed: {message}"}},
+                    f"upstream worker terminal failure ({error_type})",
+                )
             time.sleep(POLL_SECONDS)
         raise DialectRejectionError(
             504,
@@ -652,6 +669,9 @@ class Handler(BaseHTTPRequestHandler):
         requested_model: str,
     ) -> None:
         stem = f"req-{request_id:03d}"
+        # Request ids restart with a restarted bridge. An old marker from the same state
+        # directory must not make a new request fail before a worker has examined it.
+        (self.state.failures / f"{stem}-terminal.json").unlink(missing_ok=True)
         (self.state.pending / f"{stem}-prompt.txt").write_text(prompt, encoding="utf-8")
         (self.state.pending / f"{stem}-schema.json").write_text(
             json.dumps(schema, indent=2), encoding="utf-8"
@@ -684,6 +704,19 @@ class Handler(BaseHTTPRequestHandler):
             return f"{prefix}:unknown"
         worker_id = metadata.get("worker_id")
         return f"{prefix}:{worker_id}" if isinstance(worker_id, str) else f"{prefix}:unknown"
+
+    def _terminal_failure(self, request_id: int, cache_key: str) -> dict[str, Any] | None:
+        """Read only the terminal marker for this exact bridge request and cache key."""
+        path = self.state.failures / f"req-{request_id:03d}-terminal.json"
+        if not path.is_file():
+            return None
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return None
+        if not isinstance(payload, dict) or payload.get("cache_key") != cache_key:
+            return None
+        return payload
 
     def _log(
         self,

@@ -98,9 +98,13 @@ The workers have distinct transport identities but not necessarily distinct mode
 
 Every worker watches the same pending directory. It first obtains its upstream capacity lease,
 then creates the answer-key claim with an exclusive file create. The first eligible worker to
-create that claim owns the job. A failure removes the claim; a rate limit also places that
-worker in cooldown, allowing another upstream route to take the request. Workers sharing one
-account must share one capacity group, so two clients cannot pretend one rate limit is two.
+create that claim owns the job. A transient rate limit removes the claim and places that worker
+in cooldown, allowing another upstream route to take the request. An account spend or session
+quota is terminal for the current request: the worker writes a request-scoped failure marker,
+the bridge returns `424` on its next poll instead of waiting for its full timeout, and the old
+request is not claimed again. A later request is still eligible after the quota resets. Workers
+sharing one account must share one capacity group, so two clients cannot pretend one rate limit
+is two.
 
 The Ox route is a throughput pool, not an ensemble. OpenCode, OpenRouter and Cline currently
 expose the same Ox model family, so their answers are not counted as independent scientific

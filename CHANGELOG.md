@@ -12,6 +12,10 @@ get entries.
 
 ### Fixed
 
+- The local agent-provider factory now distinguishes a short Claude rate limit from an
+  exhausted account spend or session quota. Exhausted quota fails the current bridge request
+  promptly instead of re-running the same CLI job every 90 seconds until the bridge's
+  3,000-second timeout; transient rate limits retain their cooldown and retry behavior.
 - The source distribution now names its inputs instead of sweeping the working directory.
   A local build previously packaged any untracked file sitting in the tree, so working
   notes could reach a published artifact that cannot be unpublished. Build assets, draft
