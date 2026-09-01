@@ -26,7 +26,7 @@ from dendro_inspector.nodes.final_decision import decide_subject
 from dendro_inspector.nodes.response_composer import build_result
 from dendro_inspector.observability.events import ProviderCallRecord
 from dendro_inspector.observability.trace import TraceRecorder
-from dendro_inspector.providers.base import ImageInput
+from dendro_inspector.providers.base import OUTPUT_SUBJECT_IDS, ImageInput
 from dendro_inspector.schemas.candidates import Candidate, CandidateSet, SupportStrength
 from dendro_inspector.schemas.decisions import DecisionStatus, FinalDecision
 from dendro_inspector.schemas.evidence import (
@@ -85,9 +85,11 @@ def test_arbiter_receives_deterministic_proposed_resolution_and_confidence(
     monkeypatch,
 ):
     prompts: list[str] = []
+    call_metadata: list[dict[str, object]] = []
 
     async def capture_request(**kwargs):
         prompts.append(kwargs["prompt"])
+        call_metadata.append(kwargs["metadata"])
         return ReviewResult(
             reviewer=Reviewer.ARBITER,
             status=ReviewStatus.PASS,
@@ -139,6 +141,7 @@ def test_arbiter_receives_deterministic_proposed_resolution_and_confidence(
     assert '"resolution": "genus"' in prompt
     assert '"confidence": "low"' in prompt
     assert result.reviewed_evidence_ids == ("obs-1",)
+    assert call_metadata == [{OUTPUT_SUBJECT_IDS: ("tree_1",)}]
 
 
 def test_weak_result_reports_visible_evidence_and_scoped_limitations(simple_case):

@@ -14,7 +14,7 @@ from dendro_inspector.graph.executor import NodeContext
 from dendro_inspector.graph.projections import ReviewProjectionError
 from dendro_inspector.graph.state import GraphState
 from dendro_inspector.knowledge.taxon_cards import card_value_vocabulary
-from dendro_inspector.providers.base import ImageInput, request_structured
+from dendro_inspector.providers.base import OUTPUT_SUBJECT_IDS, ImageInput, request_structured
 from dendro_inspector.schemas.candidates import CandidateSet
 from dendro_inspector.schemas.evidence import EvidencePacket
 from dendro_inspector.schemas.input import CaseInput
@@ -210,6 +210,7 @@ async def review_call(
         prompt=ctx.prompts.compose(node, context=context, locale=locale),
         images=image_inputs(projection.case, max_edge_px=ctx.config.graph.image_max_edge_px),
         response_model=ReviewResult,
+        metadata={OUTPUT_SUBJECT_IDS: projection.candidate_subject_ids},
         recorder=ctx.recorder,
         cache_prefix_chars=ctx.prompts.cacheable_prefix_chars(locale),
         max_retries=ctx.config.provider_for(role).max_structured_retries,

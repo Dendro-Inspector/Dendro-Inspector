@@ -31,6 +31,12 @@ ResponseT = TypeVar("ResponseT", bound=BaseModel)
 #: ignores it. Advisory in both directions: it never changes the text that is sent.
 CACHE_PREFIX_CHARS = "cache_prefix_chars"
 
+#: Call-metadata key carrying the code-owned subject identifiers a reviewer may return.
+#: Adapters with native enum-constrained output can bind every ``subject_id`` field to
+#: these exact values. Other adapters ignore it; Pydantic and review synthesis remain the
+#: final contract and semantic boundaries.
+OUTPUT_SUBJECT_IDS = "output_subject_ids"
+
 
 def cache_prefix_of(metadata: Mapping[str, Any], prompt: str) -> int:
     """Read the advisory cache boundary, clamped to something the prompt can honour."""

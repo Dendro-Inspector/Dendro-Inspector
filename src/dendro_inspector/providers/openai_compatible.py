@@ -64,6 +64,21 @@ class OpenAICompatibleProvider:
     key_env = ""
     base_url_env = ""
 
+    def _provider_preferences(self) -> Mapping[str, Any] | None:
+        return None
+
+    def _structured_request(
+        self,
+        *,
+        prompt: str,
+        schema: Mapping[str, Any],
+        model_name: str,
+    ) -> tuple[str, Mapping[str, Any]]:
+        return prompt, {
+            "type": "json_schema",
+            "json_schema": {"name": model_name, "schema": schema, "strict": True},
+        }
+
     def __init__(
         self,
         *,
@@ -111,21 +126,25 @@ class OpenAICompatibleProvider:
         schema: Mapping[str, Any],
         model_name: str,
     ) -> str:
+        prompt, response_format = self._structured_request(
+            prompt=prompt,
+            schema=schema,
+            model_name=model_name,
+        )
         content: list[dict[str, Any]] = [{"type": "text", "text": prompt}]
         content.extend(self._image_part(image) for image in images)
-        body = json.dumps(
-            {
-                "model": self.model,
-                "messages": [{"role": "user", "content": content}],
-                "temperature": 0,
-                "max_tokens": self._max_tokens,
-                "stream": False,
-                "response_format": {
-                    "type": "json_schema",
-                    "json_schema": {"name": model_name, "schema": schema, "strict": True},
-                },
-            }
-        ).encode("utf-8")
+        payload: dict[str, Any] = {
+            "model": self.model,
+            "messages": [{"role": "user", "content": content}],
+            "temperature": 0,
+            "max_tokens": self._max_tokens,
+            "stream": False,
+            "response_format": response_format,
+        }
+        provider_preferences = self._provider_preferences()
+        if provider_preferences is not None:
+            payload["provider"] = dict(provider_preferences)
+        body = json.dumps(payload).encode("utf-8")
         for attempt in range(self._retries + 1):
             request = urllib.request.Request(
                 f"{self._base_url}/chat/completions",

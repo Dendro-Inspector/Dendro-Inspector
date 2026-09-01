@@ -27,6 +27,7 @@ from typing import Any
 from pydantic import ValidationError
 
 from dendro_inspector.providers.base import (
+    OUTPUT_SUBJECT_IDS,
     ImageInput,
     ProviderError,
     ProviderUnavailableError,
@@ -47,6 +48,21 @@ _RETRYABLE_STATUS = frozenset({429, 503})
 # 120s covers a text prompt and not much else: the first real image put through this adapter
 # timed out at 120s and completed comfortably under 300s.
 DEFAULT_TIMEOUT_SECONDS = 300.0
+
+
+def _bind_subject_id_enums(schema: Any, allowed: tuple[str, ...]) -> Any:
+    """Constrain every output ``subject_id`` to identifiers owned by orchestration."""
+    if isinstance(schema, list):
+        return [_bind_subject_id_enums(item, allowed) for item in schema]
+    if not isinstance(schema, dict):
+        return schema
+    bound = {key: _bind_subject_id_enums(value, allowed) for key, value in schema.items()}
+    properties = bound.get("properties")
+    if isinstance(properties, dict):
+        subject = properties.get("subject_id")
+        if isinstance(subject, dict):
+            properties["subject_id"] = {**subject, "enum": list(allowed)}
+    return bound
 
 
 def _default_timeout() -> float:
@@ -132,6 +148,16 @@ class GeminiProvider:
                 raise self._http_error(exc, detail) from exc
             except urllib.error.URLError as exc:
                 msg = f"could not reach the Gemini API at {self._endpoint}: {exc.reason}"
+                raise ProviderUnavailableError(msg) from exc
+            except ConnectionResetError as exc:
+                # On Windows an HTTPS peer reset can escape ``urlopen`` directly instead
+                # of being wrapped in ``URLError``. Gemini occasionally does this during
+                # the concurrent reviewer fan-out, so use the existing bounded retry
+                # budget rather than aborting an otherwise healthy graph.
+                if attempt < self._rate_limit_retries:
+                    self._sleep(_DEFAULT_RETRY_SLEEP)
+                    continue
+                msg = f"Gemini reset the connection after {attempt + 1} attempt(s): {exc}"
                 raise ProviderUnavailableError(msg) from exc
             except TimeoutError as exc:
                 msg = f"Gemini did not respond within {self._timeout}s"
@@ -234,6 +260,13 @@ class GeminiProvider:
     ) -> ResponseT:
         del role
         schema = to_gemini_schema(response_model.model_json_schema())
+        allowed_subject_ids = metadata.get(OUTPUT_SUBJECT_IDS)
+        if (
+            isinstance(allowed_subject_ids, (list, tuple))
+            and allowed_subject_ids
+            and all(isinstance(item, str) for item in allowed_subject_ids)
+        ):
+            schema = _bind_subject_id_enums(schema, tuple(allowed_subject_ids))
         raw = await asyncio.to_thread(self._call, prompt=prompt, images=images, schema=schema)
         try:
             return response_model.model_validate(json.loads(raw))

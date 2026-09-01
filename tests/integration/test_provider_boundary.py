@@ -14,6 +14,7 @@ import pytest
 from dendro_inspector.config import Adapter, AppConfig, ProviderConfig, Role, load_config
 from dendro_inspector.observability.trace import TraceRecorder
 from dendro_inspector.providers.base import (
+    OUTPUT_SUBJECT_IDS,
     ProviderError,
     ProviderUnavailableError,
     StructuredOutputError,
@@ -26,8 +27,10 @@ from dendro_inspector.providers.fake import (
 )
 from dendro_inspector.providers.gemini_adapter import GeminiProvider
 from dendro_inspector.providers.ollama_adapter import OllamaProvider
+from dendro_inspector.providers.openrouter_adapter import OpenRouterProvider
 from dendro_inspector.providers.registry import ProviderRegistry, build_provider
 from dendro_inspector.schemas.evidence import EvidencePacket
+from dendro_inspector.schemas.reviews import Reviewer, ReviewResult, ReviewStatus
 
 
 @pytest.fixture
@@ -267,6 +270,73 @@ class TestRegistry:
         assert isinstance(result, EvidencePacket)
         assert slept == [7.0]
 
+    def test_gemini_retries_a_peer_connection_reset_then_succeeds(self, monkeypatch):
+        """A transient Windows HTTPS reset must not abort the full review fan-out."""
+        monkeypatch.setenv("GEMINI_API_KEY", "test-key-not-real")
+        slept: list[float] = []
+        provider = GeminiProvider(model="m", rate_limit_retries=1, sleep=slept.append)
+        calls = itertools.count()
+
+        def _urlopen(*args, **kwargs):
+            if next(calls) == 0:
+                raise ConnectionResetError(10054, "connection reset by peer")
+            packet = EvidencePacket().model_dump_json()
+            return _FakeResponse(
+                json.dumps({"candidates": [{"content": {"parts": [{"text": packet}]}}]}).encode()
+            )
+
+        monkeypatch.setattr(urllib.request, "urlopen", _urlopen)
+        result = asyncio.run(
+            provider.generate_structured(
+                role="primary",
+                prompt="p",
+                images=(),
+                response_model=EvidencePacket,
+                metadata={"node": "planner"},
+            )
+        )
+        assert isinstance(result, EvidencePacket)
+        assert slept == [5.0]
+
+    def test_gemini_binds_reviewer_subject_ids_to_code_owned_values(self, monkeypatch):
+        monkeypatch.setenv("GEMINI_API_KEY", "test-key-not-real")
+        request_payload: dict[str, object] = {}
+        provider = GeminiProvider(model="m")
+
+        def _urlopen(request, **kwargs):
+            del kwargs
+            request_payload.update(json.loads(request.data))
+            review = ReviewResult(
+                reviewer=Reviewer.CONFUSION,
+                status=ReviewStatus.PASS,
+                subject_id="standing_tree_1",
+            )
+            return _FakeResponse(
+                json.dumps(
+                    {"candidates": [{"content": {"parts": [{"text": review.model_dump_json()}]}}]}
+                ).encode()
+            )
+
+        monkeypatch.setattr(urllib.request, "urlopen", _urlopen)
+        result = asyncio.run(
+            provider.generate_structured(
+                role="reviewer",
+                prompt="p",
+                images=(),
+                response_model=ReviewResult,
+                metadata={"node": "confusion_reviewer", OUTPUT_SUBJECT_IDS: ("standing_tree_1",)},
+            )
+        )
+
+        assert result.subject_id == "standing_tree_1"
+        generation = request_payload["generationConfig"]
+        assert isinstance(generation, dict)
+        schema = generation["responseSchema"]
+        assert isinstance(schema, dict)
+        assert schema["properties"]["subject_id"]["enum"] == ["standing_tree_1"]
+        finding = schema["properties"]["findings"]["items"]
+        assert finding["properties"]["subject_id"]["enum"] == ["standing_tree_1"]
+
     @pytest.mark.parametrize(
         ("message", "expected"),
         [
@@ -331,6 +401,72 @@ class TestRegistry:
                 )
             )
         assert slept == []
+
+    def test_openrouter_requires_private_parameter_compatible_routing(self, monkeypatch):
+        monkeypatch.setenv("OPENROUTER_API_KEY", "test-key-not-real")
+        monkeypatch.delenv("OPENROUTER_DATA_COLLECTION", raising=False)
+        request_payload: dict[str, object] = {}
+        provider = OpenRouterProvider(model="google/gemma-4-31b-it:free")
+
+        def _urlopen(request, **kwargs):
+            del kwargs
+            request_payload.update(json.loads(request.data))
+            return _FakeResponse(
+                json.dumps(
+                    {"choices": [{"message": {"content": EvidencePacket().model_dump_json()}}]}
+                ).encode()
+            )
+
+        monkeypatch.setattr(urllib.request, "urlopen", _urlopen)
+        asyncio.run(
+            provider.generate_structured(
+                role="primary",
+                prompt="p",
+                images=(),
+                response_model=EvidencePacket,
+                metadata={"node": "evidence_extractor"},
+            )
+        )
+
+        assert request_payload["provider"] == {
+            "data_collection": "deny",
+            "require_parameters": True,
+        }
+        assert request_payload["response_format"] == {"type": "json_object"}
+        prompt = request_payload["messages"][0]["content"][0]["text"]  # type: ignore[index]
+        assert "## Required output" in prompt
+        assert '"additionalProperties":false' in prompt
+
+    def test_openrouter_data_collection_requires_explicit_opt_in(self, monkeypatch):
+        monkeypatch.setenv("OPENROUTER_API_KEY", "test-key-not-real")
+        monkeypatch.setenv("OPENROUTER_DATA_COLLECTION", "allow")
+        request_payload: dict[str, object] = {}
+        provider = OpenRouterProvider(model="google/gemma-4-31b-it:free")
+
+        def _urlopen(request, **kwargs):
+            del kwargs
+            request_payload.update(json.loads(request.data))
+            return _FakeResponse(
+                json.dumps(
+                    {"choices": [{"message": {"content": EvidencePacket().model_dump_json()}}]}
+                ).encode()
+            )
+
+        monkeypatch.setattr(urllib.request, "urlopen", _urlopen)
+        asyncio.run(
+            provider.generate_structured(
+                role="primary",
+                prompt="p",
+                images=(),
+                response_model=EvidencePacket,
+                metadata={"node": "evidence_extractor"},
+            )
+        )
+
+        assert request_payload["provider"] == {
+            "data_collection": "allow",
+            "require_parameters": True,
+        }
 
     def test_gemini_names_the_quota_rather_than_the_credential_on_429(self, monkeypatch):
         """A 429 is not a bad key — saying so would send the reader to rotate a good one."""

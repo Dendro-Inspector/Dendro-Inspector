@@ -10,8 +10,29 @@ get entries.
 
 ## [Unreleased]
 
+### Added
+
+- `OPENROUTER_DATA_COLLECTION` selects whether OpenRouter may route a request to an upstream
+  that logs submitted content. It defaults to `deny`, so photographs are not sent to a
+  training-data endpoint unless an operator opts in, and an unrecognised value is refused
+  rather than guessed. OpenRouter requests additionally require parameter-compatible
+  routing, so an upstream that silently drops the structured-output request is not selected.
+
 ### Fixed
 
+- The Gemini adapter retries a peer connection reset within its existing bounded budget. On
+  Windows an HTTPS reset can escape `urlopen` outside the handler the adapter watched, which
+  aborted an otherwise healthy graph during the concurrent reviewer fan-out.
+- Reviewer calls now carry the code-owned subject identifiers to the provider boundary, and
+  an adapter whose schema dialect supports enums binds every returned `subject_id` to one of
+  them. Gemini's supported schema subset has no length bound, so it returned a `subject_id`
+  past the contract's limit and failed both structured attempts. Validation and review
+  synthesis remain the authoritative boundaries; this only stops a provider from spending
+  its attempts on an identifier the graph could never accept.
+- The OpenRouter default model asks for its schema in the prompt tail with a plain JSON
+  object response, because that free endpoint accepts a `json_schema` request without
+  enforcing it. Every response is still validated against the original contract, and a
+  model configured explicitly keeps the native `json_schema` request.
 - The local agent-provider factory now distinguishes a short Claude rate limit from an
   exhausted account spend or session quota. Exhausted quota fails the current bridge request
   promptly instead of re-running the same CLI job every 90 seconds until the bridge's
