@@ -12,6 +12,18 @@ get entries.
 
 ### Added
 
+- Run traces record what each model call spent: input, cached-input and output tokens, and
+  the cost the provider itself reported. Nothing is estimated from a price table, and a
+  provider that reports nothing leaves the fields empty rather than zero, because silence
+  and zero are different facts. Counts cover every attempt a call made, matching the
+  duration recorded beside them, so a repaired call does not understate what it used.
+- Run traces record `critical_path_ms`: the wall time no amount of concurrency could
+  remove, being every serial node plus the slowest member of each reviewer fan-out. Read
+  against the run's total duration it says what running the three reviewers together
+  actually bought.
+- `scripts/bench/` summarises those traces and, separately, local agent-bridge state:
+  per-node latency, prompt size, token accounting and escalation reasons. Both scripts read
+  local files only, need no credentials, and make no model calls.
 - `OPENROUTER_DATA_COLLECTION` selects whether OpenRouter may route a request to an upstream
   that logs submitted content. It defaults to `deny`, so photographs are not sent to a
   training-data endpoint unless an operator opts in, and an unrecognised value is refused

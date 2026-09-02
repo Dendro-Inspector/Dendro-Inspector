@@ -37,6 +37,68 @@ CACHE_PREFIX_CHARS = "cache_prefix_chars"
 #: final contract and semantic boundaries.
 OUTPUT_SUBJECT_IDS = "output_subject_ids"
 
+#: Call-metadata key carrying a mutable sink for provider-reported token accounting.
+#: Advisory like the two above: an adapter that does not fill it costs a missing number in
+#: the trace and nothing else, and nothing an adapter writes here can change what is sent.
+USAGE_SINK = "usage_sink"
+
+
+def _accumulate(current: int | None, addition: int | None) -> int | None:
+    if addition is None:
+        return current
+    return addition if current is None else current + addition
+
+
+def _accumulate_cost(current: float | None, addition: float | None) -> float | None:
+    if addition is None:
+        return current
+    return addition if current is None else current + addition
+
+
+@dataclass(slots=True)
+class UsageSink:
+    """One logical call's token accounting, written by an adapter and read into the trace.
+
+    A mutable sink rather than a return value, because ``generate_structured`` returns the
+    validated contract and nothing else. Widening that signature to carry telemetry would
+    put an accounting concern inside the one interface business logic is allowed to know
+    about.
+
+    ``None`` means the provider reported nothing, which is different from zero. Every field
+    stays ``None`` until some attempt reports it.
+    """
+
+    input_tokens: int | None = None
+    cached_input_tokens: int | None = None
+    output_tokens: int | None = None
+    reported_cost_usd: float | None = None
+
+    def record(
+        self,
+        *,
+        input_tokens: int | None = None,
+        cached_input_tokens: int | None = None,
+        output_tokens: int | None = None,
+        reported_cost_usd: float | None = None,
+    ) -> None:
+        """Add one attempt's accounting to the call's running total.
+
+        Attempts accumulate rather than overwrite. The ``duration_ms`` recorded beside these
+        numbers already spans every attempt, so a repaired call really did generate both
+        responses: reporting only the one that validated would understate the spend and
+        would break the relationship between output length and elapsed time.
+        """
+        self.input_tokens = _accumulate(self.input_tokens, input_tokens)
+        self.cached_input_tokens = _accumulate(self.cached_input_tokens, cached_input_tokens)
+        self.output_tokens = _accumulate(self.output_tokens, output_tokens)
+        self.reported_cost_usd = _accumulate_cost(self.reported_cost_usd, reported_cost_usd)
+
+
+def usage_sink_of(metadata: Mapping[str, Any]) -> UsageSink | None:
+    """Read the call's usage sink, or ``None`` when the caller supplied none."""
+    sink = metadata.get(USAGE_SINK)
+    return sink if isinstance(sink, UsageSink) else None
+
 
 def cache_prefix_of(metadata: Mapping[str, Any], prompt: str) -> int:
     """Read the advisory cache boundary, clamped to something the prompt can honour."""
@@ -208,9 +270,11 @@ async def request_structured(
     ``cache_prefix_chars`` is advisory and reaches adapters through call metadata: how much
     of the leading prompt is byte-identical across every node in the case.
     """
+    usage = UsageSink()
     call_metadata: dict[str, Any] = {
         "node": node,
         CACHE_PREFIX_CHARS: cache_prefix_chars,
+        USAGE_SINK: usage,
         **(metadata or {}),
     }
     attempt_prompt = prompt
@@ -244,6 +308,10 @@ async def request_structured(
                     attempts=attempt + 1,
                     validation_failures=validation_failures,
                     duration_ms=(time.perf_counter() - started) * 1000.0,
+                    input_tokens=usage.input_tokens,
+                    cached_input_tokens=usage.cached_input_tokens,
+                    output_tokens=usage.output_tokens,
+                    reported_cost_usd=usage.reported_cost_usd,
                 )
             )
         return result
@@ -259,6 +327,10 @@ async def request_structured(
                 attempts=max_retries + 1,
                 validation_failures=validation_failures,
                 duration_ms=(time.perf_counter() - started) * 1000.0,
+                input_tokens=usage.input_tokens,
+                cached_input_tokens=usage.cached_input_tokens,
+                output_tokens=usage.output_tokens,
+                reported_cost_usd=usage.reported_cost_usd,
             )
         )
     msg = (

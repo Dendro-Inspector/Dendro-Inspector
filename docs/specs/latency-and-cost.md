@@ -338,7 +338,12 @@ InspectionPlan              78     21.1     30.9      30527      6     3659    2
 DendroRouteProbe             5     11.8     17.2        137      4     1943     2408     391    0.036
 ```
 
-**Latency fit, 146 Opus calls:** `slope=0.0101 s/token intercept=11.5 s corr=0.99`.
+**Latency fit, 146 Opus calls:** `slope=0.0101 s/token intercept=11.5 s corr=0.99`. Pooled
+over all 274 calls that reported output tokens, across every route, it is
+`slope=0.0097 intercept=17.4 s corr=0.93` — which is what `scripts/bench/bridge_stats.py`
+prints, since it does not split by route. The Opus-only fit is quoted above because the
+per-call floor is a property of one transport, and pooling routes with different floors
+inflates the intercept while leaving the slope, the part the output diet acts on, intact.
 
 **Output composition, Opus:** 31 evidence packets, per-observation mean bytes
 `notes=117 value=19 subject_id=17 feature=15 visibility=10 ...` (220 total); 52 review

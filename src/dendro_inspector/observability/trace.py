@@ -165,6 +165,7 @@ class TraceRecorder:
         pre_correction_decisions: tuple[FinalDecision, ...] = (),
         final_decisions: tuple[FinalDecision, ...] = (),
         authority_checks: tuple[AuthorityCheckTrace, ...] = (),
+        concurrent_nodes: tuple[str, ...] = (),
     ) -> RunTrace:
         finished_at = datetime.now(UTC)
         if self._pending_review_projections:
@@ -228,7 +229,35 @@ class TraceRecorder:
             started_at=self._started_at,
             finished_at=finished_at,
             duration_ms=(time.perf_counter() - self._started_perf) * 1000.0,
+            critical_path_ms=_critical_path_ms(tuple(self._events), frozenset(concurrent_nodes)),
         )
+
+
+def _critical_path_ms(events: tuple[NodeEvent, ...], concurrent: frozenset[str]) -> float | None:
+    """Serial node time plus the slowest member of each fan-out round.
+
+    Rounds are runs of consecutive events from ``concurrent``, so a retry that fans out a
+    second time is counted twice — it really did happen twice. The caller names the
+    concurrent nodes because this module deliberately knows nothing about the graph; with
+    no names supplied every node is serial, which is the honest reading of "not told".
+    """
+    if not events:
+        return None
+    total = 0.0
+    round_max = 0.0
+    in_round = False
+    for event in events:
+        duration = event.duration_ms or 0.0
+        if event.node in concurrent:
+            in_round = True
+            round_max = max(round_max, duration)
+            continue
+        if in_round:
+            total += round_max
+            round_max = 0.0
+            in_round = False
+        total += duration
+    return total + round_max if in_round else total
 
 
 def _discover_code_revision(root: Path) -> tuple[str | None, bool | None]:

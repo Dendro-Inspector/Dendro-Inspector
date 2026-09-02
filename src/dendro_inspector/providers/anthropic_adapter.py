@@ -21,6 +21,7 @@ from dendro_inspector.providers.base import (
     ResponseT,
     StructuredOutputError,
     cache_prefix_of,
+    usage_sink_of,
 )
 
 DEFAULT_MODEL = "claude-opus-5"
@@ -130,6 +131,16 @@ class AnthropicProvider:
             max_tokens=MAX_TOKENS,
             messages=[{"role": "user", "content": blocks}],
         )
+        sink = usage_sink_of(metadata)
+        reported = getattr(response, "usage", None)
+        if sink is not None and reported is not None:
+            # `cache_read_input_tokens` is the half of the caching story worth having: it
+            # says the breakpoint above actually hit, rather than that one was requested.
+            sink.record(
+                input_tokens=getattr(reported, "input_tokens", None),
+                cached_input_tokens=getattr(reported, "cache_read_input_tokens", None),
+                output_tokens=getattr(reported, "output_tokens", None),
+            )
         raw = "".join(
             block.text for block in response.content if getattr(block, "type", "") == "text"
         )

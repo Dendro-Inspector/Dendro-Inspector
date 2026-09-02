@@ -154,6 +154,9 @@ async def run_graph(
         pre_correction_decisions=state.pre_correction_decisions,
         final_decisions=state.decisions,
         authority_checks=state.authority_checks,
+        # The executor owns which nodes run together, so it is the only place that can tell
+        # the recorder which node times overlap rather than accumulate.
+        concurrent_nodes=tuple(node.value for node in REVIEW_FANOUT),
     )
     logger.info(
         "graph_complete",

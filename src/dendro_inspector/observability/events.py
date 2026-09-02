@@ -45,6 +45,21 @@ class ProviderCallRecord(Contract):
     attempts: int = Field(default=1, ge=1)
     validation_failures: int = Field(default=0, ge=0)
     duration_ms: float | None = Field(default=None, ge=0)
+    #: Provider-reported accounting, summed over every attempt this call made, because
+    #: `duration_ms` spans them all. `None` means the provider reported nothing, which is a
+    #: different fact from zero and must not be rendered as one.
+    input_tokens: int | None = Field(default=None, ge=0)
+    cached_input_tokens: int | None = Field(
+        default=None,
+        ge=0,
+        description="Prompt tokens served from the provider's cache, where it says so.",
+    )
+    output_tokens: int | None = Field(default=None, ge=0)
+    reported_cost_usd: float | None = Field(
+        default=None,
+        ge=0,
+        description="Cost as the provider reported it. Never estimated from a price table.",
+    )
 
 
 class ReviewerProjectionRecord(Contract):
@@ -152,6 +167,15 @@ class RunTrace(Contract):
     started_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     finished_at: datetime | None = None
     duration_ms: float | None = Field(default=None, ge=0)
+    critical_path_ms: float | None = Field(
+        default=None,
+        ge=0,
+        description=(
+            "Wall time no amount of concurrency could remove: every serial node plus the "
+            "slowest member of each fan-out round. Compare against duration_ms to see what "
+            "running the reviewers together actually bought."
+        ),
+    )
 
     @property
     def executed_nodes(self) -> tuple[str, ...]:

@@ -519,3 +519,130 @@ class TestRegistry:
                     metadata={"node": "planner"},
                 )
             )
+
+
+class TestUsageAccounting:
+    """Provider-reported token accounting reaches the trace, and nothing is invented.
+
+    The latency work in `docs/specs/latency-and-cost.md` rests on the relationship between
+    output length and elapsed time, so the numbers have to come from the provider and have
+    to sit beside a duration that covers the same attempts.
+    """
+
+    def test_a_reported_usage_block_reaches_the_call_record(self, monkeypatch):
+        monkeypatch.setenv("OPENROUTER_API_KEY", "test-key-not-real")
+        provider = OpenRouterProvider(model="some/other-model")
+        recorder = TraceRecorder("usage-case")
+
+        def _urlopen(request, **kwargs):
+            del request, kwargs
+            return _FakeResponse(
+                json.dumps(
+                    {
+                        "choices": [{"message": {"content": EvidencePacket().model_dump_json()}}],
+                        "usage": {
+                            "prompt_tokens": 1200,
+                            "completion_tokens": 340,
+                            "prompt_tokens_details": {"cached_tokens": 900},
+                        },
+                    }
+                ).encode()
+            )
+
+        monkeypatch.setattr(urllib.request, "urlopen", _urlopen)
+        asyncio.run(
+            request_structured(
+                provider=provider,
+                role="primary",
+                node="evidence_extractor",
+                prompt="p",
+                images=(),
+                response_model=EvidencePacket,
+                recorder=recorder,
+            )
+        )
+        recorder.record_node("evidence_extractor")
+
+        call = recorder.build().events[0].provider_calls[0]
+        assert call.input_tokens == 1200
+        assert call.cached_input_tokens == 900
+        assert call.output_tokens == 340
+        assert call.reported_cost_usd is None
+
+    def test_a_provider_that_reports_nothing_leaves_the_fields_empty(self, monkeypatch):
+        """Absent accounting is `None`, never zero. Zero is a claim; this is silence."""
+        monkeypatch.setenv("OPENROUTER_API_KEY", "test-key-not-real")
+        provider = OpenRouterProvider(model="some/other-model")
+        recorder = TraceRecorder("silent-case")
+
+        def _urlopen(request, **kwargs):
+            del request, kwargs
+            return _FakeResponse(
+                json.dumps(
+                    {"choices": [{"message": {"content": EvidencePacket().model_dump_json()}}]}
+                ).encode()
+            )
+
+        monkeypatch.setattr(urllib.request, "urlopen", _urlopen)
+        asyncio.run(
+            request_structured(
+                provider=provider,
+                role="primary",
+                node="planner",
+                prompt="p",
+                images=(),
+                response_model=EvidencePacket,
+                recorder=recorder,
+            )
+        )
+        recorder.record_node("planner")
+
+        call = recorder.build().events[0].provider_calls[0]
+        assert call.input_tokens is None
+        assert call.output_tokens is None
+
+    def test_a_repaired_call_counts_both_attempts(self, monkeypatch):
+        """`duration_ms` spans both generations, so the token counts beside it must too."""
+        monkeypatch.setenv("OPENROUTER_API_KEY", "test-key-not-real")
+        provider = OpenRouterProvider(model="some/other-model")
+        recorder = TraceRecorder("repair-case")
+        bodies = itertools.chain(
+            [
+                json.dumps(
+                    {
+                        "choices": [{"message": {"content": "{"}}],
+                        "usage": {"completion_tokens": 7},
+                    }
+                )
+            ],
+            itertools.repeat(
+                json.dumps(
+                    {
+                        "choices": [{"message": {"content": EvidencePacket().model_dump_json()}}],
+                        "usage": {"completion_tokens": 40},
+                    }
+                )
+            ),
+        )
+
+        def _urlopen(request, **kwargs):
+            del request, kwargs
+            return _FakeResponse(next(bodies).encode())
+
+        monkeypatch.setattr(urllib.request, "urlopen", _urlopen)
+        asyncio.run(
+            request_structured(
+                provider=provider,
+                role="primary",
+                node="candidate_generator",
+                prompt="p",
+                images=(),
+                response_model=EvidencePacket,
+                recorder=recorder,
+            )
+        )
+        recorder.record_node("candidate_generator")
+
+        call = recorder.build().events[0].provider_calls[0]
+        assert call.attempts == 2
+        assert call.output_tokens == 47

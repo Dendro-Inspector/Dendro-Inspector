@@ -170,3 +170,53 @@ def test_every_final_decision_has_a_derivation(simple_case, run_scenario):
     assert {item.subject_id for item in derivations} == {
         decision.subject_id for decision in result.state.decisions
     }
+
+
+REVIEWERS = ("botanical_reviewer", "confusion_reviewer", "confidence_reviewer")
+
+
+def _fanout_recorder() -> TraceRecorder:
+    recorder = TraceRecorder("critical-path")
+    recorder.record_node("planner", duration_ms=100.0)
+    recorder.record_node("botanical_reviewer", duration_ms=200.0)
+    recorder.record_node("confusion_reviewer", duration_ms=500.0)
+    recorder.record_node("confidence_reviewer", duration_ms=300.0)
+    recorder.record_node("final_decision", duration_ms=10.0)
+    return recorder
+
+
+def test_critical_path_charges_a_fan_out_once_at_its_slowest_member():
+    """Concurrency the executor really has must not be reported as time it cost.
+
+    Summing the three reviewers would say 1,110 ms where the run waited 610. The gap is the
+    whole point of running them together, and a latency budget built on the wrong number
+    would go looking for savings that were never there.
+    """
+    trace = _fanout_recorder().build(concurrent_nodes=REVIEWERS)
+
+    assert trace.critical_path_ms == pytest.approx(610.0)
+
+
+def test_without_being_told_what_overlaps_every_node_is_serial():
+    """Silence is read as "no concurrency", which over-reports rather than under-reports."""
+    trace = _fanout_recorder().build()
+
+    assert trace.critical_path_ms == pytest.approx(1110.0)
+
+
+def test_a_second_fan_out_round_is_charged_again():
+    """A retry really did run the reviewers twice."""
+    recorder = TraceRecorder("retry-critical-path")
+    for duration in (200.0, 500.0, 300.0):
+        recorder.record_node(REVIEWERS[0], duration_ms=duration)
+    recorder.record_node("correction_worker", duration_ms=1.0)
+    for duration in (100.0, 700.0, 100.0):
+        recorder.record_node(REVIEWERS[1], duration_ms=duration)
+
+    trace = recorder.build(concurrent_nodes=REVIEWERS)
+
+    assert trace.critical_path_ms == pytest.approx(500.0 + 1.0 + 700.0)
+
+
+def test_a_run_with_no_events_reports_no_critical_path():
+    assert TraceRecorder("empty").build().critical_path_ms is None

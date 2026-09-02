@@ -323,8 +323,36 @@ This suite (`evals/public/`) is a **conformance and regression** suite, not an a
 benchmark. Adding a public case for a newly-understood failure class is expected and is not
 overfitting: the fixtures are synthetic and the case documents a rule rather than an answer.
 
+## Measuring cost and latency
+
+The suite measures what the system concludes. It says nothing about what a run costs or how
+long it takes, because it replays recorded fixtures with no network at all. Those questions
+are answered from run traces instead.
+
+```bash
+dendro inspect --trace-out traces/ --image photo.jpg   # write one trace
+python scripts/bench/trace_stats.py traces/            # summarise a directory of them
+python scripts/bench/bridge_stats.py .bridge           # the same, from agent-bridge state
+```
+
+`trace_stats.py` reports per-node wall time with its percentiles, model calls and provider
+attempts per run, escalation reasons, and per-node token accounting where the provider
+reported any. `bridge_stats.py` joins the local bridge's pending requests to its answers, so
+it can additionally report prompt size as sent and the upstream's own cost, and it fits
+elapsed time against output length.
+
+Two numbers deserve reading together. `duration_ms` is what the run took;
+`critical_path_ms` is what it could not have avoided, being every serial node plus the
+slowest member of each reviewer fan-out. The gap between them is what concurrency bought.
+
+Neither script makes a model call or needs a credential, and neither estimates a price: a
+cost appears only where the provider reported one. A provider that reports no tokens leaves
+those fields empty rather than zero, and the tables say so rather than printing a confident
+nought.
+
 ## Implementation references
 
 - [`src/dendro_inspector/evaluation/`](../src/dendro_inspector/evaluation)
 - [`evals/public/`](../evals/public), [`evals/fixtures/`](../evals/fixtures)
 - [`tests/evaluation/test_public_suite.py`](../tests/evaluation/test_public_suite.py)
+- [`scripts/bench/`](../scripts/bench)

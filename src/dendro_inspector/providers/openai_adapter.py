@@ -20,6 +20,7 @@ from dendro_inspector.providers.base import (
     ProviderUnavailableError,
     ResponseT,
     StructuredOutputError,
+    usage_sink_of,
 )
 
 DEFAULT_MODEL = "gpt-5.6"
@@ -94,6 +95,15 @@ class OpenAIProvider:
             },
             metadata={"node": str(metadata.get("node", "")), "logical_role": role},
         )
+        sink = usage_sink_of(metadata)
+        reported = getattr(response, "usage", None)
+        if sink is not None and reported is not None:
+            details = getattr(reported, "prompt_tokens_details", None)
+            sink.record(
+                input_tokens=getattr(reported, "prompt_tokens", None),
+                cached_input_tokens=getattr(details, "cached_tokens", None),
+                output_tokens=getattr(reported, "completion_tokens", None),
+            )
         raw = response.choices[0].message.content or ""
         try:
             return response_model.model_validate(json.loads(raw))

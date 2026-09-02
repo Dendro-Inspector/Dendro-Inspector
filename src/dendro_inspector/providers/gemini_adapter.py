@@ -33,6 +33,8 @@ from dendro_inspector.providers.base import (
     ProviderUnavailableError,
     ResponseT,
     StructuredOutputError,
+    UsageSink,
+    usage_sink_of,
 )
 from dendro_inspector.providers.schema_compat import to_gemini_schema
 
@@ -114,7 +116,28 @@ class GeminiProvider:
         encoded = base64.b64encode(image.read_bytes()).decode("ascii")
         return {"inline_data": {"mime_type": image.media_type, "data": encoded}}
 
-    def _call(self, *, prompt: str, images: Sequence[ImageInput], schema: Mapping[str, Any]) -> str:
+    @staticmethod
+    def _record_usage(payload: Mapping[str, Any], usage: UsageSink | None) -> None:
+        """Read `usageMetadata`, which Gemini sends beside the candidates."""
+        if usage is None:
+            return
+        reported = payload.get("usageMetadata")
+        if not isinstance(reported, Mapping):
+            return
+        usage.record(
+            input_tokens=reported.get("promptTokenCount"),
+            cached_input_tokens=reported.get("cachedContentTokenCount"),
+            output_tokens=reported.get("candidatesTokenCount"),
+        )
+
+    def _call(
+        self,
+        *,
+        prompt: str,
+        images: Sequence[ImageInput],
+        schema: Mapping[str, Any],
+        usage: UsageSink | None = None,
+    ) -> str:
         parts: list[dict[str, Any]] = [{"text": prompt}]
         parts.extend(self._image_part(image) for image in images)
         body = json.dumps(
@@ -163,6 +186,7 @@ class GeminiProvider:
                 msg = f"Gemini did not respond within {self._timeout}s"
                 raise ProviderUnavailableError(msg) from exc
 
+            self._record_usage(payload, usage)
             return self._extract_text(payload)
 
         msg = "unreachable: the retry loop always returns or raises"  # pragma: no cover
@@ -267,7 +291,13 @@ class GeminiProvider:
             and all(isinstance(item, str) for item in allowed_subject_ids)
         ):
             schema = _bind_subject_id_enums(schema, tuple(allowed_subject_ids))
-        raw = await asyncio.to_thread(self._call, prompt=prompt, images=images, schema=schema)
+        raw = await asyncio.to_thread(
+            self._call,
+            prompt=prompt,
+            images=images,
+            schema=schema,
+            usage=usage_sink_of(metadata),
+        )
         try:
             return response_model.model_validate(json.loads(raw))
         except (json.JSONDecodeError, ValidationError) as exc:
