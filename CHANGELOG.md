@@ -37,6 +37,9 @@ get entries.
 
 ### Added
 
+- Run traces record how each verdict was composed: every resolution bound considered and
+  the one that bound, every confidence step applied or skipped, and where a rerank came
+  from.
 - Run traces retain the per-subject provisional verdicts shown to the arbiter and record
   whether arbitration changed status, taxon, resolution or confidence. Runs that did not
   call the arbiter leave those change fields empty rather than reporting a false comparison.

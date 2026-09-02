@@ -14,7 +14,11 @@ from enum import StrEnum
 from pydantic import Field
 
 from dendro_inspector.schemas.base import Contract, Identifier, ShortText
-from dendro_inspector.schemas.decisions import AuthorityCheckTrace, FinalDecision
+from dendro_inspector.schemas.decisions import (
+    AuthorityCheckTrace,
+    DecisionDerivation,
+    FinalDecision,
+)
 from dendro_inspector.schemas.taxon import Confidence, Resolution
 
 GRAPH_VERSION = "0.9.0"
@@ -162,6 +166,10 @@ class RunTrace(Contract):
             "records; flattening them produced critical evidence ids from one subject "
             "beside a counterfactual taxon from another, describing no world that existed."
         ),
+    )
+    decision_derivations: tuple[DecisionDerivation, ...] = Field(
+        default=(),
+        description="One deterministic composition record per final subject verdict.",
     )
     evidence_authority_sensitive: bool = Field(
         default=False,

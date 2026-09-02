@@ -15,6 +15,7 @@ from dendro_inspector.graph.state import GraphState
 from dendro_inspector.knowledge.evidence_authority import attachment_risk_for
 from dendro_inspector.knowledge.evidence_hierarchy import BAND_INSUFFICIENT, family_of
 from dendro_inspector.schemas.decisions import (
+    DecisionDerivation,
     DecisionStatus,
     FinalDecision,
     PhotoRequest,
@@ -239,6 +240,9 @@ async def run(state: GraphState, ctx: NodeContext) -> GraphState:
     verdict = (
         UserClaimVerdict.NOT_EVALUABLE if state.case.user_claim else UserClaimVerdict.NOT_PROVIDED
     )
+
+    for subject_id in subjects:
+        ctx.recorder.record_derivation(DecisionDerivation.terminal(subject_id))
 
     return state.evolve(
         decisions=tuple(

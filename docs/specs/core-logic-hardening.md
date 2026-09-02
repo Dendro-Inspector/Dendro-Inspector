@@ -345,10 +345,16 @@ answer can be audited without re-running the engine.
 | Field | Meaning |
 | --- | --- |
 | `resolution_bounds` | proposed, card cap, tier ceiling, reviewer recommendation, abstention — each with its value |
-| `resolution_binding_bound` | which of those produced the composed value |
+| `resolution_binding_source` | which of those produced the composed value |
 | `resolution_action_applied` | whether a `lower_resolution` action was applied or skipped as already honoured |
 | `confidence_steps` | ordered list: seed (with C1's proposed and effective strength), tier cap, requirement cap, recommendation, each model step applied or skipped, each deterministic step, abstention |
 | `rerank_source` | `arbiter`, `internal` or `none`, with the admitted finding id |
+
+A verdict that never reached composition carries `DecisionDerivation.terminal`, so the
+"exactly one derivation per verdict" contract holds for the no-candidate and photo-planner
+paths too. A leader whose composed bound has no declared identity records the bounds it did
+compose and one `no_identity` confidence step; the attachment counterfactual records
+nothing, because its arithmetic belongs to a different evidence world.
 
 **Tests.** Unit: the derivation for each existing `TestResolutionCap` and
 `TestRecommendationIsAFloor` scenario in `tests/unit/test_final_decision.py` names the bound

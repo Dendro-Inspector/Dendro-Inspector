@@ -8,10 +8,12 @@ the last of the three — enforced by :func:`assert_tone_preserved_decision`.
 from __future__ import annotations
 
 from enum import StrEnum
+from typing import Literal
 
 from pydantic import Field, model_validator
 
 from dendro_inspector.schemas.base import Contract, Identifier, ShortText, ValueToken
+from dendro_inspector.schemas.candidates import SupportStrength
 from dendro_inspector.schemas.evidence import AttachmentStatus
 from dendro_inspector.schemas.taxon import Confidence, Resolution
 
@@ -46,6 +48,97 @@ class UserClaimVerdict(StrEnum):
     POSSIBLE = "possible"
     DOUBTFUL = "doubtful"
     REJECTED = "rejected"
+
+
+ResolutionBoundSource = Literal[
+    "proposed",
+    "card_cap",
+    "tier_ceiling",
+    "reviewer_recommendation",
+    "abstention",
+]
+ConfidenceStepSource = Literal[
+    "seed",
+    "tier_cap",
+    "requirement_cap",
+    "reviewer_recommendation",
+    "model_finding",
+    "deterministic_finding",
+    "abstention",
+    "no_identity",
+]
+RerankSource = Literal["arbiter", "internal", "none"]
+
+
+class ResolutionBound(Contract):
+    """One upper bound considered while composing a taxonomic resolution."""
+
+    source: ResolutionBoundSource
+    value: Resolution
+
+
+class ConfidenceStep(Contract):
+    """One ordered confidence operation, including a no-op already honoured upstream.
+
+    ``applied`` says whether the operation ran, not whether the value moved. A step that a
+    reviewer floor already honoured is recorded with ``applied=False`` so the audit can tell
+    "this finding was skipped" from "this finding cost a step that landed on the same band".
+    """
+
+    source: ConfidenceStepSource
+    finding_id: Identifier | None = None
+    before: Confidence
+    after: Confidence
+    applied: bool
+
+
+class DecisionDerivation(Contract):
+    """Auditable deterministic composition record for one subject's final verdict."""
+
+    subject_id: Identifier
+    proposed_strength: SupportStrength
+    effective_strength: SupportStrength
+    resolution_bounds: tuple[ResolutionBound, ...] = Field(min_length=1)
+    resolution_binding_source: ResolutionBoundSource
+    resolution_action_applied: bool
+    confidence_steps: tuple[ConfidenceStep, ...] = Field(min_length=1)
+    rerank_source: RerankSource = "none"
+    rerank_finding_id: Identifier | None = None
+
+    @classmethod
+    def terminal(cls, subject_id: str) -> DecisionDerivation:
+        """The record for a verdict that never reached composition.
+
+        No candidate survived, or the planner answered before the engine ran. There is still
+        exactly one derivation per verdict, so a reader never has to decide whether a missing
+        record means "not composed" or "not recorded".
+        """
+        return cls(
+            subject_id=subject_id,
+            proposed_strength=SupportStrength.WEAK,
+            effective_strength=SupportStrength.WEAK,
+            resolution_bounds=(ResolutionBound(source="proposed", value=Resolution.UNKNOWN),),
+            resolution_binding_source="proposed",
+            resolution_action_applied=False,
+            confidence_steps=(
+                ConfidenceStep(
+                    source="seed",
+                    before=Confidence.LOW,
+                    after=Confidence.LOW,
+                    applied=True,
+                ),
+            ),
+        )
+
+    @model_validator(mode="after")
+    def _references_an_applied_bound_and_rerank(self) -> DecisionDerivation:
+        if self.resolution_binding_source not in {bound.source for bound in self.resolution_bounds}:
+            msg = "resolution_binding_source must name a recorded resolution bound"
+            raise ValueError(msg)
+        if (self.rerank_source == "none") != (self.rerank_finding_id is None):
+            msg = "rerank_finding_id is required exactly when rerank_source is not none"
+            raise ValueError(msg)
+        return self
 
 
 class AuthorityCheckStatus(StrEnum):

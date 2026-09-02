@@ -29,7 +29,11 @@ from dendro_inspector.schemas.review_context import ReviewProjection
 from dendro_inspector.schemas.taxon import Confidence, Resolution
 
 if TYPE_CHECKING:
-    from dendro_inspector.schemas.decisions import AuthorityCheckTrace, FinalDecision
+    from dendro_inspector.schemas.decisions import (
+        AuthorityCheckTrace,
+        DecisionDerivation,
+        FinalDecision,
+    )
     from dendro_inspector.schemas.evidence import EvidencePacket
 
 
@@ -60,6 +64,7 @@ class TraceRecorder:
         self._pending_review_projections: dict[str, ReviewerProjectionRecord] = {}
         self._providers: dict[str, str] = {}
         self._component_projections: tuple[ComponentProjection, ...] = ()
+        self._decision_derivations: dict[str, DecisionDerivation] = {}
         self._prompt: PromptMetadata | None = None
         self._retries = 0
         self._escalation_triggered = False
@@ -153,6 +158,10 @@ class TraceRecorder:
     def record_arbiter_used(self) -> None:
         self._arbiter_used = True
 
+    def record_derivation(self, derivation: DecisionDerivation) -> None:
+        """Keep the latest composition for a subject; final evaluation replaces probes."""
+        self._decision_derivations[derivation.subject_id] = derivation
+
     @property
     def retries(self) -> int:
         return self._retries
@@ -210,6 +219,11 @@ class TraceRecorder:
             )
             for field in ("status", "selected_taxon", "resolution", "confidence")
         }
+        derivations = tuple(
+            self._decision_derivations[decision.subject_id]
+            for decision in final_decisions
+            if decision.subject_id in self._decision_derivations
+        )
         return RunTrace(
             case_id=self._case_id,
             graph_version=GRAPH_VERSION,
@@ -232,6 +246,7 @@ class TraceRecorder:
             arbiter_changed_resolution=arbiter_changes["resolution"],
             arbiter_changed_confidence=arbiter_changes["confidence"],
             authority_checks=authority_checks,
+            decision_derivations=derivations,
             evidence_authority_sensitive=any(
                 check.status is AuthorityCheckStatus.SENSITIVE for check in authority_checks
             ),

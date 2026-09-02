@@ -215,14 +215,6 @@ def test_trace_leaves_arbiter_change_fields_unset_when_no_arbiter_ran():
     assert trace.arbiter_changed_confidence is None
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "F7 (docs/specs/core-logic-hardening.md): the decision engine's docstring promises "
-        "the derivation is inspectable in the trace, but nothing records which bound bound "
-        "or which confidence steps applied."
-    ),
-)
 def test_every_final_decision_has_a_derivation(simple_case, run_scenario):
     """A disputed verdict must be auditable without re-running the engine."""
     result = run_scenario(simple_case, "primary-pass")

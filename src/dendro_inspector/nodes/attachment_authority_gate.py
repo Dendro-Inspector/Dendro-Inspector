@@ -114,7 +114,7 @@ def _decide_in_world(
     """Admit ``source`` against one evidence world and decide it deterministically."""
     admitted = validate_candidate_set(source, evidence, ctx.knowledge)
     world = state.evolve(evidence=evidence)
-    decision = decide_subject_base(world, ctx, admitted, already_reranked=True)
+    decision = decide_subject_base(world, ctx, admitted, already_reranked=True, record=False)
     return decision, admitted
 
 

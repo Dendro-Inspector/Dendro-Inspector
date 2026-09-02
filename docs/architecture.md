@@ -342,6 +342,30 @@ escalation gate before any arbiter result exists. Final decision may later incor
 admitted arbiter finding, while the run trace retains both sides and records which verdict
 fields changed.
 
+### The composition record
+
+Every verdict in a run trace carries exactly one `DecisionDerivation`, so a disputed answer
+can be audited without re-running the engine:
+
+| Field | Records |
+| --- | --- |
+| `resolution_bounds` | every upper bound considered — proposed, card cap, tier ceiling, reviewer recommendation, abstention — each with its value |
+| `resolution_binding_source` | which of those bounds produced the composed value |
+| `resolution_action_applied` | whether a `lower_resolution` action was applied or skipped as already honoured |
+| `confidence_steps` | the ordered ledger: seed, tier cap, requirement cap, reviewer recommendation, each model finding, each deterministic finding, abstention |
+| `rerank_source` | `arbiter`, `internal` or `none`, with the admitted finding id that supplied the ranking |
+
+A step's `applied` flag says whether the operation ran, not whether the value moved. A
+verdict that arrives at `low` because one guardrail fired is indistinguishable in the result
+from one that arrived there because four reviewers each charged a step; the ledger is what
+tells them apart. Verdicts that never reached composition — no candidate survived, or the
+photo planner answered first — carry the terminal record rather than no record, so a missing
+derivation never has to be read as either "not composed" or "not recorded".
+
+It is telemetry, not a field of `FinalDecision`: the verdict stays the consumer-facing
+answer. The attachment counterfactual does not record one, because the arithmetic it runs
+belongs to a different evidence world than the one this answer was composed in.
+
 The executor (`graph/executor.py`) walks a pure routing function, runs the three reviewers
 concurrently, records an event per node, and refuses to exceed `max_steps`. It is about a
 hundred lines and knows nothing about dendrology.
