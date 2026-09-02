@@ -8,6 +8,7 @@ import pytest
 from pydantic import ValidationError
 
 from dendro_inspector.graph.state import GraphState
+from dendro_inspector.knowledge.candidate_validation import validate_candidate_set
 from dendro_inspector.nodes import abstain
 from dendro_inspector.nodes.final_decision import (
     apply_reranking,
@@ -768,20 +769,21 @@ class TestPhaseZeroHardeningGates:
     finding. Until then these record, executably, what the evidence says is wrong.
     """
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason=(
-            "F1: `_SCORE_TO_CONFIDENCE[leader.score]` seeds confidence from the primary "
-            "model's own label, so the same evidence returns low, medium or high."
-        ),
-    )
-    def test_the_same_evidence_yields_the_same_confidence_whatever_the_model_said(
-        self, simple_case, node_context
-    ):
-        support = _observation("support", "needles.fascicles", "two")
+    def test_a_label_cannot_buy_confidence_the_card_did_not_grant(self, simple_case, node_context):
+        """C1: on thin support the model's own adjective stops mattering.
+
+        The Phase 0 form of this gate asserted that identical evidence returns identical
+        confidence *whatever* the model said. C1 does not promise that, and deliberately so:
+        the effective strength is the **minimum** of the label and the strength the card
+        grants, because a model that looked at the photograph may have seen a reason to
+        doubt its own support that no card can express. What C1 does promise is this
+        direction — one supporting-feature hit is `weak` however boldly it is labelled, so
+        all three labels land on the same confidence.
+        """
+        support = _observation("support", "bark.texture", "scaly_plates")
         confidences = set()
         for score in SupportStrength:
-            candidates = CandidateSet(
+            proposed = CandidateSet(
                 subject_id="tree_1",
                 candidates=(
                     Candidate(
@@ -793,10 +795,38 @@ class TestPhaseZeroHardeningGates:
                     ),
                 ),
             )
-            state = _state(simple_case, (support,), candidates.candidates)
-            confidences.add(decide_subject(state, node_context, candidates).confidence)
+            state = _state(simple_case, (support,), proposed.candidates)
+            assert state.evidence is not None
+            admitted = validate_candidate_set(proposed, state.evidence, node_context.knowledge)
+            confidences.add(decide_subject(state, node_context, admitted).confidence)
 
         assert len(confidences) == 1
+
+    def test_a_doubtful_label_is_still_honoured_over_strong_card_support(
+        self, simple_case, node_context
+    ):
+        """The other half of the same rule, and the reason it is a minimum and not a
+        replacement: adjudication may lower the model's claim, never raise it."""
+        support = _observation("support", "needles.fascicles", "two")
+        proposed = CandidateSet(
+            subject_id="tree_1",
+            candidates=(
+                Candidate(
+                    taxon="pinus",
+                    resolution=Resolution.GENUS,
+                    supporting_evidence_ids=("support",),
+                    score=SupportStrength.WEAK,
+                    rank=1,
+                ),
+            ),
+        )
+        state = _state(simple_case, (support,), proposed.candidates)
+        assert state.evidence is not None
+
+        admitted = validate_candidate_set(proposed, state.evidence, node_context.knowledge)
+
+        assert admitted.leader is not None
+        assert admitted.leader.score is SupportStrength.WEAK
 
     def test_conflicting_evidence_status_needs_a_disqualifying_hit(self, simple_case, node_context):
         """Foliage that could not be traced to this trunk cannot convict the answer.

@@ -24,6 +24,12 @@ get entries.
 
 ### Changed
 
+- A candidate's support strength is now adjudicated against its own taxon card from the
+  evidence that survived admission, and the model's label can only lower it, never raise it.
+  Confidence and the `identified` status therefore follow visible features rather than the
+  primary model's self-assessment. No frozen public case moved: every recorded fixture's
+  scripted strength already matched its scripted support, so the deterministic policy
+  revision stays at `0.9.0` and no deployment needs to re-seal.
 - The package, graph, deterministic policy and public baseline move together to `0.9.0`.
   The escalation gate now computes and stores the deterministic verdict the graph would
   return before it decides whether to call the arbiter. High-confidence provisional verdicts
@@ -35,7 +41,8 @@ get entries.
   `silent-reviewers-high-confidence-001` case locks the same path directly. Two further
   cases, `unattached-contradiction-claim-001` and `abstention-visible-001`, lock the
   contradiction-authority and abstention rules above; both are new, so neither moves a frozen
-  decision. The public suite stands at twenty-two cases with zero overconfidence.
+  decision, and `strong-label-thin-support-001` locks the adjudicated strength above. The
+  public suite stands at twenty-three cases with zero overconfidence.
 
 ### Added
 

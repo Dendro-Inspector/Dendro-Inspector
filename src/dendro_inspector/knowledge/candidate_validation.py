@@ -11,10 +11,15 @@ from dendro_inspector.knowledge.evidence_hierarchy import (
     resolve_evidence_observations,
 )
 from dendro_inspector.knowledge.loader import KnowledgeBase
-from dendro_inspector.knowledge.taxon_cards import missing_decisive_features
-from dendro_inspector.schemas.candidates import Candidate, CandidateSet
+from dendro_inspector.knowledge.taxon_cards import match_card, missing_decisive_features
+from dendro_inspector.schemas.candidates import (
+    Candidate,
+    CandidateSet,
+    SupportStrength,
+    strength_rank,
+)
 from dendro_inspector.schemas.evidence import EvidencePacket, Observation
-from dendro_inspector.schemas.taxon import FeatureExpectation
+from dendro_inspector.schemas.taxon import FeatureExpectation, TaxonCard
 
 
 @dataclass(frozen=True, slots=True)
@@ -24,6 +29,8 @@ class CandidateValidationResult:
     candidate_set: CandidateSet
     rejected_taxa: tuple[str, ...]
     dropped_evidence_ids: tuple[str, ...]
+    demoted_scores: tuple[tuple[str, SupportStrength, SupportStrength], ...] = ()
+    """Taxon, the strength the model proposed, and the strength its evidence earned."""
 
 
 def candidate_ranking_signature(candidate_set: CandidateSet) -> tuple[tuple[object, ...], ...]:
@@ -117,6 +124,7 @@ def validate_candidate_set_with_report(
     survivors: list[Candidate] = []
     rejected: list[str] = []
     dropped: list[str] = []
+    demoted: list[tuple[str, SupportStrength, SupportStrength]] = []
 
     for candidate in candidate_set.ordered:
         card = knowledge.try_taxon(candidate.taxon)
@@ -149,24 +157,27 @@ def validate_candidate_set_with_report(
             dropped.extend(supporting)
             continue
 
-        survivors.append(
-            candidate.model_copy(
-                update={
-                    "supporting_evidence_ids": supporting,
-                    "contradicting_evidence_ids": contradicting,
-                    "missing_decisive_features": missing_decisive_features(
-                        card, evidence, candidate_set.subject_id
-                    ),
-                    "rank": len(survivors) + 1,
-                }
-            )
+        adjudicated = candidate.model_copy(
+            update={
+                "supporting_evidence_ids": supporting,
+                "contradicting_evidence_ids": contradicting,
+                "missing_decisive_features": missing_decisive_features(
+                    card, evidence, candidate_set.subject_id
+                ),
+                "rank": len(survivors) + 1,
+            }
         )
+        effective = adjudicate_score(card, evidence, candidate_set.subject_id, adjudicated)
+        if effective is not candidate.score:
+            demoted.append((candidate.taxon, candidate.score, effective))
+        survivors.append(adjudicated.model_copy(update={"score": effective}))
 
     validated = candidate_set.model_copy(update={"candidates": tuple(survivors)})
     return CandidateValidationResult(
         candidate_set=validated,
         rejected_taxa=_deduplicate(tuple(rejected)),
         dropped_evidence_ids=_deduplicate(tuple(dropped)),
+        demoted_scores=tuple(demoted),
     )
 
 
@@ -177,6 +188,53 @@ def validate_candidate_set(
 ) -> CandidateSet:
     """Return only the admitted candidate ranking."""
     return validate_candidate_set_with_report(candidate_set, evidence, knowledge).candidate_set
+
+
+def derive_support_strength(
+    card: TaxonCard,
+    evidence: EvidencePacket,
+    subject_id: str,
+    support_ids: tuple[str, ...],
+) -> SupportStrength:
+    """The strength this candidate's own card grants its surviving support.
+
+    A model's ``score`` is a self-assessment, and self-assessment is exactly what the
+    determinism boundary exists to keep out of a verdict: the same photograph returned low,
+    medium or high confidence depending on how bold the primary model felt. This reads the
+    card instead — what was hit, at what trust, and whether the card's own high-confidence
+    requirement is satisfied.
+    """
+    match = match_card(card, evidence, subject_id)
+    reachable = {
+        source.observation_id
+        for evidence_id in support_ids
+        for source in resolve_evidence_observations(evidence, evidence_id, subject_id)
+    }
+    full_strong = set(match.full_strong_hits) & reachable
+    strong = set(match.strong_hits) & reachable
+    supporting = set(match.supporting_hits) & reachable
+
+    if full_strong and not match.missing_for_high_confidence:
+        return SupportStrength.STRONG
+    if strong or len(supporting) >= 2:
+        return SupportStrength.MODERATE
+    return SupportStrength.WEAK
+
+
+def adjudicate_score(
+    card: TaxonCard,
+    evidence: EvidencePacket,
+    subject_id: str,
+    candidate: Candidate,
+) -> SupportStrength:
+    """The lower of what the model claimed and what its evidence earned.
+
+    Only ever downward. A model that has looked at the photograph may have seen a reason to
+    doubt its own support that the card cannot express, and that judgement is kept; the
+    reverse — a card-thin candidate labelled ``strong`` — is the failure this closes.
+    """
+    derived = derive_support_strength(card, evidence, subject_id, candidate.supporting_evidence_ids)
+    return min(candidate.score, derived, key=strength_rank)
 
 
 def candidate_support_tier(

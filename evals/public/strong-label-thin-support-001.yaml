@@ -1,0 +1,41 @@
+# Case 23 — C1: a label is not evidence.
+# The primary model calls its candidate "strong" on two supporting-feature hits and no
+# strong-positive match, and every reviewer passes without a word. Nothing else in the
+# pipeline lowers this verdict — the card's own high-confidence requirement is satisfied,
+# so no deterministic finding fires and the evidence tier permits high. Before C1 the
+# adjective alone returned `high` / `identified`. The card grants "moderate".
+case_id: strong-label-thin-support-001
+title: A strong label on supporting features alone buys no confidence
+description: >-
+  A streamside alder with an attached leaf and dark platy bark — two entries of the Alnus
+  card's supporting features, and no match for the persistent cones that are its only
+  strong-positive feature. The candidate generator labels it `strong` and the reviewers are
+  silent, so admission is the only thing standing between the model's self-assessment and
+  the answer.
+scenario: strong-label-thin-support
+
+input:
+  case_id: strong-label-thin-support-001
+  images:
+    - image_id: img-1
+      path: examples/strong-label-thin-support-001.jpg
+      media_type: image/jpeg
+      caption: Streamside tree with a low branch in reach
+  user_text: Що це росте біля струмка?
+  location: Kyiv Oblast, Ukraine
+  season: summer
+  habitat: stream bank
+  declared_object_type: standing_tree
+
+expect:
+  expected_taxon: alnus
+  expected_resolution: genus
+  max_resolution: genus
+  max_confidence: medium
+  expected_status: probable
+  expected_evidence_tier: 6
+  require_escalation: false
+  forbid_admitted_reranks: true
+  max_retries: 0
+
+placeholder_content: true

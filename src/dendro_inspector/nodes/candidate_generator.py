@@ -63,7 +63,7 @@ async def run(state: GraphState, ctx: NodeContext) -> GraphState:
             continue
         proposed_sets.append(candidate_set)
         validation = validate_candidate_set_with_report(candidate_set, evidence, ctx.knowledge)
-        if validation.dropped_evidence_ids or validation.rejected_taxa:
+        if validation.dropped_evidence_ids or validation.rejected_taxa or validation.demoted_scores:
             logger.warning(
                 "candidate_validation_filtered",
                 extra={
@@ -71,6 +71,10 @@ async def run(state: GraphState, ctx: NodeContext) -> GraphState:
                     "subject_id": candidate_set.subject_id,
                     "dropped_evidence_ids": list(validation.dropped_evidence_ids),
                     "rejected_taxa": list(validation.rejected_taxa),
+                    "demoted_scores": [
+                        [taxon, proposed.value, effective.value]
+                        for taxon, proposed, effective in validation.demoted_scores
+                    ],
                 },
             )
         final_sets.append(validation.candidate_set)

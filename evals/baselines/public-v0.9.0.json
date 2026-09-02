@@ -1,10 +1,10 @@
 {
   "baseline_version": "0.9.0",
   "suite": "public",
-  "passed": 22,
+  "passed": 23,
   "failed": 0,
   "metrics": {
-    "cases": 22,
+    "cases": 23,
     "top_1_accuracy": 1.0,
     "top_3_recall": 1.0,
     "correct_resolution_rate": 1.0,
@@ -14,13 +14,13 @@
     "escalation_precision": 1.0,
     "escalation_recall": 1.0,
     "unnecessary_arbiter_call_rate": 0.0,
-    "scored_top_1": 16,
+    "scored_top_1": 17,
     "scored_top_3": 4,
-    "scored_resolution": 20,
+    "scored_resolution": 21,
     "scored_abstention": 4,
     "escalations_expected": 11,
     "escalations_observed": 11,
-    "escalation_decisions_correct": 21
+    "escalation_decisions_correct": 22
   },
   "cases": {
     "abstention-visible-001": {
@@ -211,6 +211,16 @@
       "resolution": "unknown",
       "confidence": "low",
       "evidence_tier": 3,
+      "admitted_rerank_finding_ids": [],
+      "arbiter_used": false,
+      "retries": 0
+    },
+    "strong-label-thin-support-001": {
+      "selected_taxon": "alnus",
+      "selected_taxon_display_name": "Alnus (\u0432\u0456\u043b\u044c\u0445\u0430)",
+      "resolution": "genus",
+      "confidence": "medium",
+      "evidence_tier": 6,
       "admitted_rerank_finding_ids": [],
       "arbiter_used": false,
       "retries": 0

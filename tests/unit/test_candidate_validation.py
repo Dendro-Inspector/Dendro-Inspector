@@ -408,13 +408,6 @@ def test_corroborated_material_group_candidate_remains_admissible(knowledge):
     assert candidate_support_tier(validated.leader, evidence, "pile") is EvidenceTier.BARK
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "F1 (docs/specs/core-logic-hardening.md): the model's own support-strength label "
-        "is passed through admission untouched, so it still seeds confidence and status."
-    ),
-)
 def test_strong_label_on_supporting_only_hit_is_demoted(knowledge):
     """A `strong` label is not evidence. Only what the card admits decides strength.
 
@@ -440,3 +433,88 @@ def test_strong_label_on_supporting_only_hit_is_demoted(knowledge):
 
     assert validated.leader is not None
     assert validated.leader.score is SupportStrength.WEAK
+
+
+class TestAdjudicatedSupportStrength:
+    """C1: the card decides strength; the model's label may only lower it.
+
+    One row of the specification's table per test, plus the two directions that matter more
+    than the table — a label is never raised, and the demotion is reported rather than
+    applied silently.
+    """
+
+    def _set(self, score: SupportStrength, *support_ids: str) -> CandidateSet:
+        return CandidateSet(
+            subject_id="log_1",
+            candidates=(
+                Candidate(
+                    taxon="pinus",
+                    resolution=Resolution.GENUS,
+                    supporting_evidence_ids=support_ids,
+                    score=score,
+                    rank=1,
+                ),
+            ),
+        )
+
+    def _score(self, knowledge, evidence, candidate_set: CandidateSet) -> SupportStrength:
+        validated = validate_candidate_set(candidate_set, evidence, knowledge)
+        assert validated.leader is not None
+        return validated.leader.score
+
+    def test_a_full_trust_strong_hit_meeting_the_requirement_is_strong(self, knowledge):
+        """`needles.fascicles` is a Pinus strong-positive feature and satisfies its
+        `needles_or_cones` requirement, so the card grants the label the model claimed."""
+        evidence = _packet(_obs("needles", "needles.fascicles", "two"))
+
+        assert (
+            self._score(knowledge, evidence, self._set(SupportStrength.STRONG, "needles"))
+            is SupportStrength.STRONG
+        )
+
+    def test_two_supporting_hits_reach_moderate_and_no_further(self, knowledge):
+        evidence = _packet(
+            _obs("bark", "bark.texture", "scaly_plates"),
+            _obs("trunk", "trunk.form", "straight_long"),
+        )
+
+        assert (
+            self._score(knowledge, evidence, self._set(SupportStrength.STRONG, "bark", "trunk"))
+            is SupportStrength.MODERATE
+        )
+
+    def test_one_supporting_hit_is_weak(self, knowledge):
+        evidence = _packet(_obs("bark", "bark.texture", "scaly_plates"))
+
+        assert (
+            self._score(knowledge, evidence, self._set(SupportStrength.STRONG, "bark"))
+            is SupportStrength.WEAK
+        )
+
+    def test_a_weak_label_is_never_raised_by_the_card(self, knowledge):
+        """The model looked at the photograph. A doubt the card cannot express is still a
+        doubt, and adjudication only ever runs downward."""
+        evidence = _packet(_obs("needles", "needles.fascicles", "two"))
+
+        assert (
+            self._score(knowledge, evidence, self._set(SupportStrength.WEAK, "needles"))
+            is SupportStrength.WEAK
+        )
+
+    def test_the_demotion_is_reported_not_applied_silently(self, knowledge):
+        evidence = _packet(_obs("bark", "bark.texture", "scaly_plates"))
+
+        report = validate_candidate_set_with_report(
+            self._set(SupportStrength.STRONG, "bark"), evidence, knowledge
+        )
+
+        assert report.demoted_scores == (("pinus", SupportStrength.STRONG, SupportStrength.WEAK),)
+
+    def test_an_undemoted_candidate_is_not_reported(self, knowledge):
+        evidence = _packet(_obs("needles", "needles.fascicles", "two"))
+
+        report = validate_candidate_set_with_report(
+            self._set(SupportStrength.STRONG, "needles"), evidence, knowledge
+        )
+
+        assert report.demoted_scores == ()

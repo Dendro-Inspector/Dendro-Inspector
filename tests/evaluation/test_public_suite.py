@@ -66,6 +66,8 @@ class TestSuiteHealth:
             # C3 and C5: what a contradiction may do, and what abstention must cost.
             "unattached-contradiction-claim-001",
             "abstention-visible-001",
+            # C1: a support-strength label is not evidence.
+            "strong-label-thin-support-001",
         } == ids
 
     def test_no_case_crashed(self, report):

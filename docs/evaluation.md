@@ -21,7 +21,7 @@ secrets.
 Assertions run against the **graph's decisions**, never against prose. Rewriting the tone
 layer must not turn the evaluation red; changing what the system concludes must.
 
-## The twenty-two cases
+## The twenty-three cases
 
 Cases 1–5 cover the core mechanics. Cases 6–8 are named failure modes from section 13 of the
 domain prompt. Case 9 is the counterweight — proof the system still commits when the evidence
@@ -32,7 +32,9 @@ behaviours that six v0.2.2 fixture repairs would otherwise have quietly deleted.
 lock the v0.2.3 wood-surface boundary while preserving corroborated pile-level conclusions.
 Case 20 proves that the escalation gate sees the verdict code would return even when every
 reviewer is silent. Cases 21–22 lock the two halves of the v0.9.0 restraint boundary: what a
-contradiction has the authority to do, and what abstention has to cost.
+contradiction has the authority to do, and what abstention has to cost. Case 23 holds the
+line the whole determinism boundary rests on: a model's own confidence in itself is not
+evidence.
 
 ### 1. `conifer-log-001` — probable Pinus
 
@@ -225,6 +227,18 @@ Abstention must broaden from the composed verdict instead, and must say that it 
 Expects: `pinaceae`, family, confidence low, `abstained`, no escalation, a next photo, and no
 retries.
 
+### 23. `strong-label-thin-support-001` — a label is not evidence
+
+An attached leaf and dark platy bark: two of the Alnus card's supporting features, and no
+match for the persistent cones that are its only strong-positive one. The model calls the
+candidate `strong` and all three reviewers pass in silence. Nothing else in the pipeline
+lowers this verdict — the card's high-confidence requirement is satisfied, so no
+deterministic finding fires, and the evidence tier permits `high`. The adjective alone is
+therefore load-bearing, which is why it must not be.
+
+Expects: `alnus`, genus, confidence ≤ medium, status `probable`, tier 6, no escalation, no
+admitted reranks, and no retries.
+
 ## Metrics
 
 Every rate is reported alongside the count it was computed from. A "100% top-1 accuracy"
@@ -308,10 +322,16 @@ frozen in `evals/baselines/public-v0.9.0.json`. The gate now computes and stores
 deterministic verdict before deciding on escalation. `apple-with-fruit-001.arbiter_used`
 intentionally moves from `false` to `true`, and the new silent-reviewer case proves the same
 path directly. All taxon, resolution, confidence and status fields from the previous baseline
-remain unchanged. Cases 21 and 22 join the same baseline: both are new, so neither moves a
-frozen decision, and both fail on the code that preceded them.
+remain unchanged. Cases 21, 22 and 23 join the same baseline: all three are new, so none
+moves a frozen decision, and each fails on the code that preceded it.
 
-Read the result honestly: twenty-two hand-built cases over recorded fixtures can show that
+Case 23 is worth a note. Adjudicated support strength was expected to move existing frozen
+verdicts, and it moved none: every scripted `score` in the suite already matched the support
+scripted beside it. That is a statement about the fixtures, not about the change — no
+recorded case had ever exercised a label that outran its evidence, which is precisely why
+one had to be written.
+
+Read the result honestly: twenty-three hand-built cases over recorded fixtures can show that
 the machinery follows these contracts. It says nothing about identification accuracy on real
 photographs, which has not been measured.
 

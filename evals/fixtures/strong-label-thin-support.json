@@ -1,0 +1,96 @@
+{
+  "scenario": "strong-label-thin-support",
+  "description": "C1 - the primary model labels a candidate 'strong' on two supporting-feature hits and no strong-positive match. The card grants 'moderate', and the card decides.",
+  "note_for_maintainers": "Neither observation matches the Alnus card's only strong_positive_features entry (cones.type), so C1's table derives 'moderate' from two supporting hits. The card's cones_or_leaf requirement IS satisfied by the attached leaf, which is the point: nothing else in the pipeline lowers this verdict. The scripted score is deliberately 'strong' and all three reviewers are deliberately silent, so admission is the only thing between the label and the answer. Before C1 this case returns high confidence and identified.",
+  "responses": {
+    "primary:planner": {
+      "target_features": ["leaf.shape", "cones.type", "bark.texture"],
+      "expect_multiple_subjects": false,
+      "bark_only_input": false,
+      "notes": [
+        "Foliage is in reach and attached; look for the persistent cones that would settle it."
+      ]
+    },
+    "primary:evidence_extractor": {
+      "subjects": [
+        {
+          "subject_id": "standing_tree_1",
+          "kind": "standing_tree",
+          "description": "Streamside tree with a low branch in reach; no cones anywhere in the frame.",
+          "image_ids": ["img-1"]
+        }
+      ],
+      "observations": [
+        {
+          "observation_id": "obs-1",
+          "feature": "leaf.shape",
+          "value": "rounded_obtuse_or_notched_apex",
+          "subject_id": "standing_tree_1",
+          "source": "image",
+          "visibility": "clear",
+          "reliability": "medium",
+          "image_id": "img-1",
+          "attachment": "confirmed_attached",
+          "notes": "Rounded blade with a notched apex, on a shoot continuous with this trunk."
+        },
+        {
+          "observation_id": "obs-2",
+          "feature": "bark.texture",
+          "value": "dark_platy",
+          "subject_id": "standing_tree_1",
+          "source": "image",
+          "visibility": "clear",
+          "reliability": "medium",
+          "image_id": "img-1",
+          "notes": "Dark bark broken into small plates over the photographed patch."
+        }
+      ],
+      "inferences": [],
+      "absent_features": ["cones.type"],
+      "image_limitations": [
+        {
+          "image_id": "img-1",
+          "lighting": "overcast",
+          "white_balance": "uncorrected",
+          "scale": "absent"
+        }
+      ],
+      "context_limitations": ["no_cones_in_frame"],
+      "possible_multiple_taxa": false,
+      "instruction_like_content_detected": false
+    },
+    "primary:candidate_generator": {
+      "sets": [
+        {
+          "subject_id": "standing_tree_1",
+          "candidates": [
+            {
+              "taxon": "alnus",
+              "resolution": "genus",
+              "supporting_evidence_ids": ["obs-1", "obs-2"],
+              "contradicting_evidence_ids": [],
+              "missing_decisive_features": [],
+              "score": "strong",
+              "rank": 1
+            }
+          ]
+        }
+      ]
+    },
+    "reviewer:botanical_reviewer": {
+      "reviewer": "botanical",
+      "status": "pass",
+      "findings": []
+    },
+    "reviewer:confusion_reviewer": {
+      "reviewer": "confusion",
+      "status": "pass",
+      "findings": []
+    },
+    "reviewer:confidence_reviewer": {
+      "reviewer": "confidence",
+      "status": "pass",
+      "findings": []
+    }
+  }
+}

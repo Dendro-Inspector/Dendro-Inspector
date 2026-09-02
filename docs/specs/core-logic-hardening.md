@@ -194,6 +194,20 @@ confidence rises is a defect in the change, whatever else it does.**
 
 ### C1 — Adjudicate support strength deterministically (closes F1)
 
+**Implementation status:** implemented in policy revision `0.9.0`. Two corrections to what
+this section predicted, both recorded rather than quietly absorbed:
+
+* **No frozen decision moved.** "Expected to move any fixture whose scripted `score` outruns
+  its scripted support" turned out to describe no fixture in the suite, so `policy_revision`
+  did not move and the baseline was extended rather than re-cut. The public case below is
+  the only place the change is observable, which is the argument for having written it.
+* **Phase 0's decision-level gate overstated the rule.**
+  `test_the_same_evidence_yields_the_same_confidence_whatever_the_model_said` asserted that
+  identical evidence returns identical confidence *whatever* the model said. The effective
+  score is a **minimum**, so a `weak` label on strong support still returns `weak` — by
+  design. That gate now states what C1 guarantees: on thin support the label stops mattering,
+  and adjudication only ever runs downward.
+
 **Rule.** A candidate's effective `score` is the minimum of the model's label and a strength
 derived from its *validated* support against its own card:
 

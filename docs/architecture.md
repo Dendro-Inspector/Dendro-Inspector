@@ -189,6 +189,24 @@ look earned.
 A model emitting `0.873` for a bark photograph is reporting a number it cannot justify, and
 a number invites arithmetic that the underlying evidence does not support.
 
+The strength a candidate carries out of admission is **adjudicated**, not accepted. The
+model proposes a label; the deterministic boundary derives one from the candidate's
+*validated* support against its own card, and the effective score is the lower of the two:
+
+| Derived | Condition on the candidate's surviving support ids |
+| --- | --- |
+| `strong` | a full-trust hit on a `strong_positive_features` entry, **and** the card's `required_for_high_confidence` is satisfied |
+| `moderate` | a hit at any positive trust on a `strong_positive_features` entry, or two hits on `supporting_features` |
+| `weak` | otherwise |
+
+Lower, never higher. A model that has looked at the photograph may have seen a reason to
+doubt its own support that no card can express, and that doubt is kept; the reverse — a
+card-thin candidate labelled `strong` — is a self-assessment seeding the verdict, which is
+exactly what the determinism boundary exists to prevent. `resolve_confidence` needs no
+special case: it reads `leader.score`, which is now a statement about evidence, and
+`leaders_are_close()` becomes one too. Every demotion is reported on the validation result
+rather than applied silently.
+
 ## Knowledge is data, not agents
 
 Each taxon is a YAML card, not a class, a function or a sub-agent:
