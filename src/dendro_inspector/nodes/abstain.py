@@ -15,7 +15,12 @@ from __future__ import annotations
 from dendro_inspector.graph.executor import NodeContext
 from dendro_inspector.graph.state import GraphState
 from dendro_inspector.schemas.reviews import ReviewSynthesis
-from dendro_inspector.schemas.taxon import Confidence, Resolution, lower_resolution, resolution_rank
+from dendro_inspector.schemas.taxon import (
+    Confidence,
+    Resolution,
+    lower_resolution,
+    resolution_rank,
+)
 
 NODE = "abstain"
 
@@ -36,14 +41,19 @@ def degraded_synthesis(synthesis: ReviewSynthesis | None, leading: Resolution) -
 
 
 async def run(state: GraphState, ctx: NodeContext) -> GraphState:
-    del ctx
-    leading = Resolution.UNKNOWN
-    for candidate_set in state.candidate_sets:
-        leader = candidate_set.leader
-        if leader is not None and resolution_rank(leader.resolution) > resolution_rank(leading):
-            leading = leader.resolution
+    from dendro_inspector.nodes.final_decision import decide_subject
+
+    provisional = tuple(
+        decide_subject(state, ctx, candidate_set) for candidate_set in state.candidate_sets
+    )
+    synthesis = state.synthesis
+    if provisional:
+        for decision in provisional:
+            synthesis = degraded_synthesis(synthesis, decision.resolution)
+    else:
+        synthesis = degraded_synthesis(synthesis, Resolution.UNKNOWN)
 
     return state.evolve(
         abstained=True,
-        synthesis=degraded_synthesis(state.synthesis, leading),
+        synthesis=synthesis,
     )

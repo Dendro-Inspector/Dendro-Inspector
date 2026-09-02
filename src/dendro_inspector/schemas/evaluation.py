@@ -32,6 +32,7 @@ class EvalExpectation(Contract):
     )
     max_confidence: Confidence | None = None
     expected_status: DecisionStatus | None = None
+    expected_abstained: bool | None = None
     min_subjects: int | None = Field(default=None, ge=1)
     require_next_photo: bool = False
     require_escalation: bool | None = None

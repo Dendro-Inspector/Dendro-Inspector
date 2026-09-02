@@ -833,13 +833,6 @@ class TestPhaseZeroHardeningGates:
 
         assert decision.status is not DecisionStatus.CONFLICTING_EVIDENCE
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason=(
-            "F6: `FinalDecision` has no `abstained` field, and the abstention step is "
-            "computed from the proposed resolution the card cap has already broadened."
-        ),
-    )
     def test_an_abstained_verdict_says_so_and_is_broader(self, simple_case, node_context):
         """A species proposal capped to genus must not abstain to the same genus.
 
@@ -865,6 +858,6 @@ class TestPhaseZeroHardeningGates:
 
         decision = decide_subject(abstained, node_context, candidates)
 
-        # Reached through `getattr` so the gate type-checks before the field exists.
-        assert getattr(decision, "abstained", False)
+        assert decision.abstained
         assert decision.resolution is Resolution.FAMILY
+        assert "abstained" in build_result(decision, "en", abstained).limitations[0]

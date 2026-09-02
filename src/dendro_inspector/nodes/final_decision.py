@@ -266,6 +266,10 @@ def rule_on_user_claim(
 
 def _broadest_recommendation(state: GraphState) -> Resolution | None:
     """The broadest level any reviewer explicitly recommended, across both passes."""
+    if state.abstained:
+        # The abstain node stores its composed bound in ``resolution_delta``. Once that
+        # happens the value is no longer attributable to a reviewer recommendation.
+        return None
     recommendations = [
         synthesis.resolution_delta
         for synthesis in _syntheses(state)
@@ -276,6 +280,8 @@ def _broadest_recommendation(state: GraphState) -> Resolution | None:
 
 def _lowest_recommendation(state: GraphState) -> Confidence | None:
     """The lowest confidence any reviewer explicitly recommended, across both passes."""
+    if state.abstained:
+        return None
     recommendations = [
         synthesis.confidence_delta
         for synthesis in _syntheses(state)
@@ -300,6 +306,10 @@ def resolve_resolution(
     ]
     if recommended is not None:
         bounds.append(recommended)
+    if state.abstained and state.synthesis is not None:
+        abstention_bound = state.synthesis.resolution_delta
+        if abstention_bound is not None:
+            bounds.append(abstention_bound)
     resolution = min(bounds, key=resolution_rank)
     already_broadened = resolution_rank(resolution) < resolution_rank(leader.resolution)
 
@@ -682,6 +692,7 @@ def decide_subject(
     the record describes the world every model downstream has already been reasoning in.
     """
     decision = decide_subject_base(state, ctx, candidate_set)
+    decision = decision.model_copy(update={"abstained": state.abstained})
     check = state.authority_check_for(candidate_set.subject_id)
     if check is None or check.status is not AuthorityCheckStatus.SENSITIVE:
         return decision.model_copy(

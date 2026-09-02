@@ -183,6 +183,12 @@ class FinalDecision(Contract):
     unresolved_questions: tuple[ShortText, ...] = ()
     best_next_photo: PhotoRequest | None = None
     arbiter_used: bool = False
+    abstained: bool = Field(
+        default=False,
+        description=(
+            "The run abstained: this verdict is deliberately broader than the evidence earned."
+        ),
+    )
     user_claim_verdict: UserClaimVerdict = UserClaimVerdict.NOT_PROVIDED
     evidence_tier: int = Field(
         default=1,

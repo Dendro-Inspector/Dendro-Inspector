@@ -147,6 +147,18 @@ def check_status(state: GraphState, expect: EvalExpectation) -> AssertionResult 
     )
 
 
+def check_abstained(state: GraphState, expect: EvalExpectation) -> AssertionResult | None:
+    if expect.expected_abstained is None:
+        return None
+    actual = {decision.abstained for decision in state.decisions}
+    if actual == {expect.expected_abstained}:
+        return _passed("expected_abstained", str(expect.expected_abstained))
+    return _failed(
+        "expected_abstained",
+        f"expected abstained={expect.expected_abstained}, got {sorted(actual)}",
+    )
+
+
 def check_min_subjects(state: GraphState, expect: EvalExpectation) -> AssertionResult | None:
     if expect.min_subjects is None:
         return None
@@ -376,6 +388,7 @@ ALL_ASSERTIONS: tuple[Assertion, ...] = (
     check_max_resolution,
     check_max_confidence,
     check_status,
+    check_abstained,
     check_min_subjects,
     check_next_photo,
     check_escalation,

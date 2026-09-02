@@ -99,11 +99,15 @@ _REASON_PHRASE: dict[str, dict[str, str]] = {
         "possible_multiple_taxa": "у кадрі може бути більше ніж одна порода",
         "scale_absent": "у кадрі немає масштабного орієнтира",
         "scale_approximate": "масштаб у кадрі лише приблизний",
+        "abstained": ("система утрималася від сильнішого висновку; цей результат навмисно ширший"),
     },
     "en": {
         "possible_multiple_taxa": "the frame may hold more than one taxon",
         "scale_absent": "no scale reference in the frame",
         "scale_approximate": "scale in the frame is only approximate",
+        "abstained": (
+            "the run abstained; this verdict is deliberately broader than the evidence earned"
+        ),
     },
 }
 
@@ -214,6 +218,7 @@ def decide_tone(state: GraphState) -> tuple[ToneMode, bool]:
             all(d.user_claim_verdict is UserClaimVerdict.REJECTED for d in decisions),
             all(d.confidence is Confidence.HIGH for d in decisions),
             all(d.evidence_tier >= int(EvidenceTier.FOLIAGE) for d in decisions),
+            all(not d.abstained for d in decisions),
             not restraint_findings,
             not leaders_close,
         )
@@ -290,7 +295,8 @@ def _limitations(
     Two channels meet here: prose the graph already wrote, and reason codes. The codes go
     through :func:`render_reason_code`, because this tuple is printed to a person.
     """
-    items = list(decision.unresolved_questions)
+    items = [render_reason_code("abstained", locale)] if decision.abstained else []
+    items.extend(decision.unresolved_questions)
     if state is None or state.evidence is None:
         return tuple(items)
 

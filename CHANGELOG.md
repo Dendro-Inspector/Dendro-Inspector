@@ -17,6 +17,10 @@ get entries.
   observation could itself have supported an identification: same subject, attached where
   attachment matters, and above bark level. Weaker contradictions are still recorded as
   findings and can still lower confidence.
+- An abstained run now says so in the structured result and in the limitations it prints,
+  and its resolution is one level broader than the same evidence would otherwise have
+  earned. Previously abstention could return the identical taxon, resolution and status with
+  only the confidence lowered.
 
 ### Changed
 
