@@ -68,6 +68,7 @@ class TraceRecorder:
         self._prompt: PromptMetadata | None = None
         self._retries = 0
         self._escalation_triggered = False
+        self._user_claim_negated = False
         self._escalation_reasons: tuple[str, ...] = ()
         self._arbiter_used = False
         self._started_at = datetime.now(UTC)
@@ -157,6 +158,10 @@ class TraceRecorder:
 
     def record_arbiter_used(self) -> None:
         self._arbiter_used = True
+
+    def record_negated_claim(self) -> None:
+        """The user named a taxon only to deny it, so no version was offered to rule on."""
+        self._user_claim_negated = True
 
     def record_derivation(self, derivation: DecisionDerivation) -> None:
         """Keep the latest composition for a subject; final evaluation replaces probes."""
@@ -251,6 +256,7 @@ class TraceRecorder:
                 check.status is AuthorityCheckStatus.SENSITIVE for check in authority_checks
             ),
             escalation_triggered=self._escalation_triggered,
+            user_claim_negated=self._user_claim_negated,
             escalation_reasons=self._escalation_reasons,
             arbiter_used=self._arbiter_used,
             final_resolution=final_resolution,

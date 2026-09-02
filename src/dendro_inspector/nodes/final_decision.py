@@ -23,6 +23,8 @@ waive by recommending a comfortable number.
 
 from __future__ import annotations
 
+import re
+
 from dendro_inspector.graph.executor import NodeContext
 from dendro_inspector.graph.state import GraphState
 from dendro_inspector.knowledge.candidate_validation import (
@@ -42,6 +44,7 @@ from dendro_inspector.knowledge.evidence_hierarchy import (
     full_positive_observations_for,
     resolution_ceiling,
 )
+from dendro_inspector.knowledge.loader import KnowledgeBase
 from dendro_inspector.knowledge.taxon_cards import card_value_vocabulary, match_card
 from dendro_inspector.nodes.photo_planner import (
     attachment_request,
@@ -227,17 +230,97 @@ def normalise_claim(text: str) -> str:
     return "".join(character for character in text.lower().strip() if character.isalnum())
 
 
-def _claim_matches(claim: str, taxon_id: str, display_name: str, aliases: tuple[str, ...]) -> bool:
-    normalised = normalise_claim(claim)
-    if not normalised:
-        return False
-    candidates = {normalise_claim(taxon_id), normalise_claim(display_name)}
-    candidates.update(normalise_claim(alias) for alias in aliases)
-    return any(
-        normalised == candidate or normalised in candidate or candidate in normalised
-        for candidate in candidates
-        if candidate
+#: Words that turn the taxon token following them into a denial rather than a claim. Full
+#: negation semantics — "it is *not* an oak" as a testable statement the system could go on
+#: to check — are a separate decision; this only stops the denial being read as the claim.
+_NEGATIONS: frozenset[str] = frozenset({"не", "ні", "not", "no"})
+
+#: Below this length a name matches only as a whole token. "a" is inside twenty-two of the
+#: twenty-five cards and "дуб" is inside "дубок"; "quercus" is inside nothing by accident.
+_SUBSTRING_MIN = 4
+
+
+def _claim_words(claim: str) -> tuple[str, ...]:
+    """Split a free-text claim into normalised word tokens, in the order they were written."""
+    words = (normalise_claim(word) for word in re.findall(r"\w+", claim))
+    return tuple(word for word in words if word)
+
+
+def _asserted_words(claim: str) -> tuple[str, ...]:
+    """The words the user asserted, with each negation and the word it denies removed."""
+    kept: list[str] = []
+    denied = False
+    for word in _claim_words(claim):
+        if word in _NEGATIONS:
+            denied = True
+            continue
+        if denied:
+            denied = False
+            continue
+        kept.append(word)
+    return tuple(kept)
+
+
+def claim_is_wholly_negated(claim: str) -> bool:
+    """Whether the user named something and then took every name back."""
+    return bool(_claim_words(claim)) and not _asserted_words(claim)
+
+
+def _card_names(taxon_id: str, card: TaxonCard) -> tuple[tuple[str, bool], ...]:
+    """Each comparable form of a card's name, with whether it may match as a substring.
+
+    The display name is a composite label: "Quercus (дуб)" reduces to a string nobody types,
+    and letting it match loosely makes it the longest match for any claim naming either half.
+    It is matched whole or not at all.
+    """
+    forms = (
+        (normalise_claim(taxon_id), True),
+        (normalise_claim(card.display_name), False),
+        *((normalise_claim(alias), True) for alias in card.aliases),
     )
+    seen: dict[str, bool] = {}
+    for form, loose in forms:
+        if form:
+            seen[form] = seen.get(form, False) or loose
+    return tuple(seen.items())
+
+
+def _match_weight(word: str, names: tuple[tuple[str, bool], ...]) -> int:
+    """Length of the longest card name this word matches, or zero for no match.
+
+    Substring matching survives for long names, because people write "сосни" and "quercus
+    robur" and mean the card; it is withdrawn when either side is short, because that is how
+    a single letter came to match most of the pack.
+    """
+    best = 0
+    for name, loose in names:
+        if word == name or (
+            loose
+            and len(name) >= _SUBSTRING_MIN
+            and len(word) >= _SUBSTRING_MIN
+            and (name in word or word in name)
+        ):
+            best = max(best, len(name))
+    return best
+
+
+def resolve_user_claim(claim: str, knowledge: KnowledgeBase) -> tuple[str, ...]:
+    """Every taxon the user's claim names, longest matching name first.
+
+    A claim is a disjunction, not a lookup. "дуб або ясен" names two taxa and the user is
+    right if either is the answer; resolving it to whichever card the catalogue happens to
+    list first makes the verdict an accident of iteration order.
+    """
+    weights: dict[str, int] = {}
+    for word in _asserted_words(claim):
+        for taxon_id in knowledge.available_taxon_ids():
+            card = knowledge.try_taxon(taxon_id)
+            if card is None:
+                continue
+            weight = _match_weight(word, _card_names(taxon_id, card))
+            if weight > weights.get(taxon_id, 0):
+                weights[taxon_id] = weight
+    return tuple(sorted(weights, key=lambda taxon_id: (-weights[taxon_id], taxon_id)))
 
 
 def rule_on_user_claim(
@@ -258,17 +341,51 @@ def rule_on_user_claim(
     if not claim:
         return UserClaimVerdict.NOT_PROVIDED
 
-    matched: str | None = None
-    for taxon_id in ctx.knowledge.available_taxon_ids():
-        card = ctx.knowledge.try_taxon(taxon_id)
-        if card is not None and _claim_matches(claim, taxon_id, card.display_name, card.aliases):
-            matched = taxon_id
-            break
-
-    if matched is None:
+    matched = resolve_user_claim(claim, ctx.knowledge)
+    if not matched:
+        if claim_is_wholly_negated(claim):
+            # They said what it is not. That is not a version this system can rule on, and
+            # reading the denial as the claim would rule against the taxon they excluded.
+            ctx.recorder.record_negated_claim()
         # We do not have a card for what they said. That is our gap, not their error.
         return UserClaimVerdict.POSSIBLE
 
+    # A hedge is not a weaker claim, it is several claims. Ruling on the most favourable
+    # member is the only reading that does not punish a user for being careful.
+    return max(
+        (
+            _rule_on_one_taxon(
+                state, ctx, subject_id, candidate_set, evidence, selected_taxon, taxon_id
+            )
+            for taxon_id in matched
+        ),
+        key=_claim_favourability,
+    )
+
+
+#: Most favourable first. A disjunction is ruled on by its best member.
+_CLAIM_FAVOURABILITY: dict[UserClaimVerdict, int] = {
+    UserClaimVerdict.ACCEPTED: 3,
+    UserClaimVerdict.POSSIBLE: 2,
+    UserClaimVerdict.DOUBTFUL: 1,
+    UserClaimVerdict.REJECTED: 0,
+}
+
+
+def _claim_favourability(verdict: UserClaimVerdict) -> int:
+    return _CLAIM_FAVOURABILITY.get(verdict, 0)
+
+
+def _rule_on_one_taxon(
+    state: GraphState,
+    ctx: NodeContext,
+    subject_id: str,
+    candidate_set: CandidateSet,
+    evidence: EvidencePacket,
+    selected_taxon: str | None,
+    matched: str,
+) -> UserClaimVerdict:
+    """Rule on one taxon the claim named. The restraint clauses, in the prompt's order."""
     if matched == selected_taxon:
         return UserClaimVerdict.ACCEPTED
 
@@ -276,7 +393,6 @@ def rule_on_user_claim(
     card = ctx.knowledge.try_taxon(matched)
     contradicted = card is not None and match_card(card, evidence, subject_id).is_disqualified
 
-    # Restraint clauses, in the order the prompt states them.
     if bark_only(evidence, subject_id) or state.case.user_has_field_context:
         return (
             UserClaimVerdict.POSSIBLE

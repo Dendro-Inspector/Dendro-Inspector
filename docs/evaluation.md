@@ -21,7 +21,7 @@ secrets.
 Assertions run against the **graph's decisions**, never against prose. Rewriting the tone
 layer must not turn the evaluation red; changing what the system concludes must.
 
-## The twenty-three cases
+## The twenty-four cases
 
 Cases 1–5 cover the core mechanics. Cases 6–8 are named failure modes from section 13 of the
 domain prompt. Case 9 is the counterweight — proof the system still commits when the evidence
@@ -34,7 +34,8 @@ Case 20 proves that the escalation gate sees the verdict code would return even 
 reviewer is silent. Cases 21–22 lock the two halves of the v0.9.0 restraint boundary: what a
 contradiction has the authority to do, and what abstention has to cost. Case 23 holds the
 line the whole determinism boundary rests on: a model's own confidence in itself is not
-evidence.
+evidence. Case 24 rules on the version the user actually gave, rather than on whichever
+taxon their words happened to match first.
 
 ### 1. `conifer-log-001` — probable Pinus
 
@@ -239,6 +240,18 @@ therefore load-bearing, which is why it must not be.
 Expects: `alnus`, genus, confidence ≤ medium, status `probable`, tier 6, no escalation, no
 admitted reranks, and no retries.
 
+### 24. `disjunctive-user-claim-001` — a hedge is several claims
+
+`conifer-log-001`'s photograph with a user who declines to commit between pine and spruce.
+Pine is the answer, so their version is right. Before C4 the claim resolved to whichever card
+the catalogue listed first — spruce — and the attached two-needle fascicle disqualifies
+spruce, so the system returned `pinus` while telling a user who had named the right tree
+that their version was **rejected**. A user who hedged has not made a weaker claim; they have
+made two, and the ruling belongs to the most favourable of them.
+
+Expects: `pinus`, genus, confidence ≤ medium, tier 6, user claim `accepted`, never rejected,
+and no retries.
+
 ## Metrics
 
 Every rate is reported alongside the count it was computed from. A "100% top-1 accuracy"
@@ -322,8 +335,8 @@ frozen in `evals/baselines/public-v0.9.0.json`. The gate now computes and stores
 deterministic verdict before deciding on escalation. `apple-with-fruit-001.arbiter_used`
 intentionally moves from `false` to `true`, and the new silent-reviewer case proves the same
 path directly. All taxon, resolution, confidence and status fields from the previous baseline
-remain unchanged. Cases 21, 22 and 23 join the same baseline: all three are new, so none
-moves a frozen decision, and each fails on the code that preceded it.
+remain unchanged. Cases 21 to 24 join the same baseline: all four are new, so none moves a
+frozen decision, and each fails on the code that preceded it.
 
 Case 23 is worth a note. Adjudicated support strength was expected to move existing frozen
 verdicts, and it moved none: every scripted `score` in the suite already matched the support
@@ -331,7 +344,7 @@ scripted beside it. That is a statement about the fixtures, not about the change
 recorded case had ever exercised a label that outran its evidence, which is precisely why
 one had to be written.
 
-Read the result honestly: twenty-three hand-built cases over recorded fixtures can show that
+Read the result honestly: twenty-four hand-built cases over recorded fixtures can show that
 the machinery follows these contracts. It says nothing about identification accuracy on real
 photographs, which has not been measured.
 

@@ -17,6 +17,12 @@ get entries.
   observation could itself have supported an identification: same subject, attached where
   attachment matters, and above bark level. Weaker contradictions are still recorded as
   findings and can still lower confidence.
+- The user's own version is now read as they wrote it. A claim naming more than one taxon is
+  a disjunction, ruled on by its most favourable member, so hedging between two trees is no
+  longer resolved to whichever card happened to be listed first — which could return a
+  rejection to a user who had named the right tree. A taxon named only to deny it ("не дуб")
+  no longer becomes the claim being ruled on, and names shorter than four characters match
+  whole words only, so a one-letter claim no longer matches most of the catalogue.
 - An abstained run now says so in the structured result and in the limitations it prints,
   and its resolution is one level broader than the same evidence would otherwise have
   earned. Previously abstention could return the identical taxon, resolution and status with
@@ -41,14 +47,16 @@ get entries.
   `silent-reviewers-high-confidence-001` case locks the same path directly. Two further
   cases, `unattached-contradiction-claim-001` and `abstention-visible-001`, lock the
   contradiction-authority and abstention rules above; both are new, so neither moves a frozen
-  decision, and `strong-label-thin-support-001` locks the adjudicated strength above. The
-  public suite stands at twenty-three cases with zero overconfidence.
+  decision, `strong-label-thin-support-001` locks the adjudicated strength above and
+  `disjunctive-user-claim-001` locks the hedged claim. The public suite stands at twenty-four
+  cases with zero overconfidence.
 
 ### Added
 
 - Run traces record how each verdict was composed: every resolution bound considered and
   the one that bound, every confidence step applied or skipped, and where a rerank came
-  from.
+  from. They also record when a user's claim named a taxon only to deny it, since the
+  verdict then rules on no version at all.
 - Run traces retain the per-subject provisional verdicts shown to the arbiter and record
   whether arbitration changed status, taxon, resolution or confidence. Runs that did not
   call the arbiter leave those change fields empty rather than reporting a false comparison.

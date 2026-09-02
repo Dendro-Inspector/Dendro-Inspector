@@ -171,6 +171,13 @@ class RunTrace(Contract):
         default=(),
         description="One deterministic composition record per final subject verdict.",
     )
+    user_claim_negated: bool = Field(
+        default=False,
+        description=(
+            "The user's claim named a taxon only to deny it. Nothing was offered to rule "
+            "on, so the verdict is `possible` rather than a ruling against the denied taxon."
+        ),
+    )
     evidence_authority_sensitive: bool = Field(
         default=False,
         description="Convenience aggregate: any subject's check came back sensitive.",

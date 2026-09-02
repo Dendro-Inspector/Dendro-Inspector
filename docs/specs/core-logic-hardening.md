@@ -310,6 +310,19 @@ assert.
 
 ### C4 — Recognise the claim the user made (closes F5)
 
+**Implementation status:** implemented in policy revision `0.9.0`, pulled forward from PR 9
+because F5's three defects are user-facing and the change is self-contained. One correction
+to what this section proposed: the public case it named — `rough-bark-oak-claim-001`'s
+evidence with the claim `дуб або ясен` — **passes on the code that preceded C4**, because
+there the alphabetical accident lands on `fraxinus`, which is also the selected taxon. The
+case shipped is the same idea where the accident lands wrong: `conifer-log-001`'s evidence
+with the claim `сосна або ялина`, which before C4 returns `pinus` while ruling the user's
+version `rejected`.
+
+The display name is matched whole or not at all. "Quercus (дуб)" reduces to a string nobody
+types, and letting it match loosely made it the longest match for any claim naming either
+half, which reordered the disjunction by an artefact of the label.
+
 **Rule.** Matching is by whole token against the card's aliases, display name and id, after
 the existing normalisation, with the longest alias winning. An alias shorter than four
 characters matches only as a whole token, never as a substring. When the claim resolves to

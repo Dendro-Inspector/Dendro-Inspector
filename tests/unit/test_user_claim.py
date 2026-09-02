@@ -7,12 +7,14 @@ was felled, may have watched it for twenty years. So their version is checked, n
 
 from __future__ import annotations
 
-import importlib
-
 import pytest
 
 from dendro_inspector.graph.state import GraphState
-from dendro_inspector.nodes.final_decision import normalise_claim, rule_on_user_claim
+from dendro_inspector.nodes.final_decision import (
+    normalise_claim,
+    resolve_user_claim,
+    rule_on_user_claim,
+)
 from dendro_inspector.schemas.candidates import Candidate, CandidateSet, SupportStrength
 from dendro_inspector.schemas.decisions import UserClaimVerdict
 from dendro_inspector.schemas.evidence import (
@@ -243,13 +245,6 @@ class TestPhaseZeroClaimGates:
 
         assert verdict is not UserClaimVerdict.REJECTED
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason=(
-            "F5: `_claim_matches` takes the first card in catalogue order, so a claim "
-            "naming two taxa is resolved alphabetically rather than as a disjunction."
-        ),
-    )
     def test_a_hedged_claim_is_accepted_when_either_member_is_selected(self, node_context):
         """A user who hedges is not to be punished for it."""
         verdict = rule_on_user_claim(
@@ -263,10 +258,6 @@ class TestPhaseZeroClaimGates:
 
         assert verdict is UserClaimVerdict.ACCEPTED
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="F5: substring matching resolves a negated claim to the taxon it denies.",
-    )
     def test_a_negated_claim_does_not_name_the_taxon_it_denies(self, node_context):
         verdict = rule_on_user_claim(
             _state(user_claim="не дуб"),
@@ -279,15 +270,66 @@ class TestPhaseZeroClaimGates:
 
         assert verdict is not UserClaimVerdict.ACCEPTED
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="F5: `resolve_user_claim` does not exist; matching is substring-based.",
-    )
     def test_a_one_letter_claim_matches_nothing(self, knowledge):
-        """`a` currently matches 22 of the 25 cards as a substring."""
-        # Looked up dynamically so the gate type-checks before the function exists.
-        module = importlib.import_module("dendro_inspector.nodes.final_decision")
-        resolve_user_claim = getattr(module, "resolve_user_claim", None)
-
-        assert resolve_user_claim is not None, "C4 has not landed yet"
+        """`a` used to match 22 of the 25 cards as a substring."""
         assert resolve_user_claim("a", knowledge) == ()
+
+
+class TestClaimResolution:
+    """C4: a claim is resolved to every taxon it names, and to nothing it denies."""
+
+    @pytest.mark.parametrize(
+        ("claim", "expected"),
+        [
+            ("дуб", ("quercus",)),
+            ("oak", ("quercus",)),
+            ("Quercus robur", ("quercus",)),
+            ("дуб або ясен", ("fraxinus", "quercus")),
+            ("ясен або дуб", ("fraxinus", "quercus")),
+            ("не дуб", ()),
+            ("not oak", ()),
+            ("a", ()),
+            ("", ()),
+        ],
+    )
+    def test_the_claim_resolves_to_every_taxon_it_names(self, knowledge, claim, expected):
+        assert set(resolve_user_claim(claim, knowledge)) == set(expected)
+
+    def test_a_negation_removes_only_the_word_it_denies(self, knowledge):
+        """ "не дуб, скоріше ясен" is still a claim about ash."""
+        assert resolve_user_claim("не дуб, скоріше ясен", knowledge) == ("fraxinus",)
+
+    def test_the_longest_matching_name_orders_the_result(self, knowledge):
+        """Order is by how much of the card the user actually named, not by catalogue
+        position, so a disjunction reads back in the order a person would rank it."""
+        resolved = resolve_user_claim("quercus ясен", knowledge)
+
+        assert resolved == ("quercus", "fraxinus")
+
+    def test_a_hedge_is_ruled_on_by_its_best_member(self, node_context):
+        """The other member losing is not the user being wrong."""
+        for selected in ("quercus", "fraxinus"):
+            verdict = rule_on_user_claim(
+                _state(user_claim="дуб або ясен"),
+                node_context,
+                "log_1",
+                _candidates(selected),
+                _evidence(_obs("o1", "bark.pattern", "diamond_fissures")),
+                selected,
+            )
+
+            assert verdict is UserClaimVerdict.ACCEPTED
+
+    def test_a_wholly_negated_claim_is_unrecognised_rather_than_ruled_against(self, node_context):
+        """The denied taxon must not be read as the version to rule on: that would turn
+        "it is not an oak" into a rejected oak claim, which the user never made."""
+        verdict = rule_on_user_claim(
+            _state(user_claim="не дуб"),
+            node_context,
+            "log_1",
+            _candidates("quercus"),
+            _evidence(_obs("o1", "bark.pattern", "diamond_fissures")),
+            "quercus",
+        )
+
+        assert verdict is UserClaimVerdict.POSSIBLE

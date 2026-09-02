@@ -68,6 +68,8 @@ class TestSuiteHealth:
             "abstention-visible-001",
             # C1: a support-strength label is not evidence.
             "strong-label-thin-support-001",
+            # C4: a hedged claim is a disjunction, not a lookup.
+            "disjunctive-user-claim-001",
         } == ids
 
     def test_no_case_crashed(self, report):
