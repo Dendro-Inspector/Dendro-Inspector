@@ -1,10 +1,10 @@
 {
   "baseline_version": "0.9.0",
   "suite": "public",
-  "passed": 20,
+  "passed": 22,
   "failed": 0,
   "metrics": {
-    "cases": 20,
+    "cases": 22,
     "top_1_accuracy": 1.0,
     "top_3_recall": 1.0,
     "correct_resolution_rate": 1.0,
@@ -14,15 +14,25 @@
     "escalation_precision": 1.0,
     "escalation_recall": 1.0,
     "unnecessary_arbiter_call_rate": 0.0,
-    "scored_top_1": 14,
+    "scored_top_1": 16,
     "scored_top_3": 4,
-    "scored_resolution": 19,
+    "scored_resolution": 20,
     "scored_abstention": 4,
     "escalations_expected": 11,
     "escalations_observed": 11,
-    "escalation_decisions_correct": 20
+    "escalation_decisions_correct": 21
   },
   "cases": {
+    "abstention-visible-001": {
+      "selected_taxon": "pinaceae",
+      "selected_taxon_display_name": "Pinaceae (\u0441\u043e\u0441\u043d\u043e\u0432\u0456)",
+      "resolution": "family",
+      "confidence": "low",
+      "evidence_tier": 6,
+      "admitted_rerank_finding_ids": [],
+      "arbiter_used": false,
+      "retries": 0
+    },
     "apple-with-fruit-001": {
       "selected_taxon": "malus",
       "selected_taxon_display_name": "Malus (\u044f\u0431\u043b\u0443\u043d\u044f)",
@@ -201,6 +211,16 @@
       "resolution": "unknown",
       "confidence": "low",
       "evidence_tier": 3,
+      "admitted_rerank_finding_ids": [],
+      "arbiter_used": false,
+      "retries": 0
+    },
+    "unattached-contradiction-claim-001": {
+      "selected_taxon": "pinus",
+      "selected_taxon_display_name": "Pinus (\u0441\u043e\u0441\u043d\u0430)",
+      "resolution": "genus",
+      "confidence": "medium",
+      "evidence_tier": 7,
       "admitted_rerank_finding_ids": [],
       "arbiter_used": false,
       "retries": 0

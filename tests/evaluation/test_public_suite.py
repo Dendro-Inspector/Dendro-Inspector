@@ -63,6 +63,9 @@ class TestSuiteHealth:
             "rough-end-grain-anatomy-001",
             "split-face-colour-only-001",
             "log-pile-pinus-001",
+            # C3 and C5: what a contradiction may do, and what abstention must cost.
+            "unattached-contradiction-claim-001",
+            "abstention-visible-001",
         } == ids
 
     def test_no_case_crashed(self, report):

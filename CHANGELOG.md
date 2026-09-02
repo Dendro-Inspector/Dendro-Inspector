@@ -32,8 +32,10 @@ get entries.
   routing are unchanged.
 - Frozen decision movement: `apple-with-fruit-001.arbiter_used` changes from `false` to
   `true` under F2. Its selected taxon, status, resolution and confidence do not move. The new
-  `silent-reviewers-high-confidence-001` case locks the same path directly, bringing the
-  public suite to twenty cases with zero overconfidence.
+  `silent-reviewers-high-confidence-001` case locks the same path directly. Two further
+  cases, `unattached-contradiction-claim-001` and `abstention-visible-001`, lock the
+  contradiction-authority and abstention rules above; both are new, so neither moves a frozen
+  decision. The public suite stands at twenty-two cases with zero overconfidence.
 
 ### Added
 

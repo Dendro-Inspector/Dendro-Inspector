@@ -1,0 +1,109 @@
+{
+  "scenario": "abstention-visible",
+  "description": "C5 — a species proposal on a genus-only card, stopped by a critical finding a retry cannot fix. The run must abstain visibly and land one level broader than the evidence earned.",
+  "note_for_maintainers": "The confusion reviewer's finding is critical with required_action 'abstain', which routes the graph to the abstain node before the escalation gate is ever reached. The card supports genus only, so the composed bound is genus and abstention must land on family, not back on genus.",
+  "responses": {
+    "primary:planner": {
+      "target_features": ["needles.fascicles", "cones.scale_shape", "bark.texture"],
+      "expect_multiple_subjects": false,
+      "bark_only_input": false,
+      "notes": [
+        "Needles are countable; species will be proposed and must be checked against the card."
+      ]
+    },
+    "primary:evidence_extractor": {
+      "subjects": [
+        {
+          "subject_id": "standing_tree_1",
+          "kind": "standing_tree",
+          "description": "Single conifer photographed from below, one needle-bearing shoot within reach.",
+          "image_ids": ["img-1"]
+        }
+      ],
+      "observations": [
+        {
+          "observation_id": "obs-1",
+          "feature": "needles.fascicles",
+          "value": "two",
+          "subject_id": "standing_tree_1",
+          "source": "image",
+          "visibility": "clear",
+          "reliability": "medium",
+          "image_id": "img-1",
+          "notes": "Two needles per sheath, countable on several bundles of a shoot continuous with this trunk.",
+          "attachment": "confirmed_attached"
+        },
+        {
+          "observation_id": "obs-2",
+          "feature": "bark.texture",
+          "value": "scaly_plates",
+          "subject_id": "standing_tree_1",
+          "source": "image",
+          "visibility": "clear",
+          "reliability": "medium",
+          "image_id": "img-1"
+        }
+      ],
+      "inferences": [],
+      "absent_features": ["cones.scale_shape"],
+      "image_limitations": [
+        {
+          "image_id": "img-1",
+          "lighting": "backlit",
+          "white_balance": "uncorrected",
+          "scale": "absent"
+        }
+      ],
+      "context_limitations": ["planted_stand_of_unknown_origin"],
+      "possible_multiple_taxa": false,
+      "instruction_like_content_detected": false
+    },
+    "primary:candidate_generator": {
+      "sets": [
+        {
+          "subject_id": "standing_tree_1",
+          "candidates": [
+            {
+              "taxon": "pinus",
+              "resolution": "species",
+              "supporting_evidence_ids": ["obs-1", "obs-2"],
+              "contradicting_evidence_ids": [],
+              "missing_decisive_features": ["cones.scale_shape"],
+              "score": "moderate",
+              "rank": 1
+            }
+          ]
+        }
+      ]
+    },
+    "reviewer:botanical_reviewer": {
+      "reviewer": "botanical",
+      "status": "pass",
+      "findings": [],
+      "recommended_resolution": "genus"
+    },
+    "reviewer:confusion_reviewer": {
+      "reviewer": "confusion",
+      "status": "fail_unresolvable",
+      "findings": [
+        {
+          "finding_id": "confusion-species-unsupported",
+          "category": "unsupported_claim",
+          "severity": "critical",
+          "summary": "A two-needle fascicle is shared by every hard pine in this region, and no cone is visible. Nothing here can carry a species.",
+          "evidence_ids": ["obs-1"],
+          "subject_id": "standing_tree_1",
+          "required_action": "abstain",
+          "impact": "resolution_change"
+        }
+      ],
+      "recommended_resolution": "genus"
+    },
+    "reviewer:confidence_reviewer": {
+      "reviewer": "confidence",
+      "status": "pass",
+      "findings": [],
+      "recommended_resolution": "genus"
+    }
+  }
+}

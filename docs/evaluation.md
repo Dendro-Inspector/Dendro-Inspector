@@ -21,7 +21,7 @@ secrets.
 Assertions run against the **graph's decisions**, never against prose. Rewriting the tone
 layer must not turn the evaluation red; changing what the system concludes must.
 
-## The twenty cases
+## The twenty-two cases
 
 Cases 1–5 cover the core mechanics. Cases 6–8 are named failure modes from section 13 of the
 domain prompt. Case 9 is the counterweight — proof the system still commits when the evidence
@@ -31,7 +31,8 @@ deterministic-finding precedence and finding-bound reranks. Cases 15–16 hold t
 behaviours that six v0.2.2 fixture repairs would otherwise have quietly deleted. Cases 17–19
 lock the v0.2.3 wood-surface boundary while preserving corroborated pile-level conclusions.
 Case 20 proves that the escalation gate sees the verdict code would return even when every
-reviewer is silent.
+reviewer is silent. Cases 21–22 lock the two halves of the v0.9.0 restraint boundary: what a
+contradiction has the authority to do, and what abstention has to cost.
 
 ### 1. `conifer-log-001` — probable Pinus
 
@@ -203,6 +204,27 @@ silence cannot be the gate's only view of confidence.
 Expects: `pinus`, genus, confidence high, tier 6, escalation with
 `high_confidence_proposed`, and no retries.
 
+### 21. `unattached-contradiction-claim-001` — a contradiction that may not convict
+
+Needle litter lying on a sawn log is fascicled in twos, which the Picea card calls
+disqualifying, but no shoot is continuous with the log and the canopy overhead is mixed.
+The user says spruce. Evidence with no authority to identify has none to reject: the
+contradiction is still recorded and may still lower confidence, but the ruling on the user's
+own version must stop short of `rejected`.
+
+Expects: `pinus`, resolution ≤ genus, user claim `doubtful`, never rejected, a next photo,
+and no retries.
+
+### 22. `abstention-visible-001` — abstention has to cost something
+
+A species is proposed on a card that supports genus only, and the confusion reviewer files a
+critical finding no retry can fix. Broadening from the *proposed* species would land on the
+genus the card cap had already produced — the confident answer returned under another name.
+Abstention must broaden from the composed verdict instead, and must say that it did.
+
+Expects: `pinaceae`, family, confidence low, `abstained`, no escalation, a next photo, and no
+retries.
+
 ## Metrics
 
 Every rate is reported alongside the count it was computed from. A "100% top-1 accuracy"
@@ -281,14 +303,16 @@ bound by code to the evidence ids that projection carried. Every metric and ever
 decision is identical to v0.7.0, which is the point: a boundary that changes what a reviewer
 may cite should not change what the system concludes on cases where reviewers cited honestly.
 
-The v0.9.0 result is **twenty passing cases, zero failures and zero overconfidence**, frozen
-in `evals/baselines/public-v0.9.0.json`. The gate now computes and stores the deterministic
-verdict before deciding on escalation. `apple-with-fruit-001.arbiter_used` intentionally moves
-from `false` to `true`, and the new silent-reviewer case proves the same path directly. All
-taxon, resolution, confidence and status fields from the previous baseline remain unchanged.
+The v0.9.0 result is **twenty-two passing cases, zero failures and zero overconfidence**,
+frozen in `evals/baselines/public-v0.9.0.json`. The gate now computes and stores the
+deterministic verdict before deciding on escalation. `apple-with-fruit-001.arbiter_used`
+intentionally moves from `false` to `true`, and the new silent-reviewer case proves the same
+path directly. All taxon, resolution, confidence and status fields from the previous baseline
+remain unchanged. Cases 21 and 22 join the same baseline: both are new, so neither moves a
+frozen decision, and both fail on the code that preceded them.
 
-Read the result honestly: twenty hand-built cases over recorded fixtures can show that the
-machinery follows these contracts. It says nothing about identification accuracy on real
+Read the result honestly: twenty-two hand-built cases over recorded fixtures can show that
+the machinery follows these contracts. It says nothing about identification accuracy on real
 photographs, which has not been measured.
 
 ## Adding a case
