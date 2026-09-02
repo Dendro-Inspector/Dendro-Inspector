@@ -2,12 +2,14 @@
 
 - **Status:** Draft
 - **Owner:** Dendro Inspector maintainers
-- **Date:** 2026-09-01
-- **Last-verified:** 2026-09-01
+- **Date:** 2026-09-02
+- **Last-verified:** 2026-09-02
 
-Three draft specifications, none implemented, written against the working tree at
-`d6f8247`. Each carries its own verified findings, contracts, tests and evidence. This page
-is the one place that says in which order they land and which decisions gate them.
+Three draft specifications, originally written against the working tree at `d6f8247`.
+Phase 0's tests and base telemetry are implemented, as are hardening C2 and the remainder of
+latency L1. The remaining phases stay proposals. Each specification carries its own verified
+findings, contracts, tests and evidence. This page is the one place that says in which order
+they land and which decisions gate them.
 
 | Specification | Owns | Quality effect |
 | --- | --- | --- |
@@ -20,12 +22,12 @@ is the one place that says in which order they land and which decisions gate the
 Dependencies, not preferences. An arrow means "cannot be measured or accepted without".
 
 ```text
-PR 1  tests + telemetry          hardening Phase 0 (10 strict xfails)
+PR 1  tests + telemetry [landed] hardening Phase 0 (10 strict xfails)
                                  modernisation Phase 0 (contract tests, flake_geometry as xfail)
                                  latency L1 minus the provisional verdict: token fields,
                                    critical_path_ms, scripts/bench/
                                           |
-PR 2  provisional verdict        hardening C2 + latency L1 remainder
+PR 2  provisional verdict [landed] hardening C2 + latency L1 remainder
                                    (provisional_decisions and arbiter_changed_* in the trace)
                                           |
           +-------------------------------+-------------------------------+
@@ -41,9 +43,9 @@ PR 8  latency L4 (output diet, re-seal, conformance review)
 PR 9  modernisation N3, N4, N5;  hardening C4, C7;  latency L6, L7 experiments
 ```
 
-PR 1 and PR 2 are the whole of what has to land before anything else can be argued from
-data. PR 2 alone closes the worst verified quality gap (a `high` verdict the gate never
-looks at) and makes the arbiter's marginal value measurable for the first time.
+PR 1 and PR 2 now provide the measurement boundary for the remaining work. PR 2 closes the
+worst verified quality gap (a `high` verdict the gate never looked at) and makes the arbiter's
+marginal value measurable for the first time.
 
 ## Decision register
 

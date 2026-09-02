@@ -119,6 +119,12 @@ def test_arbiter_receives_deterministic_proposed_resolution_and_confidence(
         candidate_sets=(CandidateSet(subject_id="tree_1", candidates=(candidate,)),),
         synthesis=ReviewSynthesis(),
     )
+    state = state.evolve(
+        provisional_decisions=tuple(
+            decide_subject(state, node_context, candidate_set)
+            for candidate_set in state.candidate_sets
+        )
+    )
 
     arbiter_ctx = replace(
         node_context,

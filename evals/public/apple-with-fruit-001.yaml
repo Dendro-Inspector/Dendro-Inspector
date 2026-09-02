@@ -28,7 +28,7 @@ expect:
   expected_status: identified
   expected_evidence_tier: 7
   expected_user_claim_verdict: accepted
-  require_escalation: false
+  require_escalation: true
   max_retries: 0
 
 placeholder_content: true

@@ -152,6 +152,69 @@ def test_trace_reports_a_retry_that_did_not_change_the_outcome():
     assert trace.correction_changed_confidence is False
 
 
+def test_trace_records_what_the_arbiter_changed():
+    recorder = TraceRecorder("arbiter-change-trace")
+    recorder.record_arbiter_used()
+    provisional = FinalDecision(
+        subject_id="tree",
+        selected_taxon="pinus",
+        selected_taxon_display_name="Pinus",
+        resolution=Resolution.GENUS,
+        confidence=Confidence.HIGH,
+        status=DecisionStatus.IDENTIFIED,
+    )
+    final = FinalDecision(
+        subject_id="tree",
+        selected_taxon="picea",
+        selected_taxon_display_name="Picea",
+        resolution=Resolution.FAMILY,
+        confidence=Confidence.LOW,
+        status=DecisionStatus.PROBABLE,
+    )
+
+    trace = recorder.build(
+        provisional_decisions=(provisional,),
+        final_decisions=(final,),
+    )
+
+    assert trace.provisional_decisions == (provisional,)
+    assert trace.arbiter_changed_status is True
+    assert trace.arbiter_changed_taxon is True
+    assert trace.arbiter_changed_resolution is True
+    assert trace.arbiter_changed_confidence is True
+
+
+def test_trace_records_an_arbiter_pass_as_no_change():
+    recorder = TraceRecorder("arbiter-pass-trace")
+    recorder.record_arbiter_used()
+    decision = FinalDecision(subject_id="tree")
+
+    trace = recorder.build(
+        provisional_decisions=(decision,),
+        final_decisions=(decision,),
+    )
+
+    assert trace.arbiter_changed_status is False
+    assert trace.arbiter_changed_taxon is False
+    assert trace.arbiter_changed_resolution is False
+    assert trace.arbiter_changed_confidence is False
+
+
+def test_trace_leaves_arbiter_change_fields_unset_when_no_arbiter_ran():
+    decision = FinalDecision(subject_id="tree")
+
+    trace = TraceRecorder("no-arbiter-trace").build(
+        provisional_decisions=(decision,),
+        final_decisions=(decision,),
+    )
+
+    assert trace.provisional_decisions == (decision,)
+    assert trace.arbiter_changed_status is None
+    assert trace.arbiter_changed_taxon is None
+    assert trace.arbiter_changed_resolution is None
+    assert trace.arbiter_changed_confidence is None
+
+
 @pytest.mark.xfail(
     strict=True,
     reason=(

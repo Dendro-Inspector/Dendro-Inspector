@@ -14,10 +14,10 @@ from enum import StrEnum
 from pydantic import Field
 
 from dendro_inspector.schemas.base import Contract, Identifier, ShortText
-from dendro_inspector.schemas.decisions import AuthorityCheckTrace
+from dendro_inspector.schemas.decisions import AuthorityCheckTrace, FinalDecision
 from dendro_inspector.schemas.taxon import Confidence, Resolution
 
-GRAPH_VERSION = "0.8.0"
+GRAPH_VERSION = "0.9.0"
 
 
 class NodeStatus(StrEnum):
@@ -147,6 +147,14 @@ class RunTrace(Contract):
     correction_changed_taxon: bool | None = None
     correction_changed_resolution: bool | None = None
     correction_changed_confidence: bool | None = None
+    provisional_decisions: tuple[FinalDecision, ...] = Field(
+        default=(),
+        description="Deterministic verdicts immediately before any arbiter call.",
+    )
+    arbiter_changed_status: bool | None = None
+    arbiter_changed_taxon: bool | None = None
+    arbiter_changed_resolution: bool | None = None
+    arbiter_changed_confidence: bool | None = None
     authority_checks: tuple[AuthorityCheckTrace, ...] = Field(
         default=(),
         description=(

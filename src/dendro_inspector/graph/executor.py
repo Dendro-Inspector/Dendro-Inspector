@@ -152,6 +152,7 @@ async def run_graph(
         final_resolution=decision.resolution if decision else None,
         final_confidence=decision.confidence if decision else None,
         pre_correction_decisions=state.pre_correction_decisions,
+        provisional_decisions=state.provisional_decisions,
         final_decisions=state.decisions,
         authority_checks=state.authority_checks,
         # The executor owns which nodes run together, so it is the only place that can tell

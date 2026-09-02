@@ -2,8 +2,8 @@
 
 - **Status:** Draft
 - **Owner:** Dendro Inspector maintainers
-- **Date:** 2026-09-01
-- **Last-verified:** 2026-09-01
+- **Date:** 2026-09-02
+- **Last-verified:** 2026-09-02
 
 Scope is the deterministic decision chain of the one loop the project must do reliably:
 
@@ -228,6 +228,8 @@ support. Each move is reviewed individually; none may raise confidence.
 
 ### C2 — Compute the provisional verdict before the escalation gate (closes F2; enables F3)
 
+**Implementation status:** implemented in policy revision `0.9.0`.
+
 **Rule.** The gate decides on what the graph would return, not only on what was proposed.
 
 **Where.** A new deterministic step at the head of `escalation_gate.run` computes
@@ -239,11 +241,11 @@ counterfactual; it is unchanged.
 
 Trigger and suppressor inputs change as follows:
 
-| Signal | Today reads | Will read |
+| Signal | Before C2 | Current C2 input |
 | --- | --- | --- |
 | `high_confidence_proposed` | `synthesis.confidence_delta is HIGH` | that **or** any provisional decision with `confidence is HIGH` |
 | `clean_review_and_modest_confidence` | `confidence_delta` not `HIGH` | no provisional decision at `HIGH` |
-| `broad_and_low_risk` | proposed leader resolution ≤ genus | provisional resolution ≤ genus for every subject |
+| `broad_and_low_risk` | proposed leader resolution ≤ genus | provisional resolution ≤ genus for every subject and no provisional decision at `HIGH` |
 | `species_level_proposed` | proposed leader resolution | unchanged (see Open decision 1) |
 | `leading_candidates_close` | model labels | adjudicated labels, via C1 |
 

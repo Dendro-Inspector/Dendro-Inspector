@@ -55,14 +55,11 @@ def _project_evidence(state: GraphState, reviewer: Reviewer) -> EvidencePacket:
     return evidence
 
 
-def _proposed_assessments(state: GraphState, ctx: NodeContext) -> tuple[ProposedAssessment, ...]:
-    # Local import keeps the decision layer out of module import order. It runs only when
-    # arbitration was already selected by deterministic routing.
-    from dendro_inspector.nodes.final_decision import decide_subject
-
-    decisions = tuple(
-        decide_subject(state, ctx, candidate_set) for candidate_set in state.candidate_sets
-    )
+def _proposed_assessments(state: GraphState) -> tuple[ProposedAssessment, ...]:
+    decisions = state.provisional_decisions
+    if not decisions:
+        msg = "arbiter projection requires provisional decisions from the escalation gate"
+        raise ReviewProjectionError(msg)
     return tuple(
         ProposedAssessment(
             subject_id=decision.subject_id,
@@ -96,7 +93,5 @@ def build_review_projection(
         taxon_ids=_proposed_taxa(state),
         include_comparison_cards=True,
         include_regional_pack=True,
-        proposed_assessments=(
-            _proposed_assessments(state, ctx) if reviewer is Reviewer.ARBITER else ()
-        ),
+        proposed_assessments=(_proposed_assessments(state) if reviewer is Reviewer.ARBITER else ()),
     )

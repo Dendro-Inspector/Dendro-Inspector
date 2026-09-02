@@ -10,8 +10,24 @@ get entries.
 
 ## [Unreleased]
 
+### Changed
+
+- The package, graph, deterministic policy and public baseline move together to `0.9.0`.
+  The escalation gate now computes and stores the deterministic verdict the graph would
+  return before it decides whether to call the arbiter. High-confidence provisional verdicts
+  therefore reach arbitration even when every internal reviewer passes silently; the
+  broad/low-risk cost suppressor applies only below high confidence. Prompt bytes and model
+  routing are unchanged.
+- Frozen decision movement: `apple-with-fruit-001.arbiter_used` changes from `false` to
+  `true` under F2. Its selected taxon, status, resolution and confidence do not move. The new
+  `silent-reviewers-high-confidence-001` case locks the same path directly, bringing the
+  public suite to twenty cases with zero overconfidence.
+
 ### Added
 
+- Run traces retain the per-subject provisional verdicts shown to the arbiter and record
+  whether arbitration changed status, taxon, resolution or confidence. Runs that did not
+  call the arbiter leave those change fields empty rather than reporting a false comparison.
 - Run traces record what each model call spent: input, cached-input and output tokens, and
   the cost the provider itself reported. Nothing is estimated from a price table, and a
   provider that reports nothing leaves the fields empty rather than zero, because silence
@@ -22,8 +38,9 @@ get entries.
   against the run's total duration it says what running the three reviewers together
   actually bought.
 - `scripts/bench/` summarises those traces and, separately, local agent-bridge state:
-  per-node latency, prompt size, token accounting and escalation reasons. Both scripts read
-  local files only, need no credentials, and make no model calls.
+  per-node latency, prompt size, token accounting, escalation reasons and arbiter verdict
+  changes per trigger. Both scripts read local files only, need no credentials, and make no
+  model calls.
 - `OPENROUTER_DATA_COLLECTION` selects whether OpenRouter may route a request to an upstream
   that logs submitted content. It defaults to `deny`, so photographs are not sent to a
   training-data endpoint unless an operator opts in, and an unrecognised value is refused

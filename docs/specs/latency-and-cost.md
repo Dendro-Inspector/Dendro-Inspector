@@ -2,8 +2,8 @@
 
 - **Status:** Draft
 - **Owner:** Dendro Inspector maintainers
-- **Date:** 2026-09-01
-- **Last-verified:** 2026-09-01
+- **Date:** 2026-09-02
+- **Last-verified:** 2026-09-02
 
 Make a live inspection materially faster and cheaper without moving a single verdict the
 evidence does not justify moving. Quality is the invariant, not the trade: every lever below
@@ -15,7 +15,8 @@ provisional verdict computed before the escalation gate) is a prerequisite for t
 escalation measurement in this document, and its C1 turns one noisy trigger into an
 evidence statement. [`core-modernisation.md`](core-modernisation.md) N2 (retrieval before
 proposal) removes most of the candidate generator's input by proof rather than by
-measurement and composes with L2 below. None of the three documents is implemented.
+measurement and composes with L2 below. L1 is implemented in policy revision `0.9.0`; the
+remaining levers are proposals.
 
 ## Where the time goes
 
@@ -151,6 +152,10 @@ how the risk is measured, and whether it needs an owner decision.
 ### L1 — Telemetry first (Phase 0, quality-neutral)
 
 Nothing else can be accepted without it.
+
+**Implementation status:** implemented. Traces now carry provider-reported token/cost fields,
+critical-path time, stored provisional decisions and per-field arbiter outcome deltas; the two
+local benchmark scripts reproduce the documented summaries without network access.
 
 - `ProviderCallRecord` gains `input_tokens`, `cached_input_tokens`, `output_tokens`,
   `reported_cost_usd`, all optional; each adapter fills what its provider reports, the

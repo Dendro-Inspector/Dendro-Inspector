@@ -58,3 +58,36 @@ def test_bridge_table_distinguishes_unreported_metrics_from_zero(capsys) -> None
 
     row = capsys.readouterr().out.splitlines()[-1]
     assert row.split() == ["local", "1", "1.2", "1.2", "100", "0", "n/a"]
+
+
+def test_trace_table_reports_arbiter_value_per_trigger(capsys) -> None:
+    trace_stats = _load_script("trace_stats")
+    traces = [
+        {
+            "escalation_reasons": ["high_confidence_proposed", "bark_only_input"],
+            "arbiter_changed_status": False,
+            "arbiter_changed_taxon": True,
+            "arbiter_changed_resolution": False,
+            "arbiter_changed_confidence": False,
+        },
+        {
+            "escalation_reasons": ["high_confidence_proposed"],
+            "arbiter_changed_status": False,
+            "arbiter_changed_taxon": False,
+            "arbiter_changed_resolution": False,
+            "arbiter_changed_confidence": False,
+        },
+        {
+            "escalation_reasons": ["high_confidence_proposed"],
+            "arbiter_changed_status": None,
+            "arbiter_changed_taxon": None,
+            "arbiter_changed_resolution": None,
+            "arbiter_changed_confidence": None,
+        },
+    ]
+
+    trace_stats.arbiter_value_table(traces)
+
+    rows = {line.split()[0]: line.split()[1:] for line in capsys.readouterr().out.splitlines()[2:]}
+    assert rows["high_confidence_proposed"] == ["2", "1", "50.0%", "0", "1", "0", "0"]
+    assert rows["bark_only_input"] == ["1", "1", "100.0%", "0", "1", "0", "0"]

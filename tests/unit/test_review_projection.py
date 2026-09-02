@@ -13,6 +13,7 @@ from dendro_inspector.graph.projections import ReviewProjectionError, build_revi
 from dendro_inspector.graph.state import GraphState
 from dendro_inspector.nodes import _support as support
 from dendro_inspector.schemas.candidates import Candidate, CandidateSet, SupportStrength
+from dendro_inspector.schemas.decisions import DecisionStatus, FinalDecision
 from dendro_inspector.schemas.evidence import (
     AttachmentStatus,
     EvidencePacket,
@@ -24,7 +25,7 @@ from dendro_inspector.schemas.evidence import (
 )
 from dendro_inspector.schemas.input import CaseInput, ImageRef
 from dendro_inspector.schemas.reviews import Reviewer
-from dendro_inspector.schemas.taxon import Resolution
+from dendro_inspector.schemas.taxon import Confidence, Resolution
 
 
 def _observation(
@@ -199,6 +200,36 @@ def test_empty_candidate_world_remains_reviewable(tmp_path: Any) -> None:
 
     assert projection.candidate_sets == ()
     assert projection.evidence_ids == ("leaf-1", "bark-1", "other-1")
+
+
+def test_arbiter_projection_reads_the_stored_provisional_decision(
+    tmp_path: Any, node_context: Any
+) -> None:
+    state = _state(tmp_path).evolve(
+        provisional_decisions=(
+            FinalDecision(
+                subject_id="tree_1",
+                selected_taxon="picea",
+                selected_taxon_display_name="Stored Picea verdict",
+                resolution=Resolution.GENUS,
+                confidence=Confidence.LOW,
+                status=DecisionStatus.PROBABLE,
+            ),
+        )
+    )
+
+    projection = build_review_projection(NodeName.ARBITER, state, node_context)
+
+    assert len(projection.proposed_assessments) == 1
+    assert projection.proposed_assessments[0].selected_taxon == "picea"
+    assert projection.proposed_assessments[0].confidence is Confidence.LOW
+
+
+def test_arbiter_projection_without_a_provisional_decision_fails_closed(
+    tmp_path: Any, node_context: Any
+) -> None:
+    with pytest.raises(ReviewProjectionError, match="requires provisional decisions"):
+        build_review_projection(NodeName.ARBITER, _state(tmp_path), node_context)
 
 
 def test_non_reviewer_node_gets_the_context_unchanged(tmp_path: Any, node_context: Any) -> None:

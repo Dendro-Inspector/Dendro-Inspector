@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+
 import pytest
 
 from dendro_inspector.config import EscalationPolicy
@@ -12,7 +14,10 @@ from dendro_inspector.graph.state import (
     InspectionPlan,
 )
 from dendro_inspector.nodes.escalation_gate import decide
+from dendro_inspector.nodes.escalation_gate import run as run_escalation_gate
+from dendro_inspector.nodes.final_decision import decide_subject
 from dendro_inspector.schemas.candidates import Candidate, CandidateSet, SupportStrength
+from dendro_inspector.schemas.decisions import FinalDecision
 from dendro_inspector.schemas.evidence import (
     AttachmentStatus,
     EvidencePacket,
@@ -28,7 +33,7 @@ from dendro_inspector.schemas.reviews import (
     ReviewSynthesis,
     Severity,
 )
-from dendro_inspector.schemas.taxon import Resolution
+from dendro_inspector.schemas.taxon import Confidence, Resolution
 
 
 def _state(**changes) -> GraphState:
@@ -37,6 +42,7 @@ def _state(**changes) -> GraphState:
         quality=EvidenceQualityReport(sufficient=True, usable_subject_ids=("log_1",)),
         evidence=EvidencePacket(subjects=(Subject(subject_id="log_1"),)),
         synthesis=ReviewSynthesis(),
+        provisional_decisions=(FinalDecision(subject_id="log_1"),),
         candidate_sets=(
             CandidateSet(
                 subject_id="log_1",
@@ -57,6 +63,10 @@ def _state(**changes) -> GraphState:
 POLICY = EscalationPolicy()
 
 
+def _decide(state: GraphState, policy: EscalationPolicy = POLICY):
+    return decide(state, policy, state.provisional_decisions)
+
+
 class TestTriggers:
     def test_species_claim_escalates(self):
         state = _state(
@@ -67,7 +77,7 @@ class TestTriggers:
                 ),
             )
         )
-        decision = decide(state, POLICY)
+        decision = _decide(state)
         assert decision.required
         assert "species_level_proposed" in decision.reasons
 
@@ -104,7 +114,7 @@ class TestTriggers:
                 )
             ),
         )
-        decision = decide(state, POLICY)
+        decision = _decide(state)
         assert decision.required
         assert "leading_candidates_close" in decision.reasons
 
@@ -123,11 +133,11 @@ class TestTriggers:
                 )
             ),
         )
-        assert "bark_only_input" in decide(state, POLICY).reasons
+        assert "bark_only_input" in _decide(state).reasons
 
     def test_user_challenge_escalates(self):
         state = _state(guard=GuardReport(user_challenges_previous_result=True))
-        assert decide(state, POLICY).required
+        assert _decide(state).required
 
     def test_reviewer_disagreement_has_its_own_reason(self):
         state = _state(
@@ -146,7 +156,7 @@ class TestTriggers:
             )
         )
 
-        decision = decide(state, POLICY)
+        decision = _decide(state)
 
         assert decision.required
         assert "reviewer_disagreement" in decision.reasons
@@ -168,7 +178,7 @@ class TestTriggers:
             )
         )
 
-        decision = decide(
+        decision = _decide(
             state,
             EscalationPolicy(on_unresolved_contradiction=False),
         )
@@ -193,7 +203,7 @@ class TestTriggers:
             )
         )
 
-        decision = decide(state, POLICY)
+        decision = _decide(state)
 
         assert decision.required
         assert "escalation_provenance_unknown" in decision.reasons
@@ -203,18 +213,18 @@ class TestSuppressors:
     def test_insufficient_evidence_blocks_escalation(self):
         """A second opinion on 'I cannot tell' is still 'I cannot tell', at twice the price."""
         state = _state(quality=EvidenceQualityReport(sufficient=False))
-        decision = decide(state, POLICY)
+        decision = _decide(state)
         assert not decision.required
         assert "evidence_insufficient" in decision.suppressed_by
 
     def test_abstaining_blocks_escalation(self):
         state = _state(abstained=True)
-        decision = decide(state, POLICY)
+        decision = _decide(state)
         assert not decision.required
         assert "already_abstaining" in decision.suppressed_by
 
     def test_clean_broad_result_is_not_escalated(self):
-        decision = decide(_state(), POLICY)
+        decision = _decide(_state())
         assert not decision.required
         assert "broad_and_low_risk" in decision.suppressed_by
 
@@ -227,7 +237,7 @@ class TestSuppressors:
                 ),
             )
         )
-        decision = decide(state, EscalationPolicy(enabled=False))
+        decision = _decide(state, EscalationPolicy(enabled=False))
         assert not decision.required
         assert decision.suppressed_by == ("policy_disabled",)
 
@@ -241,7 +251,7 @@ class TestPrecedence:
                 possible_multiple_taxa=True,
             )
         )
-        decision = decide(state, POLICY)
+        decision = _decide(state)
         assert decision.required
         assert "possible_multiple_taxa" in decision.reasons
         assert decision.suppressed_by == ()
@@ -254,7 +264,7 @@ class TestPrecedence:
                 possible_multiple_taxa=True,
             ),
         )
-        decision = decide(state, POLICY)
+        decision = _decide(state)
         assert not decision.required
         assert "possible_multiple_taxa" in decision.reasons  # recorded, but not acted on
 
@@ -266,15 +276,7 @@ class TestPrecedence:
         assert getattr(EscalationPolicy(**{field: False}), field) is False
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "F2 (docs/specs/core-logic-hardening.md): the gate reads a reviewer recommendation "
-        "rather than the verdict, so silent reviewers read as modest confidence while the "
-        "deterministic decision for the same state is high/identified."
-    ),
-)
-def test_strong_leader_with_silent_reviewers_escalates():
+def test_strong_leader_with_silent_reviewers_escalates(node_context):
     """`high_confidence_proposed` must describe the claim, not a reviewer's opinion of it.
 
     Attached, clearly visible fascicles carry foliage authority, so this state's
@@ -312,7 +314,94 @@ def test_strong_leader_with_silent_reviewers_escalates():
         ),
     )
 
-    decision = decide(state, POLICY)
+    provisional = tuple(
+        decide_subject(state, node_context, candidate_set) for candidate_set in state.candidate_sets
+    )
+    state = state.evolve(provisional_decisions=provisional)
+
+    decision = _decide(state)
 
     assert decision.required
     assert "high_confidence_proposed" in decision.reasons
+
+
+def test_medium_provisional_decision_remains_suppressed(node_context):
+    observation = Observation(
+        observation_id="obs-1",
+        feature="needles.fascicles",
+        value="two",
+        subject_id="log_1",
+        source=ObservationSource.IMAGE,
+        image_id="img-1",
+        attachment=AttachmentStatus.CONFIRMED_ATTACHED,
+    )
+    state = _state(
+        evidence=EvidencePacket(
+            subjects=(Subject(subject_id="log_1"),),
+            observations=(observation,),
+        ),
+        candidate_sets=(
+            CandidateSet(
+                subject_id="log_1",
+                candidates=(
+                    Candidate(
+                        taxon="pinus",
+                        resolution=Resolution.GENUS,
+                        rank=1,
+                        score=SupportStrength.MODERATE,
+                        supporting_evidence_ids=("obs-1",),
+                    ),
+                ),
+            ),
+        ),
+    )
+    provisional = tuple(
+        decide_subject(state, node_context, candidate_set) for candidate_set in state.candidate_sets
+    )
+    state = state.evolve(provisional_decisions=provisional)
+
+    decision = _decide(state)
+
+    assert not decision.required
+    assert "high_confidence_proposed" not in decision.reasons
+    assert "broad_and_low_risk" in decision.suppressed_by
+
+
+def test_run_stores_the_verdict_it_used_for_escalation(node_context):
+    observation = Observation(
+        observation_id="obs-1",
+        feature="needles.fascicles",
+        value="two",
+        subject_id="log_1",
+        source=ObservationSource.IMAGE,
+        image_id="img-1",
+        attachment=AttachmentStatus.CONFIRMED_ATTACHED,
+    )
+    state = _state(
+        evidence=EvidencePacket(
+            subjects=(Subject(subject_id="log_1"),),
+            observations=(observation,),
+        ),
+        provisional_decisions=(),
+        candidate_sets=(
+            CandidateSet(
+                subject_id="log_1",
+                candidates=(
+                    Candidate(
+                        taxon="pinus",
+                        resolution=Resolution.GENUS,
+                        rank=1,
+                        score=SupportStrength.STRONG,
+                        supporting_evidence_ids=("obs-1",),
+                    ),
+                ),
+            ),
+        ),
+    )
+
+    updated = asyncio.run(run_escalation_gate(state, node_context))
+
+    assert updated.escalation is not None
+    assert updated.escalation.required
+    assert len(updated.provisional_decisions) == 1
+    assert updated.provisional_decisions[0].confidence is Confidence.HIGH

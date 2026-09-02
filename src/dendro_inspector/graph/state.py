@@ -114,6 +114,13 @@ class GraphState(Contract):
     )
     reviews: tuple[ReviewResult, ...] = ()
     synthesis: ReviewSynthesis | None = None
+    provisional_decisions: tuple[FinalDecision, ...] = Field(
+        default=(),
+        description=(
+            "Deterministic per-subject verdicts computed at the escalation gate, before any "
+            "arbiter call. The gate decides on these; the arbiter projection shows these."
+        ),
+    )
     corrections: tuple[CorrectionDirective, ...] = ()
     escalation: EscalationDecision | None = None
     arbiter_reviews: tuple[ReviewResult, ...] = ()

@@ -2,8 +2,8 @@
 
 - **Status:** Current
 - **Owner:** Dendro Inspector maintainers
-- **Date:** 2026-08-23
-- **Last-verified:** 2026-08-23
+- **Date:** 2026-09-02
+- **Last-verified:** 2026-09-02
 
 The graph is declared once in
 [`graph/definition.py`](../src/dendro_inspector/graph/definition.py). The diagram below,
@@ -85,7 +85,7 @@ node with side effects.
 | `review_synthesizer` | no | Deterministic-first finding admission; bind validated reranks | `ReviewSynthesis` |
 | `correction_worker` | no | Spend one retry, clear derived state | state |
 | `abstain` | no | Lower the claim, mark the run abstained | state |
-| `escalation_gate` | no | Decide whether the arbiter is worth calling | `EscalationDecision` |
+| `escalation_gate` | no | Store provisional verdicts, then decide whether the arbiter is worth calling | `EscalationDecision` |
 | `arbiter` | **arbiter** | Independent challenge | `ReviewResult` |
 | `arbiter_synthesizer` | no | Same admissibility bar as internal review | `ReviewSynthesis` |
 | `final_decision` | no | Compose bounds; select resolution-consistent identity | `FinalDecision[]` |
@@ -94,6 +94,11 @@ node with side effects.
 
 Every node has one responsibility, takes typed input, returns typed output, writes an
 execution event, and is testable on its own without a provider.
+
+The escalation gate calls the deterministic decision engine before it evaluates triggers.
+Those `GraphState.provisional_decisions` are the verdicts the graph would return without an
+arbiter. The arbiter projection reads the stored tuple rather than recomputing it, and the
+trace compares it with the eventual decisions field by field.
 
 The candidate and rerank boundaries are deliberately inside deterministic nodes. Candidate
 proposals lose unknown taxa, foreign evidence and card-unmatched support before entering state.

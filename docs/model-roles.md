@@ -2,8 +2,8 @@
 
 - **Status:** Current
 - **Owner:** Dendro Inspector maintainers
-- **Date:** 2026-08-24
-- **Last-verified:** 2026-08-24
+- **Date:** 2026-09-02
+- **Last-verified:** 2026-09-02
 
 Three logical roles. Business logic names only these; which vendor and model satisfies each is
 configuration.
@@ -201,8 +201,10 @@ model. Budget for that: local runs spend more attempts per node than hosted ones
 
 ## What the arbiter receives
 
-Original images, original user context, the evidence packet, the candidate set, the proposed
-resolution and confidence, and the relevant taxon and comparison cards.
+Original images, original user context, the evidence packet, the candidate set, the stored
+deterministic provisional verdict, and the relevant taxon and comparison cards. The
+escalation gate computes that verdict before deciding to call the arbiter; the projection
+fails closed if it is absent.
 
 **It never receives the primary model's private reasoning.** This is structural, not a
 policy: the system stores no hidden chain-of-thought anywhere, so there is nothing to pass
@@ -243,7 +245,7 @@ escalation precision and recall.
 | `user_challenged_result` | yes | The user has information the system does not |
 | `instruction_like_content_detected` | yes | Untrusted content in play; a second look is cheap |
 | `unresolved_contradiction` | yes | A critical finding survived adjudication |
-| `high_confidence_proposed` | no | Confidence is the claim worth double-checking |
+| `high_confidence_proposed` | no | A reviewer recommends high or the deterministic provisional verdict is high |
 | `leading_candidates_close` | no | The ranking is doing work the evidence may not support |
 | `reviewer_disagreement` | no | Reviewer recommendations or admitted reranks conflict |
 | `critical_finding` | no | An accepted reviewer finding has critical severity |
@@ -262,8 +264,10 @@ escalation precision and recall.
 
 **Cost** — these trade risk for money and are overridden by any hard trigger:
 
-* `broad_and_low_risk` — a clean genus-or-broader result across all subjects.
-* `clean_review_and_modest_confidence` — no accepted findings, confidence not high.
+* `broad_and_low_risk` — a clean genus-or-broader result across all subjects, with no
+  high-confidence provisional verdict.
+* `clean_review_and_modest_confidence` — no accepted findings and no high-confidence
+  provisional verdict.
 
 ### Precedence
 
@@ -285,7 +289,9 @@ of a safety trigger. Regression-tested in
 
 The arbiter roughly doubles model cost on escalated cases. The public conformance suite is
 deliberately weighted toward hard cases, so its escalation rate is not a production cost
-forecast. v0.2.3 expands the suite from sixteen to nineteen cases. Tune with:
+forecast. v0.2.3 expanded the suite from sixteen to nineteen cases; v0.9.0 adds the
+high-confidence silent-reviewer escalation case, bringing the current suite to twenty. Tune
+with:
 
 ```python
 EscalationPolicy(

@@ -48,6 +48,8 @@ class TestSuiteHealth:
             "edge-foliage-001",
             # The counterweight: when evidence is decisive, commit.
             "apple-with-fruit-001",
+            # C2: the gate sees the deterministic verdict even when reviewers are silent.
+            "silent-reviewers-high-confidence-001",
             # Correctness-boundary regressions added in v0.2.2.
             "unrelated-high-tier-001",
             "candidate-sanitization-001",

@@ -1,0 +1,229 @@
+{
+  "baseline_version": "0.9.0",
+  "suite": "public",
+  "passed": 20,
+  "failed": 0,
+  "metrics": {
+    "cases": 20,
+    "top_1_accuracy": 1.0,
+    "top_3_recall": 1.0,
+    "correct_resolution_rate": 1.0,
+    "overconfidence_rate": 0.0,
+    "abstention_quality": 1.0,
+    "schema_validity": 1.0,
+    "escalation_precision": 1.0,
+    "escalation_recall": 1.0,
+    "unnecessary_arbiter_call_rate": 0.0,
+    "scored_top_1": 14,
+    "scored_top_3": 4,
+    "scored_resolution": 19,
+    "scored_abstention": 4,
+    "escalations_expected": 11,
+    "escalations_observed": 11,
+    "escalation_decisions_correct": 20
+  },
+  "cases": {
+    "apple-with-fruit-001": {
+      "selected_taxon": "malus",
+      "selected_taxon_display_name": "Malus (\u044f\u0431\u043b\u0443\u043d\u044f)",
+      "resolution": "genus",
+      "confidence": "high",
+      "evidence_tier": 7,
+      "admitted_rerank_finding_ids": [],
+      "arbiter_used": true,
+      "retries": 0
+    },
+    "arbiter-ranking-001": {
+      "selected_taxon": "picea",
+      "selected_taxon_display_name": "Picea (\u044f\u043b\u0438\u043d\u0430, \u0441\u043c\u0435\u0440\u0435\u043a\u0430)",
+      "resolution": "genus",
+      "confidence": "low",
+      "evidence_tier": 6,
+      "admitted_rerank_finding_ids": [
+        "arb-rerank-1"
+      ],
+      "arbiter_used": true,
+      "retries": 0
+    },
+    "broadened-species-identity-001": {
+      "selected_taxon": "acer",
+      "selected_taxon_display_name": "Acer (\u043a\u043b\u0435\u043d)",
+      "resolution": "genus",
+      "confidence": "low",
+      "evidence_tier": 6,
+      "admitted_rerank_finding_ids": [],
+      "arbiter_used": true,
+      "retries": 0
+    },
+    "candidate-sanitization-001": {
+      "selected_taxon": null,
+      "selected_taxon_display_name": null,
+      "resolution": "unknown",
+      "confidence": "low",
+      "evidence_tier": 1,
+      "admitted_rerank_finding_ids": [],
+      "arbiter_used": false,
+      "retries": 0
+    },
+    "colour-overweighting-001": {
+      "selected_taxon": "pinus",
+      "selected_taxon_display_name": "Pinus (\u0441\u043e\u0441\u043d\u0430)",
+      "resolution": "genus",
+      "confidence": "low",
+      "evidence_tier": 3,
+      "admitted_rerank_finding_ids": [],
+      "arbiter_used": true,
+      "retries": 0
+    },
+    "conifer-log-001": {
+      "selected_taxon": "pinus",
+      "selected_taxon_display_name": "Pinus (\u0441\u043e\u0441\u043d\u0430)",
+      "resolution": "genus",
+      "confidence": "medium",
+      "evidence_tier": 6,
+      "admitted_rerank_finding_ids": [],
+      "arbiter_used": false,
+      "retries": 0
+    },
+    "deterministic-preemption-001": {
+      "selected_taxon": "pinus",
+      "selected_taxon_display_name": "Pinus (\u0441\u043e\u0441\u043d\u0430)",
+      "resolution": "genus",
+      "confidence": "low",
+      "evidence_tier": 3,
+      "admitted_rerank_finding_ids": [],
+      "arbiter_used": true,
+      "retries": 0
+    },
+    "edge-foliage-001": {
+      "selected_taxon": "fraxinus",
+      "selected_taxon_display_name": "Fraxinus (\u044f\u0441\u0435\u043d)",
+      "resolution": "genus",
+      "confidence": "low",
+      "evidence_tier": 3,
+      "admitted_rerank_finding_ids": [],
+      "arbiter_used": true,
+      "retries": 0
+    },
+    "insufficient-bark-001": {
+      "selected_taxon": null,
+      "selected_taxon_display_name": null,
+      "resolution": "unknown",
+      "confidence": "low",
+      "evidence_tier": 3,
+      "admitted_rerank_finding_ids": [],
+      "arbiter_used": false,
+      "retries": 0
+    },
+    "light-trunk-birch-001": {
+      "selected_taxon": "betula",
+      "selected_taxon_display_name": "Betula (\u0431\u0435\u0440\u0435\u0437\u0430)",
+      "resolution": "genus",
+      "confidence": "low",
+      "evidence_tier": 3,
+      "admitted_rerank_finding_ids": [],
+      "arbiter_used": true,
+      "retries": 0
+    },
+    "log-pile-pinus-001": {
+      "selected_taxon": "pinus",
+      "selected_taxon_display_name": "Pinus (\u0441\u043e\u0441\u043d\u0430)",
+      "resolution": "genus",
+      "confidence": "low",
+      "evidence_tier": 3,
+      "admitted_rerank_finding_ids": [],
+      "arbiter_used": false,
+      "retries": 0
+    },
+    "mixed-taxa-001": {
+      "selected_taxon": "pinus",
+      "selected_taxon_display_name": "Pinus (\u0441\u043e\u0441\u043d\u0430)",
+      "resolution": "genus",
+      "confidence": "medium",
+      "evidence_tier": 6,
+      "admitted_rerank_finding_ids": [],
+      "arbiter_used": true,
+      "retries": 0
+    },
+    "near-miss-vocabulary-001": {
+      "selected_taxon": "pinus",
+      "selected_taxon_display_name": "Pinus (\u0441\u043e\u0441\u043d\u0430)",
+      "resolution": "genus",
+      "confidence": "medium",
+      "evidence_tier": 6,
+      "admitted_rerank_finding_ids": [],
+      "arbiter_used": false,
+      "retries": 0
+    },
+    "partial-visibility-cap-001": {
+      "selected_taxon": "pinus",
+      "selected_taxon_display_name": "Pinus (\u0441\u043e\u0441\u043d\u0430)",
+      "resolution": "genus",
+      "confidence": "low",
+      "evidence_tier": 3,
+      "admitted_rerank_finding_ids": [],
+      "arbiter_used": false,
+      "retries": 0
+    },
+    "rough-bark-oak-claim-001": {
+      "selected_taxon": "fraxinus",
+      "selected_taxon_display_name": "Fraxinus (\u044f\u0441\u0435\u043d)",
+      "resolution": "genus",
+      "confidence": "low",
+      "evidence_tier": 3,
+      "admitted_rerank_finding_ids": [],
+      "arbiter_used": true,
+      "retries": 0
+    },
+    "rough-end-grain-anatomy-001": {
+      "selected_taxon": null,
+      "selected_taxon_display_name": null,
+      "resolution": "unknown",
+      "confidence": "low",
+      "evidence_tier": 1,
+      "admitted_rerank_finding_ids": [],
+      "arbiter_used": false,
+      "retries": 0
+    },
+    "silent-reviewers-high-confidence-001": {
+      "selected_taxon": "pinus",
+      "selected_taxon_display_name": "Pinus (\u0441\u043e\u0441\u043d\u0430)",
+      "resolution": "genus",
+      "confidence": "high",
+      "evidence_tier": 6,
+      "admitted_rerank_finding_ids": [],
+      "arbiter_used": true,
+      "retries": 0
+    },
+    "split-face-colour-only-001": {
+      "selected_taxon": null,
+      "selected_taxon_display_name": null,
+      "resolution": "unknown",
+      "confidence": "low",
+      "evidence_tier": 3,
+      "admitted_rerank_finding_ids": [],
+      "arbiter_used": false,
+      "retries": 0
+    },
+    "unbound-rerank-001": {
+      "selected_taxon": "pinus",
+      "selected_taxon_display_name": "Pinus (\u0441\u043e\u0441\u043d\u0430)",
+      "resolution": "genus",
+      "confidence": "low",
+      "evidence_tier": 3,
+      "admitted_rerank_finding_ids": [],
+      "arbiter_used": true,
+      "retries": 0
+    },
+    "unrelated-high-tier-001": {
+      "selected_taxon": "pinus",
+      "selected_taxon_display_name": "Pinus (\u0441\u043e\u0441\u043d\u0430)",
+      "resolution": "genus",
+      "confidence": "low",
+      "evidence_tier": 3,
+      "admitted_rerank_finding_ids": [],
+      "arbiter_used": false,
+      "retries": 0
+    }
+  }
+}

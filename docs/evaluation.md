@@ -2,8 +2,8 @@
 
 - **Status:** Current
 - **Owner:** Dendro Inspector maintainers
-- **Date:** 2026-08-24
-- **Last-verified:** 2026-08-24
+- **Date:** 2026-09-02
+- **Last-verified:** 2026-09-02
 
 ```bash
 dendro eval --suite public            # summary
@@ -21,7 +21,7 @@ secrets.
 Assertions run against the **graph's decisions**, never against prose. Rewriting the tone
 layer must not turn the evaluation red; changing what the system concludes must.
 
-## The nineteen cases
+## The twenty cases
 
 Cases 1–5 cover the core mechanics. Cases 6–8 are named failure modes from section 13 of the
 domain prompt. Case 9 is the counterweight — proof the system still commits when the evidence
@@ -30,6 +30,8 @@ trusted evidence, fail-closed candidate admission, resolution-consistent identit
 deterministic-finding precedence and finding-bound reranks. Cases 15–16 hold the two
 behaviours that six v0.2.2 fixture repairs would otherwise have quietly deleted. Cases 17–19
 lock the v0.2.3 wood-surface boundary while preserving corroborated pile-level conclusions.
+Case 20 proves that the escalation gate sees the verdict code would return even when every
+reviewer is silent.
 
 ### 1. `conifer-log-001` — probable Pinus
 
@@ -104,8 +106,9 @@ Expects: the claim falls back to what bark supports (tier 3, confidence ≤ low)
 The counterweight. A machine that hedges everything is as useless as one that hedges
 nothing, so when a fruit is attached to the branch the system must commit.
 
-Expects: Malus, status `identified`, evidence tier 7, the user's version accepted, no
-escalation. This is the only tier that unlocks the 95–100 band.
+Expects: Malus, status `identified`, evidence tier 7, the user's version accepted, and
+escalation because the deterministic provisional verdict is high. This is the only tier that
+unlocks the 95–100 band.
 
 ### 10. `unrelated-high-tier-001` — unrelated high-tier evidence cannot raise a candidate
 
@@ -191,6 +194,15 @@ may receive a conservative genus conclusion, without proving every separated pie
 
 Expects: `pinus`, genus, confidence low, tier 3, no escalation.
 
+### 20. `silent-reviewers-high-confidence-001` — the gate sees the verdict
+
+Clear attached Pinus foliage and exact card-matched support produce a deterministic
+high-confidence genus verdict. All three internal reviewers pass with no findings, so their
+silence cannot be the gate's only view of confidence.
+
+Expects: `pinus`, genus, confidence high, tier 6, escalation with
+`high_confidence_proposed`, and no retries.
+
 ## Metrics
 
 Every rate is reported alongside the count it was computed from. A "100% top-1 accuracy"
@@ -269,7 +281,13 @@ bound by code to the evidence ids that projection carried. Every metric and ever
 decision is identical to v0.7.0, which is the point: a boundary that changes what a reviewer
 may cite should not change what the system concludes on cases where reviewers cited honestly.
 
-Read the result honestly: nineteen hand-built cases over recorded fixtures can show that the
+The v0.9.0 result is **twenty passing cases, zero failures and zero overconfidence**, frozen
+in `evals/baselines/public-v0.9.0.json`. The gate now computes and stores the deterministic
+verdict before deciding on escalation. `apple-with-fruit-001.arbiter_used` intentionally moves
+from `false` to `true`, and the new silent-reviewer case proves the same path directly. All
+taxon, resolution, confidence and status fields from the previous baseline remain unchanged.
+
+Read the result honestly: twenty hand-built cases over recorded fixtures can show that the
 machinery follows these contracts. It says nothing about identification accuracy on real
 photographs, which has not been measured.
 
@@ -337,9 +355,11 @@ python scripts/bench/bridge_stats.py .bridge           # the same, from agent-br
 
 `trace_stats.py` reports per-node wall time with its percentiles, model calls and provider
 attempts per run, escalation reasons, and per-node token accounting where the provider
-reported any. `bridge_stats.py` joins the local bridge's pending requests to its answers, so
-it can additionally report prompt size as sent and the upstream's own cost, and it fits
-elapsed time against output length.
+reported any. It also groups the recorded arbiter verdict-change rate and per-field changes
+by every trigger that fired, so a multi-trigger run contributes to each policy signal being
+measured. `bridge_stats.py` joins the local bridge's pending requests to its answers, so it
+can additionally report prompt size as sent and the upstream's own cost, and it fits elapsed
+time against output length.
 
 Two numbers deserve reading together. `duration_ms` is what the run took;
 `critical_path_ms` is what it could not have avoided, being every serial node plus the

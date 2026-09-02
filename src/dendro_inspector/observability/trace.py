@@ -163,6 +163,7 @@ class TraceRecorder:
         final_resolution: Resolution | None = None,
         final_confidence: Confidence | None = None,
         pre_correction_decisions: tuple[FinalDecision, ...] = (),
+        provisional_decisions: tuple[FinalDecision, ...] = (),
         final_decisions: tuple[FinalDecision, ...] = (),
         authority_checks: tuple[AuthorityCheckTrace, ...] = (),
         concurrent_nodes: tuple[str, ...] = (),
@@ -201,6 +202,14 @@ class TraceRecorder:
             for field in ("status", "selected_taxon", "resolution", "confidence")
         }
         changed_values = tuple(value for value in correction_changes.values() if value is not None)
+        arbiter_changes = {
+            field: (
+                _decision_field_changed(provisional_decisions, final_decisions, field)
+                if self._arbiter_used
+                else None
+            )
+            for field in ("status", "selected_taxon", "resolution", "confidence")
+        }
         return RunTrace(
             case_id=self._case_id,
             graph_version=GRAPH_VERSION,
@@ -217,6 +226,11 @@ class TraceRecorder:
             correction_changed_taxon=correction_changes["selected_taxon"],
             correction_changed_resolution=correction_changes["resolution"],
             correction_changed_confidence=correction_changes["confidence"],
+            provisional_decisions=provisional_decisions,
+            arbiter_changed_status=arbiter_changes["status"],
+            arbiter_changed_taxon=arbiter_changes["selected_taxon"],
+            arbiter_changed_resolution=arbiter_changes["resolution"],
+            arbiter_changed_confidence=arbiter_changes["confidence"],
             authority_checks=authority_checks,
             evidence_authority_sensitive=any(
                 check.status is AuthorityCheckStatus.SENSITIVE for check in authority_checks

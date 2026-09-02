@@ -157,6 +157,36 @@ def escalation_table(traces: Sequence[dict[str, Any]]) -> None:
         print(f"  {reason:40} {count:4}")
 
 
+def arbiter_value_table(traces: Sequence[dict[str, Any]]) -> None:
+    """Report whether arbitration changed the verdict, grouped by every trigger that fired."""
+    fields = ("status", "taxon", "resolution", "confidence")
+    by_reason: dict[str, list[dict[str, bool]]] = defaultdict(list)
+    for trace in traces:
+        raw_changes = {field: trace.get(f"arbiter_changed_{field}") for field in fields}
+        if not all(isinstance(value, bool) for value in raw_changes.values()):
+            continue
+        changes = {field: bool(raw_changes[field]) for field in fields}
+        for reason in trace.get("escalation_reasons", []):
+            by_reason[reason].append(changes)
+
+    if not by_reason:
+        print("\nno traces recorded an arbiter verdict comparison")
+        return
+
+    print(
+        f"\n{'arbiter verdict changes by trigger':40} {'n':>4} {'any':>5} "
+        f"{'rate':>7} {'status':>7} {'taxon':>7} {'res':>5} {'conf':>5}"
+    )
+    for reason, rows in sorted(by_reason.items(), key=lambda item: (-len(item[1]), item[0])):
+        changed = sum(any(row.values()) for row in rows)
+        per_field = {field: sum(row[field] for row in rows) for field in fields}
+        print(
+            f"{reason:40} {len(rows):4} {changed:5} {100 * changed / len(rows):6.1f}% "
+            f"{per_field['status']:7} {per_field['taxon']:7} "
+            f"{per_field['resolution']:5} {per_field['confidence']:5}"
+        )
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("directory", type=Path, help="directory of traces, searched recursively")
@@ -176,6 +206,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     node_table(traces)
     token_table(traces)
     escalation_table(traces)
+    arbiter_value_table(traces)
     return 0
 
 

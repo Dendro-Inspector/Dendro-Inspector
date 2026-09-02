@@ -2,8 +2,8 @@
 
 - **Status:** Current
 - **Owner:** Dendro Inspector maintainers
-- **Date:** 2026-08-30
-- **Last-verified:** 2026-08-30
+- **Date:** 2026-09-02
+- **Last-verified:** 2026-09-02
 
 ## The problem this shape solves
 
@@ -251,7 +251,7 @@ rather than degrading to a low-confidence guess.
 
 The dendrology prompt is an **opaque, user-managed artifact**, but it is not admitted alone.
 `prompts/versions.yaml` is a frozen compatibility manifest that binds schema `1`, deterministic
-policy revision `0.8.0`, the canonical domain path/hash, node-prompt root/revision, and the
+policy revision `0.9.0`, the canonical domain path/hash, node-prompt root/revision, and the
 exact node-prompt file set and hashes.
 
 `runner.build_context()` validates the complete bundle before constructing
@@ -297,7 +297,7 @@ Which nodes call a model, and which do not, is a deliberate line:
 | planner | input guard |
 | evidence extractor | evidence quality gate |
 | candidate generator | review synthesis (admissibility) |
-| botanical / confusion / confidence reviewers | escalation gate |
+| botanical / confusion / confidence reviewers | provisional decision and escalation gate |
 | arbiter | correction worker, abstain |
 | | final decision engine |
 | | response composer, tone layer |
@@ -317,7 +317,9 @@ its category.
 
 Reviewer model calls do not receive `GraphState`. Orchestration constructs a typed
 `ReviewProjection` containing the case, evidence, admitted candidates, knowledge-selection
-flags and (for arbitration) the deterministic proposed assessment. The initial boundary is
+flags and (for arbitration) the stored deterministic provisional verdict. The escalation
+gate computes that verdict once before deciding whether to call the arbiter, so the gate and
+arbiter see the same taxon, status, resolution and confidence. The initial boundary is
 intentionally pass-through for case photographs and evidence: candidate output is under
 review and therefore cannot decide which subjects or photographs the reviewers may inspect.
 Each returned `ReviewResult` is code-bound to the projection's evidence ids before synthesis.
@@ -334,6 +336,11 @@ ranking cannot move the answer.
 `GraphState` is frozen and serializable. Nodes are `async (state, ctx) -> state`; they never
 mutate what they are given. "No hidden global state" is checkable rather than aspirational:
 if a node wants to change something, the change is in its return value or it did not happen.
+
+`provisional_decisions` holds the deterministic per-subject verdicts computed at the
+escalation gate before any arbiter result exists. Final decision may later incorporate an
+admitted arbiter finding, while the run trace retains both sides and records which verdict
+fields changed.
 
 The executor (`graph/executor.py`) walks a pure routing function, runs the three reviewers
 concurrently, records an event per node, and refuses to exceed `max_steps`. It is about a
