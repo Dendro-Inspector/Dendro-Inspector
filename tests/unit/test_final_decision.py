@@ -798,13 +798,6 @@ class TestPhaseZeroHardeningGates:
 
         assert len(confidences) == 1
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason=(
-            "F4: `decide_status` reads `has_contradiction`, which matches every visible "
-            "observation regardless of whether it could support a claim at all."
-        ),
-    )
     def test_conflicting_evidence_status_needs_a_disqualifying_hit(self, simple_case, node_context):
         """Foliage that could not be traced to this trunk cannot convict the answer.
 

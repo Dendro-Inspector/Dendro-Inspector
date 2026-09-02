@@ -216,13 +216,6 @@ class TestPhaseZeroClaimGates:
     Strict, so the marker must be removed by the commit that fixes the finding.
     """
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason=(
-            "F4: `contradicted` reads `match_card(...).has_contradiction`, which matches "
-            "every visible observation whether or not it could support a claim."
-        ),
-    )
     def test_an_unattached_contradiction_cannot_reject_a_version(self, node_context):
         """FAILURE 6 cuts both ways.
 

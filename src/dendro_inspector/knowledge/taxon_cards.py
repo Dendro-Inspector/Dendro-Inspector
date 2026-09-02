@@ -11,10 +11,12 @@ from collections.abc import Collection, Iterable, Mapping
 from dataclasses import dataclass
 
 from dendro_inspector.knowledge.evidence_hierarchy import (
+    EvidenceTier,
     contextual_observations_for,
     full_positive_observations_for,
     positive_observations_for,
     project_observation,
+    tier_of_feature,
 )
 from dendro_inspector.schemas.evidence import EvidencePacket, Observation
 from dendro_inspector.schemas.taxon import FeatureExpectation, TaxonCard
@@ -28,12 +30,17 @@ class CardMatch:
     strong_hits: tuple[str, ...]
     supporting_hits: tuple[str, ...]
     contradiction_hits: tuple[str, ...]
+    disqualifying_hits: tuple[str, ...]
     missing_for_high_confidence: tuple[str, ...]
     full_strong_hits: tuple[str, ...]
 
     @property
     def has_contradiction(self) -> bool:
         return bool(self.contradiction_hits)
+
+    @property
+    def is_disqualified(self) -> bool:
+        return bool(self.disqualifying_hits)
 
     @property
     def high_confidence_supported(self) -> bool:
@@ -72,13 +79,22 @@ def match_card(
         for requirement in card.required_for_high_confidence
         if not _requirement_satisfied(requirement, full_positive)
     )
+    contextual = contextual_observations_for(evidence, subject_id)
+    contradiction_hits = _matches(card.contradictions, contextual)
+    by_id = {observation.observation_id: observation for observation in contextual}
+    disqualifying_hits = tuple(
+        evidence_id
+        for evidence_id in contradiction_hits
+        if (observation := by_id.get(evidence_id)) is not None
+        and project_observation(observation).supports_identification
+        and tier_of_feature(observation.feature) > EvidenceTier.BARK
+    )
     return CardMatch(
         taxon_id=card.taxon_id,
         strong_hits=_matches(card.strong_positive_features, positive),
         supporting_hits=_matches(card.supporting_features, positive),
-        contradiction_hits=_matches(
-            card.contradictions, contextual_observations_for(evidence, subject_id)
-        ),
+        contradiction_hits=contradiction_hits,
+        disqualifying_hits=disqualifying_hits,
         missing_for_high_confidence=missing,
         full_strong_hits=_matches(card.strong_positive_features, full_positive),
     )

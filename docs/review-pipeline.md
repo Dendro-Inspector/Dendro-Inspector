@@ -40,6 +40,26 @@ defect in the answer — it is part of why that alternative lost. Raising a find
 would mark a sound result as conflicted, which is how a useful signal becomes noise
 reviewers learn to ignore.
 
+#### Which contradictions count
+
+`CardMatch` reports two tuples and they are not interchangeable:
+
+| Field | Meaning |
+| --- | --- |
+| `contradiction_hits` | every visible observation matching a `contradictions` entry of the card |
+| `disqualifying_hits` | the subset that could itself have supported an identification: same subject, `supports_identification` under the shared trust projection, and a tier above bark |
+
+Only a disqualifying hit may change a verdict. It alone can reject the user's version, set
+`conflicting_evidence`, be printed as the strongest contradiction, or raise the major
+`botanical_contradiction` finding. The remainder is still recorded — as a minor
+`missing_decisive_feature` finding, and as a note in the report — and can still lower
+confidence through the normal finding path.
+
+The reason is the same in both directions. Foliage that cannot be traced to this trunk
+cannot convict the tree any more than it can identify it (FAILURE 6), and one patch of bark
+cannot disqualify a species that age, weathering, damage and site all reshape (FAILURE 3).
+A contradiction with no authority to support a claim has none to destroy one.
+
 ### Confusion
 
 Must answer four questions explicitly:

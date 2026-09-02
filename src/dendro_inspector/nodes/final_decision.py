@@ -247,7 +247,7 @@ def rule_on_user_claim(
 
     in_candidates = any(candidate.taxon == matched for candidate in candidate_set.ordered)
     card = ctx.knowledge.try_taxon(matched)
-    contradicted = card is not None and match_card(card, evidence, subject_id).has_contradiction
+    contradicted = card is not None and match_card(card, evidence, subject_id).is_disqualified
 
     # Restraint clauses, in the order the prompt states them.
     if bark_only(evidence, subject_id) or state.case.user_has_field_context:
@@ -434,7 +434,7 @@ def decide_status(
         return DecisionStatus.INSUFFICIENT_EVIDENCE
 
     card = ctx.knowledge.try_taxon(taxon)
-    if card is not None and match_card(card, evidence, subject_id).has_contradiction:
+    if card is not None and match_card(card, evidence, subject_id).is_disqualified:
         return DecisionStatus.CONFLICTING_EVIDENCE
     if _unsupported_user_claim(state, evidence, subject_id):
         return DecisionStatus.UNSUPPORTED_USER_CLAIM
@@ -478,7 +478,7 @@ def _contradiction_summary(
     card = ctx.knowledge.try_taxon(selected.taxon_id)
     if card is not None:
         by_id = {observation.observation_id: observation for observation in evidence.observations}
-        for evidence_id in match_card(card, evidence, subject_id).contradiction_hits:
+        for evidence_id in match_card(card, evidence, subject_id).disqualifying_hits:
             observation = by_id.get(evidence_id)
             if observation is not None:
                 return f"{observation.feature} = {observation.value}"

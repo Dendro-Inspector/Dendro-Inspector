@@ -10,6 +10,14 @@ get entries.
 
 ## [Unreleased]
 
+### Fixed
+
+- A contradiction can no longer reject the user's own version, mark a verdict as
+  conflicting or be printed as the strongest contradiction unless the contradicting
+  observation could itself have supported an identification: same subject, attached where
+  attachment matters, and above bark level. Weaker contradictions are still recorded as
+  findings and can still lower confidence.
+
 ### Changed
 
 - The package, graph, deterministic policy and public baseline move together to `0.9.0`.

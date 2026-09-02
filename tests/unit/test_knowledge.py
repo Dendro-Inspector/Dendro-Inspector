@@ -32,6 +32,13 @@ from dendro_inspector.schemas.evidence import (
     Subject,
     Visibility,
 )
+from dendro_inspector.schemas.taxon import (
+    FeatureExpectation,
+    Provenance,
+    Resolution,
+    SourceType,
+    TaxonCard,
+)
 from tests.conftest import _attachment
 
 DETACHABLE = ("leaf", "needles", "fruit", "cones", "branch", "bud", "seed", "nut", "acorn")
@@ -139,6 +146,36 @@ class TestCardMatching:
             "log_1",
         )
         assert match.has_contradiction
+        assert match.is_disqualified
+        assert match.disqualifying_hits == ("obs-1",)
+
+    def test_unattached_contradiction_is_recorded_but_cannot_disqualify(self, knowledge):
+        match = match_card(
+            knowledge.taxon("picea"),
+            _packet(_obs("obs-1", "needles.fascicles", "two", attached=False)),
+            "log_1",
+        )
+        assert match.contradiction_hits == ("obs-1",)
+        assert not match.is_disqualified
+
+    def test_bark_tier_contradiction_is_recorded_but_cannot_disqualify(self):
+        card = TaxonCard(
+            taxon_id="test_taxon",
+            display_name="Test taxon",
+            native_resolution=Resolution.GENUS,
+            supported_resolution=(Resolution.GENUS,),
+            contradictions=(FeatureExpectation(feature="bark.texture", values=("scaly_plates",)),),
+            provenance=Provenance(source="test fixture", source_type=SourceType.INFERRED),
+        )
+
+        match = match_card(
+            card,
+            _packet(_obs("obs-1", "bark.texture", "scaly_plates")),
+            "log_1",
+        )
+
+        assert match.contradiction_hits == ("obs-1",)
+        assert match.disqualifying_hits == ()
 
     def test_unresolvable_features_neither_support_nor_contradict(self, knowledge):
         match = match_card(
