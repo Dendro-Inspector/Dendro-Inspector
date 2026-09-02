@@ -94,14 +94,18 @@ def collect(run: Path) -> tuple[list[Row], int, int]:
     return rows, requests, failures
 
 
-def _median(rows: Sequence[Row], field: str) -> float:
+def _median(rows: Sequence[Row], field: str) -> float | None:
     values = [row[field] for row in rows if row.get(field) is not None]
-    return statistics.median(values) if values else 0.0
+    return statistics.median(values) if values else None
 
 
-def _p90(rows: Sequence[Row], field: str) -> float:
+def _p90(rows: Sequence[Row], field: str) -> float | None:
     values = sorted(row[field] for row in rows if row.get(field) is not None)
-    return values[int(0.9 * (len(values) - 1))] if values else 0.0
+    return values[int(0.9 * (len(values) - 1))] if values else None
+
+
+def _format_stat(value: float | None, width: int, precision: int) -> str:
+    return f"{'n/a':>{width}}" if value is None else f"{value:{width}.{precision}f}"
 
 
 def grouped_table(rows: Sequence[Row], key: str, title: str) -> None:
@@ -115,9 +119,11 @@ def grouped_table(rows: Sequence[Row], key: str, title: str) -> None:
     print(header)
     for name, group in sorted(groups.items(), key=lambda item: -len(item[1])):
         print(
-            f"{name!s:34} {len(group):4} {_median(group, 'duration'):8.1f} "
-            f"{_p90(group, 'duration'):8.1f} {_median(group, 'prompt_chars'):9.0f} "
-            f"{_median(group, 'output_tokens'):8.0f} {_median(group, 'cost'):8.3f}"
+            f"{name!s:34} {len(group):4} {_format_stat(_median(group, 'duration'), 8, 1)} "
+            f"{_format_stat(_p90(group, 'duration'), 8, 1)} "
+            f"{_format_stat(_median(group, 'prompt_chars'), 9, 0)} "
+            f"{_format_stat(_median(group, 'output_tokens'), 8, 0)} "
+            f"{_format_stat(_median(group, 'cost'), 8, 3)}"
         )
 
 

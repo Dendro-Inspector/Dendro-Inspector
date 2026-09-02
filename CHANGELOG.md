@@ -32,6 +32,8 @@ get entries.
 
 ### Fixed
 
+- Latency and cost tables now print `n/a` when a provider did not report a metric. They no
+  longer render missing cached-token or cost data as a measured zero.
 - The Gemini adapter retries a peer connection reset within its existing bounded budget. On
   Windows an HTTPS reset can escape `urlopen` outside the handler the adapter watched, which
   aborted an otherwise healthy graph during the concurrent reviewer fan-out.

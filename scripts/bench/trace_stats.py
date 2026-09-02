@@ -125,17 +125,24 @@ def token_table(traces: Sequence[dict[str, Any]]) -> None:
     print(f"\n{'node':30} {'n':>4} {'in':>9} {'cached':>9} {'out':>9} {'cost usd':>9}")
     for node, calls in sorted(by_node.items(), key=lambda item: -len(item[1])):
         print(
-            f"{node:30} {len(calls):4} {_median_field(calls, 'input_tokens'):9.0f} "
-            f"{_median_field(calls, 'cached_input_tokens'):9.0f} "
-            f"{_median_field(calls, 'output_tokens'):9.0f} "
-            f"{_median_field(calls, 'reported_cost_usd'):9.3f}"
+            f"{node:30} {len(calls):4} {_format_median(calls, 'input_tokens', 9)} "
+            f"{_format_median(calls, 'cached_input_tokens', 9)} "
+            f"{_format_median(calls, 'output_tokens', 9)} "
+            f"{_format_median(calls, 'reported_cost_usd', 9, precision=3)}"
         )
 
 
-def _median_field(rows: Sequence[dict[str, Any]], field: str) -> float:
-    """Median of a reported field. Zero stands for "nobody reported it", and is labelled."""
+def _median_field(rows: Sequence[dict[str, Any]], field: str) -> float | None:
+    """Median of a reported field, or ``None`` when nobody reported it."""
     values = [row[field] for row in rows if row.get(field) is not None]
-    return statistics.median(values) if values else 0.0
+    return statistics.median(values) if values else None
+
+
+def _format_median(
+    rows: Sequence[dict[str, Any]], field: str, width: int, *, precision: int = 0
+) -> str:
+    value = _median_field(rows, field)
+    return f"{'n/a':>{width}}" if value is None else f"{value:{width}.{precision}f}"
 
 
 def escalation_table(traces: Sequence[dict[str, Any]]) -> None:
