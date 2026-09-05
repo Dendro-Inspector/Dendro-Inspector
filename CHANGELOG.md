@@ -12,6 +12,14 @@ get entries.
 
 ### Fixed
 
+- Bark-only tree assessments in frames that may contain multiple taxa now request a declared
+  attachment photograph before a leaf-surface macro, so the next image establishes which tree
+  owns the foliage before its morphology can affect the verdict. Unknown results also omit the
+  empty "nearest alternatives: none recorded" block when no alternative was structurally
+  ruled out.
+- Codex-backed provider runs no longer exhaust their output allowance while constrained by
+  regex patterns inside structured-output arrays. Regex validation remains enforced by the
+  canonical Pydantic contract before any model answer is admitted.
 - A contradiction can no longer reject the user's own version, mark a verdict as
   conflicting or be printed as the strongest contradiction unless the contradicting
   observation could itself have supported an identification: same subject, attached where

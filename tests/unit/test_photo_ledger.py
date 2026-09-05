@@ -118,6 +118,40 @@ def test_distinct_escalation_reasons_project_disagreement_exactly() -> None:
     assert not LEDGER.reviewer_disagreement({"escalation_reasons": ["critical_finding"]})
 
 
+@pytest.mark.parametrize(
+    ("taxon", "abstained"),
+    ((None, False), ("pinaceae", True)),
+)
+def test_completed_run_copies_explicit_abstention_independently_of_taxon(
+    taxon: str | None,
+    abstained: bool,
+) -> None:
+    payload = {
+        "response": {
+            "decisions": [
+                {
+                    "selected_taxon": taxon,
+                    "resolution": "unknown" if taxon is None else "family",
+                    "confidence": "low",
+                    "status": "insufficient_evidence" if taxon is None else "probable",
+                    "abstained": abstained,
+                }
+            ]
+        },
+        "trace": {"duration_ms": 1, "events": []},
+    }
+
+    run = LEDGER.completed_run(
+        run_id="abstention-contract-001",
+        configuration="codex_sol_all_v2",
+        payload=payload,
+        trace_path="runs/abstention-contract-001/abstention-contract-001.trace.json",
+        elapsed=1.0,
+    )
+
+    assert run["abstained"] is abstained
+
+
 def test_provider_metrics_aggregate_measured_tokens_and_reported_cost(tmp_path: Path) -> None:
     codex = tmp_path / "codex.meta.json"
     codex.write_text(
@@ -217,6 +251,7 @@ def test_run_photo_forces_strict_utf8_child_contract(tmp_path: Path, monkeypatch
     assert kwargs["env"]["PYTHONUTF8"] == "1"
     assert kwargs["env"]["PYTHONIOENCODING"] == "utf-8"
     assert run["status"] == "completed"
+    assert run["abstained"] is None
 
     def invalid_utf8(*args, **kwargs):
         raise UnicodeDecodeError("utf-8", b"\xff", 0, 1, "invalid start byte")

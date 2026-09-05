@@ -185,3 +185,12 @@ class TestStrictOpenAISchema:
 
         assert "default" not in repr(translated)
         assert _Parent.model_validate({"child": {"token": "ok"}, "name": "name"}).tags == []
+
+    def test_patterns_are_left_to_the_original_model_validation(self):
+        translated = to_strict_openai_schema(_Parent.model_json_schema())
+
+        assert "pattern" not in repr(translated)
+        with pytest.raises(ValueError, match=r"should match pattern"):
+            _Parent.model_validate(
+                {"child": {"token": "ok"}, "name": "Not A Token", "tags": []},
+            )

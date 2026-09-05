@@ -23,12 +23,12 @@ from dendro_inspector.knowledge.taxon_cards import (
 )
 from dendro_inspector.nodes.evidence_quality import assess
 from dendro_inspector.nodes.final_decision import decide_subject
-from dendro_inspector.nodes.response_composer import build_result
+from dendro_inspector.nodes.response_composer import build_result, render_human_readable
 from dendro_inspector.observability.events import ProviderCallRecord
 from dendro_inspector.observability.trace import TraceRecorder
 from dendro_inspector.providers.base import OUTPUT_SUBJECT_IDS, ImageInput
 from dendro_inspector.schemas.candidates import Candidate, CandidateSet, SupportStrength
-from dendro_inspector.schemas.decisions import DecisionStatus, FinalDecision
+from dendro_inspector.schemas.decisions import DecisionStatus, FinalDecision, ResponseFormat
 from dendro_inspector.schemas.evidence import (
     AttachmentStatus,
     EvidencePacket,
@@ -41,6 +41,7 @@ from dendro_inspector.schemas.evidence import (
     SubjectKind,
     Visibility,
 )
+from dendro_inspector.schemas.input import DeclaredObjectType
 from dendro_inspector.schemas.reviews import Reviewer, ReviewResult, ReviewStatus, ReviewSynthesis
 from dendro_inspector.schemas.taxon import Confidence, Resolution
 
@@ -551,6 +552,80 @@ def test_a_resolved_bark_character_is_not_photographed_again(simple_case, node_c
     assert decision.best_next_photo.reason == (
         "Would add missing organ-level evidence for the leading candidate."
     )
+
+
+def test_bark_only_multi_tree_follow_up_proves_leaf_ownership_first(
+    simple_case, node_context, knowledge
+):
+    """A leaf macro cannot be credited until the photographed tree owns the leaf.
+
+    This is the generalized failure class from a live bark-only run: validation retained
+    one weak broadleaf candidate, while the frame could contain several taxa. The candidate
+    card already offers an attachment photograph, but the flat follow-up order chose leaf
+    morphology first and asked the user for evidence the graph would not yet be allowed to
+    attach to the trunk.
+    """
+    evidence = EvidencePacket(
+        subjects=(Subject(subject_id="foreground_tree", kind=SubjectKind.STANDING_TREE),),
+        observations=(
+            Observation(
+                observation_id="obs-bark",
+                feature="bark.texture",
+                value="coarse_furrowed",
+                subject_id="foreground_tree",
+                source=ObservationSource.IMAGE,
+                image_id="img-1",
+                visibility=Visibility.CLEAR,
+                reliability=Reliability.HIGH,
+            ),
+        ),
+        possible_multiple_taxa=True,
+    )
+    proposed = CandidateSet(
+        subject_id="foreground_tree",
+        candidates=(
+            Candidate(
+                taxon="populus",
+                resolution=Resolution.GENUS,
+                supporting_evidence_ids=("obs-bark",),
+                score=SupportStrength.MODERATE,
+                rank=1,
+            ),
+        ),
+    )
+    validated = validate_candidate_set(proposed, evidence, knowledge)
+    case = simple_case.model_copy(update={"declared_object_type": DeclaredObjectType.STANDING_TREE})
+    state = GraphState(case=case, evidence=evidence, candidate_sets=(validated,))
+
+    decision = decide_subject(state, node_context, validated)
+
+    assert decision.best_next_photo is not None
+    assert decision.best_next_photo.target == "leaf_attachment_photo"
+    assert "continuously" in decision.best_next_photo.reason
+
+
+def test_unknown_result_omits_an_empty_nearest_alternatives_section(simple_case):
+    """An unresolved candidate list belongs under uncertainty, not under "none recorded"."""
+    decision = FinalDecision(
+        subject_id="foreground_tree",
+        supporting_evidence=("bark.texture = coarse_furrowed (high reliability)",),
+        unresolved_questions=("Quercus and Tilia remain plausible alternatives.",),
+    )
+    state = GraphState(case=simple_case, decisions=(decision,))
+    result = build_result(decision, "en", state)
+
+    text = render_human_readable(
+        (result,),
+        (decision,),
+        state,
+        locale="en",
+        response_format=ResponseFormat.WEAK_PHOTO,
+        placeholder_knowledge=False,
+    )
+
+    assert "Why not the nearest alternatives" not in text
+    assert "none recorded" not in text
+    assert "Quercus and Tilia remain plausible alternatives." in text
 
 
 def test_an_unresolved_bark_character_is_still_worth_photographing(

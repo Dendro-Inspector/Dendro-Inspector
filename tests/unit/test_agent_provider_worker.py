@@ -277,6 +277,95 @@ def test_bridge_cache_separates_model_routes() -> None:
     assert ox_key != sol_key
 
 
+@pytest.mark.parametrize(
+    ("dialect", "expected"),
+    (
+        (
+            "openai",
+            {
+                "usage": {
+                    "prompt_tokens": 120,
+                    "completion_tokens": 15,
+                    "prompt_tokens_details": {"cached_tokens": 80},
+                }
+            },
+        ),
+        (
+            "ollama",
+            {"prompt_eval_count": 120, "eval_count": 15},
+        ),
+        (
+            "anthropic",
+            {
+                "usage": {
+                    "input_tokens": 120,
+                    "cache_read_input_tokens": 80,
+                    "output_tokens": 15,
+                },
+                "dendro_usage": {
+                    "input_tokens": 120,
+                    "cached_input_tokens": 80,
+                    "output_tokens": 15,
+                },
+            },
+        ),
+        (
+            "gemini",
+            {
+                "usageMetadata": {
+                    "promptTokenCount": 120,
+                    "cachedContentTokenCount": 80,
+                    "candidatesTokenCount": 15,
+                }
+            },
+        ),
+    ),
+)
+def test_bridge_projects_cached_worker_usage_into_provider_envelopes(
+    tmp_path: Path,
+    dialect: str,
+    expected: dict[str, object],
+) -> None:
+    bridge = _load_script("bridge")
+    state = bridge.State(tmp_path, wait_timeout=1)
+    cached = state.cache / "abc123.json"
+    cached.write_text('{"status":"OK"}', encoding="utf-8")
+    cached.with_suffix(".meta.json").write_text(
+        json.dumps(
+            {
+                "worker_id": "codex-sol-all",
+                "upstream": {
+                    "provider": "codex",
+                    "usage": {
+                        "input_tokens": 120,
+                        "cached_input_tokens": 80,
+                        "output_tokens": 15,
+                    },
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    handler = object.__new__(bridge.Handler)
+    handler.state = state
+
+    answer, source, usage = handler._answer(
+        1,
+        dialect,
+        "prompt",
+        {"type": "object"},
+        [],
+        "abc123",
+        "Probe",
+        "sol-all",
+    )
+    envelope = handler._envelope(dialect, "sol-all", answer, usage)
+
+    assert source == "cache:codex-sol-all"
+    for key, value in expected.items():
+        assert envelope[key] == value
+
+
 def test_claude_backend_uses_read_only_structured_output(tmp_path: Path, monkeypatch) -> None:
     worker = _load_script("worker")
     _pending_request(tmp_path, route="claude-main")

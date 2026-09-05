@@ -136,11 +136,19 @@ class AnthropicProvider:
         if sink is not None and reported is not None:
             # `cache_read_input_tokens` is the half of the caching story worth having: it
             # says the breakpoint above actually hit, rather than that one was requested.
-            sink.record(
-                input_tokens=getattr(reported, "input_tokens", None),
-                cached_input_tokens=getattr(reported, "cache_read_input_tokens", None),
-                output_tokens=getattr(reported, "output_tokens", None),
-            )
+            bridge_usage = getattr(response, "dendro_usage", None)
+            if isinstance(bridge_usage, Mapping):
+                sink.record(
+                    input_tokens=bridge_usage.get("input_tokens"),
+                    cached_input_tokens=bridge_usage.get("cached_input_tokens"),
+                    output_tokens=bridge_usage.get("output_tokens"),
+                )
+            else:
+                sink.record(
+                    input_tokens=getattr(reported, "input_tokens", None),
+                    cached_input_tokens=getattr(reported, "cache_read_input_tokens", None),
+                    output_tokens=getattr(reported, "output_tokens", None),
+                )
         raw = "".join(
             block.text for block in response.content if getattr(block, "type", "") == "text"
         )

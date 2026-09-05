@@ -120,8 +120,10 @@ Claude-produced evidence and candidates during review, but it does not receive h
 reasoning because Dendro stores none.
 
 Codex receives a strict OpenAI translation of the bridge schema: every object property is
-required for constrained decoding and schema defaults are removed. The answer still faces the
-original Pydantic contract in Dendro, so this changes transport syntax rather than admissibility.
+required for constrained decoding, schema defaults are removed, and regex patterns are left to
+the original Pydantic validator because Codex constrained decoding can exhaust its output budget
+on patterned arrays. The answer still faces the original Pydantic contract in Dendro, so this
+changes transport syntax rather than admissibility.
 
 For the private sequential dataset workflow—one immutable run and trace per photograph,
 canary-first execution, resume and exact-process cleanup—follow

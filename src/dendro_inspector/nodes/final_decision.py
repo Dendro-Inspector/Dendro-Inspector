@@ -50,6 +50,7 @@ from dendro_inspector.nodes.photo_planner import (
     attachment_request,
     choose_request,
     effective_object_type,
+    planned_attachment_request,
 )
 from dendro_inspector.schemas.candidates import Candidate, CandidateSet, SupportStrength
 from dendro_inspector.schemas.decisions import (
@@ -773,6 +774,9 @@ def _next_photo(
             photo_bindings(ctx.knowledge.comparisons(), usable),
             resolved,
         )
+    ownership_first = planned_attachment_request(state, candidate_set.subject_id, photos)
+    if ownership_first is not None:
+        return ownership_first
     if not photos:
         return None
     return PhotoRequest(

@@ -13,7 +13,7 @@ from __future__ import annotations
 from dendro_inspector.graph.executor import NodeContext
 from dendro_inspector.graph.state import GraphState
 from dendro_inspector.knowledge.evidence_authority import attachment_risk_for
-from dendro_inspector.knowledge.evidence_hierarchy import BAND_INSUFFICIENT, family_of
+from dendro_inspector.knowledge.evidence_hierarchy import BAND_INSUFFICIENT, bark_only, family_of
 from dendro_inspector.schemas.decisions import (
     DecisionDerivation,
     DecisionStatus,
@@ -202,6 +202,37 @@ def attachment_request(
     return None
 
 
+def planned_attachment_request(
+    state: GraphState,
+    subject_id: str,
+    photo_targets: tuple[str, ...],
+) -> PhotoRequest | None:
+    """Prefer declared provenance evidence before morphology in a multi-tree bark view.
+
+    No current detachable observation exists for :func:`attachment_request` to inspect in
+    this case: the organ is precisely what the next photograph must add. If the knowledge
+    card already offers an attachment view, request it before a macro whose morphology the
+    graph could not yet credit to this trunk.
+    """
+    evidence = state.evidence
+    object_type = effective_object_type(state, subject_id)
+    if (
+        evidence is None
+        or not evidence.possible_multiple_taxa
+        or not bark_only(evidence, subject_id)
+        or object_type not in {DeclaredObjectType.BARK, DeclaredObjectType.STANDING_TREE}
+    ):
+        return None
+
+    offered = set(photo_targets)
+    for family in ("leaf", "leaflet", "needles", "fruit", "seed", "cones", "branch"):
+        target, reason = _ATTACHMENT_PHOTOS[family]
+        if target in offered:
+            return PhotoRequest(target=target, reason=reason, subject_id=subject_id)
+    target, reason = _BY_DECLARED_TYPE[DeclaredObjectType.BARK]
+    return PhotoRequest(target=target, reason=reason, subject_id=subject_id)
+
+
 def choose_request(
     state: GraphState,
     ctx: NodeContext,
@@ -213,6 +244,9 @@ def choose_request(
         authority_first = attachment_request(state, subject_id)
         if authority_first is not None:
             return authority_first
+        provenance_first = planned_attachment_request(state, subject_id, ())
+        if provenance_first is not None:
+            return provenance_first
     target, reason = _BY_DECLARED_TYPE.get(object_type, _DEFAULT_REQUEST)
     return PhotoRequest(target=target, reason=reason, subject_id=subject_id)
 

@@ -351,12 +351,10 @@ def _render_block(
         lines.append(f"- {labels['none_recorded']}")
     lines.append("")
 
-    lines.append(f"**{labels['why_not']}:**")
     if result.ruled_out:
+        lines.append(f"**{labels['why_not']}:**")
         lines.extend(f"- {item}" for item in result.ruled_out)
-    else:
-        lines.append(f"- {labels['none_recorded']}")
-    lines.append("")
+        lines.append("")
 
     lines.append(f"**{labels['uncertain']}:**")
     if result.limitations:
