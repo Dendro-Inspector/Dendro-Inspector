@@ -11,7 +11,7 @@ from __future__ import annotations
 from enum import StrEnum
 from pathlib import Path
 
-from pydantic import Field
+from pydantic import Field, model_validator
 
 from dendro_inspector.schemas.base import Contract, Identifier, ShortText
 
@@ -89,6 +89,14 @@ class CaseInput(Contract):
         default_factory=dict,
         description="Untrusted key/value context (EXIF, upload metadata, caller hints).",
     )
+
+    @model_validator(mode="after")
+    def _image_ids_are_unique(self) -> CaseInput:
+        ids = [image.image_id for image in self.images]
+        if len(ids) != len(set(ids)):
+            msg = "duplicate image_id in case input"
+            raise ValueError(msg)
+        return self
 
     @property
     def image_ids(self) -> tuple[str, ...]:

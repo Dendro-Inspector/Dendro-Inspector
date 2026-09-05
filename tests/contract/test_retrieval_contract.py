@@ -1,17 +1,14 @@
 """Admission can never keep a candidate whose card the evidence does not touch.
 
-`docs/specs/core-modernisation.md` N2 proposes showing the candidate generator only the
+The candidate generator uses `candidate_validation.cards_in_play` to select the
 cards that admission could accept, instead of the whole catalogue. That is safe exactly
 because of the invariant asserted here: a candidate survives `validate_candidate_set` only
 with an exact, trusted, same-subject hit on one of its own card's expectations, so every
 surviving taxon is already inside the pre-filtered set.
 
-The test computes the pre-filter independently of the validator, from the packet alone, and
-then checks the validator's output against it. When `knowledge.retrieval.cards_in_play`
-lands, this file points at that function instead of its local predicate, and the equality it
-asserts is unchanged.
-
-Phase 0 of `docs/specs/core-modernisation.md` (finding M2).
+The test checks the production retrieval against an independent evidence-side predicate
+and proves every surviving fixture candidate is in the retrieved set. Retrieval has no
+top-k limit and receives neither proposals nor expected answers.
 """
 
 from __future__ import annotations
@@ -22,7 +19,7 @@ from typing import Any
 
 import pytest
 
-from dendro_inspector.knowledge.candidate_validation import validate_candidate_set
+from dendro_inspector.knowledge.candidate_validation import cards_in_play, validate_candidate_set
 from dendro_inspector.knowledge.evidence_hierarchy import project_evidence
 from dendro_inspector.knowledge.loader import KnowledgeBase
 from dendro_inspector.schemas.candidates import CandidateProposal
@@ -88,7 +85,8 @@ def test_admission_never_keeps_a_taxon_outside_the_pre_filtered_set(repo_root, k
             subject_id = candidate_set.subject_id
             if not any(subject.subject_id == subject_id for subject in evidence.subjects):
                 continue
-            in_play = _cards_in_play(evidence, subject_id, knowledge)
+            in_play = set(cards_in_play(evidence, knowledge, (subject_id,)))
+            assert in_play <= _cards_in_play(evidence, subject_id, knowledge)
 
             validated = validate_candidate_set(candidate_set, evidence, knowledge)
 
@@ -113,7 +111,7 @@ def test_the_pre_filter_is_narrower_than_the_catalogue_it_replaces(repo_root, kn
             subject_id = candidate_set.subject_id
             if not any(subject.subject_id == subject_id for subject in evidence.subjects):
                 continue
-            widest = max(widest, len(_cards_in_play(evidence, subject_id, knowledge)))
+            widest = max(widest, len(cards_in_play(evidence, knowledge, (subject_id,))))
 
     assert widest < catalogue / 2, (
         f"the widest pre-filtered set was {widest} of {catalogue} cards; N2's premise is "

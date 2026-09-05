@@ -16,9 +16,9 @@ Three rules are absolute here:
 Composition has one limit. A reviewer that names a level in ``recommended_resolution`` or
 ``recommended_confidence`` has stated where its own findings stop; applying those findings
 again on top of the recommendation charges the same correction twice, and three reviewers
-writing up one overclaim charge it three times. The recommendation is therefore a floor for
-model-raised findings — never for deterministic ones, which a model must not be able to
-waive by recommending a comfortable number.
+writing up one overclaim charge it three times. The recommendation is therefore a floor
+only for its own accepted model findings on the same subject. It cannot waive another
+review's findings or deterministic checks. A bare recommendation supplies only a cap.
 """
 
 from __future__ import annotations
@@ -69,6 +69,7 @@ from dendro_inspector.schemas.decisions import (
 from dendro_inspector.schemas.evidence import EvidencePacket
 from dendro_inspector.schemas.input import DeclaredObjectType
 from dendro_inspector.schemas.reviews import (
+    AdmittedRecommendation,
     FindingCategory,
     FindingOrigin,
     RequiredAction,
@@ -408,28 +409,51 @@ def _rule_on_one_taxon(
     return UserClaimVerdict.DOUBTFUL
 
 
-def _broadest_recommendation(state: GraphState) -> Resolution | None:
-    """The broadest level any reviewer explicitly recommended, across both passes."""
-    if state.abstained:
-        # The abstain node stores its composed bound in ``resolution_delta``. Once that
-        # happens the value is no longer attributable to a reviewer recommendation.
+def _recommendations_for(state: GraphState, subject_id: str) -> tuple[AdmittedRecommendation, ...]:
+    recommendations: list[AdmittedRecommendation] = []
+    for synthesis in _syntheses(state):
+        if synthesis.recommendations is not None:
+            recommendations.extend(
+                item for item in synthesis.recommendations if item.subject_id == subject_id
+            )
+        elif state.subject_ids == (subject_id,):
+            # Released/custom synthesis can still supply conservative single-subject caps.
+            # Without a finding binding, a legacy aggregate cannot waive any downgrade.
+            recommendations.append(
+                AdmittedRecommendation(
+                    subject_id=subject_id,
+                    resolution=synthesis.resolution_delta,
+                    confidence=synthesis.confidence_delta,
+                )
+            )
+    return tuple(recommendations)
+
+
+def _broadest_recommendation(
+    state: GraphState, subject_id: str, finding: ReviewFinding | None = None
+) -> Resolution | None:
+    """This subject's cap, or the floor bound to one exact model finding."""
+    if state.is_abstained(subject_id):
+        # The abstention bound already incorporates this subject's review recommendations.
         return None
     recommendations = [
-        synthesis.resolution_delta
-        for synthesis in _syntheses(state)
-        if synthesis.resolution_delta is not None
+        item.resolution
+        for item in _recommendations_for(state, subject_id)
+        if item.resolution is not None and (finding is None or item.finding == finding)
     ]
     return min(recommendations, key=resolution_rank) if recommendations else None
 
 
-def _lowest_recommendation(state: GraphState) -> Confidence | None:
-    """The lowest confidence any reviewer explicitly recommended, across both passes."""
-    if state.abstained:
+def _lowest_recommendation(
+    state: GraphState, subject_id: str, finding: ReviewFinding | None = None
+) -> Confidence | None:
+    """This subject's cap, or the floor bound to one exact model finding."""
+    if state.is_abstained(subject_id):
         return None
     recommendations = [
-        synthesis.confidence_delta
-        for synthesis in _syntheses(state)
-        if synthesis.confidence_delta is not None
+        item.confidence
+        for item in _recommendations_for(state, subject_id)
+        if item.confidence is not None and (finding is None or item.finding == finding)
     ]
     return min(recommendations, key=confidence_rank) if recommendations else None
 
@@ -442,7 +466,7 @@ def resolve_resolution(
     tier: EvidenceTier,
 ) -> tuple[Resolution, tuple[ResolutionBound, ...], ResolutionBoundSource, bool]:
     """Compose every upper bound first, then apply at most one explicit downgrade."""
-    recommended = _broadest_recommendation(state)
+    recommended = _broadest_recommendation(state, subject_id)
     bounds = [
         ResolutionBound(source="proposed", value=leader.resolution),
         ResolutionBound(source="card_cap", value=cap_resolution(leader.resolution, card)),
@@ -450,8 +474,15 @@ def resolve_resolution(
     ]
     if recommended is not None:
         bounds.append(ResolutionBound(source="reviewer_recommendation", value=recommended))
-    if state.abstained and state.synthesis is not None:
-        abstention_bound = state.synthesis.resolution_delta
+    if state.is_abstained(subject_id):
+        abstention = state.abstention_for(subject_id)
+        abstention_bound = (
+            abstention.resolution
+            if abstention is not None
+            else state.synthesis.resolution_delta
+            if state.synthesis is not None and state.subject_ids == (subject_id,)
+            else None
+        )
         if abstention_bound is not None:
             bounds.append(ResolutionBound(source="abstention", value=abstention_bound))
 
@@ -463,15 +494,14 @@ def resolve_resolution(
     # overreaches, genus is the highest defensible level" file a lower-resolution finding to
     # say so, and applying that finding on top of the genus they asked for lands on family —
     # one step below the answer every reviewer recommended. The recommendation is therefore a
-    # floor as well as a ceiling, for findings the models raised.
-    honoured = recommended is not None and resolution_rank(resolution) <= resolution_rank(
-        recommended
-    )
-    actions = (
-        _deterministic_actions_for(state, subject_id)
-        if honoured
-        else _actions_for(state, subject_id)
-    )
+    # floor as well as a ceiling, for that review's own accepted model findings.
+    actions = list(_deterministic_actions_for(state, subject_id))
+    for finding in _findings_for(state, subject_id):
+        if finding.origin is not FindingOrigin.MODEL:
+            continue
+        own_bound = _broadest_recommendation(state, subject_id, finding)
+        if own_bound is None or resolution_rank(resolution) > resolution_rank(own_bound):
+            actions.append(finding.required_action)
 
     # A lower-resolution finding commonly records the same overclaim already represented by
     # a card, evidence, or synthesis bound. Do not apply the same correction twice.
@@ -567,7 +597,7 @@ def resolve_confidence(
             confidence = Confidence.MEDIUM
         step("requirement_cap", before, confidence, applied=short)
 
-    recommended = _lowest_recommendation(state)
+    recommended = _lowest_recommendation(state, subject_id)
     if recommended is not None:
         lowers = confidence_rank(recommended) < confidence_rank(confidence)
         before = confidence
@@ -586,8 +616,9 @@ def resolve_confidence(
             continue
         if finding.origin is FindingOrigin.DETERMINISTIC:
             continue
-        floored = recommended is not None and confidence_rank(confidence) <= confidence_rank(
-            recommended
+        own_bound = _lowest_recommendation(state, subject_id, finding)
+        floored = own_bound is not None and confidence_rank(confidence) <= confidence_rank(
+            own_bound
         )
         before = confidence
         if not floored:
@@ -615,7 +646,7 @@ def resolve_confidence(
             finding_id=finding.finding_id,
         )
 
-    if state.abstained:
+    if state.is_abstained(subject_id):
         before = confidence
         confidence = Confidence.LOW
         step("abstention", before, confidence, applied=True)
@@ -967,7 +998,9 @@ def decide_subject(
     the record describes the world every model downstream has already been reasoning in.
     """
     decision = decide_subject_base(state, ctx, candidate_set)
-    decision = decision.model_copy(update={"abstained": state.abstained})
+    decision = decision.model_copy(
+        update={"abstained": state.is_abstained(candidate_set.subject_id)}
+    )
     check = state.authority_check_for(candidate_set.subject_id)
     if check is None or check.status is not AuthorityCheckStatus.SENSITIVE:
         return decision.model_copy(
@@ -1009,7 +1042,7 @@ async def run(state: GraphState, ctx: NodeContext) -> GraphState:
     if state.decisions:
         # The photo-planner path already produced terminal decisions.
         return state
-    if state.evidence is None or not state.candidate_sets:
+    if state.evidence is None or not state.evidence.subjects:
         ctx.recorder.record_derivation(DecisionDerivation.terminal("case"))
         return state.evolve(
             decisions=(
@@ -1025,8 +1058,17 @@ async def run(state: GraphState, ctx: NodeContext) -> GraphState:
                 ),
             )
         )
-    return state.evolve(
-        decisions=tuple(
-            decide_subject(state, ctx, candidate_set) for candidate_set in state.candidate_sets
-        )
-    )
+    decisions = []
+    for subject_id in state.subject_ids:
+        candidate_set = state.candidates_for(subject_id)
+        if candidate_set is None:
+            # A detected subject with insufficient evidence still receives its own explicit
+            # terminal result. A reviewer cannot resurrect a subject excluded by quality.
+            decisions.append(
+                decide_subject_base(
+                    state, ctx, CandidateSet(subject_id=subject_id), already_reranked=True
+                ).model_copy(update={"abstained": state.is_abstained(subject_id)})
+            )
+        else:
+            decisions.append(decide_subject(state, ctx, candidate_set))
+    return state.evolve(decisions=tuple(decisions))

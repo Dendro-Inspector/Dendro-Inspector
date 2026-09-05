@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import io
 import time
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -259,6 +259,7 @@ async def request_structured(
     recorder: TraceRecorder | None = None,
     max_retries: int = 1,
     cache_prefix_chars: int = 0,
+    validate_response: Callable[[ResponseT], None] | None = None,
 ) -> ResponseT:
     """Call a provider for structured output, repairing malformed output at most once.
 
@@ -291,6 +292,8 @@ async def request_structured(
                 response_model=response_model,
                 metadata=call_metadata,
             )
+            if validate_response is not None:
+                validate_response(result)
         except (ValidationError, StructuredOutputError) as exc:
             validation_failures += 1
             last_error = exc

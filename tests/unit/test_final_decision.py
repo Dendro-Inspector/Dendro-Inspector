@@ -17,6 +17,7 @@ from dendro_inspector.nodes.final_decision import (
     resolve_identity,
 )
 from dendro_inspector.nodes.response_composer import build_result
+from dendro_inspector.nodes.review_synthesizer import adjudicate
 from dendro_inspector.schemas.candidates import Candidate, CandidateSet, SupportStrength
 from dendro_inspector.schemas.decisions import DecisionStatus, FinalDecision
 from dendro_inspector.schemas.evidence import (
@@ -578,6 +579,24 @@ class TestRecommendationIsAFloor:
         candidates = CandidateSet(subject_id="tree_1", candidates=(leader,))
         state = _state(simple_case, (support,), candidates.candidates).model_copy(
             update={"synthesis": synthesis}
+        )
+        # Exercise the real ownership boundary: a recommendation is a floor only for
+        # the accepted model findings from the same review and subject.
+        state = state.evolve(
+            synthesis=adjudicate(
+                (
+                    ReviewResult(
+                        reviewer=Reviewer.CONFIDENCE,
+                        status=ReviewStatus.PASS_WITH_FINDINGS,
+                        subject_id="tree_1",
+                        findings=synthesis.accepted_findings,
+                        recommended_confidence=synthesis.confidence_delta,
+                        recommended_resolution=synthesis.resolution_delta,
+                    ),
+                ),
+                evidence=state.evidence,
+                knowledge=node_context.knowledge,
+            )
         )
         return decide_subject(state, node_context, candidates)
 

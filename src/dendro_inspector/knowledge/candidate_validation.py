@@ -8,6 +8,7 @@ from dendro_inspector.knowledge.evidence_hierarchy import (
     EvidenceTier,
     is_colour_feature,
     project_evidence,
+    project_observation,
     resolve_evidence_observations,
 )
 from dendro_inspector.knowledge.loader import KnowledgeBase
@@ -59,6 +60,37 @@ def _matches_expectation(
 
 def _deduplicate(values: tuple[str, ...]) -> tuple[str, ...]:
     return tuple(dict.fromkeys(values))
+
+
+def cards_in_play(
+    evidence: EvidencePacket,
+    knowledge: KnowledgeBase,
+    subject_ids: tuple[str, ...],
+) -> tuple[str, ...]:
+    """Retrieve cards any eligible subject could support before a model ranks them.
+
+    Admission requires at least one exact, trusted, non-colour observation matching the
+    candidate's card. Inferences inherit their observations, so they cannot introduce a
+    surviving taxon outside this set. No proposal, expected answer or top-k limit is used.
+    """
+    observations = tuple(
+        observation
+        for observation in evidence.observations
+        if observation.subject_id in subject_ids
+        and not is_colour_feature(observation.feature)
+        and project_observation(observation).supports_identification
+    )
+    return tuple(
+        taxon_id
+        for taxon_id in knowledge.available_taxon_ids()
+        if (card := knowledge.try_taxon(taxon_id)) is not None
+        and any(
+            _matches_expectation(
+                observation, (*card.strong_positive_features, *card.supporting_features)
+            )
+            for observation in observations
+        )
+    )
 
 
 def _support_is_colour_only(

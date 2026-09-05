@@ -2,8 +2,8 @@
 
 - **Status:** Current
 - **Owner:** Dendro Inspector maintainers
-- **Date:** 2026-09-02
-- **Last-verified:** 2026-09-02
+- **Date:** 2026-09-05
+- **Last-verified:** 2026-09-05
 
 The graph is declared once in
 [`graph/definition.py`](../src/dendro_inspector/graph/definition.py). The diagram below,
@@ -59,7 +59,7 @@ flowchart TD
     ESCALATION_GATE -->|yes| ARBITER
     ARBITER --> ARBITER_SYNTHESIZER
     ARBITER_SYNTHESIZER --> FINAL_DECISION
-    ABSTAIN --> FINAL_DECISION
+    ABSTAIN --> ESCALATION_GATE
     FINAL_DECISION --> RESPONSE_COMPOSER
     RESPONSE_COMPOSER --> TONE_LAYER
     TONE_LAYER --> OUTPUT
@@ -130,6 +130,12 @@ reviewer that tried to change anything else has its change discarded, which is t
 contract rather than a silent race. Events are recorded after the gather so trace order
 follows the declared fan-out order rather than whichever coroutine finished first.
 
+A failing member cancels unfinished siblings, and the executor waits for those tasks to
+terminate before propagating the original exception. All member events are recorded, even
+on failure or caller cancellation; cancelled members have failed status and a `cancelled`
+detail. Completed members retain their provider calls and projections. Failed rounds never
+merge partial reviews into the decision state.
+
 ## Retry and stop conditions
 
 **Budget: 1** (`GraphConfig.retry_budget`).
@@ -148,6 +154,11 @@ targeted photograph, or abstain. It never loops. See
 [`docs/architecture.md`](architecture.md#termination) for the termination argument, and
 `tests/unit/test_routing.py` for the branch-by-branch tests.
 
+Abstention bounds retain the subjects of the accepted blocking findings. A case-wide finding
+covers every subject; a subject-specific finding leaves other subjects' bounds intact. The
+escalation gate still runs afterwards so an unaffected high-confidence result receives its
+normal arbitration check. A fully abstained case suppresses arbitration.
+
 `max_steps` (default 64) is a backstop against a routing bug, not the primary guarantee. It
 raises `GraphExecutionError` rather than returning a degraded answer.
 
@@ -155,10 +166,12 @@ raises `GraphExecutionError` rather than returning a degraded answer.
 
 | Scenario | Nodes executed |
 | --- | --- |
-| Clean genus answer | 13 — guard through tone, no arbiter |
-| Insufficient evidence | 7 — quality gate diverts to photo planner |
-| Escalated | 15 — plus arbiter and arbiter synthesis |
-| One retry | 13 + 6 re-run nodes |
+| Clean genus answer | Guard through tone, without arbitration |
+| Insufficient evidence | Quality gate diverts to photo planner |
+| Escalated | Adds arbiter and arbiter synthesis |
+| One retry | Correction worker repeats extraction through review synthesis |
+
+Exact executed-node counts live in each run trace.
 
 ## Adding a node
 

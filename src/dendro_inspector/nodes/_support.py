@@ -216,7 +216,9 @@ async def review_call(
         max_retries=ctx.config.provider_for(role).max_structured_retries,
     )
     bounded = mark_model_findings(result)
-    return bounded.model_copy(update={"reviewed_evidence_ids": projection.evidence_ids})
+    return bounded.model_copy(
+        update={"reviewer": reviewer, "reviewed_evidence_ids": projection.evidence_ids}
+    )
 
 
 def merge_findings(result: ReviewResult, extra: tuple[ReviewFinding, ...]) -> ReviewResult:

@@ -85,19 +85,44 @@ async def _run_fanout(
     """
     baseline = len(state.reviews)
 
-    async def _run(member: NodeName) -> tuple[NodeName, GraphState, float]:
-        started = time.perf_counter()
-        member_ctx = _context_for_node(member, state, ctx)
-        produced = await registry[member](state, member_ctx)
-        return member, produced, (time.perf_counter() - started) * 1000.0
+    durations: dict[NodeName, float] = {}
 
-    outcomes = await asyncio.gather(*(_run(member) for member in members))
+    async def _run(member: NodeName) -> GraphState:
+        started = time.perf_counter()
+        try:
+            member_ctx = _context_for_node(member, state, ctx)
+            return await registry[member](state, member_ctx)
+        finally:
+            durations[member] = (time.perf_counter() - started) * 1000.0
+
+    tasks = {member: asyncio.create_task(_run(member)) for member in members}
+    try:
+        outcomes = await asyncio.gather(*tasks.values())
+    except BaseException:
+        # gather propagates a failure without stopping its siblings. Join their cancellation
+        # before returning control, including when the caller cancels the whole fan-out.
+        for task in tasks.values():
+            if not task.done():
+                task.cancel()
+        await asyncio.gather(*tasks.values(), return_exceptions=True)
+        raise
+    finally:
+        # Record both successful and failed rounds in declaration order. A cancelled node
+        # is a failed execution, never a successful scientific review or a missing event.
+        for member, task in tasks.items():
+            cancelled = task.cancelled()
+            failed = cancelled or task.exception() is not None
+            ctx.recorder.record_node(
+                member.value,
+                status=NodeStatus.FAILED if failed else NodeStatus.OK,
+                detail="cancelled" if cancelled else None,
+                duration_ms=durations.get(member, 0.0),
+            )
 
     # Events are recorded after the gather so trace order follows the declared fan-out
     # order rather than whichever coroutine happened to finish first.
     merged = state.reviews
-    for member, produced, duration_ms in outcomes:
-        ctx.recorder.record_node(member.value, duration_ms=duration_ms)
+    for produced in outcomes:
         merged = merged + produced.reviews[baseline:]
     return state.evolve(reviews=merged)
 

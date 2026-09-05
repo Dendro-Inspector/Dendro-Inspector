@@ -18,7 +18,12 @@ input reduction available to the latency work, and it is quality-neutral by proo
 than by measurement.
 
 Every finding was verified against the working tree at `d6f8247` on 2026-09-01 by reading
-the code and running the probes in the Evidence appendix. Nothing is implemented.
+the code and running the probes in the Evidence appendix. Those measurements are historical.
+As of 2026-09-05, the evidence-based card pre-filter in N2 is implemented in
+[`candidate_validation.cards_in_play`](../../src/dendro_inspector/knowledge/candidate_validation.py),
+with the admission-preservation contract exercised against the fixture corpus. The rest of
+this document remains a proposal, including N2's partner expansion, empty-call shortcut and
+additional trace fields.
 
 ## Findings
 

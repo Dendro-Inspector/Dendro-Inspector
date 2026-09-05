@@ -83,7 +83,7 @@ def next_step(current: NodeName, state: GraphState, config: GraphConfig) -> Node
             return NodeName.EVIDENCE_EXTRACTOR
 
         case NodeName.ABSTAIN:
-            return NodeName.FINAL_DECISION
+            return NodeName.ESCALATION_GATE
 
         case NodeName.ESCALATION_GATE:
             if state.escalation is None:

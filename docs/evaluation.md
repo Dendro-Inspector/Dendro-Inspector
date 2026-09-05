@@ -2,8 +2,8 @@
 
 - **Status:** Current
 - **Owner:** Dendro Inspector maintainers
-- **Date:** 2026-09-02
-- **Last-verified:** 2026-09-02
+- **Date:** 2026-09-05
+- **Last-verified:** 2026-09-05
 
 ```bash
 dendro eval --suite public            # summary
@@ -15,6 +15,12 @@ The suite is deterministic: each case replays a recorded provider scenario from
 `evals/fixtures/`. No network, no credentials, no cost, no flake — which is why it runs in CI
 on every pull request, including pull requests from forks, which never have repository
 secrets.
+
+Fake replay uses the image IDs declared by each case as its synthetic image scope, even
+when the example files are absent. Unknown image IDs still fail extraction validation.
+Live providers are bound to images actually passed to the extraction call. Regression
+coverage for image provenance, review ownership, omitted subjects, retrieval and cancellation
+is in [the architecture boundary tests](../tests/unit/test_architecture_boundaries.py).
 
 ## What assertions check
 

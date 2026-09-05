@@ -10,7 +10,10 @@ from __future__ import annotations
 from dendro_inspector.config import Role
 from dendro_inspector.graph.executor import NodeContext
 from dendro_inspector.graph.state import GraphState
-from dendro_inspector.knowledge.candidate_validation import validate_candidate_set_with_report
+from dendro_inspector.knowledge.candidate_validation import (
+    cards_in_play,
+    validate_candidate_set_with_report,
+)
 from dendro_inspector.nodes._support import (
     case_context,
     case_image_inputs,
@@ -42,7 +45,9 @@ async def run(state: GraphState, ctx: NodeContext) -> GraphState:
                 [
                     case_context(state.case),
                     evidence_context(evidence),
-                    knowledge_context(ctx, ctx.knowledge.available_taxon_ids()),
+                    knowledge_context(
+                        ctx, cards_in_play(evidence, ctx.knowledge, quality.usable_subject_ids)
+                    ),
                 ]
             ),
             locale=locale_of(state),
@@ -58,9 +63,13 @@ async def run(state: GraphState, ctx: NodeContext) -> GraphState:
     usable = set(quality.usable_subject_ids)
     proposed_sets: list[CandidateSet] = []
     final_sets: list[CandidateSet] = []
-    for candidate_set in proposal.sets:
-        if candidate_set.subject_id not in usable:
+    by_subject = {candidate_set.subject_id: candidate_set for candidate_set in proposal.sets}
+    for subject in evidence.subjects:
+        if subject.subject_id not in usable:
             continue
+        candidate_set = by_subject.get(
+            subject.subject_id, CandidateSet(subject_id=subject.subject_id)
+        )
         proposed_sets.append(candidate_set)
         validation = validate_candidate_set_with_report(candidate_set, evidence, ctx.knowledge)
         if validation.dropped_evidence_ids or validation.rejected_taxa or validation.demoted_scores:

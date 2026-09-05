@@ -40,7 +40,7 @@ class TestLinearEdges:
             (NodeName.CONFUSION_REVIEWER, NodeName.REVIEW_SYNTHESIZER),
             (NodeName.CONFIDENCE_REVIEWER, NodeName.REVIEW_SYNTHESIZER),
             (NodeName.CORRECTION_WORKER, NodeName.EVIDENCE_EXTRACTOR),
-            (NodeName.ABSTAIN, NodeName.FINAL_DECISION),
+            (NodeName.ABSTAIN, NodeName.ESCALATION_GATE),
             (NodeName.ARBITER, NodeName.ARBITER_SYNTHESIZER),
             (NodeName.ARBITER_SYNTHESIZER, NodeName.FINAL_DECISION),
             (NodeName.FINAL_DECISION, NodeName.RESPONSE_COMPOSER),

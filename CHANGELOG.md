@@ -12,6 +12,19 @@ get entries.
 
 ### Fixed
 
+- Extraction validates image references against the provider call's image scope and repairs
+  invalid references within the existing retry budget. Explicit offline replay remains
+  available for declared synthetic fixture images.
+- Review recommendations retain their subject and accepted-finding ownership. A review of
+  one tree no longer changes another tree's bounds, rejected findings cannot carry a
+  confidence recommendation around admission, and model-selected subjects cannot suppress
+  deterministic findings about other trees.
+  Abstention also retains subject scope, while unaffected subjects still pass the escalation
+  gate before their final decisions.
+- Every detected subject receives a result, including an explicit insufficient-evidence
+  result and photo request when candidate generation omits it or its evidence is unusable.
+- A failed concurrent reviewer cancels and joins unfinished siblings before the error
+  propagates. Every member retains an execution event; partial reviews are not merged.
 - Bark-only tree assessments in frames that may contain multiple taxa now request a declared
   attachment photograph before a leaf-surface macro, so the next image establishes which tree
   owns the foliage before its morphology can affect the verdict. Unknown results also omit the
@@ -38,6 +51,9 @@ get entries.
 
 ### Changed
 
+- Candidate generation receives only taxon cards with exact, trusted, non-colour support
+  on usable subjects, plus comparisons among those cards. Retrieval has no top-k cutoff
+  and preserves every taxon that the existing admission rules could accept.
 - A candidate's support strength is now adjudicated against its own taxon card from the
   evidence that survived admission, and the model's label can only lower it, never raise it.
   Confidence and the `identified` status therefore follow visible features rather than the

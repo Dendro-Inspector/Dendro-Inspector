@@ -2,8 +2,8 @@
 
 - **Status:** Current
 - **Owner:** Dendro Inspector maintainers
-- **Date:** 2026-08-30
-- **Last-verified:** 2026-08-30
+- **Date:** 2026-09-05
+- **Last-verified:** 2026-09-05
 
 ## The rule
 
@@ -124,6 +124,10 @@ because they did not originate from the bounded model call; a result carrying no
 scope at all is treated as unscoped rather than as empty-scoped, at both the finding and the
 rerank-recommendation check.
 
+A deterministic finding also ignores the enclosing model result's `subject_id`. Its own
+subject and canonical evidence establish scope; a model choosing to discuss another tree
+cannot suppress the code's check. The model-call boundary binds reviewer identity in code.
+
 A finding is **accepted** when one of these holds, in order:
 
 | Test | Reason code |
@@ -169,13 +173,17 @@ inert.
 | --- | --- |
 | `retry_required` | any accepted finding with `re_extract_evidence` |
 | `unresolvable` | any accepted **critical** finding with `abstain` |
-| `confidence_delta` | the **lowest** confidence any reviewer recommended |
-| `resolution_delta` | the **broadest** resolution any reviewer recommended |
+| `recommendations` | subject-scoped bounds, optionally bound to exact accepted model findings |
+| `confidence_delta` | summary: the **lowest** admitted confidence recommendation |
+| `resolution_delta` | summary: the **broadest** admitted resolution recommendation |
 | `candidate_delta` | exact accepted finding-bound `AdmittedRerank` artifacts |
 | `escalation_recommended` | reviewer disagreement, or any accepted critical finding |
 
-Deltas take the most conservative recommendation. Downgrades compose; nothing here raises a
-claim. A delta is also a **floor** — see below.
+Final decision consumes `recommendations` for the selected subject, not these aggregate
+deltas. An explicit result subject must exist; otherwise scope is inferred from accepted
+model findings or a single-subject packet. An ambiguous bare recommendation is not applied
+to every tree. If all of a result's model findings were rejected, its recommendation is
+discarded too. Deterministic findings merged into that result cannot authorize it.
 
 ## Corrections vs caps
 
@@ -195,7 +203,7 @@ moved the claim.
 
 The card cap is not the only thing that can apply a correction before the finding does. A
 reviewer that fills in `recommended_resolution` or `recommended_confidence` has stated where
-its own findings stop, and the delta already carries that recommendation into the bounds. The
+its own findings stop, and the subject's recommendation already supplies that bound. The
 finding raised alongside it is the *reason* for the recommendation, not a second, separate
 correction — so applying both charges once for the cap and once for the reason.
 
@@ -208,9 +216,20 @@ Two symptoms, both observed on a live run:
   `lower_resolution` to say so; the composed bound is already `genus`, and the action takes it
   to `family` — one step below the answer every reviewer asked for.
 
-`resolve_resolution` and `resolve_confidence` therefore treat the delta as the floor for
-findings the **models** raised. Deterministic findings keep biting past it: a model must
-never be able to waive the code's own guardrails by recommending a comfortable number.
+`AdmittedRecommendation` binds the exact accepted finding, its subject and reviewer. A
+recommendation is a floor only for that finding; matching a reused finding ID is insufficient.
+Another review's bare `high` recommendation cannot waive an accepted confidence downgrade.
+Deterministic findings keep applying below every model recommendation.
+
+Legacy syntheses with `recommendations=None` remain readable. Their aggregate deltas may
+cap a single-subject decision but cannot waive findings or become bounds for multiple
+subjects. New synthesis always writes a tuple, including an empty one.
+
+The abstention path retains scope too: `GraphState.abstention_bounds` records one conservative
+bound per subject named by a blocking finding. An unscoped blocking finding covers the case.
+Bounds are computed from each subject's provisional result, so a weak or unknown subject
+cannot erase a stronger neighbour. The run-level `abstained` flag is an aggregate; each final
+decision records whether that subject abstained. Remaining subjects still pass escalation.
 
 ## Status reflects the answer, not the history
 

@@ -18,6 +18,7 @@ from dendro_inspector.schemas.decisions import AuthorityCheckTrace, CaseResponse
 from dendro_inspector.schemas.evidence import EvidencePacket
 from dendro_inspector.schemas.input import CaseInput
 from dendro_inspector.schemas.reviews import CorrectionDirective, ReviewResult, ReviewSynthesis
+from dendro_inspector.schemas.taxon import Resolution
 
 
 class GuardReport(Contract):
@@ -86,6 +87,13 @@ class EscalationDecision(Contract):
     suppressed_by: tuple[ValueToken, ...] = ()
 
 
+class SubjectAbstention(Contract):
+    """A conservative resolution bound for one subject whose review cannot continue."""
+
+    subject_id: Identifier
+    resolution: Resolution
+
+
 class GraphState(Contract):
     """Everything the graph knows, at one point in the run."""
 
@@ -137,6 +145,18 @@ class GraphState(Contract):
     final_response: CaseResponse | None = None
     retries: int = Field(default=0, ge=0)
     abstained: bool = False
+    abstention_bounds: tuple[SubjectAbstention, ...] = ()
+
+    def abstention_for(self, subject_id: str) -> SubjectAbstention | None:
+        return next(
+            (bound for bound in self.abstention_bounds if bound.subject_id == subject_id), None
+        )
+
+    def is_abstained(self, subject_id: str) -> bool:
+        """Legacy run-wide abstention remains readable; new runs retain subject scope."""
+        return self.abstained and (
+            not self.abstention_bounds or self.abstention_for(subject_id) is not None
+        )
 
     def evolve(self, **changes: Any) -> Self:
         """Return a new state with ``changes`` applied and re-validated."""

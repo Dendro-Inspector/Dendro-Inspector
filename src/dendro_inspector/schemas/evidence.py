@@ -384,6 +384,20 @@ class EvidencePacket(Contract):
                 raise ValueError(msg)
         return self
 
+    def validate_image_references(self, available_image_ids: frozenset[str]) -> None:
+        """Bind packet references to the code-owned image scope of the extraction call."""
+        referenced = {
+            observation.image_id
+            for observation in self.observations
+            if observation.image_id is not None
+        }
+        referenced.update(image_id for subject in self.subjects for image_id in subject.image_ids)
+        referenced.update(limitation.image_id for limitation in self.image_limitations)
+        unknown = referenced - available_image_ids
+        if unknown:
+            msg = f"evidence references unavailable image ids: {sorted(unknown)}"
+            raise ValueError(msg)
+
     def identity_root_id(self, subject_id: str) -> str:
         """Return the independent identity root for a validated subject id."""
         parent_by_id = {subject.subject_id: subject.parent_subject_id for subject in self.subjects}

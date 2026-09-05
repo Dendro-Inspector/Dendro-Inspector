@@ -2,8 +2,8 @@
 
 - **Status:** Current
 - **Owner:** Dendro Inspector maintainers
-- **Date:** 2026-09-02
-- **Last-verified:** 2026-09-02
+- **Date:** 2026-09-05
+- **Last-verified:** 2026-09-05
 
 ## The problem this shape solves
 
@@ -24,16 +24,16 @@ graph       (graph/, nodes/) who says it, in what order, and who checks
 ```
 
 Dependencies point one way: `schemas` knows nothing; `knowledge` depends on `schemas`;
-`nodes` depend on both plus `providers`; nothing depends on `nodes` except the registry and
-the runner. No node imports another node.
+`nodes` depend on both plus `providers` and the graph's state/context contracts. Node modules
+also share deterministic policy helpers, including final-decision composition and review
+admission; the registry binds their executable entrypoints.
 
 ## Contracts
 
-Every contract inherits `schemas/base.py:Contract` — frozen, `extra="forbid"`. Two
-consequences:
-
-* a node cannot smuggle state by mutating an object another node holds;
-* a model that invents a field fails validation instead of silently widening a contract.
+Every contract inherits `schemas/base.py:Contract` — frozen, `extra="forbid"`. Contract
+attributes cannot be reassigned, and invented fields fail validation. Frozen models do not
+deep-freeze nested dictionaries: nodes must treat those as read-only. `GraphState.evolve`
+reconstructs and revalidates the state returned by a node.
 
 Three constrained string types do most of the work:
 
@@ -68,6 +68,13 @@ Inference(
 They are separate types, so an inference cannot occupy an observation's slot.
 `derived_from` ids must exist in the same packet — enforced by a model validator, so an
 inference with no observable basis cannot be constructed.
+
+Extraction also binds observation, subject and image-limitation references to the IDs of
+images passed to that provider call. An unknown or skipped image reference fails structured
+validation and uses the existing repair budget; exhaustion raises a provider protocol error.
+The input contract rejects duplicate image IDs. Explicit fake-provider replay may reference
+declared synthetic fixture images without local photograph bytes, but cannot invent an
+undeclared ID. This checks provenance, not whether a model perceived the photograph correctly.
 
 ### Not visible is not absent
 
@@ -150,18 +157,18 @@ Only `confirmed_attached` evidence may support identification. The other states 
 packet, appear in the report, and can justify a finding or photo request, but project to
 context and cannot move the verdict.
 
-`confirmed_attached` is still a perception claim produced by the extractor. The final-decision
-engine therefore tests any detachable observation that is a hinge for the scientific outcome:
+`confirmed_attached` is still a perception claim produced by the extractor. The attachment
+authority gate tests detachable support before the reviewers run:
 it revalidates the proposed candidates with that observation demoted to `unknown` and compares
 taxon, status, resolution and confidence. It also records the opposite counterfactual when an
 otherwise matching model-proposed observation is currently `unknown`; that alternate outcome
 is telemetry only and can never strengthen the returned claim.
 
-When the outcome changes and the extractor supplied no independently normalized
-component-to-root chain, the conservative branch wins. A leaf on a branch that was visibly
-parented to the trunk and then folded into the root carries `source_component_id`; that
-code-owned projection corroborates attachment without banning useful foliage evidence as a
-class. The decision and run trace record the critical observation ids, the alternate outcome,
+The gate demotes support only when sensitivity intersects the observation's attachment risk.
+A component-to-root projection is not independent corroboration: its parent relation also
+came from the extractor. Demotions travel with both evidence and candidate sets, so reviewers
+inspect the same evidence world that the answer uses. The decision and run trace record the
+critical observation ids, the alternate outcome,
 the attachment state used for it and whether the authority policy changed the result.
 Acquisition follows the same priority: proving which tree owns potentially decisive foliage
 precedes a leaf-surface macro or another morphological discriminator.
@@ -182,6 +189,11 @@ Survivors preserve order but are renumbered densely; when none survive, the expl
 `CandidateSet` drives abstention. This same validated support determines evidence tier,
 confidence and resolution, so a model cannot cite unrelated evidence to make a plausible name
 look earned.
+
+The generator creates an empty set for any usable subject the model omitted. Final decision
+covers every detected identity root, including subjects the quality gate found unusable;
+each receives either a supported verdict or an explicit insufficient-evidence result and
+photo request. A model's omission cannot silently remove a subject from the answer.
 
 ### Ordinal scores, not percentages
 
@@ -244,8 +256,11 @@ Why data:
   at each broader level. Final decision composes the candidate, card, trusted-support and
   review bounds first, then selects an identity at or broader than that bound. If none exists,
   it returns `unknown`; a species name can never survive under a genus or family resolution.
-* **it scales down.** The loader is lazy and per-taxon. A thousand cards would not enlarge
-  a single prompt, because a request only ever loads the handful of taxa in play.
+* **it selects candidate context.** `candidate_validation.cards_in_play` scans the catalogue
+  for exact, trusted, non-colour support on usable subjects before candidate generation.
+  Only those cards and comparisons among them enter that prompt. There is no top-k cutoff:
+  every candidate that admission could keep must remain available. Catalogue scanning and
+  the extractor's combined feature vocabulary still grow with the knowledge base.
 
 Adding a genus is a YAML file plus an entry in a comparison card. It is not a code change.
 
@@ -349,6 +364,13 @@ same-result recommendation are validated and stored together as `AdmittedRerank`
 decision never scans raw recommendations. An absent, rejected, unsupported or conflicting
 ranking cannot move the answer.
 
+Confidence and resolution recommendations retain their subject and, when present, the exact
+accepted model finding that supplied them as `AdmittedRecommendation`. Their bounds affect
+only that subject. A recommendation can prevent double-counting its own finding, but cannot
+waive another review's downgrade or a deterministic finding. Bare recommendations only cap;
+recommendations supported entirely by rejected model findings are discarded. Aggregate
+synthesis deltas remain summaries, not case-wide decision bounds.
+
 ## State and execution
 
 `GraphState` is frozen and serializable. Nodes are `async (state, ctx) -> state`; they never
@@ -359,6 +381,11 @@ if a node wants to change something, the change is in its return value or it did
 escalation gate before any arbiter result exists. Final decision may later incorporate an
 admitted arbiter finding, while the run trace retains both sides and records which verdict
 fields changed.
+
+If one concurrent reviewer fails, the executor cancels unfinished siblings and awaits their
+termination before propagating the original exception. It records every member in declaration
+order, retaining completed calls and projection metadata. Cancelled members carry a failed
+event with `detail="cancelled"`; no partial reviews are merged into a scientific verdict.
 
 ### The composition record
 

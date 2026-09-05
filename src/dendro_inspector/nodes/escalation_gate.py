@@ -49,7 +49,11 @@ def _blocking_suppressors(state: GraphState, policy: EscalationPolicy) -> tuple[
         and not quality.sufficient
     ):
         reasons.append("evidence_insufficient")
-    if policy.suppress_when_abstaining and state.abstained:
+    if (
+        policy.suppress_when_abstaining
+        and state.abstained
+        and all(state.is_abstained(subject_id) for subject_id in state.subject_ids)
+    ):
         reasons.append("already_abstaining")
     return tuple(reasons)
 

@@ -130,7 +130,7 @@ GRAPH_EDGES: tuple[Edge, ...] = (
     Edge(NodeName.ESCALATION_GATE, NodeName.ARBITER, "yes"),
     Edge(NodeName.ARBITER, NodeName.ARBITER_SYNTHESIZER),
     Edge(NodeName.ARBITER_SYNTHESIZER, NodeName.FINAL_DECISION),
-    Edge(NodeName.ABSTAIN, NodeName.FINAL_DECISION),
+    Edge(NodeName.ABSTAIN, NodeName.ESCALATION_GATE),
     Edge(NodeName.FINAL_DECISION, NodeName.RESPONSE_COMPOSER),
     Edge(NodeName.RESPONSE_COMPOSER, NodeName.TONE_LAYER),
     Edge(NodeName.TONE_LAYER, NodeName.OUTPUT),
