@@ -32,6 +32,7 @@ from dendro_inspector.knowledge.candidate_validation import (
     candidate_support_tier,
 )
 from dendro_inspector.knowledge.comparison_cards import (
+    deprioritise_saturated_photos,
     drop_resolved_photos,
     follow_up_photos,
     photo_bindings,
@@ -44,6 +45,7 @@ from dendro_inspector.knowledge.evidence_hierarchy import (
     decisive_observations_for,
     one_band_stronger,
     resolution_ceiling,
+    tier_of_feature,
 )
 from dendro_inspector.knowledge.loader import KnowledgeBase
 from dendro_inspector.knowledge.taxon_cards import (
@@ -826,8 +828,21 @@ def _next_photo(
         for observation in decisive_observations_for(evidence, candidate_set.subject_id)
         if observation.value in vocabulary.get(observation.feature, frozenset())
     )
+    # The tier this subject has already reached at decisive trust. A photograph resolving
+    # only features at or below it cannot raise the claim, however well it is shot.
+    reached_tier = max(
+        (
+            tier_of_feature(observation.feature)
+            for observation in decisive_observations_for(evidence, candidate_set.subject_id)
+        ),
+        default=EvidenceTier.CONTEXT,
+    )
     comparison_cards = ctx.knowledge.comparisons_for(taxa)
-    photos = follow_up_photos(comparison_cards, taxa, resolved)
+    photos = deprioritise_saturated_photos(
+        follow_up_photos(comparison_cards, taxa, resolved),
+        photo_bindings(ctx.knowledge.comparisons(), frozenset(vocabulary)),
+        reached_tier,
+    )
     comparison_request = bool(photos)
     if not photos:
         # No look-alike group applies, so the leader's own follow-up list is all there is.
@@ -836,10 +851,15 @@ def _next_photo(
         # whose every usable feature this subject has already answered.
         card = ctx.knowledge.try_taxon(leader.taxon)
         usable = frozenset(card_value_vocabulary((card,))) if card is not None else frozenset()
-        photos = drop_resolved_photos(
-            ctx.knowledge.follow_up_for((leader.taxon,)),
-            photo_bindings(ctx.knowledge.comparisons(), usable),
-            resolved,
+        own_bindings = photo_bindings(ctx.knowledge.comparisons(), usable)
+        photos = deprioritise_saturated_photos(
+            drop_resolved_photos(
+                ctx.knowledge.follow_up_for((leader.taxon,)),
+                own_bindings,
+                resolved,
+            ),
+            own_bindings,
+            reached_tier,
         )
     ownership_first = planned_attachment_request(state, candidate_set.subject_id, photos)
     if ownership_first is not None:

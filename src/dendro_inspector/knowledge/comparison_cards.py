@@ -9,8 +9,10 @@ from __future__ import annotations
 from collections.abc import Collection, Mapping
 
 from dendro_inspector.knowledge.evidence_hierarchy import (
+    EvidenceTier,
     is_colour_feature,
     positive_observations_for,
+    tier_of_feature,
 )
 from dendro_inspector.schemas.evidence import EvidencePacket
 from dendro_inspector.schemas.taxon import ComparisonCard
@@ -119,6 +121,44 @@ def photo_bindings(
                 continue
             bindings.setdefault(difference.photo, set()).add(difference.feature)
     return {photo: frozenset(features) for photo, features in bindings.items()}
+
+
+def deprioritise_saturated_photos(
+    photos: tuple[str, ...],
+    bindings: Mapping[str, frozenset[str]],
+    reached_tier: EvidenceTier,
+) -> tuple[str, ...]:
+    """Move photographs that cannot raise the claim behind ones that can. Order only.
+
+    ``drop_resolved_photos`` asks whether a target's features are already answered. This
+    asks a different question: whether answering them could change anything. A target whose
+    every declared feature sits at or below the tier this subject has already reached at
+    decisive trust adds no authority however well it is shot — a second bark macro cannot
+    lift a verdict past the bark ceiling, because the ceiling is the tier, not the framing.
+
+    Two live birch runs asked for ``bark_macro_mid_trunk`` from photographs that already
+    showed near-macro bark, because the target still had one unresolved bark feature bound
+    to it and the flat list was consulted in order. The next informative photograph was a
+    leaf.
+
+    Reordered rather than removed, deliberately. If the saturated target is the only one on
+    offer, asking a redundant question beats withholding the request — the same fail-open
+    reasoning ``drop_resolved_photos`` uses for an unbound photograph. And a subject whose
+    bark is present but only capped by doubt is *not* saturated: a better photograph of that
+    same bark is genuinely worth asking for, which is why the tier is measured at decisive
+    trust rather than from anything visible.
+    """
+
+    def adds_authority(photo: str) -> bool:
+        features = bindings.get(photo)
+        if not features:
+            return True
+        return any(tier_of_feature(feature) > reached_tier for feature in features)
+
+    return (
+        *(photo for photo in photos if adds_authority(photo)),
+        *(photo for photo in photos if not adds_authority(photo)),
+    )
 
 
 def drop_resolved_photos(

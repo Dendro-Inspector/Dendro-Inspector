@@ -716,13 +716,20 @@ def test_unknown_result_omits_an_empty_nearest_alternatives_section(simple_case)
     assert "Quercus and Tilia remain plausible alternatives." in text
 
 
-def test_an_unresolved_bark_character_is_still_worth_photographing(
+def test_an_unresolved_bark_character_no_longer_outranks_an_organ(
     simple_case, node_context, knowledge
 ):
-    """The filter drops redundancy, not bark requests as a class.
+    """A photograph that cannot raise the claim does not get asked for first.
 
-    With only the papery pattern read and peeling still unresolved, another bark macro is
-    the honest first ask — and it stays first.
+    This assertion read `bark_macro_mid_trunk` while the only question was whether a
+    target's features were already answered. `bark.peeling` is unresolved here, so by that
+    test another bark macro had something to answer — but the pattern is already read at
+    decisive trust, so the subject is at bark tier either way, and no bark photograph can
+    lift a verdict past the bark ceiling. A leaf can.
+
+    Bark requests are not dropped as a class. See the test below: when the bark in hand is
+    capped by doubt rather than decisive, a better bark photograph is the honest first ask
+    and still comes first.
     """
     evidence = _bark_only_packet()
     thin = tuple(
@@ -737,13 +744,44 @@ def test_an_unresolved_bark_character_is_still_worth_photographing(
     decision = decide_subject(state, node_context, validated)
 
     assert decision.best_next_photo is not None
+    assert decision.best_next_photo.target == "leaf_upper_macro"
+
+
+def test_bark_capped_by_doubt_is_still_worth_photographing_again(
+    simple_case, node_context, knowledge
+):
+    """Saturation is measured at decisive trust, so uncertain bark is not saturated.
+
+    The distant, backlit trunk of `light-trunk-birch-001` reads its pattern at low
+    reliability. That subject has no decisive evidence at all, so a better photograph of
+    the same bark is genuinely informative and must not be deprioritised — which is the
+    difference between an information-gain rule and a blanket ban on bark requests.
+    """
+    evidence = _bark_only_packet()
+    uncertain = tuple(
+        observation.model_copy(update={"reliability": Reliability.LOW})
+        for observation in evidence.observations
+    )
+    state, validated = _betula_state(
+        simple_case, evidence.model_copy(update={"observations": uncertain}), knowledge
+    )
+
+    decision = decide_subject(state, node_context, validated)
+
+    assert decision.best_next_photo is not None
     assert decision.best_next_photo.target == "bark_macro_mid_trunk"
 
 
 def test_an_unknown_value_does_not_resolve_a_visible_discriminator(
     simple_case, node_context, knowledge
 ):
-    """Visibility is not information gain when no relevant card can interpret the value."""
+    """Visibility is not information gain when no relevant card can interpret the value.
+
+    An unrecognised `bark.peeling` value leaves that discriminator unresolved, so the bark
+    macro is not dropped as redundant. It is still deprioritised behind the leaf, because
+    the pattern is read at decisive trust and bark tier is already reached — the two filters
+    ask different questions and this case exercises both.
+    """
     evidence = _bark_only_packet()
     observations = tuple(
         observation.model_copy(update={"value": "some_unrecognised_pattern"})
@@ -757,7 +795,7 @@ def test_an_unknown_value_does_not_resolve_a_visible_discriminator(
     decision = decide_subject(state, node_context, validated)
 
     assert decision.best_next_photo is not None
-    assert decision.best_next_photo.target == "bark_macro_mid_trunk"
+    assert decision.best_next_photo.target == "leaf_upper_macro"
 
 
 def test_multi_candidate_photo_reason_names_an_unresolved_discriminator(

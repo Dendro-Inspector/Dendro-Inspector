@@ -12,6 +12,14 @@ get entries.
 
 ### Fixed
 
+- The next photograph asked for is the one that could raise the claim. A target whose every
+  declared feature sits at or below the evidence tier this subject already reached at
+  decisive trust now ranks behind one that reaches higher: two live birch runs asked for
+  another bark macro of bark they had already read, and no bark photograph can lift a verdict
+  past the bark ceiling. Bark requests are not dropped as a class — when the bark in hand is
+  capped by doubt rather than decisive, a better photograph of it is still the honest first
+  ask, and saturated targets are reordered rather than removed so a redundant question is
+  never preferred to no question.
 - A taxon card can declare a specific bark feature and value diagnostic enough to lift the
   bark confidence ceiling by exactly one band, at genus resolution or broader, when a
   reliably-read observation matches it. `Betula` declares
