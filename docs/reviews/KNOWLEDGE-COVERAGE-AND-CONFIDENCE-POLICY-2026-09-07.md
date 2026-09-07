@@ -490,16 +490,55 @@ currently carries `placeholder_content: true`.
    match; supporting features may raise or lower a candidate already admitted, but may not
    open one. Removes *Fagus* from Case B and ~260 s from that run.
 
-3. **Separate `PARTIAL` from low reliability.** Distinct trust states. `PARTIAL` with high
-   reliability should satisfy a decisive-feature requirement. Independently, fix the message:
-   "not at full trust", not "not visible".
+3. **Separate `PARTIAL` from low reliability.** — **LANDED 2026-09-08** (`0764e9b`).
+   `EvidenceTrust.DECISIVE_POSITIVE` sits between capped and full: it settles a
+   `required_for_high_confidence` token and keeps its family's own tier, while staying
+   distinct from a clean full view so the partial reading remains legible in the trace. The
+   reader-facing phrase is now "Decisive feature not established", held in a named constant
+   a test pins.
 
-4. **Card-declared bark exemption.** Do *not* lift the ceiling globally — it does real work
-   (FAILURE 8, "definitely an oak, from the bark"). The correct shape is a card declaring
-   *which* bark features are diagnostic enough to raise the ceiling by one step, and only at
-   genus resolution, which `_RESOLUTION_CEILING` already permits for `BARK`. Yes for
-   `betula.bark.pattern = white_papery_with_black_marks`. No for
-   `bark.texture = smooth_grey`.
+   *Found while implementing — a schema ambiguity nobody had named.* `PARTIAL` is doing two
+   jobs the schema cannot separate:
+
+   | meaning | example | should it cap? |
+   |---|---|---|
+   | unambiguous, but not filling the frame | a birch bark pattern across part of a trunk | no |
+   | partly hidden, so the reading is incomplete | a fascicle count behind a crossing branch | yes |
+
+   `partial-visibility-cap-001` is the second kind and its whole purpose is to stay capped;
+   the live birch case is the first kind. Nothing in the packet distinguishes them **except
+   the reliability the extractor attached**, so that is what decides: a partial view is
+   overcome by an explicit `HIGH` reading and capped below it. That keeps the owner's
+   quadrant table exactly (it specifies only `HIGH` and `LOW`) and leaves the eval suite
+   flat.
+
+   Two assertions changed their expected values rather than their inputs, both having pinned
+   the collapsed behaviour; each now states the new rule and gained a counterpart for the
+   capped case. Gates: all five green, `pytest` 846 passed.
+
+4. **Card-declared bark exemption.** — **LANDED 2026-09-08** (`5206efa`).
+   `TaxonCard.diagnostic_bark_features`, opt-in per feature *and* value. Three conditions,
+   all required: bark tier, resolution no narrower than genus, and a card-declared value
+   with a decisively-read matching observation. Ceiling rises exactly one band, recorded as
+   its own `bark_exemption` confidence step.
+
+   Validated, not trusted: an entry must name a bark-tier feature and must also appear among
+   the card's strong positives, so a card cannot exempt evidence it does not otherwise call
+   decisive. The bark-family set is duplicated in `schemas.taxon` (which may not import from
+   `knowledge`) and a contract test pins the two equal.
+
+   *The discrimination this produces is sharper than either item alone.* Same feature, same
+   value, two reliability readings:
+
+   | case | `bark.pattern` reading | outcome |
+   |---|---|---|
+   | `light-trunk-birch-001` — distant, backlit | `partial` + `low` | requirement unmet, no exemption, stays **low** |
+   | the live Case A run | `partial` + `high` | requirement met, exemption applies, **medium** |
+
+   One number separates them, and it is the one number that should. Betula is the only card
+   in the pack that declares anything; Fagus's `bark.texture = smooth_grey` is a strong
+   positive and earns nothing, and generic deep fissures earn nothing. Gates: all five green,
+   `pytest` 862 passed, 24/24 eval cases, every metric unchanged.
 
 5. **Add `abies.yaml`,** register it in the Eastern Europe pack, **and extend the feature
    vocabulary** to cover `bark.flake_geometry` and `bark.surface_marks`. Without the third
@@ -645,7 +684,7 @@ policy to observed system behaviour.
 Reviewed and accepted. Recorded decisions:
 
 - Status board: **1 ✅ · 1b ✅ · 2 strong-only ❌ rejected by measurement · 2 replacement
-  (self-contradiction veto) ✅ · 3 go · 4 go after 3.** Item 4 follows item 3 deliberately:
+  (self-contradiction veto) ✅ · 3 ✅ · 4 ✅ · 5–7 open.** Item 4 follows item 3 deliberately:
   the bark exemption has to build on corrected trust semantics, not on the collapsed
   `PARTIAL`/`LOW` bucket.
 - Execution order confirmed as **1 → 1b → 2 → 3 → 4 → 5 → 6 → 7**. Structural blockers are
