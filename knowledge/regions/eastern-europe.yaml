@@ -4,6 +4,7 @@ region_id: eastern-europe
 display_name: "Eastern Europe"
 
 likely_taxa:
+  - abies
   - acer
   - acer_pseudoplatanus
   - acer_saccharinum

@@ -110,6 +110,13 @@ get entries.
 
 ### Added
 
+- `Abies` (ялиця) joins the demonstration pack and the Eastern Europe region, with the bark
+  characters a live case photographed and no card could represent: round-oval scars, resin
+  blisters and thin irregular edge-lifting flakes. Like `larix`, it is not named in the
+  domain prompt and its file header says so. `Abies` and `Picea` name the same
+  `needles.attachment` path with different values — a fir needle leaves a flat round scar, a
+  spruce needle sits on a woody peg — so one reading of that feature now rules the other
+  genus out instead of leaving two weak candidates to be argued over.
 - A subject whose resolvable features no taxon card describes now ends in its own outcome,
   `knowledge_coverage_gap`, instead of being reported as a weak photograph. The verdict
   names the knowledge base rather than the frame, lists the features that fell outside it,

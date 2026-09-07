@@ -1,17 +1,17 @@
 {
   "scenario": "knowledge-coverage-gap",
-  "description": "Mature conifer trunk photographed from live case 20260510_100131. The bark is read clearly and confidently, but every diagnostic feature it yields is outside this build's card vocabulary, so no candidate can be opened. Only the planner and the extractor are scripted: any model call after the deterministic coverage decision raises UnscriptedCallError, which is how this fixture proves the early exit.",
+  "description": "Shaped from live case 20260510_100131, whose bark characters this pack could not represent at all. Those two features (bark.flake_geometry, bark.surface_marks) are now on the abies card, which is exactly what closing that gap means, so this fixture uses two other bark characters the pack still cannot describe. Its job is the deterministic path, not the photograph: only the planner and the extractor are scripted, so the fake provider raises UnscriptedCallError on any model call after the coverage decision, and the absence of downstream calls is enforced rather than asserted.",
   "responses": {
     "primary:planner": {
       "target_features": [
-        "bark.flake_geometry",
-        "bark.surface_marks",
+        "bark.lichen_cover",
+        "bark.buttressing",
         "needles.attachment"
       ],
       "expect_multiple_subjects": false,
       "bark_only_input": true,
       "notes": [
-        "Pale silver-grey trunk with a scaly, cracked lower section; overhead conifer foliage cannot be traced to it."
+        "Lichened trunk with a flared base; no foliage traceable to it."
       ]
     },
     "primary:evidence_extractor": {
@@ -19,7 +19,7 @@
         {
           "subject_id": "foreground_tree",
           "kind": "standing_tree",
-          "description": "Single mature trunk, pale grey-silver, long and relatively smooth, becoming scaly and fissured lower down.",
+          "description": "Single mature trunk, heavily lichened, with a pronounced flare at the base.",
           "image_ids": [
             "img-1"
           ]
@@ -28,25 +28,25 @@
       "observations": [
         {
           "observation_id": "obs-1",
-          "feature": "bark.flake_geometry",
-          "value": "thin_irregular_edge_lifting",
+          "feature": "bark.lichen_cover",
+          "value": "extensive_foliose",
           "subject_id": "foreground_tree",
           "source": "image",
           "visibility": "clear",
           "reliability": "high",
           "image_id": "img-1",
-          "notes": "Plate edges lift clear of the trunk surface; read directly, not inferred from shading."
+          "notes": "Foliose lichen over most of the visible trunk; read directly."
         },
         {
           "observation_id": "obs-2",
-          "feature": "bark.surface_marks",
-          "value": "round_oval_scars",
+          "feature": "bark.buttressing",
+          "value": "pronounced_basal_flare",
           "subject_id": "foreground_tree",
           "source": "image",
           "visibility": "clear",
           "reliability": "medium",
           "image_id": "img-1",
-          "notes": "Several rounded scars distributed over the smoother upper trunk."
+          "notes": "Base widens sharply into the ground line."
         }
       ],
       "inferences": [],

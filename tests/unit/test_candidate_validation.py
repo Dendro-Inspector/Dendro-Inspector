@@ -11,6 +11,7 @@ from dendro_inspector.knowledge.candidate_validation import (
     validate_candidate_set_with_report,
 )
 from dendro_inspector.knowledge.evidence_hierarchy import EvidenceTier
+from dendro_inspector.knowledge.taxon_cards import card_value_vocabulary
 from dendro_inspector.schemas.candidates import Candidate, CandidateSet, SupportStrength
 from dendro_inspector.schemas.evidence import (
     AttachmentStatus,
@@ -715,3 +716,62 @@ class TestEvidenceContradictingACardsOwnStrongFeature:
 
         assert "fagus" not in cards_in_play(evidence, knowledge, ("log_1",))
         assert "picea" in cards_in_play(evidence, knowledge, ("log_1",))
+
+
+class TestAbiesClosesTheCaseBGap:
+    """The live case that could not be won, on the same evidence, with the card present.
+
+    Case ``20260510_100131`` photographed a mature trunk whose most fir-suggestive
+    characters — edge-lifting bark flakes and round-oval scars — no card in the pack could
+    represent, while the leading genus had no card at all. The run was unwinnable by
+    construction: it retrieved *Picea* on `bark.texture = fine_scales` and *Fagus* on
+    `trunk.form = straight_cylindrical`, then spent four model calls choosing between them.
+
+    A missing card is not a model failure and must not be scored as one.
+    """
+
+    def _case_b_evidence(self):
+        """The four observations that survived the trust boundary in the live run."""
+        return _packet(
+            _obs("obs-1", "bark.texture", "fine_scales"),
+            _obs("obs-2", "bark.flake_geometry", "thin_irregular_edge_lifting"),
+            _obs("obs-3", "bark.surface_marks", "round_oval_scars"),
+            _obs("obs-4", "trunk.form", "straight_cylindrical"),
+        )
+
+    def test_the_confusion_set_is_now_abies_against_picea(self, knowledge):
+        """The pair a dendrologist would actually weigh on this frame."""
+        in_play = set(cards_in_play(self._case_b_evidence(), knowledge, ("log_1",)))
+
+        assert "abies" in in_play
+        assert "picea" in in_play
+
+    def test_fagus_is_still_not_in_that_set(self, knowledge):
+        """Closing the coverage gap must not reopen the candidate the veto removed."""
+        in_play = set(cards_in_play(self._case_b_evidence(), knowledge, ("log_1",)))
+
+        assert "fagus" not in in_play
+
+    def test_the_bark_characters_are_no_longer_a_coverage_gap(self, knowledge):
+        """The two features the live run could not use are now card vocabulary."""
+        vocabulary = card_value_vocabulary(knowledge.taxa(knowledge.available_taxon_ids()))
+
+        assert "thin_irregular_edge_lifting" in vocabulary["bark.flake_geometry"]
+        assert "round_oval_scars" in vocabulary["bark.surface_marks"]
+
+    def test_needle_attachment_settles_the_pair_in_either_direction(self, knowledge):
+        """The follow-up photograph the run asked for now actually decides something.
+
+        Both cards name `needles.attachment` with different values, so one reading rules the
+        other genus out through the self-contradiction veto rather than leaving two weak
+        candidates to be argued over. That is the difference between a useful next photo and
+        an expensive one.
+        """
+        fir = _packet(_obs("obs-1", "needles.attachment", "single_on_disc_base"))
+        spruce = _packet(_obs("obs-1", "needles.attachment", "single_on_woody_peg"))
+
+        fir_in_play = set(cards_in_play(fir, knowledge, ("log_1",)))
+        spruce_in_play = set(cards_in_play(spruce, knowledge, ("log_1",)))
+
+        assert "abies" in fir_in_play and "picea" not in fir_in_play
+        assert "picea" in spruce_in_play and "abies" not in spruce_in_play

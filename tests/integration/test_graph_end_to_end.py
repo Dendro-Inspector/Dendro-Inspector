@@ -256,10 +256,15 @@ class TestKnowledgeCoverageGap:
     """The deterministic exit for a subject this knowledge base cannot describe.
 
     Shaped from live case ``20260510_100131``: a mature conifer trunk whose bark was read
-    clearly and confidently, but whose every diagnostic feature — edge-lifting flake
-    geometry, round-oval scars — is absent from every taxon card in this build. That run
-    detected the gap at its evidence gate and then spent five more model calls and three
-    more minutes arguing inside a card set that could not contain the answer.
+    clearly and confidently, but whose every diagnostic character was absent from every
+    taxon card in the build. That run detected the gap at its evidence gate and then spent
+    five more model calls and three more minutes arguing inside a card set that could not
+    contain the answer.
+
+    That case's own features now live on the ``abies`` card, which is what closing a
+    coverage gap means, so this fixture carries two other bark characters the pack still
+    cannot describe. See ``TestAbiesClosesTheCaseBGap`` for the other half — the same live
+    evidence, now resolvable.
 
     The fixture scripts only the planner and the extractor. The fake provider raises
     ``UnscriptedCallError`` on any call it was not given, so "no model call after the
@@ -307,8 +312,8 @@ class TestKnowledgeCoverageGap:
         result = run_scenario(standing_tree_case, self.SCENARIO)
 
         questions = " | ".join(result.state.decisions[0].unresolved_questions)
-        assert "bark.flake_geometry" in questions
-        assert "bark.surface_marks" in questions
+        assert "bark.lichen_cover" in questions
+        assert "bark.buttressing" in questions
 
     def test_the_photograph_is_not_blamed_for_a_knowledge_base_limit(
         self, standing_tree_case, run_scenario

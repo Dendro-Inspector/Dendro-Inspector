@@ -499,11 +499,17 @@ def test_every_genus_card_is_named_in_the_domain_prompt(repo_root: Path, knowled
     """Cards cite section 14 as their source; nothing checked that section 14 agrees.
 
     The manifest seals the prompt's bytes, not its agreement with the knowledge base, so a
-    genus could be added to either side and drift unnoticed. `larix` is the one documented
-    exception and says so in its own file header.
+    genus could be added to either side and drift unnoticed. Two cards are documented
+    exceptions and each says so in its own file header: `larix`, added to give the conifer
+    comparison a third member, and `abies`, added after a live case photographed a fir the
+    pack could not represent at all.
+
+    An exception is not a licence. Each must still be absent from the prompt — if the owner
+    later names one, the assertion below fails and the exception has to be retired with its
+    card header.
     """
     prompt = load_domain_prompt(repo_root / "prompts/domain/system-prompt.md").text
-    documented_absentees = {"larix"}
+    documented_absentees = {"larix", "abies"}
 
     for taxon_id in knowledge.available_taxon_ids():
         if "_" in taxon_id:
