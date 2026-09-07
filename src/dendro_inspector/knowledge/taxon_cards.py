@@ -18,7 +18,11 @@ from dendro_inspector.knowledge.evidence_hierarchy import (
     project_observation,
     tier_of_feature,
 )
-from dendro_inspector.schemas.evidence import EvidencePacket, Observation
+from dendro_inspector.schemas.evidence import (
+    EvidencePacket,
+    Observation,
+    is_positive_reading,
+)
 from dendro_inspector.schemas.taxon import FeatureExpectation, TaxonCard
 
 
@@ -33,6 +37,7 @@ class CardMatch:
     disqualifying_hits: tuple[str, ...]
     missing_for_high_confidence: tuple[str, ...]
     full_strong_hits: tuple[str, ...]
+    self_contradiction_hits: tuple[str, ...] = ()
 
     @property
     def has_contradiction(self) -> bool:
@@ -41,6 +46,11 @@ class CardMatch:
     @property
     def is_disqualified(self) -> bool:
         return bool(self.disqualifying_hits)
+
+    @property
+    def contradicts_own_card(self) -> bool:
+        """Whether the evidence disagrees with this card on a path the card calls decisive."""
+        return bool(self.self_contradiction_hits)
 
     @property
     def high_confidence_supported(self) -> bool:
@@ -59,6 +69,49 @@ def _matches(
             ):
                 hits.append(observation.observation_id)
     return tuple(hits)
+
+
+def self_contradiction_hits(
+    card: TaxonCard, observations: tuple[Observation, ...]
+) -> tuple[str, ...]:
+    """Evidence that disagrees with the card on a path the card itself calls decisive.
+
+    A card's ``strong_positive_features`` are its own statement of what this taxon looks
+    like. Reading that exact feature clearly and getting a *different* value is not the
+    absence of a hit — it is disagreement on the card's own terms, and the dendrological
+    reading is blunt: beech bark is smooth, this bark is scaly, therefore not beech.
+
+    Live case ``20260510_100131`` is why this exists. ``bark.texture = fine_scales`` sat in
+    the packet while ``fagus`` declares ``bark.texture: smooth_grey`` as strong-positive, and
+    ``fagus`` was admitted anyway — opened by ``trunk.form = straight_cylindrical``, a
+    supporting feature that describes most trees. It then travelled into four model calls,
+    roughly 260 seconds of a 354-second run, and the reviewers argued about a beech whose
+    own card the evidence already contradicted.
+
+    Distinct from ``contradictions``, which a card author writes out explicitly for another
+    taxon's features. This needs no new card data: it is already implied by every card that
+    names a strong positive.
+
+    Four things deliberately do **not** veto, because each is silence rather than
+    disagreement, and promoting silence into contradiction would abstain on nearly every
+    photograph:
+
+    * the card's strong path was never observed;
+    * it was observed with a value reporting a failure to read it
+      (:data:`~dendro_inspector.schemas.evidence.UNREADABLE_VALUES`) rather than a reading;
+    * the observation belongs to another subject — callers pass same-subject observations;
+    * the observation is not trusted positive evidence — callers filter that first.
+    """
+    declared: dict[str, set[str]] = {}
+    for expectation in card.strong_positive_features:
+        declared.setdefault(expectation.feature, set()).update(expectation.values)
+    return tuple(
+        observation.observation_id
+        for observation in observations
+        if observation.feature in declared
+        and is_positive_reading(observation.value)
+        and observation.value not in declared[observation.feature]
+    )
 
 
 def match_card(
@@ -97,6 +150,7 @@ def match_card(
         disqualifying_hits=disqualifying_hits,
         missing_for_high_confidence=missing,
         full_strong_hits=_matches(card.strong_positive_features, full_positive),
+        self_contradiction_hits=self_contradiction_hits(card, positive),
     )
 
 

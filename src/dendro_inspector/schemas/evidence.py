@@ -312,6 +312,30 @@ class ImageLimitation(Contract):
     notes: ShortText | None = None
 
 
+#: Values that report a failure to read a feature rather than a reading of it. An extractor
+#: that fills `bark.texture` with `not_resolvable` is saying "I looked and could not tell",
+#: which is silence on that feature — never a positive observation that disagrees with a
+#: card. Keeping these out of value comparisons is what stops absence of evidence from being
+#: promoted into evidence of absence.
+UNREADABLE_VALUES: frozenset[str] = frozenset(
+    {
+        "not_resolvable",
+        "unresolvable",
+        "not_assessable",
+        "not_visible",
+        "indeterminate",
+        "unknown",
+        "obscured",
+        "absent",
+    }
+)
+
+
+def is_positive_reading(value: str) -> bool:
+    """Whether an observation's value is an actual reading of the feature."""
+    return value not in UNREADABLE_VALUES
+
+
 class KnowledgeCoverage(Contract):
     """How much of one packet's trusted evidence the knowledge cards can represent.
 

@@ -51,18 +51,33 @@ def _card_is_in_play(card: TaxonCard, evidence: EvidencePacket, subject_id: str)
 
     Deliberately written against the packet rather than against a proposal: the point of N2
     is to decide which cards to show *before* a model has proposed anything.
+
+    Re-derived here rather than imported, so this stays an independent check of production
+    retrieval. That includes the self-contradiction rule: a card whose own strong-positive
+    path the evidence answers with a different value is not in play, however many of its
+    supporting features happen to match.
     """
+    declared_strong: dict[str, set[str]] = {}
+    for expectation in card.strong_positive_features:
+        declared_strong.setdefault(expectation.feature, set()).update(expectation.values)
+
     expectations = (*card.strong_positive_features, *card.supporting_features)
+    matched = False
     for observation in evidence.observations_for(subject_id):
         projection = project_evidence(evidence, observation.observation_id, subject_id)
         if not projection.supports_identification:
             continue
+        if (
+            observation.feature in declared_strong
+            and observation.value not in declared_strong[observation.feature]
+        ):
+            return False
         if any(
             observation.feature == expectation.feature and observation.value in expectation.values
             for expectation in expectations
         ):
-            return True
-    return False
+            matched = True
+    return matched
 
 
 def _cards_in_play(evidence: EvidencePacket, subject_id: str, knowledge: KnowledgeBase) -> set[str]:

@@ -12,6 +12,13 @@ get entries.
 
 ### Fixed
 
+- A taxon whose own decisive feature the photograph contradicts is no longer offered as a
+  candidate. When a card names a feature among its strong positives and that exact feature
+  is read clearly with a different value, the card is neither retrieved nor admitted, however
+  many of its general features match. Beech opened on "the trunk is straight and cylindrical"
+  while the same frame showed scaly bark and the beech card calls beech bark smooth; it then
+  reached four model calls. Silence on a decisive feature is still not disagreement with it,
+  so a bark photograph that simply cannot show needles keeps its usual candidates.
 - Extraction validates image references against the provider call's image scope and repairs
   invalid references within the existing retry budget. Explicit offline replay remains
   available for declared synthetic fixture images.

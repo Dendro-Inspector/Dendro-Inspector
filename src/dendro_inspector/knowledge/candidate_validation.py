@@ -7,12 +7,17 @@ from dataclasses import dataclass
 from dendro_inspector.knowledge.evidence_hierarchy import (
     EvidenceTier,
     is_colour_feature,
+    positive_observations_for,
     project_evidence,
     project_observation,
     resolve_evidence_observations,
 )
 from dendro_inspector.knowledge.loader import KnowledgeBase
-from dendro_inspector.knowledge.taxon_cards import match_card, missing_decisive_features
+from dendro_inspector.knowledge.taxon_cards import (
+    match_card,
+    missing_decisive_features,
+    self_contradiction_hits,
+)
 from dendro_inspector.schemas.candidates import (
     Candidate,
     CandidateSet,
@@ -70,25 +75,42 @@ def cards_in_play(
     """Retrieve cards any eligible subject could support before a model ranks them.
 
     Admission requires at least one exact, trusted, non-colour observation matching the
-    candidate's card. Inferences inherit their observations, so they cannot introduce a
-    surviving taxon outside this set. No proposal, expected answer or top-k limit is used.
+    candidate's card, and no trusted observation disagreeing with that card on a feature
+    path the card itself declares strong-positive. Inferences inherit their observations, so
+    they cannot introduce a surviving taxon outside this set. No proposal, expected answer
+    or top-k limit is used.
+
+    The second condition is why ``fagus`` is not retrieved for a scaly-barked trunk it was
+    previously shown for: see :func:`taxon_cards.self_contradiction_hits`.
+
+    Both conditions are evaluated **per subject**, then combined. Pooling every subject's
+    observations first would let one tree's bark veto a card another tree in the same frame
+    positively supports, which is the multi-subject bleed the packet's subject scoping
+    exists to prevent.
     """
-    observations = tuple(
-        observation
-        for observation in evidence.observations
-        if observation.subject_id in subject_ids
-        and not is_colour_feature(observation.feature)
-        and project_observation(observation).supports_identification
-    )
+    eligible: dict[str, tuple[Observation, ...]] = {
+        subject_id: tuple(
+            observation
+            for observation in evidence.observations
+            if observation.subject_id == subject_id
+            and not is_colour_feature(observation.feature)
+            and project_observation(observation).supports_identification
+        )
+        for subject_id in subject_ids
+    }
     return tuple(
         taxon_id
         for taxon_id in knowledge.available_taxon_ids()
         if (card := knowledge.try_taxon(taxon_id)) is not None
         and any(
-            _matches_expectation(
-                observation, (*card.strong_positive_features, *card.supporting_features)
+            not self_contradiction_hits(card, observations)
+            and any(
+                _matches_expectation(
+                    observation, (*card.strong_positive_features, *card.supporting_features)
+                )
+                for observation in observations
             )
-            for observation in observations
+            for observations in eligible.values()
         )
     )
 
@@ -182,8 +204,15 @@ def validate_candidate_set_with_report(
         )
         dropped.extend((*dropped_supporting, *dropped_contradicting))
 
-        if not supporting or _support_is_colour_only(
-            supporting, evidence, candidate_set.subject_id
+        if (
+            not supporting
+            or _support_is_colour_only(supporting, evidence, candidate_set.subject_id)
+            # Kept in step with `cards_in_play` deliberately. The retrieval filter is safe
+            # only while admission cannot keep a taxon retrieval would not have shown, and
+            # the contract test asserts exactly that containment.
+            or self_contradiction_hits(
+                card, positive_observations_for(evidence, candidate_set.subject_id)
+            )
         ):
             rejected.append(candidate.taxon)
             dropped.extend(supporting)

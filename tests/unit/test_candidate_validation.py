@@ -6,6 +6,7 @@ import pytest
 
 from dendro_inspector.knowledge.candidate_validation import (
     candidate_support_tier,
+    cards_in_play,
     validate_candidate_set,
     validate_candidate_set_with_report,
 )
@@ -518,3 +519,168 @@ class TestAdjudicatedSupportStrength:
         )
 
         assert report.demoted_scores == ()
+
+
+class TestEvidenceContradictingACardsOwnStrongFeature:
+    """A card the evidence already disagrees with must not be opened by a generic feature.
+
+    From live case ``20260510_100131``. The subject was a scaly-barked conifer trunk;
+    ``fagus`` was retrieved and admitted on ``trunk.form = straight_cylindrical`` — a
+    supporting feature that fits most trees — while the same packet carried
+    ``bark.texture = fine_scales`` and the ``fagus`` card declares
+    ``bark.texture: smooth_grey`` as strong-positive. Beech bark is smooth. That bark was
+    not. It still travelled into four model calls.
+    """
+
+    def test_fagus_is_not_admitted_from_a_cylindrical_trunk_alone(self, knowledge):
+        evidence = _packet(
+            _obs("obs-1", "bark.texture", "fine_scales"),
+            _obs("obs-2", "trunk.form", "straight_cylindrical"),
+        )
+        candidate_set = CandidateSet(
+            subject_id="log_1",
+            candidates=(
+                Candidate(
+                    taxon="fagus",
+                    resolution=Resolution.GENUS,
+                    score=SupportStrength.WEAK,
+                    rank=1,
+                    supporting_evidence_ids=("obs-2",),
+                ),
+            ),
+        )
+
+        result = validate_candidate_set_with_report(candidate_set, evidence, knowledge)
+
+        assert result.candidate_set.candidates == ()
+        assert "fagus" in result.rejected_taxa
+
+    def test_the_generic_feature_alone_would_otherwise_have_admitted_it(self, knowledge):
+        """Without the contradicting bark reading, trunk form still opens fagus.
+
+        Stated so the test above cannot pass for the wrong reason. This is the behaviour
+        being narrowed; if this case ever stops admitting fagus, the narrowing went further
+        than intended and the other test would no longer be evidence of anything.
+        """
+        evidence = _packet(_obs("obs-1", "trunk.form", "straight_cylindrical"))
+        candidate_set = CandidateSet(
+            subject_id="log_1",
+            candidates=(
+                Candidate(
+                    taxon="fagus",
+                    resolution=Resolution.GENUS,
+                    score=SupportStrength.WEAK,
+                    rank=1,
+                    supporting_evidence_ids=("obs-1",),
+                ),
+            ),
+        )
+
+        validated = validate_candidate_set(candidate_set, evidence, knowledge)
+
+        assert [candidate.taxon for candidate in validated.candidates] == ["fagus"]
+
+    def test_a_strong_positive_match_still_admits_normally(self, knowledge):
+        """The rule must not touch a card the evidence actually agrees with."""
+        evidence = _packet(_obs("obs-1", "bark.texture", "smooth_grey"))
+        candidate_set = CandidateSet(
+            subject_id="log_1",
+            candidates=(
+                Candidate(
+                    taxon="fagus",
+                    resolution=Resolution.GENUS,
+                    score=SupportStrength.MODERATE,
+                    rank=1,
+                    supporting_evidence_ids=("obs-1",),
+                ),
+            ),
+        )
+
+        validated = validate_candidate_set(candidate_set, evidence, knowledge)
+
+        assert [candidate.taxon for candidate in validated.candidates] == ["fagus"]
+
+    def test_a_card_whose_strong_path_was_never_observed_is_unaffected(self, knowledge):
+        """Picea survives the same frame, and should.
+
+        Its only strong feature is ``needles.attachment``, which this photograph does not
+        show at all. Silence on a decisive path is not disagreement with it — that
+        distinction is the whole rule, and collapsing it would abstain on every bark photo.
+        """
+        evidence = _packet(_obs("obs-1", "bark.texture", "fine_scales"))
+        candidate_set = CandidateSet(
+            subject_id="log_1",
+            candidates=(
+                Candidate(
+                    taxon="picea",
+                    resolution=Resolution.GENUS,
+                    score=SupportStrength.WEAK,
+                    rank=1,
+                    supporting_evidence_ids=("obs-1",),
+                ),
+            ),
+        )
+
+        validated = validate_candidate_set(candidate_set, evidence, knowledge)
+
+        assert [candidate.taxon for candidate in validated.candidates] == ["picea"]
+
+    # --- The four cases that must NOT veto. Each is silence, not disagreement, and
+    # --- promoting silence into contradiction would abstain on nearly every photograph.
+
+    def test_an_unreadable_value_is_silence_not_disagreement(self, knowledge):
+        """`bark.texture = not_resolvable` means "I looked and could not tell".
+
+        Treating it as a value that conflicts with `smooth_grey` would turn absence of
+        evidence into evidence of absence — the exact inversion this veto must not make.
+        """
+        evidence = _packet(
+            _obs("obs-1", "bark.texture", "not_resolvable"),
+            _obs("obs-2", "trunk.form", "straight_cylindrical"),
+        )
+
+        assert "fagus" in cards_in_play(evidence, knowledge, ("log_1",))
+
+    def test_an_untrusted_conflicting_observation_does_not_veto(self, knowledge):
+        """An obscured reading cannot carry positive support, so it cannot carry a veto."""
+        evidence = _packet(
+            _obs("obs-1", "bark.texture", "fine_scales", visibility=Visibility.OBSCURED),
+            _obs("obs-2", "trunk.form", "straight_cylindrical"),
+        )
+
+        assert "fagus" in cards_in_play(evidence, knowledge, ("log_1",))
+
+    def test_an_unobserved_decisive_path_does_not_veto(self, knowledge):
+        """Picea's only strong path is `needles.attachment`; a bark photo cannot show it."""
+        evidence = _packet(_obs("obs-1", "bark.texture", "fine_scales"))
+
+        assert "picea" in cards_in_play(evidence, knowledge, ("log_1",))
+
+    def test_one_tree_s_bark_does_not_veto_another_tree_s_card(self, knowledge):
+        """Two trunks in frame: the scaly one must not disqualify the smooth one.
+
+        `cards_in_play` accepts several subjects at once. Pooling their observations before
+        testing the veto let a conflict on one subject remove a card the other subject
+        positively supported.
+        """
+        evidence = EvidencePacket(
+            subjects=(Subject(subject_id="log_1"), Subject(subject_id="log_2")),
+            observations=(
+                _obs("obs-1", "bark.texture", "fine_scales", subject_id="log_1"),
+                _obs("obs-2", "bark.texture", "smooth_grey", subject_id="log_2"),
+            ),
+        )
+
+        assert "fagus" in cards_in_play(evidence, knowledge, ("log_1", "log_2"))
+        assert "fagus" in cards_in_play(evidence, knowledge, ("log_2",))
+        assert "fagus" not in cards_in_play(evidence, knowledge, ("log_1",))
+
+    def test_retrieval_and_admission_agree(self, knowledge):
+        """Retrieval must not offer a card admission would reject, or vice versa."""
+        evidence = _packet(
+            _obs("obs-1", "bark.texture", "fine_scales"),
+            _obs("obs-2", "trunk.form", "straight_cylindrical"),
+        )
+
+        assert "fagus" not in cards_in_play(evidence, knowledge, ("log_1",))
+        assert "picea" in cards_in_play(evidence, knowledge, ("log_1",))
