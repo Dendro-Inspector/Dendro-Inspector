@@ -24,6 +24,26 @@ class DecisionStatus(StrEnum):
     INSUFFICIENT_EVIDENCE = "insufficient_evidence"
     CONFLICTING_EVIDENCE = "conflicting_evidence"
     UNSUPPORTED_USER_CLAIM = "unsupported_user_claim"
+    KNOWLEDGE_COVERAGE_GAP = "knowledge_coverage_gap"
+    """The photograph showed diagnostic features this knowledge base cannot represent.
+
+    Distinct from ``INSUFFICIENT_EVIDENCE`` because the two blame different things. "Not
+    enough evidence" asks the user for a better photograph; this says the reference data,
+    not the photograph, is where the run stopped. Telling someone their frame was weak when
+    the frame was fine and the cards were missing sends them to re-shoot a photograph that
+    was never the problem.
+    """
+
+
+#: Statuses that carry no taxonomic claim. One definition, because every consumer that
+#: asks "was this a weak result?" — response format, tone, abstention scoring — must answer
+#: the same way, and a new weak status added to only three of them is a silent divergence.
+NO_CLAIM_STATUSES: frozenset[DecisionStatus] = frozenset(
+    {
+        DecisionStatus.INSUFFICIENT_EVIDENCE,
+        DecisionStatus.KNOWLEDGE_COVERAGE_GAP,
+    }
+)
 
 
 class UserClaimVerdict(StrEnum):

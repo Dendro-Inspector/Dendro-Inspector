@@ -109,6 +109,17 @@ def simple_case() -> CaseInput:
     )
 
 
+@pytest.fixture
+def standing_tree_case() -> CaseInput:
+    """A standing-tree case with no location, so no regional prior applies."""
+    return CaseInput(
+        case_id="test-case",
+        images=(ImageRef(image_id="img-1", path=Path("examples/log.jpg")),),
+        user_text="What tree is this?",
+        declared_object_type=DeclaredObjectType.STANDING_TREE,
+    )
+
+
 DETACHABLE_FAMILIES = (
     "leaf",
     "leaflet",

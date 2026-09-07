@@ -14,7 +14,7 @@ import dendro_inspector.nodes._support as support
 from dendro_inspector.config import Role
 from dendro_inspector.graph.definition import NodeName
 from dendro_inspector.graph.projections import build_review_projection
-from dendro_inspector.graph.state import GraphState
+from dendro_inspector.graph.state import EvidenceQualityReport, GraphState
 from dendro_inspector.knowledge.candidate_validation import validate_candidate_set
 from dendro_inspector.knowledge.evidence_hierarchy import EvidenceTier
 from dendro_inspector.knowledge.taxon_cards import (
@@ -33,6 +33,7 @@ from dendro_inspector.schemas.evidence import (
     AttachmentStatus,
     EvidencePacket,
     ImageLimitation,
+    KnowledgeCoverage,
     Observation,
     ObservationSource,
     Reliability,
@@ -193,6 +194,77 @@ def test_weak_result_reports_visible_evidence_and_scoped_limitations(simple_case
     assert "crown_not_visible" in result.limitations
     assert "img-1: no scale reference in the frame" in result.limitations
     assert "other_subject_only" not in result.limitations
+
+
+def test_a_knowledge_coverage_gap_is_told_to_the_reader(simple_case):
+    """The reader is told when the limit was the reference data, not their photograph.
+
+    Live photo 058 asked for another conifer shoot while the run already held, in hand, the
+    fact that two of that trunk's bark features were describable by no card in the build.
+    The reader was told the frame was weak. The frame was not the weak part.
+    """
+    decision = FinalDecision(
+        subject_id="tree_1",
+        status=DecisionStatus.INSUFFICIENT_EVIDENCE,
+    )
+    evidence = EvidencePacket(
+        subjects=(Subject(subject_id="tree_1", image_ids=("img-1",)),),
+        observations=(_observation("obs-1"),),
+    )
+    state = GraphState(
+        case=simple_case,
+        evidence=evidence,
+        quality=EvidenceQualityReport(
+            sufficient=True,
+            usable_subject_ids=("tree_1",),
+            unmatchable_evidence_ids=("obs-1",),
+            knowledge_coverage=KnowledgeCoverage(
+                observations_total=1,
+                potential_gap_evidence_ids=("obs-1",),
+                features_absent_from_all_cards=("bark.flake_geometry",),
+            ),
+        ),
+    )
+
+    gapped = build_result(decision, "en", state)
+    clean = build_result(
+        decision,
+        "en",
+        state.evolve(
+            quality=EvidenceQualityReport(sufficient=True, usable_subject_ids=("tree_1",))
+        ),
+    )
+
+    phrase = "not described by any card in this knowledge base"
+    assert any(phrase in item for item in gapped.limitations)
+    assert not any(phrase in item for item in clean.limitations)
+
+
+def test_colour_only_unmatchable_evidence_does_not_claim_a_coverage_gap(simple_case):
+    """Colour is unmatchable by design. Reporting it as a gap would cry wolf on every run."""
+    decision = FinalDecision(subject_id="tree_1", status=DecisionStatus.PROBABLE)
+    state = GraphState(
+        case=simple_case,
+        evidence=EvidencePacket(
+            subjects=(Subject(subject_id="tree_1", image_ids=("img-1",)),),
+            observations=(_observation("obs-1"),),
+        ),
+        quality=EvidenceQualityReport(
+            sufficient=True,
+            usable_subject_ids=("tree_1",),
+            unmatchable_evidence_ids=("obs-1",),
+            knowledge_coverage=KnowledgeCoverage(
+                observations_total=1,
+                intentionally_weak_evidence_ids=("obs-1",),
+            ),
+        ),
+    )
+
+    result = build_result(decision, "en", state)
+
+    assert not any(
+        "not described by any card in this knowledge base" in item for item in result.limitations
+    )
 
 
 def _call(node: str, response_model: str = "ReviewResult") -> ProviderCallRecord:

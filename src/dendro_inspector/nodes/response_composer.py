@@ -21,6 +21,7 @@ from dendro_inspector.graph.state import GraphState
 from dendro_inspector.knowledge.evidence_hierarchy import EvidenceTier
 from dendro_inspector.nodes._support import locale_of
 from dendro_inspector.schemas.decisions import (
+    NO_CLAIM_STATUSES,
     CaseResponse,
     DecisionStatus,
     FinalDecision,
@@ -44,6 +45,7 @@ _STATUS_PHRASE: dict[str, dict[DecisionStatus, str]] = {
         DecisionStatus.INSUFFICIENT_EVIDENCE: "Недостатньо доказів",
         DecisionStatus.CONFLICTING_EVIDENCE: "Докази суперечать одне одному",
         DecisionStatus.UNSUPPORTED_USER_CLAIM: "Заявлений об'єкт не підтверджується фото",
+        DecisionStatus.KNOWLEDGE_COVERAGE_GAP: "Довідник не покриває цей випадок",
     },
     "en": {
         DecisionStatus.IDENTIFIED: "Identified",
@@ -51,6 +53,7 @@ _STATUS_PHRASE: dict[str, dict[DecisionStatus, str]] = {
         DecisionStatus.INSUFFICIENT_EVIDENCE: "Insufficient evidence",
         DecisionStatus.CONFLICTING_EVIDENCE: "Conflicting evidence",
         DecisionStatus.UNSUPPORTED_USER_CLAIM: "Stated object type not supported by the image",
+        DecisionStatus.KNOWLEDGE_COVERAGE_GAP: "This knowledge base does not cover this subject",
     },
 }
 
@@ -100,6 +103,10 @@ _REASON_PHRASE: dict[str, dict[str, str]] = {
         "scale_absent": "у кадрі немає масштабного орієнтира",
         "scale_approximate": "масштаб у кадрі лише приблизний",
         "abstained": ("система утрималася від сильнішого висновку; цей результат навмисно ширший"),
+        "knowledge_coverage_gap": (
+            "частина побачених ознак не описана жодною карткою цього довідника — "
+            "це межа бази знань, а не якості фото"
+        ),
     },
     "en": {
         "possible_multiple_taxa": "the frame may hold more than one taxon",
@@ -107,6 +114,10 @@ _REASON_PHRASE: dict[str, dict[str, str]] = {
         "scale_approximate": "scale in the frame is only approximate",
         "abstained": (
             "the run abstained; this verdict is deliberately broader than the evidence earned"
+        ),
+        "knowledge_coverage_gap": (
+            "some features visible in this photograph are not described by any card in this "
+            "knowledge base — a limit of the reference data, not of the photograph"
         ),
     },
 }
@@ -166,7 +177,7 @@ _LABELS: dict[str, dict[str, str]] = {
 
 def select_format(decision: FinalDecision, tone: ToneMode) -> ResponseFormat:
     """Pick the domain prompt's response shape for this decision."""
-    if decision.status is DecisionStatus.INSUFFICIENT_EVIDENCE:
+    if decision.status in NO_CLAIM_STATUSES:
         return ResponseFormat.WEAK_PHOTO
     match decision.user_claim_verdict:
         case UserClaimVerdict.NOT_PROVIDED:
@@ -296,6 +307,19 @@ def _limitations(
     through :func:`render_reason_code`, because this tuple is printed to a person.
     """
     items = [render_reason_code("abstained", locale)] if decision.abstained else []
+    # Ahead of the reviewer prose, and deliberately: the eight-item cap below means a late
+    # entry is a dropped entry, and this is the one limitation a reader cannot infer from
+    # the photograph they took. Everything else here describes their image; this describes
+    # ours. Skipped when the gap *is* the verdict, where the status line already says so and
+    # the photo planner names the features — this line is for the run that did reach a claim
+    # while part of its evidence sat outside the cards, and nothing else would mention it.
+    coverage = state.quality.knowledge_coverage if state and state.quality else None
+    if (
+        coverage is not None
+        and coverage.has_potential_gap
+        and decision.status is not DecisionStatus.KNOWLEDGE_COVERAGE_GAP
+    ):
+        items.append(render_reason_code("knowledge_coverage_gap", locale))
     items.extend(decision.unresolved_questions)
     if state is None or state.evidence is None:
         return tuple(items)

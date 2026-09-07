@@ -77,6 +77,18 @@ get entries.
 
 ### Added
 
+- A subject whose resolvable features no taxon card describes now ends in its own outcome,
+  `knowledge_coverage_gap`, instead of being reported as a weak photograph. The verdict
+  names the knowledge base rather than the frame, lists the features that fell outside it,
+  and still asks for the next useful photograph. The run stops at the evidence gate for that
+  subject: with no card the admission boundary could open, the candidate generator has
+  nothing to rank, so no candidate, reviewer or arbiter call is made. A gap alongside a card
+  that can still be ranked changes nothing — both conditions are required.
+- Run traces record what a photograph showed that no knowledge card can represent, split
+  into features no card declares at all and features whose value no card lists. Recorded on
+  every run, including runs with no gap, so the figure can be compared across a suite.
+  Readers are told about it too: a verdict limited by the reference data now says so, rather
+  than leaving the impression that the photograph was at fault.
 - Run traces record how each verdict was composed: every resolution bound considered and
   the one that bound, every confidence step applied or skipped, and where a rerank came
   from. They also record when a user's claim named a taxon only to deny it, since the

@@ -15,7 +15,7 @@ from pydantic import Field
 from dendro_inspector.schemas.base import Contract, FeaturePath, Identifier, ShortText, ValueToken
 from dendro_inspector.schemas.candidates import CandidateSet
 from dendro_inspector.schemas.decisions import AuthorityCheckTrace, CaseResponse, FinalDecision
-from dendro_inspector.schemas.evidence import EvidencePacket
+from dendro_inspector.schemas.evidence import EvidencePacket, KnowledgeCoverage
 from dendro_inspector.schemas.input import CaseInput
 from dendro_inspector.schemas.reviews import CorrectionDirective, ReviewResult, ReviewSynthesis
 from dendro_inspector.schemas.taxon import Resolution
@@ -71,6 +71,23 @@ class EvidenceQualityReport(Contract):
             "Trusted observations no knowledge card can match on feature and value. They "
             "would have supported a candidate but cannot, so a high count measures card "
             "coverage rather than photograph quality."
+        ),
+    )
+    coverage_gap_subject_ids: tuple[Identifier, ...] = Field(
+        default=(),
+        description=(
+            "Subjects held back because no card could be opened and part of their evidence "
+            "was outside the card vocabulary. The graph stops before the candidate "
+            "generator for these: a model asked to rank an empty card set cannot return "
+            "anything the admission boundary would keep."
+        ),
+    )
+    knowledge_coverage: KnowledgeCoverage | None = Field(
+        default=None,
+        description=(
+            "The classified form of `unmatchable_evidence_ids`, separating features no "
+            "card author could recover from ones they could. Carried on the report so the "
+            "trace, the reader-facing limitations and the log all read one measurement."
         ),
     )
 

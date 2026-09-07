@@ -19,6 +19,7 @@ from dendro_inspector.schemas.decisions import (
     DecisionDerivation,
     FinalDecision,
 )
+from dendro_inspector.schemas.evidence import KnowledgeCoverage
 from dendro_inspector.schemas.taxon import Confidence, Resolution
 
 GRAPH_VERSION = "0.9.0"
@@ -140,6 +141,16 @@ class RunTrace(Contract):
     )
     events: tuple[NodeEvent, ...] = ()
     component_projections: tuple[ComponentProjection, ...] = ()
+    knowledge_coverage: KnowledgeCoverage | None = Field(
+        default=None,
+        description=(
+            "What this run observed that no knowledge card can represent. Recorded on every "
+            "run, including clean ones, so a suite can aggregate it — a field that appears "
+            "only when something is wrong cannot be a denominator. Without it a failed case "
+            "cannot be attributed between a model that did not see and cards that could not "
+            "accept what it saw."
+        ),
+    )
     retries: int = Field(default=0, ge=0)
     graph_retry_count: int = Field(
         default=0,

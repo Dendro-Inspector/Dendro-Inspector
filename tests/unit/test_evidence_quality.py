@@ -145,6 +145,105 @@ def test_vocabulary_diagnostic_separates_weak_colour_from_possible_card_gap():
     assert tuple(observation.observation_id for observation in possible_gaps) == ("obs-structure",)
 
 
+#: A vocabulary covering one of the two features the packets below observe. Written out
+#: rather than loaded from the cards so the test states its own premise: these assertions
+#: are about the classification, not about which taxa happen to ship in this build.
+_VOCABULARY: dict[str, frozenset[str]] = {
+    "needles.fascicles": frozenset({"some_value"}),
+    "bark.texture": frozenset({"fine_scales"}),
+}
+
+
+def test_coverage_names_the_feature_no_card_declares():
+    """The Case B signal: an observation whose feature path appears on no card at all."""
+    report = assess_quality(
+        _packet(
+            _obs("obs-1", "needles.fascicles"),
+            _obs("obs-2", "bark.flake_geometry"),
+        ),
+        min_observations=2,
+        require_non_colour=True,
+        vocabulary=_VOCABULARY,
+    )
+
+    coverage = report.knowledge_coverage
+    assert coverage is not None
+    assert coverage.has_potential_gap
+    assert coverage.potential_gap_evidence_ids == ("obs-2",)
+    assert coverage.features_absent_from_all_cards == ("bark.flake_geometry",)
+    assert coverage.features_with_unknown_values == ()
+    assert coverage.observations_total == 2
+
+
+def test_coverage_distinguishes_an_unknown_value_from_an_unknown_feature():
+    """A card knows the feature but not this value — a rule gap, not a missing card."""
+    report = assess_quality(
+        _packet(
+            _obs("obs-1", "needles.fascicles"),
+            _obs("obs-2", "bark.texture"),
+        ),
+        min_observations=2,
+        require_non_colour=True,
+        vocabulary=_VOCABULARY,
+    )
+
+    coverage = report.knowledge_coverage
+    assert coverage is not None
+    assert coverage.features_with_unknown_values == ("bark.texture",)
+    assert coverage.features_absent_from_all_cards == ()
+
+
+def test_coverage_is_recorded_even_when_nothing_is_missing():
+    """A clean run still records a measurement, so a suite can use it as a denominator."""
+    report = assess_quality(
+        _packet(_obs("obs-1", "needles.fascicles"), _obs("obs-2", "needles.fascicles")),
+        min_observations=2,
+        require_non_colour=True,
+        vocabulary=_VOCABULARY,
+    )
+
+    coverage = report.knowledge_coverage
+    assert coverage is not None
+    assert not coverage.has_potential_gap
+    assert coverage.unmatchable_total == 0
+
+
+def test_colour_is_never_reported_as_a_recoverable_coverage_gap():
+    """Colour is unmatchable by policy. Counting it would inflate the gap with noise."""
+    report = assess_quality(
+        _packet(_obs("obs-1", "needles.fascicles"), _obs("obs-2", "bark.colour")),
+        min_observations=1,
+        require_non_colour=False,
+        vocabulary=_VOCABULARY,
+    )
+
+    coverage = report.knowledge_coverage
+    assert coverage is not None
+    assert coverage.intentionally_weak_evidence_ids == ("obs-2",)
+    assert not coverage.has_potential_gap
+
+
+def test_coverage_split_partitions_the_unmatchable_ids():
+    """The classification is a partition of the raw list, not a second measurement."""
+    report = assess_quality(
+        _packet(
+            _obs("obs-1", "needles.fascicles"),
+            _obs("obs-2", "bark.colour"),
+            _obs("obs-3", "bark.flake_geometry"),
+        ),
+        min_observations=1,
+        require_non_colour=False,
+        vocabulary=_VOCABULARY,
+    )
+
+    coverage = report.knowledge_coverage
+    assert coverage is not None
+    assert set(coverage.intentionally_weak_evidence_ids) | set(
+        coverage.potential_gap_evidence_ids
+    ) == set(report.unmatchable_evidence_ids)
+    assert coverage.unmatchable_total == len(report.unmatchable_evidence_ids)
+
+
 def test_corroborated_material_group_is_not_blanket_rejected():
     packet = _packet(
         _obs("obs-1", "bark.texture", subject_id="pile"),
@@ -232,3 +331,91 @@ class TestEvidenceHierarchy:
         )
         assert not report.sufficient
         assert "no_evidence_above_context" in report.insufficient_reasons
+
+
+def test_a_coverage_gap_alone_does_not_stop_the_run():
+    """Both halves of the gate are required.
+
+    A run can hold a coverage gap and still have a card worth ranking — that is the common
+    case, and stopping there would abort every case that merely observed one unusual
+    feature. The exit is for the run where there is nothing left to rank.
+    """
+    report = assess_quality(
+        _packet(
+            _obs("obs-1", "needles.fascicles"),
+            _obs("obs-2", "bark.flake_geometry"),
+        ),
+        min_observations=2,
+        require_non_colour=True,
+        vocabulary=_VOCABULARY,
+        cards_available=lambda _subject_id: True,
+    )
+
+    assert report.knowledge_coverage is not None
+    assert report.knowledge_coverage.has_potential_gap
+    assert report.sufficient
+    assert report.coverage_gap_subject_ids == ()
+    assert "knowledge_coverage_gap" not in report.insufficient_reasons
+
+
+def test_an_empty_card_set_alone_does_not_claim_a_coverage_gap():
+    """No card matched and nothing was outside the vocabulary either.
+
+    That is ordinary insufficiency — the frame showed nothing the cards care about — and it
+    must keep its existing reason rather than being relabelled as a knowledge-base limit.
+    """
+    report = assess_quality(
+        _packet(_obs("obs-1", "needles.fascicles"), _obs("obs-2", "needles.fascicles")),
+        min_observations=2,
+        require_non_colour=True,
+        vocabulary=_VOCABULARY,
+        cards_available=lambda _subject_id: False,
+    )
+
+    assert report.coverage_gap_subject_ids == ()
+    assert "knowledge_coverage_gap" not in report.insufficient_reasons
+
+
+def test_the_gate_fires_only_for_the_subject_that_owns_the_gap():
+    """Two trees, one describable. The describable one must survive.
+
+    A run-wide gate would throw away a perfectly good verdict on a second subject because
+    the first subject's bark happened to be unusual.
+    """
+    packet = EvidencePacket(
+        subjects=(Subject(subject_id="log_1"), Subject(subject_id="log_2")),
+        observations=(
+            _obs("obs-1", "bark.flake_geometry", subject_id="log_1"),
+            _obs("obs-2", "bark.flake_geometry", subject_id="log_1"),
+            _obs("obs-3", "needles.fascicles", subject_id="log_2"),
+            _obs("obs-4", "needles.fascicles", subject_id="log_2"),
+        ),
+    )
+
+    report = assess_quality(
+        packet,
+        min_observations=2,
+        require_non_colour=True,
+        vocabulary=_VOCABULARY,
+        cards_available=lambda subject_id: subject_id == "log_2",
+    )
+
+    assert report.coverage_gap_subject_ids == ("log_1",)
+    assert report.usable_subject_ids == ("log_2",)
+    assert report.sufficient
+
+
+def test_without_a_card_predicate_the_gate_is_inert():
+    """Callers with no knowledge base to consult keep the previous behaviour exactly."""
+    report = assess_quality(
+        _packet(
+            _obs("obs-1", "bark.flake_geometry"),
+            _obs("obs-2", "bark.surface_marks"),
+        ),
+        min_observations=2,
+        require_non_colour=True,
+        vocabulary=_VOCABULARY,
+    )
+
+    assert report.coverage_gap_subject_ids == ()
+    assert "knowledge_coverage_gap" not in report.insufficient_reasons

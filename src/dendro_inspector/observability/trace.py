@@ -25,6 +25,7 @@ from dendro_inspector.observability.events import (
 )
 from dendro_inspector.observability.logging import get_logger
 from dendro_inspector.schemas.decisions import AuthorityCheckStatus
+from dendro_inspector.schemas.evidence import KnowledgeCoverage
 from dendro_inspector.schemas.review_context import ReviewProjection
 from dendro_inspector.schemas.taxon import Confidence, Resolution
 
@@ -66,6 +67,7 @@ class TraceRecorder:
         self._component_projections: tuple[ComponentProjection, ...] = ()
         self._decision_derivations: dict[str, DecisionDerivation] = {}
         self._prompt: PromptMetadata | None = None
+        self._knowledge_coverage: KnowledgeCoverage | None = None
         self._retries = 0
         self._escalation_triggered = False
         self._user_claim_negated = False
@@ -159,6 +161,14 @@ class TraceRecorder:
     def record_arbiter_used(self) -> None:
         self._arbiter_used = True
 
+    def record_knowledge_coverage(self, coverage: KnowledgeCoverage) -> None:
+        """Record what the cards could not represent, so a suite can attribute a failure.
+
+        Recorded even when the coverage is complete. "No gap" and "nobody measured" are
+        different facts, and only one of them can be aggregated.
+        """
+        self._knowledge_coverage = coverage
+
     def record_negated_claim(self) -> None:
         """The user named a taxon only to deny it, so no version was offered to rule on."""
         self._user_claim_negated = True
@@ -238,6 +248,7 @@ class TraceRecorder:
             providers=dict(self._providers),
             events=tuple(self._events),
             component_projections=self._component_projections,
+            knowledge_coverage=self._knowledge_coverage,
             retries=self._retries,
             graph_retry_count=self._retries,
             correction_changed_outcome=(any(changed_values) if changed_values else None),

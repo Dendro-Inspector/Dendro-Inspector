@@ -312,6 +312,47 @@ class ImageLimitation(Contract):
     notes: ShortText | None = None
 
 
+class KnowledgeCoverage(Contract):
+    """How much of one packet's trusted evidence the knowledge cards can represent.
+
+    A gap here measures the cards, never the photograph or the model. An observation that
+    lands outside the card vocabulary was seen, believed and carried — and then had nowhere
+    to go, because no card declares the feature it names.
+
+    The split matters more than the count. Colour and the project's explicitly
+    insufficient-alone features are *meant* to be unmatchable, so counting them as coverage
+    gaps would inflate the number with entries no card edit could ever recover. Only
+    :attr:`potential_gap_evidence_ids` names evidence a card author could act on.
+    """
+
+    observations_total: int = Field(default=0, ge=0)
+    intentionally_weak_evidence_ids: tuple[Identifier, ...] = Field(
+        default=(),
+        description="Unmatchable by existing policy — colour and insufficient-alone features.",
+    )
+    potential_gap_evidence_ids: tuple[Identifier, ...] = Field(
+        default=(),
+        description="Unmatchable evidence a card author could recover by editing the cards.",
+    )
+    features_absent_from_all_cards: tuple[FeaturePath, ...] = Field(
+        default=(),
+        description="Gap features no card declares at all. A missing card or a missing rule.",
+    )
+    features_with_unknown_values: tuple[FeaturePath, ...] = Field(
+        default=(),
+        description="Gap features some card declares, with a value no card lists.",
+    )
+
+    @property
+    def unmatchable_total(self) -> int:
+        return len(self.intentionally_weak_evidence_ids) + len(self.potential_gap_evidence_ids)
+
+    @property
+    def has_potential_gap(self) -> bool:
+        """Whether a card author could recover any of this run's discarded evidence."""
+        return bool(self.potential_gap_evidence_ids)
+
+
 class EvidencePacket(Contract):
     """Everything the graph believes it can see, with referential integrity enforced."""
 

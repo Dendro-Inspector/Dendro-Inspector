@@ -219,3 +219,85 @@ class TestTermination:
         assert result.state.retries <= 1
         assert len(result.trace.events) < 32
         assert result.state.final_response is not None
+
+
+class TestKnowledgeCoverageGap:
+    """The deterministic exit for a subject this knowledge base cannot describe.
+
+    Shaped from live case ``20260510_100131``: a mature conifer trunk whose bark was read
+    clearly and confidently, but whose every diagnostic feature — edge-lifting flake
+    geometry, round-oval scars — is absent from every taxon card in this build. That run
+    detected the gap at its evidence gate and then spent five more model calls and three
+    more minutes arguing inside a card set that could not contain the answer.
+
+    The fixture scripts only the planner and the extractor. The fake provider raises
+    ``UnscriptedCallError`` on any call it was not given, so "no model call after the
+    coverage decision" is enforced by construction here, not merely asserted.
+    """
+
+    SCENARIO = "knowledge-coverage-gap"
+
+    def test_no_model_is_called_after_the_coverage_decision(self, standing_tree_case, run_scenario):
+        result = run_scenario(standing_tree_case, self.SCENARIO)
+
+        nodes = result.trace.executed_nodes
+        assert nodes == (
+            "input_guard",
+            "planner",
+            "evidence_extractor",
+            "evidence_quality",
+            "photo_planner",
+            "response_composer",
+            "tone_layer",
+        )
+
+        called = {event.node for event in result.trace.events if event.provider_calls}
+        assert called == {"planner", "evidence_extractor"}, (
+            f"a model was called after the deterministic coverage decision: "
+            f"{sorted(called - {'planner', 'evidence_extractor'})}"
+        )
+        assert not result.trace.arbiter_used
+
+    def test_the_gap_becomes_the_verdict_rather_than_a_weak_candidate(
+        self, standing_tree_case, run_scenario
+    ):
+        result = run_scenario(standing_tree_case, self.SCENARIO)
+
+        decision = result.state.decisions[0]
+        assert decision.status is DecisionStatus.KNOWLEDGE_COVERAGE_GAP
+        assert decision.resolution is Resolution.UNKNOWN
+        assert decision.selected_taxon is None
+        assert result.state.quality.coverage_gap_subject_ids == ("foreground_tree",)
+
+    def test_the_reader_learns_which_features_fell_outside_the_cards(
+        self, standing_tree_case, run_scenario
+    ):
+        """A gap the reader cannot name is a gap nobody can close."""
+        result = run_scenario(standing_tree_case, self.SCENARIO)
+
+        questions = " | ".join(result.state.decisions[0].unresolved_questions)
+        assert "bark.flake_geometry" in questions
+        assert "bark.surface_marks" in questions
+
+    def test_the_photograph_is_not_blamed_for_a_knowledge_base_limit(
+        self, standing_tree_case, run_scenario
+    ):
+        """The frame was fine. Telling the user otherwise sends them to re-shoot it."""
+        result = run_scenario(standing_tree_case, self.SCENARIO)
+
+        reasons = result.state.quality.insufficient_reasons
+        assert "knowledge_coverage_gap" in reasons
+        assert "no_usable_subject" not in reasons
+        assert "too_few_resolvable_observations" not in reasons
+
+    def test_a_next_photograph_is_still_requested(self, standing_tree_case, run_scenario):
+        """An exit that returns nothing actionable is a shrug with extra steps."""
+        result = run_scenario(standing_tree_case, self.SCENARIO)
+
+        assert result.state.decisions[0].best_next_photo is not None
+
+    def test_it_terminates_and_burns_no_retries(self, standing_tree_case, run_scenario):
+        result = run_scenario(standing_tree_case, self.SCENARIO)
+
+        assert result.state.retries == 0
+        assert result.state.final_response is not None

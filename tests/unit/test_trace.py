@@ -227,6 +227,22 @@ def test_every_final_decision_has_a_derivation(simple_case, run_scenario):
     }
 
 
+def test_knowledge_coverage_reaches_the_trace(simple_case, run_scenario):
+    """A suite scorer must be able to tell a model miss from a knowledge-base gap.
+
+    Before this field existed the measurement was made, classified and written to a log
+    line, then dropped: the run artifact a scorer reads carried no trace of it, so every
+    coverage gap looked exactly like a model that saw nothing useful.
+    """
+    result = run_scenario(simple_case, "primary-pass")
+
+    coverage = result.trace.knowledge_coverage
+
+    assert coverage is not None, "a run that measured coverage must record it"
+    assert coverage.observations_total == len(result.state.evidence.observations)
+    assert coverage.unmatchable_total == len(result.state.quality.unmatchable_evidence_ids)
+
+
 REVIEWERS = ("botanical_reviewer", "confusion_reviewer", "confidence_reviewer")
 
 

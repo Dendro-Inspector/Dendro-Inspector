@@ -1,0 +1,68 @@
+{
+  "scenario": "knowledge-coverage-gap",
+  "description": "Mature conifer trunk photographed from live case 20260510_100131. The bark is read clearly and confidently, but every diagnostic feature it yields is outside this build's card vocabulary, so no candidate can be opened. Only the planner and the extractor are scripted: any model call after the deterministic coverage decision raises UnscriptedCallError, which is how this fixture proves the early exit.",
+  "responses": {
+    "primary:planner": {
+      "target_features": [
+        "bark.flake_geometry",
+        "bark.surface_marks",
+        "needles.attachment"
+      ],
+      "expect_multiple_subjects": false,
+      "bark_only_input": true,
+      "notes": [
+        "Pale silver-grey trunk with a scaly, cracked lower section; overhead conifer foliage cannot be traced to it."
+      ]
+    },
+    "primary:evidence_extractor": {
+      "subjects": [
+        {
+          "subject_id": "foreground_tree",
+          "kind": "standing_tree",
+          "description": "Single mature trunk, pale grey-silver, long and relatively smooth, becoming scaly and fissured lower down.",
+          "image_ids": [
+            "img-1"
+          ]
+        }
+      ],
+      "observations": [
+        {
+          "observation_id": "obs-1",
+          "feature": "bark.flake_geometry",
+          "value": "thin_irregular_edge_lifting",
+          "subject_id": "foreground_tree",
+          "source": "image",
+          "visibility": "clear",
+          "reliability": "high",
+          "image_id": "img-1",
+          "notes": "Plate edges lift clear of the trunk surface; read directly, not inferred from shading."
+        },
+        {
+          "observation_id": "obs-2",
+          "feature": "bark.surface_marks",
+          "value": "round_oval_scars",
+          "subject_id": "foreground_tree",
+          "source": "image",
+          "visibility": "clear",
+          "reliability": "medium",
+          "image_id": "img-1",
+          "notes": "Several rounded scars distributed over the smoother upper trunk."
+        }
+      ],
+      "inferences": [],
+      "absent_features": [],
+      "image_limitations": [
+        {
+          "image_id": "img-1",
+          "scale": "absent",
+          "notes": "No scale reference; trunk diameter cannot be measured."
+        }
+      ],
+      "context_limitations": [
+        "no_location"
+      ],
+      "possible_multiple_taxa": false,
+      "instruction_like_content_detected": false
+    }
+  }
+}

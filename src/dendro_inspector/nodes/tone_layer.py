@@ -27,8 +27,8 @@ from dendro_inspector.graph.executor import NodeContext
 from dendro_inspector.graph.state import GraphState
 from dendro_inspector.prompts.library import PersonalityProfile
 from dendro_inspector.schemas.decisions import (
+    NO_CLAIM_STATUSES,
     CaseResponse,
-    DecisionStatus,
     ToneMode,
     assert_tone_preserved_decision,
 )
@@ -39,9 +39,9 @@ FALLBACK_LOCALE = "uk"
 
 
 def _insufficient(response: CaseResponse) -> bool:
-    return all(
-        decision.status is DecisionStatus.INSUFFICIENT_EVIDENCE for decision in response.decisions
-    ) and bool(response.decisions)
+    return all(decision.status in NO_CLAIM_STATUSES for decision in response.decisions) and bool(
+        response.decisions
+    )
 
 
 def apply_tone(response: CaseResponse, profile: PersonalityProfile) -> CaseResponse:
