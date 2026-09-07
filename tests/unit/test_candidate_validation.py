@@ -164,7 +164,13 @@ def test_non_attached_component_evidence_stays_context_only(knowledge, attachmen
     assert validated.candidates == ()
 
 
-def test_partial_matching_support_is_admitted_at_a_capped_tier(knowledge):
+def test_a_partial_but_confidently_read_feature_keeps_its_family_tier(knowledge):
+    """Framing is not the same limit as doubt.
+
+    This assertion used to read `EvidenceTier.BARK`: a partial view demoted a fascicle
+    count to bark-equivalent authority even when the extractor said it was sure of the
+    reading. A needle bundle at the edge of the frame is still foliage.
+    """
     evidence = _packet(
         _obs(
             "o1",
@@ -172,6 +178,31 @@ def test_partial_matching_support_is_admitted_at_a_capped_tier(knowledge):
             "two",
             visibility=Visibility.PARTIAL,
             reliability=Reliability.HIGH,
+        )
+    )
+    candidate_set = CandidateSet(subject_id="log_1", candidates=(_candidate("pinus", 1, "o1"),))
+
+    validated = validate_candidate_set(candidate_set, evidence, knowledge)
+
+    assert validated.leader is not None
+    assert candidate_support_tier(validated.leader, evidence, "log_1") is EvidenceTier.FOLIAGE
+
+
+def test_a_partial_view_without_a_confident_reading_stays_capped(knowledge):
+    """`PARTIAL` at anything below HIGH keeps the old bark-equivalent cap.
+
+    `PARTIAL` carries two meanings this schema cannot separate: "unambiguous but not
+    filling the frame" and "partly hidden, so the reading is incomplete". The reliability
+    the extractor attached is the only thing that distinguishes them, so a half-seen
+    decisive feature it was merely moderately sure of does not get promoted.
+    """
+    evidence = _packet(
+        _obs(
+            "o1",
+            "needles.fascicles",
+            "two",
+            visibility=Visibility.PARTIAL,
+            reliability=Reliability.MEDIUM,
         )
     )
     candidate_set = CandidateSet(subject_id="log_1", candidates=(_candidate("pinus", 1, "o1"),))

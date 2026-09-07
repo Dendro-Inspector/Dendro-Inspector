@@ -29,6 +29,7 @@ from dendro_inspector.schemas.evidence import (
     EvidencePacket,
     Observation,
     ObservationSource,
+    Reliability,
     Subject,
     Visibility,
 )
@@ -50,6 +51,7 @@ def _obs(
     value: str,
     *,
     visibility=Visibility.CLEAR,
+    reliability=Reliability.MEDIUM,
     attached: bool = True,
 ) -> Observation:
     return Observation(
@@ -60,6 +62,7 @@ def _obs(
         source=ObservationSource.IMAGE,
         image_id="img-1",
         visibility=visibility,
+        reliability=reliability,
         attachment=_attachment(feature, attached),
     )
 
@@ -122,6 +125,7 @@ class TestCardMatching:
         assert not match.has_contradiction
 
     def test_partial_strong_feature_cannot_unlock_high_confidence(self, knowledge):
+        """A half-seen decisive feature the extractor was only moderately sure of."""
         match = match_card(
             knowledge.taxon("pinus"),
             _packet(
@@ -137,6 +141,31 @@ class TestCardMatching:
         assert match.strong_hits == ("obs-1",)
         assert match.full_strong_hits == ()
         assert not match.high_confidence_supported
+
+    def test_a_partial_but_confidently_read_strong_feature_does_unlock_it(self, knowledge):
+        """The other meaning of `PARTIAL`: unambiguous, just not filling the frame.
+
+        This is the first link in the birch chain. `bark.pattern` read at high reliability
+        through a partial view used to be reported as a decisive feature "not visible",
+        in the same answer that cited that observation as its evidence.
+        """
+        match = match_card(
+            knowledge.taxon("pinus"),
+            _packet(
+                _obs(
+                    "obs-1",
+                    "needles.fascicles",
+                    "two",
+                    visibility=Visibility.PARTIAL,
+                    reliability=Reliability.HIGH,
+                )
+            ),
+            "log_1",
+        )
+        assert match.strong_hits == ("obs-1",)
+        assert match.full_strong_hits == ("obs-1",)
+        assert match.high_confidence_supported
+        assert match.missing_for_high_confidence == ()
 
     def test_declared_contradiction_is_detected(self, knowledge):
         """Single needles on a woody peg disqualify Pinus, per its own card."""

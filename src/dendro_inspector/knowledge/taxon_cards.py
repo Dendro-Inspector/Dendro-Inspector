@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from dendro_inspector.knowledge.evidence_hierarchy import (
     EvidenceTier,
     contextual_observations_for,
-    full_positive_observations_for,
+    decisive_observations_for,
     positive_observations_for,
     project_observation,
     tier_of_feature,
@@ -122,15 +122,19 @@ def match_card(
     """Match one subject's evidence against a taxon card at the shared trust boundary.
 
     Positive hits must be trusted image evidence. Contextual observations stay available for
-    contradiction detection, while high-confidence requirements require full (not capped)
-    positive support.
+    contradiction detection, while high-confidence requirements require decisive support —
+    reliably read, whether or not the feature filled the frame.
     """
     positive = positive_observations_for(evidence, subject_id)
-    full_positive = full_positive_observations_for(evidence, subject_id)
+    # Decisive requirements ask about the *reading*, not the framing. A feature read at
+    # normal or high reliability through a partial view settles the requirement; only doubt
+    # about the reading itself leaves it open. Checking the strictest band here is what made
+    # a clearly-read bark pattern appear as support and as "not visible" in one answer.
+    decisive = decisive_observations_for(evidence, subject_id)
     missing = tuple(
         requirement
         for requirement in card.required_for_high_confidence
-        if not _requirement_satisfied(requirement, full_positive)
+        if not _requirement_satisfied(requirement, decisive)
     )
     contextual = contextual_observations_for(evidence, subject_id)
     contradiction_hits = _matches(card.contradictions, contextual)
@@ -149,7 +153,7 @@ def match_card(
         contradiction_hits=contradiction_hits,
         disqualifying_hits=disqualifying_hits,
         missing_for_high_confidence=missing,
-        full_strong_hits=_matches(card.strong_positive_features, full_positive),
+        full_strong_hits=_matches(card.strong_positive_features, decisive),
         self_contradiction_hits=self_contradiction_hits(card, positive),
     )
 

@@ -41,7 +41,7 @@ from dendro_inspector.knowledge.evidence_hierarchy import (
     bark_only,
     confidence_band,
     confidence_ceiling,
-    full_positive_observations_for,
+    decisive_observations_for,
     resolution_ceiling,
 )
 from dendro_inspector.knowledge.loader import KnowledgeBase
@@ -89,6 +89,15 @@ from dendro_inspector.schemas.taxon import (
 )
 
 NODE = "final_decision"
+
+#: How an unmet decisive requirement is described to the reader.
+#:
+#: Deliberately not "not visible". That phrasing is a claim about the photograph, and it was
+#: wrong whenever the feature was in frame but failed a trust gate — the same answer would
+#: quote that observation as its support two lines earlier. "Not established" describes what
+#: the gate actually decided, and does not send the user to re-shoot a photograph that
+#: already showed the thing.
+MISSING_DECISIVE_PHRASE = "Decisive feature not established"
 
 #: Candidate support strength maps to a confidence ceiling, never to certainty.
 _SCORE_TO_CONFIDENCE: dict[SupportStrength, Confidence] = {
@@ -787,7 +796,7 @@ def _next_photo(
     vocabulary = card_value_vocabulary(candidate_cards)
     resolved = frozenset(
         observation.feature
-        for observation in full_positive_observations_for(evidence, candidate_set.subject_id)
+        for observation in decisive_observations_for(evidence, candidate_set.subject_id)
         if observation.value in vocabulary.get(observation.feature, frozenset())
     )
     comparison_cards = ctx.knowledge.comparisons_for(taxa)
@@ -834,7 +843,7 @@ def _unresolved(
             "be different taxa."
         )
     questions.extend(
-        f"Decisive feature not visible: {item}" for item in leader.missing_decisive_features
+        f"{MISSING_DECISIVE_PHRASE}: {item}" for item in leader.missing_decisive_features
     )
     questions.extend(
         finding.summary

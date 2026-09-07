@@ -22,6 +22,9 @@ from dendro_inspector.knowledge.taxon_cards import (
     unmatchable_observations,
 )
 from dendro_inspector.nodes.evidence_quality import assess
+from dendro_inspector.nodes.final_decision import (
+    MISSING_DECISIVE_PHRASE as _MISSING_DECISIVE_PHRASE,
+)
 from dendro_inspector.nodes.final_decision import decide_subject
 from dendro_inspector.nodes.response_composer import build_result, render_human_readable
 from dendro_inspector.observability.events import ProviderCallRecord
@@ -818,3 +821,15 @@ def test_bark_only_decision_has_no_attachment_sensitivity_or_confidence_boost(
     assert decision.critical_evidence_ids == ()
     assert decision.selected_taxon == "betula"
     assert decision.confidence is Confidence.LOW
+
+
+def test_an_untrusted_reading_is_not_reported_as_an_invisible_feature():
+    """`observed but not trusted` and `not visible` are different claims.
+
+    A run once told the reader "Decisive feature not visible: bark.pattern_or_leaf" three
+    lines under "bark.pattern = white_papery_with_black_marks (high reliability)". The
+    feature was visible. It had failed a trust gate. Saying "not visible" sends the user to
+    re-shoot a photograph that already showed the thing.
+    """
+    assert "not visible" not in _MISSING_DECISIVE_PHRASE
+    assert "not established" in _MISSING_DECISIVE_PHRASE

@@ -12,6 +12,16 @@ get entries.
 
 ### Fixed
 
+- How much of the frame a feature filled and how much the reading is trusted are no longer
+  the same thing. A decisive feature read at high reliability through a partial view now
+  satisfies a card's requirement and keeps its own evidence tier, instead of being demoted
+  to bark-equivalent authority. Below high reliability a partial view stays capped as before,
+  because `partial` covers both "unambiguous but not filling the frame" and "partly hidden,
+  so the reading is incomplete" and only the attached reliability tells them apart.
+- An unmet decisive requirement is described as "not established" rather than "not visible".
+  The old wording was a claim about the photograph, and it was wrong whenever the feature was
+  in frame but failed a trust gate — the same answer quoted that observation as its support
+  two lines earlier, and sent the reader to re-shoot an image that already showed the thing.
 - A taxon whose own decisive feature the photograph contradicts is no longer offered as a
   candidate. When a card names a feature among its strong positives and that exact feature
   is read clearly with a different value, the card is neither retrieved nor admitted, however
