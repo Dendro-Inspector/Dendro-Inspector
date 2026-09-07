@@ -23,13 +23,14 @@ from dendro_inspector.knowledge.evidence_hierarchy import (
 )
 from dendro_inspector.knowledge.taxon_cards import (
     card_value_vocabulary,
+    requirement_selectors,
     unmatchable_observations,
 )
 from dendro_inspector.nodes.evidence_quality import assess
+from dendro_inspector.nodes.final_decision import MISSING_DECISIVE_PHRASE, decide_subject
 from dendro_inspector.nodes.final_decision import (
     MISSING_DECISIVE_PHRASE as _MISSING_DECISIVE_PHRASE,
 )
-from dendro_inspector.nodes.final_decision import decide_subject
 from dendro_inspector.nodes.response_composer import build_result, render_human_readable
 from dendro_inspector.observability.events import ProviderCallRecord
 from dendro_inspector.observability.trace import TraceRecorder
@@ -887,3 +888,66 @@ def test_an_untrusted_reading_is_not_reported_as_an_invisible_feature():
     """
     assert "not visible" not in _MISSING_DECISIVE_PHRASE
     assert "not established" in _MISSING_DECISIVE_PHRASE
+
+
+def test_the_answer_never_cites_a_feature_as_support_and_calls_it_unestablished(
+    simple_case, node_context, knowledge
+):
+    """The Case A self-contradiction, asserted on the composed answer rather than a constant.
+
+    The live run printed "Decisive feature not visible: bark.pattern_or_leaf" three lines
+    under "bark.pattern = white_papery_with_black_marks (high reliability)" in its evidence
+    list. Both statements were about the same observation, and they could not both be true.
+
+    Written as an invariant over the whole answer rather than as an expected string, so it
+    keeps holding when the wording, the requirement grammar or the trust bands change.
+    """
+    evidence = _bark_only_packet()
+    state, validated = _betula_state(simple_case, evidence, knowledge)
+
+    decision = decide_subject(state, node_context, validated)
+
+    cited = {item.split(" = ", maxsplit=1)[0] for item in decision.supporting_evidence}
+    assert cited, "the fixture must produce cited support for this to mean anything"
+
+    unestablished = [
+        question
+        for question in decision.unresolved_questions
+        if question.startswith(MISSING_DECISIVE_PHRASE)
+    ]
+    for question in unestablished:
+        token = question.split(": ", maxsplit=1)[1]
+        for selector in (part for alt in requirement_selectors(token) for part in alt):
+            assert not any(
+                feature == selector or feature.startswith(f"{selector}.") for feature in cited
+            ), (
+                f"the answer cites {selector!r} as evidence and reports it as unestablished: "
+                f"{question!r}"
+            )
+
+
+def test_the_case_a_birch_answer_is_no_longer_pinned_at_the_floor(
+    simple_case, node_context, knowledge
+):
+    """The whole chain the two live birch runs failed, in one assertion set.
+
+    Live run: genus Betula at 50-69/100, a decisive feature reported as not visible, and a
+    request for another bark macro. Every one of those was the pipeline rather than the
+    model, and each had a separate cause — the collapsed trust bands, the unconditional
+    bark ceiling, and a follow-up list consulted in order.
+    """
+    evidence = _bark_only_packet()
+    state, validated = _betula_state(simple_case, evidence, knowledge)
+
+    decision = decide_subject(state, node_context, validated)
+
+    assert decision.selected_taxon == "betula"
+    assert decision.resolution is Resolution.GENUS
+    assert decision.confidence is one_band_stronger(confidence_ceiling(EvidenceTier.BARK))
+    assert not [
+        question
+        for question in decision.unresolved_questions
+        if question.startswith(MISSING_DECISIVE_PHRASE)
+    ]
+    assert decision.best_next_photo is not None
+    assert decision.best_next_photo.target == "leaf_upper_macro"

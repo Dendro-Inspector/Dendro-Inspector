@@ -540,21 +540,57 @@ currently carries `placeholder_content: true`.
    positive and earns nothing, and generic deep fissures earn nothing. Gates: all five green,
    `pytest` 862 passed, 24/24 eval cases, every metric unchanged.
 
-5. **Add `abies.yaml`,** register it in the Eastern Europe pack, **and extend the feature
-   vocabulary** to cover `bark.flake_geometry` and `bark.surface_marks`. Without the third
-   part, the first two change nothing (see B2).
+5. **Add `abies.yaml`, register it regionally, extend the feature vocabulary.** —
+   **LANDED 2026-09-08** (`35e8643`). All three parts, since the first two alone change
+   nothing (B2). The card follows the `larix` precedent — the domain prompt does not name
+   this genus either — with `source_type: inferred`, unreviewed, placeholder, and a header
+   saying why it exists. The prompt-coverage contract test now carries two documented
+   absentees and still asserts each is genuinely absent.
 
-6. **Make follow-up requests information-gain aware.** Do not request another bark photograph
-   when bark is already present at full trust; request the tier that would actually move the
-   decision.
+   *Abies* and *Picea* deliberately name the same `needles.attachment` path with different
+   values (flat round scar against woody peg), so with the self-contradiction veto one
+   reading of that feature rules the other genus out rather than leaving two weak candidates
+   to argue over. That is what makes the follow-up photograph the live run asked for worth
+   taking. Bark characters are supporting features only. Confusions are symmetric, so
+   *Picea* and *Pinus* gained *Abies* in return.
 
-7. **Add both cases as regression tests.**
-   - *Birch pair:* must reach at least *Betula* at genus; family-level abstention is a
-     failure; the decisive-feature limitation must not contradict the cited support.
-   - *Photo 058:* `unknown` remains acceptable; overhead needles must not be attached to the
-     foreground trunk; a connected conifer shoot must be requested; *Fagus* must not be
-     admitted on trunk form alone; once `abies.yaml` exists, the system must surface
-     *Abies* ↔ *Picea*.
+6. **Make follow-up requests information-gain aware.** — **LANDED 2026-09-08** (`832bd37`).
+   The existing filter asked whether a target's features were already resolved; a bark macro
+   with one unanswered bark feature survived it. The new question is whether answering could
+   change anything: a target whose every declared feature sits at or below the tier this
+   subject already reached **at decisive trust** ranks behind one that reaches higher.
+
+   Measuring at decisive trust is what keeps it an information-gain rule rather than a ban
+   on bark requests — `light-trunk-birch-001` holds no decisive evidence, so a better
+   photograph of its bark stays first. Saturated targets are reordered, never removed: if
+   the redundant target is the only one on offer, a redundant question beats no question.
+
+7. **Both cases as regressions.** — **LANDED**, across items 1b–6 rather than as one commit.
+   - *Birch:* reaches *Betula* at genus; confidence asserted as exactly one band above the
+     bark ceiling, derived from the ceiling and the ladder rather than hard-coded; the
+     decisive-feature limitation is gone; the next photograph is a leaf. Plus an invariant
+     over the whole composed answer — no feature may be cited as support and reported
+     unestablished — written as a property rather than an expected string so it survives
+     changes to wording, requirement grammar or trust bands.
+   - *Photo 058:* the coverage-gap early exit is enforced by construction (an unscripted
+     model call raises); *Fagus* is not admitted on trunk form alone, in either direction;
+     *Abies* ↔ *Picea* is the confusion set on the live evidence; and needle attachment now
+     settles that pair either way.
+
+## What Case A now returns
+
+The chain the two live birch runs failed, on the same evidence, after items 3 and 4:
+
+| | live run | now |
+|---|---|---|
+| verdict | *Betula*, genus | *Betula*, genus |
+| confidence | 50–69/100 | 70–84/100 |
+| decisive feature | "not visible: `bark.pattern_or_leaf`" | satisfied; no such limitation |
+| next photograph | `bark_macro_mid_trunk` | `leaf_upper_macro` |
+
+Still conservative — one band above the floor, genus only, on bark alone — and no longer
+pinned there by arithmetic. This assessment put genus *Betula* at ~90–94/100; the system
+says 70–84. That remaining distance is the bark ceiling doing its job, not a defect.
 
 ## Recommendation on Golden-100
 
@@ -684,7 +720,7 @@ policy to observed system behaviour.
 Reviewed and accepted. Recorded decisions:
 
 - Status board: **1 ✅ · 1b ✅ · 2 strong-only ❌ rejected by measurement · 2 replacement
-  (self-contradiction veto) ✅ · 3 ✅ · 4 ✅ · 5–7 open.** Item 4 follows item 3 deliberately:
+  (self-contradiction veto) ✅ · 3 ✅ · 4 ✅ · 5 ✅ · 6 ✅ · 7 ✅.** All items dispositioned. Item 4 follows item 3 deliberately:
   the bark exemption has to build on corrected trust semantics, not on the collapsed
   `PARTIAL`/`LOW` bucket.
 - Execution order confirmed as **1 → 1b → 2 → 3 → 4 → 5 → 6 → 7**. Structural blockers are
