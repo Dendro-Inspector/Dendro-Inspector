@@ -453,6 +453,28 @@ def confidence_ceiling(tier: EvidenceTier) -> Confidence:
     return _CONFIDENCE_CEILING[tier]
 
 
+#: Feature families this module places at bark tier. `schemas.taxon` mirrors this set to
+#: validate card-declared bark exemptions without importing from `knowledge`; a contract
+#: test asserts the two are equal.
+BARK_TIER_FAMILIES: frozenset[str] = frozenset(
+    family for family, tier in _FAMILY_TIERS if tier is EvidenceTier.BARK
+)
+
+
+def one_band_stronger(confidence: Confidence) -> Confidence:
+    """Step exactly one confidence band up. ``HIGH`` is the ceiling and stays there.
+
+    Deliberately one band and no more. The bark exemption exists so a genuinely
+    diagnostic bark pattern is not pinned at the bottom of the scale; it does not exist to
+    let bark reach the top of it.
+    """
+    match confidence:
+        case Confidence.LOW:
+            return Confidence.MEDIUM
+        case _:
+            return Confidence.HIGH
+
+
 def confidence_band(confidence: Confidence, tier: EvidenceTier) -> str:
     """Render confidence on the domain prompt's X/100 scale, as a band.
 

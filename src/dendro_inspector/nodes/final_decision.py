@@ -42,10 +42,15 @@ from dendro_inspector.knowledge.evidence_hierarchy import (
     confidence_band,
     confidence_ceiling,
     decisive_observations_for,
+    one_band_stronger,
     resolution_ceiling,
 )
 from dendro_inspector.knowledge.loader import KnowledgeBase
-from dendro_inspector.knowledge.taxon_cards import card_value_vocabulary, match_card
+from dendro_inspector.knowledge.taxon_cards import (
+    bark_exemption_hits,
+    card_value_vocabulary,
+    match_card,
+)
 from dendro_inspector.nodes.photo_planner import (
     attachment_request,
     choose_request,
@@ -558,6 +563,7 @@ def resolve_confidence(
     card: TaxonCard | None,
     evidence: EvidencePacket,
     tier: EvidenceTier,
+    resolution: Resolution = Resolution.GENUS,
 ) -> tuple[Confidence, tuple[ConfidenceStep, ...]]:
     """Compose the confidence band and the ordered ledger of every step considered.
 
@@ -590,13 +596,34 @@ def resolve_confidence(
         )
 
     # The evidence hierarchy ceiling comes first and is not negotiable. Bark caps at low
-    # however characteristic it looks — FAILURE 8.
+    # however characteristic it looks — FAILURE 8 — with one narrow, card-declared escape
+    # below.
     tier_cap = confidence_ceiling(tier)
     capped = confidence_rank(tier_cap) < confidence_rank(confidence)
     before = confidence
     if capped:
         confidence = tier_cap
     step("tier_cap", before, confidence, applied=capped)
+
+    # The bark exemption. Three conditions, all required: the tier is bark, the claim is no
+    # narrower than genus, and the card itself declares this exact bark value diagnostic
+    # with a reliably-read observation to match. It lifts the ceiling by exactly one band,
+    # which is the difference between "a birch, and I can say so" and "a birch, pinned at
+    # the bottom of the scale because bark is bark".
+    exempt_ids: tuple[str, ...] = ()
+    if (
+        card is not None
+        and tier is EvidenceTier.BARK
+        and resolution_rank(resolution) <= resolution_rank(Resolution.GENUS)
+    ):
+        exempt_ids = bark_exemption_hits(card, evidence, subject_id)
+    if exempt_ids:
+        raised = one_band_stronger(tier_cap)
+        before = confidence
+        lifts = confidence_rank(raised) > confidence_rank(confidence)
+        if lifts:
+            confidence = raised
+        step("bark_exemption", before, confidence, applied=lifts)
 
     if card is not None:
         match = match_card(card, evidence, subject_id)
@@ -961,7 +988,7 @@ def decide_subject_base(
 
     resolution = selected.resolution
     confidence, confidence_steps = resolve_confidence(
-        state, subject_id, leader, card, evidence, tier
+        state, subject_id, leader, card, evidence, tier, resolution
     )
     keep(derivation.model_copy(update={"confidence_steps": confidence_steps}))
     verdict = rule_on_user_claim(state, ctx, subject_id, reranked, evidence, selected.taxon_id)

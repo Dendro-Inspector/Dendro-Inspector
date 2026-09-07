@@ -16,7 +16,11 @@ from dendro_inspector.graph.definition import NodeName
 from dendro_inspector.graph.projections import build_review_projection
 from dendro_inspector.graph.state import EvidenceQualityReport, GraphState
 from dendro_inspector.knowledge.candidate_validation import validate_candidate_set
-from dendro_inspector.knowledge.evidence_hierarchy import EvidenceTier
+from dendro_inspector.knowledge.evidence_hierarchy import (
+    EvidenceTier,
+    confidence_ceiling,
+    one_band_stronger,
+)
 from dendro_inspector.knowledge.taxon_cards import (
     card_value_vocabulary,
     unmatchable_observations,
@@ -587,14 +591,21 @@ def test_bark_evidence_satisfies_the_bark_limb_of_a_requirement(
     ), decision.unresolved_questions
 
 
-def test_a_satisfied_requirement_does_not_lift_the_bark_ceiling(
+def test_a_diagnostic_bark_pattern_lifts_the_ceiling_by_one_band_and_no_further(
     simple_case, node_context, knowledge
 ):
-    """The requirement fix must change one field, not the verdict.
+    """The whole birch chain, end to end, on the evidence a real photograph produced.
 
-    Bark caps confidence at low and resolution at genus however characteristic it looks
-    (FAILURE 8). If correcting the token had turned this photograph into a high-confidence
-    species claim, the fix would have traded a false limitation for a false certainty.
+    `white_papery_with_black_marks` read at high reliability satisfies Betula's
+    `bark.pattern_or_leaf` requirement and earns the card-declared bark exemption, so this
+    trunk is no longer mechanically pinned at the bottom of the scale. This assertion read
+    `Confidence.LOW` until the exemption existed, and that was the defect: the card called
+    this pattern decisive while the ceiling said no bark could ever exceed `low`, so a
+    correctly-identified birch could not be reported above 50-69/100 whatever it showed.
+
+    The rest of the guard is unchanged and matters more than the lift. One band, never two;
+    genus, never species. Trading a false limitation for a false certainty would be the
+    worse outcome, and FAILURE 8 is about the certainty.
     """
     evidence = _bark_only_packet()
     state, validated = _betula_state(simple_case, evidence, knowledge)
@@ -603,8 +614,10 @@ def test_a_satisfied_requirement_does_not_lift_the_bark_ceiling(
 
     assert decision.selected_taxon == "betula"
     assert decision.resolution is Resolution.GENUS
-    assert decision.confidence is Confidence.LOW
     assert decision.evidence_tier == int(EvidenceTier.BARK)
+    # Exactly one band above the bark default, derived rather than hard-coded, so a change
+    # to either the ceiling or the ladder shows up here instead of silently agreeing.
+    assert decision.confidence is one_band_stronger(confidence_ceiling(EvidenceTier.BARK))
 
 
 def test_a_resolved_bark_character_is_not_photographed_again(simple_case, node_context, knowledge):
@@ -820,7 +833,10 @@ def test_bark_only_decision_has_no_attachment_sensitivity_or_confidence_boost(
     assert decision.evidence_authority_sensitive is False
     assert decision.critical_evidence_ids == ()
     assert decision.selected_taxon == "betula"
-    assert decision.confidence is Confidence.LOW
+    # Medium since the card-declared bark exemption landed. What this test guards is that
+    # unattached foliage contributed nothing to it — the band comes from the bark rule, not
+    # from leaves that could belong to the neighbouring tree.
+    assert decision.confidence is Confidence.MEDIUM
 
 
 def test_an_untrusted_reading_is_not_reported_as_an_invisible_feature():

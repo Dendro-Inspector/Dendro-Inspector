@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+from pydantic import ValidationError
 
 from dendro_inspector.knowledge.comparison_cards import (
     decisive_features_between,
@@ -19,6 +20,7 @@ from dendro_inspector.knowledge.regional_packs import (
     unlikely_in_region,
 )
 from dendro_inspector.knowledge.taxon_cards import (
+    bark_exemption_hits,
     card_value_vocabulary,
     match_card,
     requirement_selectors,
@@ -470,3 +472,173 @@ class TestRegionalPriors:
 
     def test_priors_apply_when_a_location_is_supplied(self, knowledge):
         assert likely_in_region(knowledge.region(), "pinus", "Kyiv Oblast, Ukraine")
+
+
+class TestCardDeclaredBarkExemption:
+    """The narrow escape from the unconditional bark ceiling.
+
+    The ceiling and the cards were in direct conflict: Betula declares
+    `bark.pattern = white_papery_with_black_marks` a strong positive and accepts
+    `bark.pattern_or_leaf` for high confidence, while the ceiling said no bark observation
+    could exceed `low`. A correctly-identified birch could not be reported above 50-69/100
+    whatever the photograph showed, and no model change could alter that.
+    """
+
+    def test_a_declared_diagnostic_bark_value_earns_the_exemption(self, knowledge):
+        evidence = _packet(
+            _obs(
+                "obs-1",
+                "bark.pattern",
+                "white_papery_with_black_marks",
+                reliability=Reliability.HIGH,
+            )
+        )
+
+        assert bark_exemption_hits(knowledge.taxon("betula"), evidence, "log_1") == ("obs-1",)
+
+    def test_it_survives_a_partial_view_read_confidently(self, knowledge):
+        """The whole birch chain: partial framing, high reliability, requirement satisfied."""
+        evidence = _packet(
+            _obs(
+                "obs-1",
+                "bark.pattern",
+                "white_papery_with_black_marks",
+                visibility=Visibility.PARTIAL,
+                reliability=Reliability.HIGH,
+            )
+        )
+        card = knowledge.taxon("betula")
+
+        assert match_card(card, evidence, "log_1").missing_for_high_confidence == ()
+        assert bark_exemption_hits(card, evidence, "log_1") == ("obs-1",)
+
+    def test_a_partial_view_read_without_confidence_earns_nothing(self, knowledge):
+        """The exemption consumes the corrected trust policy instead of restating it."""
+        evidence = _packet(
+            _obs(
+                "obs-1",
+                "bark.pattern",
+                "white_papery_with_black_marks",
+                visibility=Visibility.PARTIAL,
+                reliability=Reliability.MEDIUM,
+            )
+        )
+
+        assert bark_exemption_hits(knowledge.taxon("betula"), evidence, "log_1") == ()
+
+    def test_a_strong_positive_bark_feature_alone_earns_nothing(self, knowledge):
+        """Fagus declares `bark.texture = smooth_grey` strong, and gets no exemption.
+
+        Appearing among a card's strong positives is not the assertion. The card has to say
+        this exact value is diagnostic enough to lift a confidence ceiling, and only Betula
+        says that in this pack.
+        """
+        evidence = _packet(
+            _obs("obs-1", "bark.texture", "smooth_grey", reliability=Reliability.HIGH)
+        )
+        card = knowledge.taxon("fagus")
+
+        assert match_card(card, evidence, "log_1").strong_hits == ("obs-1",)
+        assert bark_exemption_hits(card, evidence, "log_1") == ()
+
+    def test_generic_rough_bark_earns_nothing(self, knowledge):
+        """ "Definitely an oak, from the bark" stays capped. That is FAILURE 8."""
+        evidence = _packet(
+            _obs(
+                "obs-1",
+                "bark.texture",
+                "deep_longitudinal_fissures",
+                reliability=Reliability.HIGH,
+            )
+        )
+
+        assert bark_exemption_hits(knowledge.taxon("quercus"), evidence, "log_1") == ()
+
+    def test_exactly_one_card_in_this_pack_declares_an_exemption(self, knowledge):
+        """A count, so a careless card edit shows up as a failure rather than a surprise."""
+        declaring = {
+            taxon_id
+            for taxon_id in knowledge.available_taxon_ids()
+            if (card := knowledge.try_taxon(taxon_id)) is not None and card.diagnostic_bark_features
+        }
+
+        assert declaring == {"betula"}
+
+
+class TestBarkExemptionDeclarationIsValidated:
+    @staticmethod
+    def _card(
+        strong: tuple[FeatureExpectation, ...],
+        diagnostic: tuple[FeatureExpectation, ...],
+    ) -> TaxonCard:
+        return TaxonCard(
+            taxon_id="test_taxon",
+            display_name="Test taxon",
+            native_resolution=Resolution.GENUS,
+            supported_resolution=(Resolution.GENUS,),
+            strong_positive_features=strong,
+            diagnostic_bark_features=diagnostic,
+            provenance=Provenance(source="test fixture", source_type=SourceType.INFERRED),
+        )
+
+    def test_a_non_bark_feature_is_refused(self):
+        """A leaf exemption would lift a ceiling that was never the bark ceiling."""
+        leaf = (FeatureExpectation(feature="leaf.shape", values=("small_triangular_serrate",)),)
+
+        with pytest.raises(ValidationError, match="must name bark-tier features"):
+            self._card(leaf, leaf)
+
+    def test_a_value_the_card_does_not_call_strong_is_refused(self):
+        """A card cannot exempt evidence it does not otherwise treat as decisive."""
+        with pytest.raises(ValidationError, match="must also appear in"):
+            self._card(
+                (FeatureExpectation(feature="bark.pattern", values=("white_papery",)),),
+                (FeatureExpectation(feature="bark.pattern", values=("something_else",)),),
+            )
+
+    def test_a_bark_value_the_card_does_call_strong_is_accepted(self):
+        declared = (FeatureExpectation(feature="bark.pattern", values=("white_papery",)),)
+
+        card = self._card(declared, declared)
+
+        assert card.diagnostic_bark_features == declared
+
+
+class TestTheTwoBirches:
+    """The same bark pattern, two reliability readings, two outcomes.
+
+    This contrast is the whole point of items 3 and 4 together, and it is why neither is a
+    blanket loosening. `evals/public/light-trunk-birch-001` is a distant, backlit trunk
+    whose `bark.pattern` the extractor recorded as `partial` + `low`: it must stay capped,
+    and the suite requires it to. The live case that prompted this work recorded the same
+    feature and the same value as `partial` + `high`, and was pinned at the same band
+    anyway.
+
+    One number separates them, and it is the one number that should.
+    """
+
+    FEATURE = "bark.pattern"
+    VALUE = "white_papery_with_black_marks"
+
+    def _card_and_evidence(self, knowledge, reliability):
+        return knowledge.taxon("betula"), _packet(
+            _obs(
+                "obs-1",
+                self.FEATURE,
+                self.VALUE,
+                visibility=Visibility.PARTIAL,
+                reliability=reliability,
+            )
+        )
+
+    def test_the_confidently_read_birch_is_freed(self, knowledge):
+        card, evidence = self._card_and_evidence(knowledge, Reliability.HIGH)
+
+        assert match_card(card, evidence, "log_1").missing_for_high_confidence == ()
+        assert bark_exemption_hits(card, evidence, "log_1") == ("obs-1",)
+
+    def test_the_uncertainly_read_birch_stays_capped(self, knowledge):
+        card, evidence = self._card_and_evidence(knowledge, Reliability.LOW)
+
+        assert match_card(card, evidence, "log_1").missing_for_high_confidence != ()
+        assert bark_exemption_hits(card, evidence, "log_1") == ()

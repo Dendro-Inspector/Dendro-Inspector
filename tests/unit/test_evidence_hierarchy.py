@@ -6,6 +6,7 @@ import pytest
 
 from dendro_inspector.knowledge.evidence_hierarchy import (
     BAND_DECISIVE,
+    BARK_TIER_FAMILIES,
     EvidenceTier,
     EvidenceTrust,
     bark_only,
@@ -15,6 +16,7 @@ from dendro_inspector.knowledge.evidence_hierarchy import (
     decisive_observations_for,
     effective_tier,
     observation_trust,
+    one_band_stronger,
     project_evidence,
     requires_attachment,
     resolution_ceiling,
@@ -563,3 +565,40 @@ class TestDecisiveSupportIsPerSubject:
 
         assert [o.observation_id for o in decisive_a] == ["o1"]
         assert decisive_b == ()
+
+
+class TestBarkCeilingExemptionLadder:
+    """One band, and only one."""
+
+    @pytest.mark.parametrize(
+        ("start", "expected"),
+        [
+            (Confidence.LOW, Confidence.MEDIUM),
+            (Confidence.MEDIUM, Confidence.HIGH),
+            (Confidence.HIGH, Confidence.HIGH),
+        ],
+    )
+    def test_one_band_stronger_never_skips_or_overflows(self, start, expected):
+        assert one_band_stronger(start) is expected
+
+    def test_the_bark_exemption_cannot_reach_the_top_of_the_scale(self):
+        """Lifting the bark ceiling once yields medium, never high.
+
+        The exemption exists so a genuinely diagnostic bark pattern is not pinned at the
+        bottom of the scale. It does not exist to let bark reach the top of it, which is
+        the claim FAILURE 8 is about.
+        """
+        assert one_band_stronger(confidence_ceiling(EvidenceTier.BARK)) is Confidence.MEDIUM
+
+
+def test_the_bark_family_set_the_card_schema_mirrors_has_not_drifted():
+    """`schemas.taxon` validates bark exemptions against its own copy of this set.
+
+    It cannot import from `knowledge`, so the two are pinned equal here instead. A card
+    could otherwise declare a bark exemption on a feature this module ranks above bark, and
+    quietly lift a ceiling that was never the bark ceiling.
+    """
+    from dendro_inspector.schemas.taxon import _BARK_TIER_FAMILIES
+
+    assert BARK_TIER_FAMILIES == _BARK_TIER_FAMILIES
+    assert all(tier_of_feature(family) is EvidenceTier.BARK for family in BARK_TIER_FAMILIES)

@@ -34,6 +34,16 @@ supporting_features:
     values:
       - small_triangular_serrate
 
+# White papery bark with black marks is the one bark signature in this pack strong enough
+# to lift the bark confidence ceiling by a single band at genus level. RHS and Trees and
+# Shrubs Online both treat it as diagnostic for Betula, and the domain prompt's section 14
+# says the same. It does not license a species claim, and the dark, coarsely fissured base
+# of a mature trunk is normal for B. pendula rather than evidence against birch.
+diagnostic_bark_features:
+  - feature: bark.pattern
+    values:
+      - white_papery_with_black_marks
+
 contradictions: []
 
 common_confusions:

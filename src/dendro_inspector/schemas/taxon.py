@@ -198,6 +198,12 @@ class TaxonIdentity(Contract):
         return self
 
 
+#: Feature families the evidence hierarchy places at bark tier. Declared here because
+#: `schemas` must not import from `knowledge`; a contract test asserts this set is exactly
+#: the bark-tier families `evidence_hierarchy` recognises, so the two cannot drift.
+_BARK_TIER_FAMILIES: frozenset[str] = frozenset({"bark", "inner_bark", "lenticels"})
+
+
 class TaxonCard(Contract):
     """Structured, declarative knowledge about one taxon."""
 
@@ -227,6 +233,19 @@ class TaxonCard(Contract):
             "`leaf.underside_and_leaf.arrangement_or_fruit.type`. "
             "`knowledge.taxon_cards.requirement_selectors` is the grammar's one definition; "
             "a selector no observable feature can match fails a contract test."
+        ),
+    )
+    diagnostic_bark_features: tuple[FeatureExpectation, ...] = Field(
+        default=(),
+        description=(
+            "Bark feature/value pairs this card asserts are diagnostic enough to lift the "
+            "bark confidence ceiling by exactly one band, at genus resolution or broader. "
+            "Opt-in per value, never per feature path: `bark.pattern = "
+            "white_papery_with_black_marks` earns it, `bark.texture = smooth_grey` does not, "
+            "and appearing among a card's strong positives is not sufficient on its own. "
+            "Every entry must name a bark-tier feature and must also appear in "
+            "`strong_positive_features`, so a card cannot exempt evidence it does not "
+            "otherwise treat as decisive."
         ),
     )
     follow_up_evidence: tuple[ValueToken, ...] = ()
@@ -268,6 +287,32 @@ class TaxonCard(Contract):
         if len(set(taxon_ids)) != len(taxon_ids):
             msg = f"native and broader taxon ids for {self.taxon_id!r} must be unique"
             raise ValueError(msg)
+
+        # A bark exemption is only meaningful for bark, and only for evidence this card
+        # already calls decisive. Validated here rather than trusted, because the whole
+        # point of the ceiling it lifts is that bark claims are the easiest to overstate.
+        strong = {
+            (expectation.feature, value)
+            for expectation in self.strong_positive_features
+            for value in expectation.values
+        }
+        for expectation in self.diagnostic_bark_features:
+            family = expectation.feature.split(".", 1)[0]
+            if family not in _BARK_TIER_FAMILIES:
+                msg = (
+                    f"diagnostic_bark_features for {self.taxon_id!r} must name bark-tier "
+                    f"features; {expectation.feature!r} is not one"
+                )
+                raise ValueError(msg)
+            missing = sorted(
+                value for value in expectation.values if (expectation.feature, value) not in strong
+            )
+            if missing:
+                msg = (
+                    f"diagnostic_bark_features for {self.taxon_id!r} must also appear in "
+                    f"strong_positive_features; {expectation.feature!r} lacks {missing}"
+                )
+                raise ValueError(msg)
         return self
 
     @property

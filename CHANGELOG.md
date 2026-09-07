@@ -12,6 +12,15 @@ get entries.
 
 ### Fixed
 
+- A taxon card can declare a specific bark feature and value diagnostic enough to lift the
+  bark confidence ceiling by exactly one band, at genus resolution or broader, when a
+  reliably-read observation matches it. `Betula` declares
+  `bark.pattern = white_papery_with_black_marks` and is the only card in this pack that
+  does, so a confidently-read birch is no longer pinned at the bottom of the scale while its
+  own card calls that pattern decisive. Opt-in per value: appearing among a card's strong
+  positives earns nothing, generic rough or fissured bark earns nothing, and a distant trunk
+  whose pattern the extractor was unsure of earns nothing. The lift is recorded in the trace
+  as its own confidence step.
 - How much of the frame a feature filled and how much the reading is trusted are no longer
   the same thing. A decisive feature read at high reliability through a partial view now
   satisfies a card's requirement and keeps its own evidence tier, instead of being demoted

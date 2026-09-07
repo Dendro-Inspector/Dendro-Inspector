@@ -114,6 +114,31 @@ def self_contradiction_hits(
     )
 
 
+def bark_exemption_hits(
+    card: TaxonCard,
+    evidence: EvidencePacket,
+    subject_id: str,
+) -> tuple[str, ...]:
+    """Observations satisfying a bark feature this card declares diagnostic, at decisive trust.
+
+    The bark confidence ceiling exists because "definitely an oak, from the bark" is the
+    most common way this kind of system embarrasses itself (domain prompt FAILURE 8). But
+    the ceiling was unconditional, which put it in direct conflict with the cards: Betula
+    declares `bark.pattern = white_papery_with_black_marks` a strong positive and accepts
+    `bark.pattern_or_leaf` for high confidence, while the ceiling said no bark observation
+    could ever be more than `low`. The card lost silently, so a correctly-identified birch
+    could not be reported above 50-69/100 no matter what the photograph showed.
+
+    This is the narrow escape hatch: not a general loosening, but a per-value assertion a
+    card author writes out. Requires the same trust the corrected policy requires elsewhere
+    — a reliably read observation, whether or not it filled the frame — so the exemption
+    consumes the trust semantics rather than inventing a second visibility rule.
+    """
+    if not card.diagnostic_bark_features:
+        return ()
+    return _matches(card.diagnostic_bark_features, decisive_observations_for(evidence, subject_id))
+
+
 def match_card(
     card: TaxonCard,
     evidence: EvidencePacket,
