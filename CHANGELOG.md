@@ -12,6 +12,21 @@ get entries.
 
 ### Fixed
 
+- A candidate is no longer removed because its own decisive feature was described twice.
+  A card's strong positives were also acting as the exhaustive list of readings that feature
+  path may carry, so a birch photographed from white papery bark *and* from the dark cracked
+  base the domain prompt says an old trunk may have lost the candidate its first reading had
+  just matched — as did a poplar whose leaf was read at two of the shapes the prompt permits,
+  and a fruit described as both a drupe and an apricot, which removed the group and the
+  species at once. A path that already carries a reading the card declares no longer vetoes
+  itself, and `knowledge/vocabulary.yaml` now declares where two words describe one organ at
+  two levels of detail: an apricot is a drupe, a broad five-lobed palmate leaf is a palmate
+  lobed leaf, and beech bark the prompt allows to be less than perfectly smooth with age is
+  still beech bark. Both narrowings are deliberately small. Agreement about a leaf still
+  cannot cancel disagreement about bark, only declared relations count, and a broader wording
+  removes a veto without becoming support — so the scaly-barked trunk that this veto exists
+  for is still not a beech, and a generic compound pinnate leaf still cannot identify a
+  walnut on its own.
 - The next photograph asked for is the one that could raise the claim. A target whose every
   declared feature sits at or below the evidence tier this subject already reached at
   decisive trust now ranks behind one that reaches higher: two live birch runs asked for

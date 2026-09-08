@@ -810,16 +810,6 @@ class TestASecondReadingOfTheSamePathIsNotDisagreement:
         assert "fagus" not in cards_in_play(evidence, knowledge, ("log_1",))
         assert self._admitted("fagus", evidence, knowledge) == []
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason=(
-            "F1, second half (docs/reviews/TAXON-DESCRIPTION-CONFORMANCE-2026-09-08.md): a "
-            "value compatible with a declared one — more specific, more general, or an "
-            "allowed age variation — still vetoes when that path carries no exact hit. It "
-            "needs a declared compatibility relation between values, which no knowledge "
-            "file expresses yet. Open decision 1 of the review's decision order."
-        ),
-    )
     @pytest.mark.parametrize(
         ("taxon", "pairs"),
         [
@@ -849,13 +839,54 @@ class TestASecondReadingOfTheSamePathIsNotDisagreement:
             ),
         ],
     )
-    def test_a_compatible_value_on_an_unmatched_path_should_not_veto(self, knowledge, taxon, pairs):
+    def test_a_declared_compatible_value_does_not_veto(self, knowledge, taxon, pairs):
+        """The second half of F1: a different word for the same reading.
+
+        Unlike the cases above, the disagreeing path carries no exact hit at all — the only
+        thing that saves these candidates is ``knowledge/vocabulary.yaml`` declaring the two
+        readings to be one organ described at two levels of detail.
+        """
         evidence = _packet(
             *[_obs(f"obs-{i}", feature, value) for i, (feature, value) in enumerate(pairs)]
         )
 
         assert taxon in cards_in_play(evidence, knowledge, ("log_1",))
         assert self._admitted(taxon, evidence, knowledge) == [taxon]
+
+    def test_an_undeclared_value_on_the_same_path_still_vetoes(self, knowledge):
+        """Only declared relations count; the rule did not become "any leaf will do".
+
+        ``simple_lobed`` is an oak leaf. Nothing relates it to beech's entire wavy-margined
+        leaf, so it stays disagreement — which is what keeps this narrowing from erasing the
+        veto it narrows.
+        """
+        evidence = _packet(_obs("obs-1", "leaf.shape", "simple_lobed"))
+
+        assert "fagus" not in cards_in_play(evidence, knowledge, ("log_1",))
+
+    def test_a_broader_reading_does_not_become_support(self, knowledge):
+        """Not vetoing is not the same as supporting.
+
+        ``compound_pinnate`` no longer denies walnut, but it does not carry the leaflet
+        detail the card names either, so on its own it cannot admit the species. Matching
+        stays exact; the vocabulary only removes a veto.
+        """
+        evidence = _packet(_obs("obs-1", "leaf.type", "compound_pinnate"))
+
+        assert "juglans_regia" not in cards_in_play(evidence, knowledge, ("log_1",))
+        assert self._admitted("juglans_regia", evidence, knowledge) == []
+
+    def test_every_loaded_card_carries_the_shared_vocabulary(self, knowledge):
+        """The relation reaches cards through the loader, and must keep reaching them.
+
+        Nodes hold a card and no knowledge base, so a card that lost its vocabulary would
+        quietly return to vetoing compatible readings in exactly the places hardest to see.
+        """
+        cards = knowledge.taxa(knowledge.available_taxon_ids())
+
+        assert cards
+        assert all(card.value_vocabulary == knowledge.vocabulary() for card in cards)
+        assert knowledge.vocabulary().refinements
 
 
 class TestAbiesClosesTheCaseBGap:

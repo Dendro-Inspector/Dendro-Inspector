@@ -118,10 +118,19 @@ def self_contradiction_hits(
     ``bark.texture`` once, as ``fine_scales``, and never as ``smooth_grey``. Explicit
     ``contradictions`` are unaffected, which is where a genuinely exclusive pair such as
     ``leaf.arrangement`` opposite-versus-alternate is adjudicated.
+
+    Nor is a *different word for the same reading* disagreement. The card's
+    :class:`~dendro_inspector.schemas.taxon.ValueVocabulary` declares where one organ is
+    described at two levels of detail — an apricot is a drupe, a broad five-lobed palmate
+    leaf is a palmate lobed leaf, beech bark the prompt allows to be less than perfectly
+    smooth with age is still beech bark. Those readings lack the detail the card names, or
+    add detail beyond it; neither denies it. Only declared relations count, so a value
+    nobody has related to the card's own is still disagreement.
     """
     declared: dict[str, set[str]] = {}
     for expectation in card.strong_positive_features:
         declared.setdefault(expectation.feature, set()).update(expectation.values)
+    vocabulary = card.value_vocabulary
     satisfied = {
         observation.feature
         for observation in observations
@@ -134,7 +143,10 @@ def self_contradiction_hits(
         if observation.feature in declared
         and observation.feature not in satisfied
         and is_positive_reading(observation.value)
-        and observation.value not in declared[observation.feature]
+        and not any(
+            vocabulary.compatible(observation.feature, observation.value, value)
+            for value in declared[observation.feature]
+        )
     )
 
 

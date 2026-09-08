@@ -81,19 +81,28 @@ Action: reproduce allowed variation and compatible specificity as regressions, t
 how explicit contradictions, descriptive specificity and regional observations interact.
 Do not add every failing token to every card or remove all contradiction checks.
 
-**Partly resolved after this review.** The seven rejections are two mechanisms, not one.
-In P02, P06, P07 and P12 the same path *also* carries a value the card declares, so the
-card's own decisive feature had already matched when the veto fired; those now survive,
-because a satisfied path no longer vetoes itself. The cancellation is scoped to the path —
-agreement about a leaf still cannot cancel disagreement about bark, which is what keeps
-live case `20260510_100131` rejected. See `TestASecondReadingOfTheSamePathIsNotDisagreement`
-in [the admission tests](../../tests/unit/test_candidate_validation.py).
+**Resolved after this review.** The seven rejections were two mechanisms, not one, and each
+needed its own answer. Both are regressions in
+`TestASecondReadingOfTheSamePathIsNotDisagreement` in
+[the admission tests](../../tests/unit/test_candidate_validation.py).
 
-P04, P05 and P08 remain open and are now `xfail(strict=True)` beside those regressions.
-Each needs a *declared* compatibility relation between values on one path — an age
-variation, a more specific reading, a more general one — which no knowledge file expresses
-today. Deriving it from the strings would be guesswork; adding the failing values to the
-cards would restate the same defect once per taxon.
+In P02, P06, P07 and P12 the same path *also* carries a value the card declares, so the
+card's own decisive feature had already matched when the veto fired. A satisfied path no
+longer vetoes itself.
+
+P04, P05 and P08 carry no exact hit on the disagreeing path at all; they needed a *declared*
+relation between values, which now lives in
+[`knowledge/vocabulary.yaml`](../../knowledge/vocabulary.yaml) and reaches every card through
+the loader. It is deliberately not derived from the strings — `apricot` shares no substring
+with `drupe` — and it is not a matching rule: a related value removes a veto and never
+becomes support, so a generic compound pinnate leaf still cannot identify a walnut.
+
+Both narrowings are scoped. Agreement about a leaf cannot cancel disagreement about bark,
+which is what keeps live case `20260510_100131` rejected; an undeclared value on a strong
+path is still disagreement; and P09 and P11 are unchanged, because neither was ever an F1
+case. What remains open under F1 is the *content* of the relation — the four pairs declared
+so far are the ones this review's probes proved necessary, not a complete reading of
+section 14.
 
 ### F2 — Birch's confidence exception is only partly implemented
 
@@ -609,9 +618,10 @@ model claim.
 | P12 | Apricot fruit + generic drupe description | no / no | F1; species taxon removed |
 
 The table is the measurement at revision `7d33436`, before anything in this review was
-acted on. P02, P06, P07 and P12 now read `yes / yes` after the first half of F1 was fixed;
-the other rows are unchanged. Running the block below reproduces the current numbers, not
-this table.
+acted on. After F1 was fixed, the seven rows that read `no / no` for an F1 reason read
+`yes / yes`: P02, P04–P08 and P12. P09 and P11 are unchanged, and remain the negative
+controls that show the fix did not simply stop rejecting things. Running the block below
+reproduces the current numbers, not this table.
 
 For P02, P04–P08 and P12 the card's `high_confidence_supported` predicate is true while
 the separate self-contradiction rule removes the candidate. That is not a final
@@ -745,10 +755,11 @@ claim.
 
 ## Decision order
 
-1. Resolve F1 before tuning individual cards: regional and age variation and compatible
-   general/specific descriptions are one shared semantic problem. Start from the failing
-   synthetic assertions above and keep regression coverage for genuinely incompatible
-   values.
+1. **Done.** F1 was resolved before any individual card was tuned, because regional and age
+   variation and compatible general/specific descriptions were one shared semantic problem
+   — nine of the twelve probes moved without a single card changing. What is left is
+   content, not semantics: extend `knowledge/vocabulary.yaml` when a further pair of
+   readings is shown to describe one organ, with the prompt line that says so.
 2. Define sweet-cherry fruit evidence (F3) and review the other requested-but-unrepresented
    organs — ash samaras, Picea cones, Populus fruit — without assuming that a requested
    photograph already has a matching card rule.

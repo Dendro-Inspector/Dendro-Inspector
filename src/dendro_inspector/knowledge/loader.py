@@ -14,7 +14,13 @@ from typing import Any
 import yaml
 
 from dendro_inspector.config import KnowledgeConfig
-from dendro_inspector.schemas.taxon import ComparisonCard, RegionalPack, TaxonCard
+from dendro_inspector.schemas.taxon import (
+    NO_VALUE_RELATIONS,
+    ComparisonCard,
+    RegionalPack,
+    TaxonCard,
+    ValueVocabulary,
+)
 
 
 class KnowledgeError(RuntimeError):
@@ -46,19 +52,39 @@ class KnowledgeBase:
         self._taxa: dict[str, TaxonCard] = {}
         self._comparisons: dict[str, ComparisonCard] = {}
         self._region: RegionalPack | None = None
+        self._vocabulary: ValueVocabulary | None = None
 
     @property
     def root(self) -> Path:
         return self._root
 
+    def vocabulary(self) -> ValueVocabulary:
+        """Relations between values, shared by every card.
+
+        One file rather than a field on each card: ``apricot`` is a narrower reading of
+        ``drupe`` whichever card is being matched, and the two cards that name those values
+        would otherwise each carry half of one relation.
+        """
+        if self._vocabulary is None:
+            path = self._root / "vocabulary.yaml"
+            self._vocabulary = (
+                ValueVocabulary.model_validate(_read_yaml(path))
+                if path.is_file()
+                else NO_VALUE_RELATIONS
+            )
+        return self._vocabulary
+
     def taxon(self, taxon_id: str) -> TaxonCard:
-        """Load exactly one card."""
+        """Load exactly one card, with the shared value vocabulary composed onto it."""
         if taxon_id not in self._taxa:
             card = TaxonCard.model_validate(_read_yaml(self._root / "taxa" / f"{taxon_id}.yaml"))
             if card.taxon_id != taxon_id:
                 msg = f"taxon card {taxon_id}.yaml declares taxon_id={card.taxon_id!r}"
                 raise KnowledgeError(msg)
-            self._taxa[taxon_id] = card
+            # Composed here so that every consumer of a card — including the nodes, which
+            # hold a card but no knowledge base — reads the same relation. A card obtained
+            # any other way declares none, which is the stricter answer, not a quiet one.
+            self._taxa[taxon_id] = card.model_copy(update={"value_vocabulary": self.vocabulary()})
         return self._taxa[taxon_id]
 
     def taxa(self, taxon_ids: tuple[str, ...]) -> tuple[TaxonCard, ...]:

@@ -1,0 +1,48 @@
+# Relations between values, for feature paths where two cards describe one organ at two
+# levels of detail. Cards say what a taxon looks like; this file says when two ways of
+# saying it are the same reading, so that the more specific wording does not read as a
+# denial of the more general one.
+#
+# `refinements` maps a feature path to `specific: broader` pairs. A pair asserts only that
+# the first is a narrower reading of the second — never that either is evidence for a
+# taxon. Matching stays exact: a value here is not promoted to a hit, and a card that wants
+# to match it must still declare it.
+#
+# Every pair below is a statement the domain prompt already makes; the cited line is the
+# one that makes it. Nothing here is inferred from string shape, and adding a pair the
+# prompt does not support is a knowledge change under AGENTS.md section 16.
+
+provenance:
+  source: >-
+    Domain prompt section 14, where one paragraph names a general character and a second
+    paragraph names the same character in more detail for a narrower taxon.
+  source_type: domain_prompt
+  region: Eastern Europe
+  life_stage: any
+  season: any
+  confidence: medium
+  review_state: unreviewed
+  reviewed_by: null
+  last_reviewed: null
+
+refinements:
+  fruit.type:
+    # Prompt lines 618-631: the Prunus group's general fruit is a drupe, and lines 663-672
+    # and 639-651 place apricot and cherry plum inside that group.
+    apricot: drupe
+    small_round_drupe: drupe
+
+  leaf.shape:
+    # Prompt lines 460-461 give Acer palmate lobed leaves; lines 484-486 describe the
+    # sycamore leaf as the broad five-lobed palmate form of the same leaf.
+    broad_palmate_five_lobed: palmate_lobed
+
+  leaf.type:
+    # Prompt lines 550-552: walnut's leaf is compound pinnate, with large oval leaflets.
+    # Line 580 names the same compound pinnate leaf without the leaflet detail.
+    compound_pinnate_large_leaflets: compound_pinnate
+
+  bark.texture:
+    # Prompt line 408: on old or damaged beech the bark may be less than perfectly smooth.
+    # Line 399 is the smooth grey reading the same trunk carries when younger or undamaged.
+    smooth_grey_slightly_cracked: smooth_grey
