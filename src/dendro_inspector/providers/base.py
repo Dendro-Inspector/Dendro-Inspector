@@ -37,6 +37,12 @@ CACHE_PREFIX_CHARS = "cache_prefix_chars"
 #: final contract and semantic boundaries.
 OUTPUT_SUBJECT_IDS = "output_subject_ids"
 
+#: Call-metadata key carrying the code-owned evidence identifiers a model may point at.
+#: The mirror of :data:`OUTPUT_SUBJECT_IDS` for the other identifier space a proposal
+#: references. Advisory in the same way: an adapter that can bind it natively cannot then
+#: emit a reference to nothing, and one that cannot leaves the work to adjudication.
+OUTPUT_EVIDENCE_IDS = "output_evidence_ids"
+
 #: Call-metadata key carrying a mutable sink for provider-reported token accounting.
 #: Advisory like the two above: an adapter that does not fill it costs a missing number in
 #: the trace and nothing else, and nothing an adapter writes here can change what is sent.

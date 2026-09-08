@@ -30,6 +30,17 @@ IDENTIFIER_PATTERN = r"^[a-z0-9][a-z0-9_\-]*$"
 FeaturePath = Annotated[str, StringConstraints(pattern=FEATURE_PATH_PATTERN, max_length=120)]
 ValueToken = Annotated[str, StringConstraints(pattern=VALUE_TOKEN_PATTERN, max_length=120)]
 Identifier = Annotated[str, StringConstraints(pattern=IDENTIFIER_PATTERN, max_length=120)]
+
+#: A model-authored *pointer* at evidence, deliberately not an :data:`Identifier`.
+#:
+#: An identifier names something this system owns; a reference is a claim that something
+#: exists elsewhere, and the claim may simply be wrong. Adjudication already resolves every
+#: reference against the packet and discards what it cannot project, so a syntactically
+#: malformed reference and an unknown-but-well-formed one are the same event: a pointer to
+#: nothing. Enforcing the identifier pattern here made only the first of the two fatal,
+#: killing the whole case at the parser before code could adjudicate anything. Length is
+#: still bounded, because an unbounded string is a different problem.
+EvidenceRef = Annotated[str, StringConstraints(max_length=120)]
 ShortText = Annotated[str, StringConstraints(min_length=1, max_length=400)]
 
 

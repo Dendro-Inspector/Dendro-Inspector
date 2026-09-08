@@ -33,6 +33,7 @@ from pydantic import ValidationError
 
 from dendro_inspector.observability.logging import get_logger
 from dendro_inspector.providers.base import (
+    OUTPUT_EVIDENCE_IDS,
     OUTPUT_SUBJECT_IDS,
     ImageInput,
     ProviderError,
@@ -63,6 +64,19 @@ _RETRYABLE_STATUS = frozenset({429, 503})
 DEFAULT_TIMEOUT_SECONDS = 300.0
 
 
+def _string_sequence(value: Any) -> tuple[str, ...]:
+    """Read a metadata entry that must be a non-empty sequence of strings, or nothing."""
+    if not isinstance(value, (list, tuple)):
+        return ()
+    if not value or not all(isinstance(item, str) for item in value):
+        return ()
+    return tuple(value)
+
+
+#: Array properties whose items name evidence a run actually produced.
+_EVIDENCE_REF_PROPERTIES = ("supporting_evidence_ids", "contradicting_evidence_ids")
+
+
 def _bind_subject_id_enums(schema: Any, allowed: tuple[str, ...]) -> Any:
     """Constrain every output ``subject_id`` to identifiers owned by orchestration."""
     if isinstance(schema, list):
@@ -75,6 +89,30 @@ def _bind_subject_id_enums(schema: Any, allowed: tuple[str, ...]) -> Any:
         subject = properties.get("subject_id")
         if isinstance(subject, dict):
             properties["subject_id"] = {**subject, "enum": list(allowed)}
+    return bound
+
+
+def _bind_evidence_ref_enums(schema: Any, allowed: tuple[str, ...]) -> Any:
+    """Constrain evidence-reference arrays to identifiers a run actually produced.
+
+    Gemini accepts `pattern` in a response schema and does not enforce it, so `enum` is the
+    only constraint that survives the trip. Binding the item type is what stops a reference
+    to something that does not exist from being generated in the first place.
+    """
+    if isinstance(schema, list):
+        return [_bind_evidence_ref_enums(item, allowed) for item in schema]
+    if not isinstance(schema, dict):
+        return schema
+    bound = {key: _bind_evidence_ref_enums(value, allowed) for key, value in schema.items()}
+    properties = bound.get("properties")
+    if isinstance(properties, dict):
+        for name in _EVIDENCE_REF_PROPERTIES:
+            array = properties.get(name)
+            if not isinstance(array, dict):
+                continue
+            items = array.get("items")
+            if isinstance(items, dict):
+                properties[name] = {**array, "items": {**items, "enum": list(allowed)}}
     return bound
 
 
@@ -377,13 +415,12 @@ class GeminiProvider:
     ) -> ResponseT:
         del role
         schema = to_gemini_schema(response_model.model_json_schema())
-        allowed_subject_ids = metadata.get(OUTPUT_SUBJECT_IDS)
-        if (
-            isinstance(allowed_subject_ids, (list, tuple))
-            and allowed_subject_ids
-            and all(isinstance(item, str) for item in allowed_subject_ids)
-        ):
-            schema = _bind_subject_id_enums(schema, tuple(allowed_subject_ids))
+        allowed_subject_ids = _string_sequence(metadata.get(OUTPUT_SUBJECT_IDS))
+        if allowed_subject_ids:
+            schema = _bind_subject_id_enums(schema, allowed_subject_ids)
+        allowed_evidence_ids = _string_sequence(metadata.get(OUTPUT_EVIDENCE_IDS))
+        if allowed_evidence_ids:
+            schema = _bind_evidence_ref_enums(schema, allowed_evidence_ids)
         raw = await asyncio.to_thread(
             self._call,
             prompt=prompt,

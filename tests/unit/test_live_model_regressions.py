@@ -11,6 +11,7 @@ from pathlib import Path
 import pytest
 
 import dendro_inspector.nodes._support as support
+import dendro_inspector.nodes.candidate_generator as candidate_generator
 from dendro_inspector.config import Role
 from dendro_inspector.graph.definition import NodeName
 from dendro_inspector.graph.projections import build_review_projection
@@ -34,13 +35,23 @@ from dendro_inspector.nodes.final_decision import (
 from dendro_inspector.nodes.response_composer import build_result, render_human_readable
 from dendro_inspector.observability.events import ProviderCallRecord
 from dendro_inspector.observability.trace import TraceRecorder
-from dendro_inspector.providers.base import OUTPUT_SUBJECT_IDS, ImageInput
-from dendro_inspector.schemas.candidates import Candidate, CandidateSet, SupportStrength
+from dendro_inspector.providers.base import (
+    OUTPUT_EVIDENCE_IDS,
+    OUTPUT_SUBJECT_IDS,
+    ImageInput,
+)
+from dendro_inspector.schemas.candidates import (
+    Candidate,
+    CandidateProposal,
+    CandidateSet,
+    SupportStrength,
+)
 from dendro_inspector.schemas.decisions import DecisionStatus, FinalDecision, ResponseFormat
 from dendro_inspector.schemas.evidence import (
     AttachmentStatus,
     EvidencePacket,
     ImageLimitation,
+    Inference,
     KnowledgeCoverage,
     Observation,
     ObservationSource,
@@ -75,6 +86,51 @@ def _observation(
         source=ObservationSource.IMAGE,
         image_id=image_id,
     )
+
+
+def test_candidate_generator_hands_both_identifier_spaces_to_the_provider(
+    simple_case, node_context, monkeypatch
+):
+    """Binding in the adapter is worth nothing if the node never supplies the ids.
+
+    Live HIGH-thinking runs leaked deliberation fragments into `supporting_evidence_ids`
+    and killed five of six mini-batch cases at the parser. The adapter could already
+    constrain `subject_id` natively, and this node was passing no metadata at all — so the
+    one mechanism that could have prevented it was never reached.
+    """
+    evidence = EvidencePacket(
+        subjects=(Subject(subject_id="tree_1"),),
+        observations=(
+            Observation(
+                observation_id="obs-1",
+                feature="bark.pattern",
+                value="white_papery_with_black_marks",
+                subject_id="tree_1",
+                source=ObservationSource.IMAGE,
+                image_id="img-1",
+            ),
+        ),
+        inferences=(
+            Inference(inference_id="inf-1", claim="betula_compatible", derived_from=("obs-1",)),
+        ),
+    )
+    state = GraphState(
+        case=simple_case,
+        evidence=evidence,
+        quality=EvidenceQualityReport(sufficient=True, usable_subject_ids=("tree_1",)),
+    )
+    seen: dict[str, object] = {}
+
+    async def _capture(**kwargs):
+        seen.update(kwargs["metadata"])
+        return CandidateProposal()
+
+    monkeypatch.setattr(candidate_generator, "request_structured", _capture)
+    asyncio.run(candidate_generator.run(state, node_context))
+
+    assert seen[OUTPUT_SUBJECT_IDS] == ["tree_1"]
+    # Both spaces a reference may legitimately name: observations and inferences.
+    assert seen[OUTPUT_EVIDENCE_IDS] == ["inf-1", "obs-1"]
 
 
 def test_extractor_vocabulary_uses_exact_card_tokens_without_taxon_names(node_context):

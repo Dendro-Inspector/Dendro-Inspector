@@ -22,7 +22,11 @@ from dendro_inspector.nodes._support import (
     locale_of,
 )
 from dendro_inspector.observability.logging import get_logger
-from dendro_inspector.providers.base import request_structured
+from dendro_inspector.providers.base import (
+    OUTPUT_EVIDENCE_IDS,
+    OUTPUT_SUBJECT_IDS,
+    request_structured,
+)
 from dendro_inspector.schemas.candidates import CandidateProposal, CandidateSet
 
 NODE = "candidate_generator"
@@ -54,6 +58,16 @@ async def run(state: GraphState, ctx: NodeContext) -> GraphState:
         ),
         images=case_image_inputs(state, ctx),
         response_model=CandidateProposal,
+        # Both identifier spaces belong to this code, not to the model. An adapter that can
+        # constrain output natively removes a whole class of unusable answer before it is
+        # generated; one that cannot ignores these, and adjudication still has the last word.
+        metadata={
+            OUTPUT_SUBJECT_IDS: sorted(quality.usable_subject_ids),
+            OUTPUT_EVIDENCE_IDS: sorted(
+                {observation.observation_id for observation in evidence.observations}
+                | {inference.inference_id for inference in evidence.inferences}
+            ),
+        },
         recorder=ctx.recorder,
         cache_prefix_chars=ctx.prompts.cacheable_prefix_chars(locale_of(state)),
         max_retries=ctx.config.provider_for(Role.PRIMARY).max_structured_retries,
@@ -79,6 +93,7 @@ async def run(state: GraphState, ctx: NodeContext) -> GraphState:
                     "case_id": state.case.case_id,
                     "subject_id": candidate_set.subject_id,
                     "dropped_evidence_ids": list(validation.dropped_evidence_ids),
+                    "malformed_evidence_ids": list(validation.malformed_evidence_ids),
                     "rejected_taxa": list(validation.rejected_taxa),
                     "demoted_scores": [
                         [taxon, proposed.value, effective.value]

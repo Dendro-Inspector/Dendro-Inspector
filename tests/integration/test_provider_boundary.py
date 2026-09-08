@@ -16,6 +16,7 @@ import pytest
 from dendro_inspector.config import Adapter, AppConfig, ProviderConfig, Role, load_config
 from dendro_inspector.observability.trace import TraceRecorder
 from dendro_inspector.providers.base import (
+    OUTPUT_EVIDENCE_IDS,
     OUTPUT_SUBJECT_IDS,
     USAGE_SINK,
     ProviderError,
@@ -33,6 +34,7 @@ from dendro_inspector.providers.gemini_adapter import GeminiProvider
 from dendro_inspector.providers.ollama_adapter import OllamaProvider
 from dendro_inspector.providers.openrouter_adapter import OpenRouterProvider
 from dendro_inspector.providers.registry import ProviderRegistry, build_provider
+from dendro_inspector.schemas.candidates import CandidateProposal
 from dendro_inspector.schemas.evidence import EvidencePacket
 from dendro_inspector.schemas.reviews import Reviewer, ReviewResult, ReviewStatus
 
@@ -844,6 +846,97 @@ class TestVertexRoute:
         monkeypatch.setattr(urllib.request, "urlopen", _raise)
         with pytest.raises(ProviderUnavailableError, match="GOOGLE_ACCESS_TOKEN"):
             self._run(provider)
+
+
+class TestOutputIdentifierBinding:
+    """Gemini accepts `pattern` in a response schema and does not enforce it.
+
+    `enum` it does enforce, which is why binding the identifier spaces this code owns is
+    the only prevention available. Without it the sole surviving constraint is Pydantic on
+    the way back in, where a malformed reference is discovered far too late to be cheap.
+    """
+
+    endpoint = "https://aiplatform.googleapis.com/v1/projects/p/locations/global/publishers/google"
+
+    @staticmethod
+    def _schema_sent(monkeypatch, metadata: dict[str, Any]) -> dict[str, Any]:
+        monkeypatch.setenv("GOOGLE_ACCESS_TOKEN", "test-token-not-real")
+        provider = GeminiProvider(model="m", endpoint=TestOutputIdentifierBinding.endpoint)
+        sent: list[dict[str, Any]] = []
+
+        def _urlopen(request, **kwargs):
+            del kwargs
+            sent.append(json.loads(request.data))
+            return _FakeResponse(
+                json.dumps(
+                    {
+                        "candidates": [
+                            {
+                                "content": {
+                                    "parts": [{"text": CandidateProposal().model_dump_json()}]
+                                }
+                            }
+                        ]
+                    }
+                ).encode()
+            )
+
+        monkeypatch.setattr(urllib.request, "urlopen", _urlopen)
+        asyncio.run(
+            provider.generate_structured(
+                role="primary",
+                prompt="p",
+                images=(),
+                response_model=CandidateProposal,
+                metadata={"node": "candidate_generator", **metadata},
+            )
+        )
+        schema = sent[0]["generationConfig"]["responseSchema"]
+        assert isinstance(schema, dict)
+        return schema
+
+    @staticmethod
+    def _find(node: Any, name: str) -> list[dict[str, Any]]:
+        """Every property called `name`, wherever the inlined schema put it."""
+        found: list[dict[str, Any]] = []
+        if isinstance(node, list):
+            for item in node:
+                found.extend(TestOutputIdentifierBinding._find(item, name))
+        elif isinstance(node, dict):
+            properties = node.get("properties")
+            if isinstance(properties, dict) and isinstance(properties.get(name), dict):
+                found.append(properties[name])
+            for value in node.values():
+                found.extend(TestOutputIdentifierBinding._find(value, name))
+        return found
+
+    def test_evidence_reference_arrays_are_bound_to_the_ids_the_run_produced(self, monkeypatch):
+        schema = self._schema_sent(monkeypatch, {OUTPUT_EVIDENCE_IDS: ["obs-1", "obs-2", "inf-1"]})
+
+        for name in ("supporting_evidence_ids", "contradicting_evidence_ids"):
+            arrays = self._find(schema, name)
+            assert arrays, f"{name} is missing from the response schema"
+            for array in arrays:
+                assert array["items"]["enum"] == ["obs-1", "obs-2", "inf-1"]
+
+    def test_subject_ids_are_bound_on_the_same_call(self, monkeypatch):
+        schema = self._schema_sent(monkeypatch, {OUTPUT_SUBJECT_IDS: ["tree_1"]})
+
+        subjects = self._find(schema, "subject_id")
+        assert subjects
+        for subject in subjects:
+            assert subject["enum"] == ["tree_1"]
+
+    def test_an_empty_or_malformed_id_list_binds_nothing(self, monkeypatch):
+        """A run with no observations must not send `enum: []`, which admits no value."""
+        schema = self._schema_sent(
+            monkeypatch, {OUTPUT_EVIDENCE_IDS: [], OUTPUT_SUBJECT_IDS: [None, 1]}
+        )
+
+        for array in self._find(schema, "supporting_evidence_ids"):
+            assert "enum" not in array["items"]
+        for subject in self._find(schema, "subject_id"):
+            assert "enum" not in subject
 
 
 class TestUsageAccounting:

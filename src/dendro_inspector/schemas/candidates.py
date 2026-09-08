@@ -11,7 +11,7 @@ from enum import StrEnum
 
 from pydantic import Field, model_validator
 
-from dendro_inspector.schemas.base import Contract, Identifier, ValueToken
+from dendro_inspector.schemas.base import Contract, EvidenceRef, Identifier, ValueToken
 from dendro_inspector.schemas.taxon import Resolution
 
 
@@ -37,8 +37,8 @@ class Candidate(Contract):
 
     taxon: Identifier
     resolution: Resolution
-    supporting_evidence_ids: tuple[Identifier, ...] = ()
-    contradicting_evidence_ids: tuple[Identifier, ...] = ()
+    supporting_evidence_ids: tuple[EvidenceRef, ...] = ()
+    contradicting_evidence_ids: tuple[EvidenceRef, ...] = ()
     missing_decisive_features: tuple[ValueToken, ...] = ()
     score: SupportStrength = SupportStrength.WEAK
     rank: int = Field(ge=1, le=99)

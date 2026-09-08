@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 from dendro_inspector.knowledge.evidence_hierarchy import (
@@ -18,6 +19,7 @@ from dendro_inspector.knowledge.taxon_cards import (
     missing_decisive_features,
     self_contradiction_hits,
 )
+from dendro_inspector.schemas.base import IDENTIFIER_PATTERN
 from dendro_inspector.schemas.candidates import (
     Candidate,
     CandidateSet,
@@ -27,6 +29,9 @@ from dendro_inspector.schemas.candidates import (
 from dendro_inspector.schemas.evidence import EvidencePacket, Observation
 from dendro_inspector.schemas.taxon import FeatureExpectation, TaxonCard
 
+#: Compiled once: every discarded reference is tested against it.
+_IDENTIFIER = re.compile(IDENTIFIER_PATTERN)
+
 
 @dataclass(frozen=True, slots=True)
 class CandidateValidationResult:
@@ -35,6 +40,14 @@ class CandidateValidationResult:
     candidate_set: CandidateSet
     rejected_taxa: tuple[str, ...]
     dropped_evidence_ids: tuple[str, ...]
+    malformed_evidence_ids: tuple[str, ...] = ()
+    """The subset of ``dropped_evidence_ids`` that is not even shaped like an identifier.
+
+    Same outcome, different cause. A well-formed reference to nothing is a model that
+    misremembered an id; a malformed one is a provider whose structured output leaked.
+    Both are discarded here, and separating them keeps a decoding defect legible instead
+    of filed under ordinary disagreement.
+    """
     demoted_scores: tuple[tuple[str, SupportStrength, SupportStrength], ...] = ()
     """Taxon, the strength the model proposed, and the strength its evidence earned."""
 
@@ -234,10 +247,14 @@ def validate_candidate_set_with_report(
         survivors.append(adjudicated.model_copy(update={"score": effective}))
 
     validated = candidate_set.model_copy(update={"candidates": tuple(survivors)})
+    discarded = _deduplicate(tuple(dropped))
     return CandidateValidationResult(
         candidate_set=validated,
         rejected_taxa=_deduplicate(tuple(rejected)),
-        dropped_evidence_ids=_deduplicate(tuple(dropped)),
+        dropped_evidence_ids=discarded,
+        malformed_evidence_ids=tuple(
+            reference for reference in discarded if not _IDENTIFIER.fullmatch(reference)
+        ),
         demoted_scores=tuple(demoted),
     )
 

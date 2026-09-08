@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+from pydantic import ValidationError
 
 from dendro_inspector.knowledge.candidate_validation import (
     candidate_support_tier,
@@ -76,6 +77,81 @@ def _packet(
     subjects: tuple[Subject, ...] = (Subject(subject_id="log_1"),),
 ) -> EvidencePacket:
     return EvidencePacket(subjects=subjects, observations=observations, inferences=inferences)
+
+
+class TestEvidenceReferenceAdmission:
+    """A reference is a claim that something exists, and the claim may simply be wrong.
+
+    Live Gemini runs at HIGH thinking emitted `obs-2 Samantha`, `obs-bark-peeling them` and
+    `obs-needles-fascicles\u8edf` into `supporting_evidence_ids` — fragments of the model's
+    own deliberation leaking into a constrained field. Five of six mini-batch cases died at
+    the parser, before any code could adjudicate the proposal they carried.
+
+    The policy these tests pin: a reference to nothing is discarded whatever shape it has,
+    and an identifier this system owns keeps its pattern.
+    """
+
+    def test_a_resolvable_reference_is_retained(self, knowledge):
+        evidence = _packet(_obs("o1", "needles.fascicles", "two"))
+        candidate_set = CandidateSet(subject_id="log_1", candidates=(_candidate("pinus", 1, "o1"),))
+
+        result = validate_candidate_set_with_report(candidate_set, evidence, knowledge)
+
+        assert result.candidate_set.candidates[0].supporting_evidence_ids == ("o1",)
+        assert result.dropped_evidence_ids == ()
+        assert result.malformed_evidence_ids == ()
+
+    def test_a_well_formed_reference_to_nothing_is_dropped_not_fatal(self, knowledge):
+        evidence = _packet(_obs("o1", "needles.fascicles", "two"))
+        candidate_set = CandidateSet(
+            subject_id="log_1", candidates=(_candidate("pinus", 1, "o1", "o99"),)
+        )
+
+        result = validate_candidate_set_with_report(candidate_set, evidence, knowledge)
+
+        assert result.candidate_set.candidates[0].supporting_evidence_ids == ("o1",)
+        assert result.dropped_evidence_ids == ("o99",)
+        assert result.malformed_evidence_ids == ()
+
+    def test_a_malformed_reference_is_dropped_and_reported_separately(self, knowledge):
+        """Same outcome as `o99`, different cause — and the cause is worth keeping."""
+        evidence = _packet(_obs("o1", "needles.fascicles", "two"))
+        candidate_set = CandidateSet(
+            subject_id="log_1",
+            candidates=(_candidate("pinus", 1, "o1", "obs-2 Samantha"),),
+        )
+
+        result = validate_candidate_set_with_report(candidate_set, evidence, knowledge)
+
+        assert result.candidate_set.candidates[0].supporting_evidence_ids == ("o1",)
+        assert result.dropped_evidence_ids == ("obs-2 Samantha",)
+        assert result.malformed_evidence_ids == ("obs-2 Samantha",)
+
+    def test_a_candidate_left_with_no_usable_support_is_still_rejected(self, knowledge):
+        """Tolerating the reference is not rescuing the claim it was offered for."""
+        evidence = _packet(_obs("o1", "needles.fascicles", "two"))
+        candidate_set = CandidateSet(
+            subject_id="log_1", candidates=(_candidate("pinus", 1, "obs-2 Samantha"),)
+        )
+
+        result = validate_candidate_set_with_report(candidate_set, evidence, knowledge)
+
+        assert result.candidate_set.candidates == ()
+        assert result.rejected_taxa == ("pinus",)
+        assert result.malformed_evidence_ids == ("obs-2 Samantha",)
+
+    def test_a_malformed_subject_id_is_still_a_hard_contract_failure(self):
+        """`subject_id` names something this system owns. A broken one loses the referent.
+
+        The reference fields were loosened; the identifier space was not. A candidate set
+        that cannot say which subject it is about is not adjudicable at all.
+        """
+        with pytest.raises(ValidationError):
+            CandidateSet(subject_id="log_1 Samantha", candidates=())
+
+    def test_a_malformed_taxon_is_still_a_hard_contract_failure(self):
+        with pytest.raises(ValidationError):
+            _candidate("pinus Samantha", 1, "o1")
 
 
 def test_unknown_taxon_is_removed(knowledge):
