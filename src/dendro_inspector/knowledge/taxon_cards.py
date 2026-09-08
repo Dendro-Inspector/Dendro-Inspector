@@ -23,7 +23,21 @@ from dendro_inspector.schemas.evidence import (
     Observation,
     is_positive_reading,
 )
-from dendro_inspector.schemas.taxon import FeatureExpectation, TaxonCard
+from dendro_inspector.schemas.taxon import (
+    ConfidenceException,
+    ExceptionCeiling,
+    FeatureExpectation,
+    Resolution,
+    TaxonCard,
+    resolution_rank,
+)
+
+#: Which declared ceiling wins when a card earns more than one exception at once.
+_CEILING_ORDER: dict[ExceptionCeiling, int] = {
+    ExceptionCeiling.MEDIUM: 0,
+    ExceptionCeiling.HIGH: 1,
+    ExceptionCeiling.VERY_HIGH: 2,
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -150,29 +164,71 @@ def self_contradiction_hits(
     )
 
 
-def bark_exemption_hits(
+@dataclass(frozen=True, slots=True)
+class ConfidenceExceptionHit:
+    """One card-declared exception that this subject's evidence actually earns."""
+
+    exception: ConfidenceException
+    evidence_ids: tuple[str, ...]
+
+
+def confidence_exception_for(
     card: TaxonCard,
     evidence: EvidencePacket,
     subject_id: str,
-) -> tuple[str, ...]:
-    """Observations satisfying a bark feature this card declares diagnostic, at decisive trust.
+    resolution: Resolution,
+) -> ConfidenceExceptionHit | None:
+    """The strongest exception this card declares that this evidence and claim earn.
 
-    The bark confidence ceiling exists because "definitely an oak, from the bark" is the
-    most common way this kind of system embarrasses itself (domain prompt FAILURE 8). But
-    the ceiling was unconditional, which put it in direct conflict with the cards: Betula
-    declares `bark.pattern = white_papery_with_black_marks` a strong positive and accepts
-    `bark.pattern_or_leaf` for high confidence, while the ceiling said no bark observation
-    could ever be more than `low`. The card lost silently, so a correctly-identified birch
-    could not be reported above 50-69/100 no matter what the photograph showed.
+    The evidence-tier ceilings exist because "definitely an oak, from the bark" is the most
+    common way this kind of system embarrasses itself (domain prompt FAILURE 8). They were
+    also unconditional, which put them in direct conflict with the same prompt: section 6
+    lists characteristic white papery birch bark among its 95-100 examples, while the
+    ceiling said no bark observation could ever be more than `low`. The card lost silently,
+    so a correctly identified birch could not be reported above 50-69/100 no matter what the
+    photograph showed.
 
-    This is the narrow escape hatch: not a general loosening, but a per-value assertion a
-    card author writes out. Requires the same trust the corrected policy requires elsewhere
-    — a reliably read observation, whether or not it filled the frame — so the exemption
-    consumes the trust semantics rather than inventing a second visibility rule.
+    A default with declared exceptions, not a loosened default. Four conditions, all
+    required, and each one is a thing that went wrong somewhere:
+
+    * the card declares this exact feature *and* value — a pale trunk is not white papery
+      bark, and generic peeling bark is not either;
+    * every required reading is present at decisive trust — reliably read, whether or not it
+      filled the frame, which is the same trust the rest of the policy asks for;
+    * the claim is no narrower than the exception's own ``max_resolution`` — recognising the
+      genus from bark is not the same assertion as naming the species;
+    * nothing in the same packet contradicts the card being lifted, on its own terms or on
+      the terms it wrote out for other taxa. An exception is not a way to out-argue the
+      evidence that the card is wrong.
+
+    Returns the strongest earned exception, so a card may declare several without their
+    order in the file deciding the answer.
     """
-    if not card.diagnostic_bark_features:
-        return ()
-    return _matches(card.diagnostic_bark_features, decisive_observations_for(evidence, subject_id))
+    if not card.confidence_exceptions:
+        return None
+    match = match_card(card, evidence, subject_id)
+    if match.has_contradiction or match.contradicts_own_card:
+        return None
+    decisive = decisive_observations_for(evidence, subject_id)
+    earned: list[ConfidenceExceptionHit] = []
+    for exception in card.confidence_exceptions:
+        if resolution_rank(resolution) > resolution_rank(exception.max_resolution):
+            continue
+        matched: list[str] = []
+        for expectation in exception.requires:
+            hits = _matches((expectation,), decisive)
+            if not hits:
+                matched = []
+                break
+            matched.extend(hits)
+        if not matched:
+            continue
+        earned.append(
+            ConfidenceExceptionHit(exception=exception, evidence_ids=tuple(dict.fromkeys(matched)))
+        )
+    if not earned:
+        return None
+    return max(earned, key=lambda hit: _CEILING_ORDER[hit.exception.ceiling])
 
 
 def match_card(

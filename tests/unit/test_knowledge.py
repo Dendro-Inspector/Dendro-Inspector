@@ -20,8 +20,8 @@ from dendro_inspector.knowledge.regional_packs import (
     unlikely_in_region,
 )
 from dendro_inspector.knowledge.taxon_cards import (
-    bark_exemption_hits,
     card_value_vocabulary,
+    confidence_exception_for,
     match_card,
     requirement_selectors,
     unreachable_selectors,
@@ -36,6 +36,8 @@ from dendro_inspector.schemas.evidence import (
     Visibility,
 )
 from dendro_inspector.schemas.taxon import (
+    ConfidenceException,
+    ExceptionCeiling,
     FeatureExpectation,
     Provenance,
     Resolution,
@@ -71,6 +73,12 @@ def _obs(
 
 def _packet(*observations: Observation) -> EvidencePacket:
     return EvidencePacket(subjects=(Subject(subject_id="log_1"),), observations=observations)
+
+
+def _exception_ids(card, evidence, resolution=Resolution.GENUS) -> tuple[str, ...]:
+    """Evidence ids earning a card-declared confidence exception, or `()` for none."""
+    hit = confidence_exception_for(card, evidence, "log_1", resolution)
+    return () if hit is None else hit.evidence_ids
 
 
 class TestLoading:
@@ -474,14 +482,17 @@ class TestRegionalPriors:
         assert likely_in_region(knowledge.region(), "pinus", "Kyiv Oblast, Ukraine")
 
 
-class TestCardDeclaredBarkExemption:
-    """The narrow escape from the unconditional bark ceiling.
+class TestCardDeclaredConfidenceException:
+    """The declared escape from an otherwise unconditional evidence-tier ceiling.
 
-    The ceiling and the cards were in direct conflict: Betula declares
+    The ceilings and the cards were in direct conflict: Betula declares
     `bark.pattern = white_papery_with_black_marks` a strong positive and accepts
     `bark.pattern_or_leaf` for high confidence, while the ceiling said no bark observation
     could exceed `low`. A correctly-identified birch could not be reported above 50-69/100
     whatever the photograph showed, and no model change could alter that.
+
+    The ceiling stays the default for everything that does not declare otherwise. What a
+    card may declare, and what evidence earns it, is the whole of the policy.
     """
 
     def test_a_declared_diagnostic_bark_value_earns_the_exemption(self, knowledge):
@@ -494,7 +505,7 @@ class TestCardDeclaredBarkExemption:
             )
         )
 
-        assert bark_exemption_hits(knowledge.taxon("betula"), evidence, "log_1") == ("obs-1",)
+        assert _exception_ids(knowledge.taxon("betula"), evidence) == ("obs-1",)
 
     def test_it_survives_a_partial_view_read_confidently(self, knowledge):
         """The whole birch chain: partial framing, high reliability, requirement satisfied."""
@@ -510,7 +521,7 @@ class TestCardDeclaredBarkExemption:
         card = knowledge.taxon("betula")
 
         assert match_card(card, evidence, "log_1").missing_for_high_confidence == ()
-        assert bark_exemption_hits(card, evidence, "log_1") == ("obs-1",)
+        assert _exception_ids(card, evidence) == ("obs-1",)
 
     def test_a_partial_view_read_without_confidence_earns_nothing(self, knowledge):
         """The exemption consumes the corrected trust policy instead of restating it."""
@@ -524,7 +535,7 @@ class TestCardDeclaredBarkExemption:
             )
         )
 
-        assert bark_exemption_hits(knowledge.taxon("betula"), evidence, "log_1") == ()
+        assert _exception_ids(knowledge.taxon("betula"), evidence) == ()
 
     def test_a_strong_positive_bark_feature_alone_earns_nothing(self, knowledge):
         """Fagus declares `bark.texture = smooth_grey` strong, and gets no exemption.
@@ -539,7 +550,7 @@ class TestCardDeclaredBarkExemption:
         card = knowledge.taxon("fagus")
 
         assert match_card(card, evidence, "log_1").strong_hits == ("obs-1",)
-        assert bark_exemption_hits(card, evidence, "log_1") == ()
+        assert _exception_ids(card, evidence) == ()
 
     def test_generic_rough_bark_earns_nothing(self, knowledge):
         """ "Definitely an oak, from the bark" stays capped. That is FAILURE 8."""
@@ -552,56 +563,155 @@ class TestCardDeclaredBarkExemption:
             )
         )
 
-        assert bark_exemption_hits(knowledge.taxon("quercus"), evidence, "log_1") == ()
+        assert _exception_ids(knowledge.taxon("quercus"), evidence) == ()
 
-    def test_exactly_one_card_in_this_pack_declares_an_exemption(self, knowledge):
+    def test_a_species_claim_earns_nothing_from_the_same_bark(self, knowledge):
+        """`max_resolution: genus` is on the card, and it is the point of the field.
+
+        The prompt permits very high confidence for the *genus* from this bark and asks for
+        leaves and thin twigs before a species. Recognising a birch and naming which birch
+        are not the same assertion, and one photograph of bark cannot make them one.
+        """
+        evidence = _packet(
+            _obs(
+                "obs-1",
+                "bark.pattern",
+                "white_papery_with_black_marks",
+                reliability=Reliability.HIGH,
+            )
+        )
+        card = knowledge.taxon("betula")
+
+        assert _exception_ids(card, evidence, Resolution.GENUS) == ("obs-1",)
+        assert _exception_ids(card, evidence, Resolution.SPECIES) == ()
+
+    def test_contradicted_evidence_earns_nothing(self):
+        """An exception is not a way to out-argue the evidence that the card is wrong.
+
+        Betula declares no contradictions, so this needs a card that does: the declared
+        reading is present and matches, and the same packet carries a feature the card
+        itself writes out as disqualifying. The reading still matches; the card is still
+        wrong, and a ceiling is not lifted for a taxon the evidence has ruled out.
+        """
+        card = TaxonCard(
+            taxon_id="test_taxon",
+            display_name="Test taxon",
+            native_resolution=Resolution.GENUS,
+            supported_resolution=(Resolution.GENUS,),
+            strong_positive_features=(
+                FeatureExpectation(feature="bark.pattern", values=("white_papery",)),
+            ),
+            contradictions=(
+                FeatureExpectation(feature="leaf.underside", values=("white_tomentose",)),
+            ),
+            confidence_exceptions=(
+                ConfidenceException(
+                    requires=(
+                        FeatureExpectation(feature="bark.pattern", values=("white_papery",)),
+                    ),
+                    max_resolution=Resolution.GENUS,
+                    ceiling=ExceptionCeiling.VERY_HIGH,
+                ),
+            ),
+            provenance=Provenance(source="test fixture", source_type=SourceType.INFERRED),
+        )
+        clean = _packet(_obs("obs-1", "bark.pattern", "white_papery", reliability=Reliability.HIGH))
+        contradicted = _packet(
+            _obs("obs-1", "bark.pattern", "white_papery", reliability=Reliability.HIGH),
+            _obs("obs-2", "leaf.underside", "white_tomentose", reliability=Reliability.HIGH),
+        )
+
+        assert _exception_ids(card, clean) == ("obs-1",)
+        assert match_card(card, contradicted, "log_1").has_contradiction
+        assert _exception_ids(card, contradicted) == ()
+
+    def test_exactly_one_card_in_this_pack_declares_an_exception(self, knowledge):
         """A count, so a careless card edit shows up as a failure rather than a surprise."""
         declaring = {
             taxon_id
             for taxon_id in knowledge.available_taxon_ids()
-            if (card := knowledge.try_taxon(taxon_id)) is not None and card.diagnostic_bark_features
+            if (card := knowledge.try_taxon(taxon_id)) is not None and card.confidence_exceptions
         }
 
         assert declaring == {"betula"}
 
 
-class TestBarkExemptionDeclarationIsValidated:
+class TestConfidenceExceptionDeclarationIsValidated:
+    """What a card may declare is checked at load, not trusted at decision time."""
+
     @staticmethod
     def _card(
         strong: tuple[FeatureExpectation, ...],
-        diagnostic: tuple[FeatureExpectation, ...],
+        exceptions: tuple[ConfidenceException, ...],
+        *,
+        supported: tuple[Resolution, ...] = (Resolution.GENUS,),
     ) -> TaxonCard:
         return TaxonCard(
             taxon_id="test_taxon",
             display_name="Test taxon",
-            native_resolution=Resolution.GENUS,
-            supported_resolution=(Resolution.GENUS,),
+            native_resolution=supported[0],
+            supported_resolution=supported,
             strong_positive_features=strong,
-            diagnostic_bark_features=diagnostic,
+            confidence_exceptions=exceptions,
             provenance=Provenance(source="test fixture", source_type=SourceType.INFERRED),
         )
 
-    def test_a_non_bark_feature_is_refused(self):
-        """A leaf exemption would lift a ceiling that was never the bark ceiling."""
-        leaf = (FeatureExpectation(feature="leaf.shape", values=("small_triangular_serrate",)),)
-
-        with pytest.raises(ValidationError, match="must name bark-tier features"):
-            self._card(leaf, leaf)
+    @staticmethod
+    def _exception(feature: str, value: str, **kwargs) -> ConfidenceException:
+        return ConfidenceException(
+            requires=(FeatureExpectation(feature=feature, values=(value,)),),
+            max_resolution=kwargs.pop("max_resolution", Resolution.GENUS),
+            ceiling=kwargs.pop("ceiling", ExceptionCeiling.VERY_HIGH),
+        )
 
     def test_a_value_the_card_does_not_call_strong_is_refused(self):
-        """A card cannot exempt evidence it does not otherwise treat as decisive."""
+        """A card cannot lift a ceiling on evidence it does not otherwise call decisive."""
         with pytest.raises(ValidationError, match="must also appear in"):
             self._card(
                 (FeatureExpectation(feature="bark.pattern", values=("white_papery",)),),
-                (FeatureExpectation(feature="bark.pattern", values=("something_else",)),),
+                (self._exception("bark.pattern", "something_else"),),
             )
 
-    def test_a_bark_value_the_card_does_call_strong_is_accepted(self):
-        declared = (FeatureExpectation(feature="bark.pattern", values=("white_papery",)),)
+    def test_a_colour_reading_is_refused(self):
+        """Colour is supporting evidence however favourable the photograph looks."""
+        strong = (FeatureExpectation(feature="wood.tone", values=("yellowish",)),)
 
-        card = self._card(declared, declared)
+        with pytest.raises(ValidationError, match="cannot rest on a colour reading"):
+            self._card(strong, (self._exception("wood.tone", "yellowish"),))
 
-        assert card.diagnostic_bark_features == declared
+    def test_an_exception_cannot_reach_past_what_the_card_supports(self):
+        """A genus-only card declaring a species exception would out-claim itself."""
+        strong = (FeatureExpectation(feature="bark.pattern", values=("white_papery",)),)
+
+        with pytest.raises(ValidationError, match="may not reach"):
+            self._card(
+                strong,
+                (
+                    self._exception(
+                        "bark.pattern", "white_papery", max_resolution=Resolution.SPECIES
+                    ),
+                ),
+            )
+
+    def test_a_non_bark_feature_is_accepted(self):
+        """The primitive is not bark-specific, and the prompt's other examples are not bark.
+
+        Section 6 lists clear palmate maple leaves alongside birch bark. Whether that becomes
+        a declaration on the Acer card is a separate owner decision (F5); the mechanism must
+        not be the thing that blocks it.
+        """
+        leaf = (FeatureExpectation(feature="leaf.shape", values=("palmate_lobed",)),)
+
+        card = self._card(leaf, (self._exception("leaf.shape", "palmate_lobed"),))
+
+        assert card.confidence_exceptions[0].ceiling is ExceptionCeiling.VERY_HIGH
+
+    def test_a_value_the_card_calls_strong_is_accepted(self):
+        strong = (FeatureExpectation(feature="bark.pattern", values=("white_papery",)),)
+
+        card = self._card(strong, (self._exception("bark.pattern", "white_papery"),))
+
+        assert card.confidence_exceptions[0].requires == strong
 
 
 class TestTheTwoBirches:
@@ -635,10 +745,10 @@ class TestTheTwoBirches:
         card, evidence = self._card_and_evidence(knowledge, Reliability.HIGH)
 
         assert match_card(card, evidence, "log_1").missing_for_high_confidence == ()
-        assert bark_exemption_hits(card, evidence, "log_1") == ("obs-1",)
+        assert _exception_ids(card, evidence) == ("obs-1",)
 
     def test_the_uncertainly_read_birch_stays_capped(self, knowledge):
         card, evidence = self._card_and_evidence(knowledge, Reliability.LOW)
 
         assert match_card(card, evidence, "log_1").missing_for_high_confidence != ()
-        assert bark_exemption_hits(card, evidence, "log_1") == ()
+        assert _exception_ids(card, evidence) == ()

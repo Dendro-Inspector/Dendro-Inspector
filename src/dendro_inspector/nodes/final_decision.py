@@ -43,14 +43,13 @@ from dendro_inspector.knowledge.evidence_hierarchy import (
     confidence_band,
     confidence_ceiling,
     decisive_observations_for,
-    one_band_stronger,
     resolution_ceiling,
     tier_of_feature,
 )
 from dendro_inspector.knowledge.loader import KnowledgeBase
 from dendro_inspector.knowledge.taxon_cards import (
-    bark_exemption_hits,
     card_value_vocabulary,
+    confidence_exception_for,
     match_card,
 )
 from dendro_inspector.nodes.photo_planner import (
@@ -86,6 +85,7 @@ from dendro_inspector.schemas.reviews import (
 )
 from dendro_inspector.schemas.taxon import (
     Confidence,
+    ExceptionCeiling,
     Resolution,
     TaxonCard,
     TaxonIdentity,
@@ -558,6 +558,32 @@ def _nearest_alternative(
     return None
 
 
+#: What each declared ceiling means on this project's three-valued confidence scale.
+#: `VERY_HIGH` is `HIGH` plus the top display band — see `confidence_band`.
+_EXCEPTION_CONFIDENCE: dict[ExceptionCeiling, Confidence] = {
+    ExceptionCeiling.MEDIUM: Confidence.MEDIUM,
+    ExceptionCeiling.HIGH: Confidence.HIGH,
+    ExceptionCeiling.VERY_HIGH: Confidence.HIGH,
+}
+
+
+def _reaches_the_top_band(
+    card: TaxonCard | None,
+    evidence: EvidencePacket,
+    subject_id: str,
+    resolution: Resolution,
+) -> bool:
+    """Whether a card-declared exception earns this claim the 95-100 band.
+
+    Recomputed from the same pure function that raised the ceiling rather than carried out
+    of `resolve_confidence`, so the band can never disagree with the step that produced it.
+    """
+    if card is None:
+        return False
+    hit = confidence_exception_for(card, evidence, subject_id, resolution)
+    return hit is not None and hit.exception.ceiling is ExceptionCeiling.VERY_HIGH
+
+
 def resolve_confidence(
     state: GraphState,
     subject_id: str,
@@ -607,25 +633,22 @@ def resolve_confidence(
         confidence = tier_cap
     step("tier_cap", before, confidence, applied=capped)
 
-    # The bark exemption. Three conditions, all required: the tier is bark, the claim is no
-    # narrower than genus, and the card itself declares this exact bark value diagnostic
-    # with a reliably-read observation to match. It lifts the ceiling by exactly one band,
-    # which is the difference between "a birch, and I can say so" and "a birch, pinned at
-    # the bottom of the scale because bark is bark".
-    exempt_ids: tuple[str, ...] = ()
-    if (
-        card is not None
-        and tier is EvidenceTier.BARK
-        and resolution_rank(resolution) <= resolution_rank(Resolution.GENUS)
-    ):
-        exempt_ids = bark_exemption_hits(card, evidence, subject_id)
-    if exempt_ids:
-        raised = one_band_stronger(tier_cap)
+    # The card-declared exception. Everything narrowing it lives on the card and in
+    # `confidence_exception_for`; what happens here is only the arithmetic, so the policy
+    # cannot be read one way by this node and another way by anything else that asks.
+    # It raises a ceiling and never lowers one.
+    exception = (
+        confidence_exception_for(card, evidence, subject_id, resolution)
+        if card is not None
+        else None
+    )
+    if exception is not None:
+        raised = _EXCEPTION_CONFIDENCE[exception.exception.ceiling]
         before = confidence
         lifts = confidence_rank(raised) > confidence_rank(confidence)
         if lifts:
             confidence = raised
-        step("bark_exemption", before, confidence, applied=lifts)
+        step("diagnostic_exception", before, confidence, applied=lifts)
 
     if card is not None:
         match = match_card(card, evidence, subject_id)
@@ -1037,7 +1060,11 @@ def decide_subject_base(
         arbiter_used=state.arbiter_used,
         user_claim_verdict=verdict,
         evidence_tier=int(tier),
-        confidence_band=confidence_band(confidence, tier),
+        confidence_band=confidence_band(
+            confidence,
+            tier,
+            decisive_reading=_reaches_the_top_band(card, evidence, subject_id, resolution),
+        ),
     )
 
 

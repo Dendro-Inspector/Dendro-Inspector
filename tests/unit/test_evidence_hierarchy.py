@@ -16,7 +16,6 @@ from dendro_inspector.knowledge.evidence_hierarchy import (
     decisive_observations_for,
     effective_tier,
     observation_trust,
-    one_band_stronger,
     project_evidence,
     requires_attachment,
     resolution_ceiling,
@@ -567,36 +566,46 @@ class TestDecisiveSupportIsPerSubject:
         assert decisive_b == ()
 
 
-class TestBarkCeilingExemptionLadder:
-    """One band, and only one."""
+class TestTheTopBandIsEarnedTwoWays:
+    """95-100 is reserved, and a card-declared reading is the second thing that reserves it.
 
-    @pytest.mark.parametrize(
-        ("start", "expected"),
-        [
-            (Confidence.LOW, Confidence.MEDIUM),
-            (Confidence.MEDIUM, Confidence.HIGH),
-            (Confidence.HIGH, Confidence.HIGH),
-        ],
-    )
-    def test_one_band_stronger_never_skips_or_overflows(self, start, expected):
-        assert one_band_stronger(start) is expected
+    The domain prompt writes that band for a fruit in the frame and for a short list of
+    named readings, of which characteristic white papery birch bark is the bark-tier one.
+    Rendering it required a fruit until the confidence-exception primitive existed, so a
+    birch the prompt puts at 95-100 was displayed at 85-94 at best.
+    """
 
-    def test_the_bark_exemption_cannot_reach_the_top_of_the_scale(self):
-        """Lifting the bark ceiling once yields medium, never high.
+    def test_a_fruit_still_earns_it_without_any_card_declaration(self):
+        assert confidence_band(Confidence.HIGH, EvidenceTier.FRUIT_SEED) == BAND_DECISIVE
 
-        The exemption exists so a genuinely diagnostic bark pattern is not pinned at the
-        bottom of the scale. It does not exist to let bark reach the top of it, which is
-        the claim FAILURE 8 is about.
+    def test_a_declared_decisive_reading_earns_it_below_the_fruit_tier(self):
+        assert (
+            confidence_band(Confidence.HIGH, EvidenceTier.BARK, decisive_reading=True)
+            == BAND_DECISIVE
+        )
+
+    def test_the_default_stays_conservative(self):
+        """A caller that knows nothing about card exceptions renders the lower band."""
+        assert confidence_band(Confidence.HIGH, EvidenceTier.BARK) != BAND_DECISIVE
+
+    @pytest.mark.parametrize("confidence", [Confidence.LOW, Confidence.MEDIUM])
+    def test_the_declaration_cannot_carry_a_claim_that_is_not_high(self, confidence):
+        """The exception raises a *ceiling*. Everything that lowers a claim still bites.
+
+        A reviewer finding, an unmet requirement or a contradiction leaves the claim below
+        high, and no card declaration renders that as the top band.
         """
-        assert one_band_stronger(confidence_ceiling(EvidenceTier.BARK)) is Confidence.MEDIUM
+        assert (
+            confidence_band(confidence, EvidenceTier.BARK, decisive_reading=True) != BAND_DECISIVE
+        )
 
 
 def test_the_bark_family_set_the_card_schema_mirrors_has_not_drifted():
-    """`schemas.taxon` validates bark exemptions against its own copy of this set.
+    """`schemas.taxon` mirrors this set, and cannot import from `knowledge` to get it.
 
-    It cannot import from `knowledge`, so the two are pinned equal here instead. A card
-    could otherwise declare a bark exemption on a feature this module ranks above bark, and
-    quietly lift a ceiling that was never the bark ceiling.
+    The two are pinned equal here instead. The card schema uses its copy to reason about
+    bark-tier features without a circular import; a drift would let it validate a rule
+    against a tier this module no longer agrees with.
     """
     from dendro_inspector.schemas.taxon import _BARK_TIER_FAMILIES
 

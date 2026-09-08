@@ -314,6 +314,90 @@ NO_VALUE_RELATIONS = ValueVocabulary(
 #: the bark-tier families `evidence_hierarchy` recognises, so the two cannot drift.
 _BARK_TIER_FAMILIES: frozenset[str] = frozenset({"bark", "inner_bark", "lenticels"})
 
+#: Colour suffixes, mirrored from `evidence_hierarchy` for the same reason and under the
+#: same contract test. Colour is supporting evidence however favourable the photograph, so
+#: no colour reading may carry a confidence exception.
+_COLOUR_SUFFIXES: tuple[str, ...] = (".colour", ".color", ".tone")
+
+
+class ExceptionCeiling(StrEnum):
+    """How far one declared diagnostic reading may lift a claim.
+
+    Distinct from :class:`Confidence`, which stays three-valued because a model is asked for
+    three levels. ``VERY_HIGH`` is the same ordinal confidence as ``HIGH`` plus the top
+    display band: the domain prompt writes 95-100 for a handful of named readings, and a
+    band is the only place that distinction is honest.
+    """
+
+    MEDIUM = "medium"
+    HIGH = "high"
+    VERY_HIGH = "very_high"
+
+
+class ConfidenceException(Contract):
+    """One reading a card declares strong enough to lift the evidence-tier ceiling.
+
+    The hierarchy's ceilings are the right default and the wrong absolute: bark caps at
+    ``LOW`` because "definitely an oak, from the bark" is the most common way this kind of
+    system embarrasses itself, and section 6 of the domain prompt then puts characteristic
+    white papery birch bark among its 95-100 examples. Both are true. A default with
+    declared, per-value exceptions is the shape that holds both; a global loosening is not.
+
+    Every field narrows. ``requires`` is opt-in per feature *and* value, and every pair must
+    also be a strong positive on the card, so a card cannot exempt evidence it does not
+    otherwise call decisive. ``max_resolution`` is the narrowest claim the exception can
+    carry, because "the genus is birch" and "the species is silver birch" are not the same
+    assertion from the same bark. The exception raises a ceiling and never lowers one, it
+    cannot apply to a colour reading, and it is refused outright when the same evidence
+    contradicts the card it is lifting.
+    """
+
+    requires: tuple[FeatureExpectation, ...] = Field(min_length=1)
+    max_resolution: Resolution
+    ceiling: ExceptionCeiling
+    note: ShortText | None = None
+    provenance: Provenance | None = Field(
+        default=None,
+        description=(
+            "Overrides the card's provenance for this exception. An exception is a "
+            "confidence policy claim, not a feature rule, and rarely shares a source with "
+            "the rules it lifts."
+        ),
+    )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _accept_the_requires_mapping(cls, data: Any) -> Any:
+        """Read ``requires: {feature: value}``, or ``{feature: [value, ...]}``."""
+        if not isinstance(data, dict):
+            return data
+        requires = data.get("requires")
+        if not isinstance(requires, dict):
+            return data
+        rows = [
+            {"feature": feature, "values": tuple(value) if isinstance(value, list) else (value,)}
+            for feature, value in requires.items()
+        ]
+        return {**data, "requires": rows}
+
+    @model_validator(mode="after")
+    def _the_exception_is_answerable(self) -> ConfidenceException:
+        if self.max_resolution is Resolution.UNKNOWN:
+            msg = "a confidence exception cannot apply at resolution=unknown"
+            raise ValueError(msg)
+        for expectation in self.requires:
+            if expectation.feature.endswith(_COLOUR_SUFFIXES):
+                msg = (
+                    f"a confidence exception cannot rest on a colour reading; "
+                    f"{expectation.feature!r} is one"
+                )
+                raise ValueError(msg)
+        features = [expectation.feature for expectation in self.requires]
+        if len(set(features)) != len(features):
+            msg = f"a confidence exception names {features} twice; one row per feature"
+            raise ValueError(msg)
+        return self
+
 
 class TaxonCard(Contract):
     """Structured, declarative knowledge about one taxon."""
@@ -346,17 +430,15 @@ class TaxonCard(Contract):
             "a selector no observable feature can match fails a contract test."
         ),
     )
-    diagnostic_bark_features: tuple[FeatureExpectation, ...] = Field(
+    confidence_exceptions: tuple[ConfidenceException, ...] = Field(
         default=(),
         description=(
-            "Bark feature/value pairs this card asserts are diagnostic enough to lift the "
-            "bark confidence ceiling by exactly one band, at genus resolution or broader. "
-            "Opt-in per value, never per feature path: `bark.pattern = "
-            "white_papery_with_black_marks` earns it, `bark.texture = smooth_grey` does not, "
-            "and appearing among a card's strong positives is not sufficient on its own. "
-            "Every entry must name a bark-tier feature and must also appear in "
-            "`strong_positive_features`, so a card cannot exempt evidence it does not "
-            "otherwise treat as decisive."
+            "Readings this card declares strong enough to lift the evidence-tier confidence "
+            "ceiling, each with the narrowest claim it may carry. Opt-in per feature *and* "
+            "value: `bark.pattern = white_papery_with_black_marks` earns one, "
+            "`bark.texture = smooth_grey` does not, and appearing among a card's strong "
+            "positives is not sufficient on its own. Every required pair must also appear in "
+            "`strong_positive_features`."
         ),
     )
     follow_up_evidence: tuple[ValueToken, ...] = ()
@@ -410,29 +492,34 @@ class TaxonCard(Contract):
             msg = f"native and broader taxon ids for {self.taxon_id!r} must be unique"
             raise ValueError(msg)
 
-        # A bark exemption is only meaningful for bark, and only for evidence this card
-        # already calls decisive. Validated here rather than trusted, because the whole
-        # point of the ceiling it lifts is that bark claims are the easiest to overstate.
+        # A confidence exception may only rest on evidence this card already calls decisive,
+        # and may not claim past what the card itself supports. Validated here rather than
+        # trusted, because the whole point of the ceilings it lifts is that these are the
+        # claims easiest to overstate.
         strong = {
             (expectation.feature, value)
             for expectation in self.strong_positive_features
             for value in expectation.values
         }
-        for expectation in self.diagnostic_bark_features:
-            family = expectation.feature.split(".", 1)[0]
-            if family not in _BARK_TIER_FAMILIES:
-                msg = (
-                    f"diagnostic_bark_features for {self.taxon_id!r} must name bark-tier "
-                    f"features; {expectation.feature!r} is not one"
+        for exception in self.confidence_exceptions:
+            for expectation in exception.requires:
+                missing = sorted(
+                    value
+                    for value in expectation.values
+                    if (expectation.feature, value) not in strong
                 )
-                raise ValueError(msg)
-            missing = sorted(
-                value for value in expectation.values if (expectation.feature, value) not in strong
-            )
-            if missing:
+                if missing:
+                    msg = (
+                        f"confidence_exceptions for {self.taxon_id!r} must also appear in "
+                        f"strong_positive_features; {expectation.feature!r} lacks {missing}"
+                    )
+                    raise ValueError(msg)
+            narrowest = max(resolution_rank(supported) for supported in self.supported_resolution)
+            if resolution_rank(exception.max_resolution) > narrowest:
                 msg = (
-                    f"diagnostic_bark_features for {self.taxon_id!r} must also appear in "
-                    f"strong_positive_features; {expectation.feature!r} lacks {missing}"
+                    f"confidence_exceptions for {self.taxon_id!r} may not reach "
+                    f"{exception.max_resolution.value}; the card supports "
+                    f"{[r.value for r in self.supported_resolution]}"
                 )
                 raise ValueError(msg)
         return self

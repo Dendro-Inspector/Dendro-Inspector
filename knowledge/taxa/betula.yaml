@@ -34,15 +34,29 @@ supporting_features:
     values:
       - small_triangular_serrate
 
-# White papery bark with black marks is the one bark signature in this pack strong enough
-# to lift the bark confidence ceiling by a single band at genus level. RHS and Trees and
-# Shrubs Online both treat it as diagnostic for Betula, and the domain prompt's section 14
-# says the same. It does not license a species claim, and the dark, coarsely fissured base
-# of a mature trunk is normal for B. pendula rather than evidence against birch.
-diagnostic_bark_features:
-  - feature: bark.pattern
-    values:
-      - white_papery_with_black_marks
+# White papery bark with black marks is the one bark signature in this pack the domain
+# prompt itself places at the top of the scale: section 6 lists it among the 95-100
+# examples, and section 14 says the genus may be called very high from it. RHS and Trees
+# and Shrubs Online both treat it as diagnostic for Betula.
+#
+# Genus and no further. The prompt's own next line asks for leaves and thin twigs before a
+# species, and line 457 says not to shout "birch 96" at pale trunks seen from a distance —
+# which the trust gate, not this exception, is what enforces. The dark coarsely fissured
+# base of a mature trunk is normal for B. pendula rather than evidence against birch.
+confidence_exceptions:
+  - requires:
+      bark.pattern: white_papery_with_black_marks
+    max_resolution: genus
+    ceiling: very_high
+    note: >-
+      Section 6 lists characteristic white papery bark with black marks among its 95-100
+      examples; section 14 permits very high confidence at Betula genus level.
+    provenance:
+      source: "Domain prompt sections 6 and 14; confidence policy, not a feature rule"
+      source_type: domain_prompt
+      region: Eastern Europe
+      confidence: medium
+      review_state: unreviewed
 
 contradictions: []
 

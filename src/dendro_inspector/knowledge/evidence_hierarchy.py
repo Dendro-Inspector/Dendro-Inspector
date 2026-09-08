@@ -461,27 +461,20 @@ BARK_TIER_FAMILIES: frozenset[str] = frozenset(
 )
 
 
-def one_band_stronger(confidence: Confidence) -> Confidence:
-    """Step exactly one confidence band up. ``HIGH`` is the ceiling and stays there.
-
-    Deliberately one band and no more. The bark exemption exists so a genuinely
-    diagnostic bark pattern is not pinned at the bottom of the scale; it does not exist to
-    let bark reach the top of it.
-    """
-    match confidence:
-        case Confidence.LOW:
-            return Confidence.MEDIUM
-        case _:
-            return Confidence.HIGH
-
-
-def confidence_band(confidence: Confidence, tier: EvidenceTier) -> str:
+def confidence_band(
+    confidence: Confidence, tier: EvidenceTier, *, decisive_reading: bool = False
+) -> str:
     """Render confidence on the domain prompt's X/100 scale, as a band.
 
-    The top band is reserved for the case the prompt reserves it for: a fruit, seed, cone or
-    acorn present in the frame, with confidence to match.
+    The top band is reserved for the two cases the prompt reserves it for: a fruit, seed,
+    cone or acorn present in the frame, with confidence to match — or a reading a card
+    declares diagnostic enough to reach it, which ``decisive_reading`` reports. Section 6
+    lists both, and characteristic white papery birch bark is its bark-tier example.
+
+    Defaults to the fruit-only rule, so a caller that does not know about card-declared
+    exceptions renders the more conservative band rather than the more generous one.
     """
-    if confidence is Confidence.HIGH and tier is EvidenceTier.FRUIT_SEED:
+    if confidence is Confidence.HIGH and (tier is EvidenceTier.FRUIT_SEED or decisive_reading):
         return BAND_DECISIVE
     return _BANDS[confidence]
 

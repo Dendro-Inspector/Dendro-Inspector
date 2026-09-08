@@ -81,9 +81,9 @@ ConfidenceStepSource = Literal[
     "seed",
     "tier_cap",
     # The one step that can raise a ceiling rather than lower a claim. Recorded like every
-    # other, so a bark verdict above the default band always says in the trace which card
-    # rule lifted it and on what evidence.
-    "bark_exemption",
+    # other, so a verdict above the default band for its evidence tier always says in the
+    # trace which card rule lifted it and on what evidence.
+    "diagnostic_exception",
     "requirement_cap",
     "reviewer_recommendation",
     "model_finding",

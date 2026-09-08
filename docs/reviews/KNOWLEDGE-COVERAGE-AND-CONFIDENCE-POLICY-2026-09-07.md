@@ -527,6 +527,14 @@ currently carries `placeholder_content: true`.
    decisive. The bark-family set is duplicated in `schemas.taxon` (which may not import from
    `knowledge`) and a contract test pins the two equal.
 
+   **Superseded 2026-09-08** by the general primitive, on the owner decision recorded as F2
+   in [the taxon-description conformance review](TAXON-DESCRIPTION-CONFORMANCE-2026-09-08.md).
+   `diagnostic_bark_features` became `TaxonCard.confidence_exceptions`, which is not
+   bark-specific, carries its own `max_resolution`, and declares how far it lifts rather
+   than always lifting one band — Betula now declares `very_high` at genus, which is what
+   prompt sections 6 and 14 say. The narrowing conditions above are unchanged and one was
+   added: a contradicted card earns nothing. The trace step is now `diagnostic_exception`.
+
    *The discrimination this produces is sharper than either item alone.* Same feature, same
    value, two reliability readings:
 

@@ -121,6 +121,30 @@ A passing implementation test is not proof that the prompt's exception is fully 
 Action: agree the exception with the owner, then test it. Merely pale or distant trunks
 remain insufficient for a diagnostic-bark claim.
 
+**Resolved by owner decision, 2026-09-08.** The prompt is taken literally: characteristic
+white papery bark with black marks earns the 95–100 band at **Betula genus level**, and
+nothing else about it changes. Pale bark does not, a distant white trunk does not, generic
+peeling bark does not, a species claim does not, and contradicted evidence does not.
+
+Implemented as a declarative primitive rather than a birch case in the decision engine,
+because F5 shows birch is not the last of these. `TaxonCard.confidence_exceptions` names
+the required feature *and* value, the narrowest claim it may carry, and how far it lifts:
+
+```yaml
+confidence_exceptions:
+  - requires:
+      bark.pattern: white_papery_with_black_marks
+    max_resolution: genus
+    ceiling: very_high
+```
+
+`very_high` is ordinal `HIGH` plus the top display band, so the three-valued confidence
+scale is unchanged; `confidence_band` learned a second way to earn 95–100 beside a fruit in
+the frame. The engine contributes arithmetic only — every narrowing condition is on the card
+or in `confidence_exception_for`, so the policy cannot be read one way here and another way
+by anything else that asks. The old `diagnostic_bark_features` field and the fixed one-band
+lift are gone; the trace step is `diagnostic_exception`.
+
 ### F3 — Sweet cherry has no card-level fruit evidence
 
 Status: VERIFIED for the absent rule and fruit-only admission probe.

@@ -10,6 +10,20 @@ get entries.
 
 ## [Unreleased]
 
+### Changed
+
+- A taxon card declares its own confidence exceptions, and Betula's reaches the band the
+  domain prompt gives it. `TaxonCard.diagnostic_bark_features` — bark-only, always exactly
+  one band — is replaced by `confidence_exceptions`, where a card names the required feature
+  *and* value, the narrowest claim the exception may carry, and how far it lifts. Betula
+  declares `bark.pattern = white_papery_with_black_marks` as `very_high` at genus, which is
+  what section 6 lists among its 95–100 examples and what section 14 permits; a confidently
+  read birch trunk is reported there instead of at 70–84. Everything that made the old rule
+  narrow is unchanged and one guard is new: pale bark earns nothing, a distant trunk the
+  extractor was unsure of earns nothing, generic peeling bark earns nothing, no exception
+  reaches a species claim, and a card the same packet contradicts earns nothing. The
+  confidence trace step is now `diagnostic_exception` rather than `bark_exemption`.
+
 ### Fixed
 
 - A candidate is no longer removed because its own decisive feature was described twice.
