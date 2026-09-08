@@ -145,6 +145,23 @@ or in `confidence_exception_for`, so the policy cannot be read one way here and 
 by anything else that asks. The old `diagnostic_bark_features` field and the fixed one-band
 lift are gone; the trace step is `diagnostic_exception`.
 
+**One condition of the decision is not yet implemented, and it is the prompt's own.**
+Section 6 does not only give examples — lines 139–144 state what the 95–100 band requires,
+and the last of them is *no serious alternatives*. The same section then says at line 163
+that seeing only bark is a 50–69 answer. The birch example and that line are in direct
+tension, and this decision resolves it in favour of the specific example; that is a defensible
+reading of a prompt that says both, not a case where the prompt says one thing.
+
+What follows is that an exception should arguably also require the alternatives to be thin,
+and Betula's own card names `populus_alba` as a confusion. The
+[pale-trunk evaluation case](../../evals/public/light-trunk-birch-001.yaml) does not settle
+it, because trust already caps that photograph. The open question is a confidently read
+white papery trunk that a comparison card still cannot separate from white poplar. Deciding
+it needs a definition of "serious alternative" that a rule can test — the nearest candidate's
+score, an unresolved decisive difference, or the presence of a confusion at all — and each
+would behave differently. Until then the exception is narrower than the prompt in one
+direction (it ignores context and alternatives) and exactly as wide in the others.
+
 ### F3 — Sweet cherry has no card-level fruit evidence
 
 Status: VERIFIED for the absent rule and fruit-only admission probe.
