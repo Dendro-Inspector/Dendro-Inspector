@@ -44,6 +44,14 @@ evals/golden/**
 !evals/golden/README.md
 evals/100 top/**
 
+# Agent tooling scratch space. Holds throwaway git worktrees and their type/test caches,
+# which is why a stale copy of the domain prompt in here can fail the uniqueness contract.
+.claude/
+
+# Dataset staging rows written when publishing photographs to an external host. Derived
+# from evals/100 top/manifest.json and regenerated on demand; the manifest is the source.
+.hfstage_rows.json
+
 # Editors / OS
 .vscode/
 .idea/
