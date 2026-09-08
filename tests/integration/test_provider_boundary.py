@@ -6,8 +6,10 @@ import asyncio
 import io
 import itertools
 import json
+import logging
 import urllib.error
 import urllib.request
+from typing import Any
 
 import pytest
 
@@ -15,9 +17,11 @@ from dendro_inspector.config import Adapter, AppConfig, ProviderConfig, Role, lo
 from dendro_inspector.observability.trace import TraceRecorder
 from dendro_inspector.providers.base import (
     OUTPUT_SUBJECT_IDS,
+    USAGE_SINK,
     ProviderError,
     ProviderUnavailableError,
     StructuredOutputError,
+    UsageSink,
     request_structured,
 )
 from dendro_inspector.providers.fake import (
@@ -519,6 +523,327 @@ class TestRegistry:
                     metadata={"node": "planner"},
                 )
             )
+
+
+class TestVertexRoute:
+    """The same protocol on Google's other host, which authenticates differently.
+
+    Vertex / Agent Platform is the route a Cloud billing account and its credits apply to.
+    It speaks the body and the response shape the Generative Language API does, so only the
+    credential, the thinking control and the token accounting differ — and every one of
+    those is a way to be quietly wrong rather than loudly broken.
+    """
+
+    endpoint = "https://aiplatform.googleapis.com/v1/projects/p/locations/global/publishers/google"
+
+    @staticmethod
+    def _answer(**usage_metadata: object) -> bytes:
+        payload: dict[str, object] = {
+            "candidates": [{"content": {"parts": [{"text": EvidencePacket().model_dump_json()}]}}]
+        }
+        if usage_metadata:
+            payload["usageMetadata"] = usage_metadata
+        return json.dumps(payload).encode()
+
+    def _run(self, provider, metadata=None):
+        return asyncio.run(
+            provider.generate_structured(
+                role="primary",
+                prompt="p",
+                images=(),
+                response_model=EvidencePacket,
+                metadata=metadata if metadata is not None else {"node": "planner"},
+            )
+        )
+
+    def test_a_bearer_token_replaces_the_api_key_header(self, monkeypatch):
+        """Vertex rejects `x-goog-api-key`; sending both would spend the key for nothing."""
+        monkeypatch.setenv("GEMINI_API_KEY", "test-key-not-real")
+        monkeypatch.setenv("GOOGLE_ACCESS_TOKEN", "test-token-not-real")
+        provider = GeminiProvider(model="m", endpoint=self.endpoint)
+        seen: dict[str, str] = {}
+
+        def _urlopen(request, **kwargs):
+            del kwargs
+            seen.update(request.headers)
+            return _FakeResponse(self._answer())
+
+        monkeypatch.setattr(urllib.request, "urlopen", _urlopen)
+        self._run(provider)
+
+        assert seen["Authorization"] == "Bearer test-token-not-real"
+        assert not any(key.lower() == "x-goog-api-key" for key in seen)
+
+    def test_a_vertex_endpoint_without_a_token_fails_before_the_request(self, monkeypatch):
+        """Falling back to the API key here buys a 401 that names the wrong problem."""
+        monkeypatch.setenv("GEMINI_API_KEY", "test-key-not-real")
+        monkeypatch.delenv("GOOGLE_ACCESS_TOKEN", raising=False)
+        provider = GeminiProvider(model="m", endpoint=self.endpoint)
+
+        def _urlopen(*args, **kwargs):
+            raise AssertionError("no request may leave without a usable credential")
+
+        monkeypatch.setattr(urllib.request, "urlopen", _urlopen)
+        with pytest.raises(ProviderUnavailableError, match="GOOGLE_ACCESS_TOKEN"):
+            self._run(provider)
+
+    def test_the_api_key_still_serves_the_generative_language_host(self, monkeypatch):
+        """Adding the Vertex route must not move the default one."""
+        monkeypatch.setenv("GEMINI_API_KEY", "test-key-not-real")
+        monkeypatch.delenv("GOOGLE_ACCESS_TOKEN", raising=False)
+        provider = GeminiProvider(model="m")
+        seen: dict[str, str] = {}
+
+        def _urlopen(request, **kwargs):
+            del kwargs
+            seen.update(request.headers)
+            return _FakeResponse(self._answer())
+
+        monkeypatch.setattr(urllib.request, "urlopen", _urlopen)
+        self._run(provider)
+
+        assert seen["X-goog-api-key"] == "test-key-not-real"
+        assert "Authorization" not in seen
+
+    def test_the_thinking_level_is_sent_only_when_one_is_configured(self, monkeypatch):
+        monkeypatch.setenv("GOOGLE_ACCESS_TOKEN", "test-token-not-real")
+        monkeypatch.delenv("GEMINI_THINKING_LEVEL", raising=False)
+        bodies: list[dict[str, Any]] = []
+
+        def _urlopen(request, **kwargs):
+            del kwargs
+            bodies.append(json.loads(request.data))
+            return _FakeResponse(self._answer())
+
+        monkeypatch.setattr(urllib.request, "urlopen", _urlopen)
+        self._run(GeminiProvider(model="m", endpoint=self.endpoint))
+        self._run(GeminiProvider(model="m", endpoint=self.endpoint, thinking_level="HIGH"))
+
+        assert "thinkingConfig" not in bodies[0]["generationConfig"]
+        assert bodies[1]["generationConfig"]["thinkingConfig"] == {"thinkingLevel": "HIGH"}
+
+    def test_an_unknown_thinking_level_is_left_for_the_api_to_reject(self, monkeypatch):
+        """The API answers 400 naming the field. A local allow-list would only rot."""
+        monkeypatch.setenv("GOOGLE_ACCESS_TOKEN", "test-token-not-real")
+        provider = GeminiProvider(model="m", endpoint=self.endpoint, thinking_level="BOGUS")
+        sent: list[dict[str, Any]] = []
+
+        def _urlopen(request, **kwargs):
+            del kwargs
+            sent.append(json.loads(request.data))
+            raise urllib.error.HTTPError(
+                url=self.endpoint,
+                code=400,
+                msg="Bad Request",
+                hdrs=None,  # type: ignore[arg-type]
+                fp=io.BytesIO(
+                    b'{"error":{"message":"Invalid value at '
+                    b'generation_config.thinking_config.thinking_level"}}'
+                ),
+            )
+
+        monkeypatch.setattr(urllib.request, "urlopen", _urlopen)
+        with pytest.raises(ProviderError, match="thinking_level"):
+            self._run(provider)
+        assert sent[0]["generationConfig"]["thinkingConfig"] == {"thinkingLevel": "BOGUS"}
+
+    def test_thinking_tokens_are_counted_as_the_output_they_are_billed_as(self, monkeypatch):
+        """Measured on a live call: 1048 thinking tokens beside 36 of answer.
+
+        Recording only `candidatesTokenCount` would report 3 % of the billable output, and
+        would break the fit between output length and elapsed time that the latency work in
+        `docs/specs/latency-and-cost.md` rests on.
+        """
+        monkeypatch.setenv("GOOGLE_ACCESS_TOKEN", "test-token-not-real")
+        provider = GeminiProvider(model="m", endpoint=self.endpoint)
+        usage = UsageSink()
+
+        def _urlopen(request, **kwargs):
+            del request, kwargs
+            return _FakeResponse(
+                self._answer(
+                    promptTokenCount=1981,
+                    candidatesTokenCount=36,
+                    thoughtsTokenCount=1048,
+                    totalTokenCount=3065,
+                )
+            )
+
+        monkeypatch.setattr(urllib.request, "urlopen", _urlopen)
+        self._run(provider, metadata={"node": "planner", USAGE_SINK: usage})
+
+        assert usage.input_tokens == 1981
+        assert usage.output_tokens == 36 + 1048
+        assert usage.reasoning_output_tokens == 1048
+
+    def test_an_answer_without_thinking_reports_the_answer_alone(self, monkeypatch):
+        """At LOW the field is absent entirely; absent must not become answer-plus-zero."""
+        monkeypatch.setenv("GOOGLE_ACCESS_TOKEN", "test-token-not-real")
+        provider = GeminiProvider(model="m", endpoint=self.endpoint)
+        usage = UsageSink()
+
+        def _urlopen(request, **kwargs):
+            del request, kwargs
+            return _FakeResponse(
+                self._answer(promptTokenCount=1981, candidatesTokenCount=119, totalTokenCount=2100)
+            )
+
+        monkeypatch.setattr(urllib.request, "urlopen", _urlopen)
+        self._run(provider, metadata={"node": "planner", USAGE_SINK: usage})
+
+        assert usage.output_tokens == 119
+        assert usage.reasoning_output_tokens is None
+
+    def test_a_provider_reporting_no_usage_at_all_records_nothing(self, monkeypatch):
+        """`None` means unreported, which is not the same as zero."""
+        monkeypatch.setenv("GOOGLE_ACCESS_TOKEN", "test-token-not-real")
+        provider = GeminiProvider(model="m", endpoint=self.endpoint)
+        usage = UsageSink()
+
+        def _urlopen(request, **kwargs):
+            del request, kwargs
+            return _FakeResponse(self._answer())
+
+        monkeypatch.setattr(urllib.request, "urlopen", _urlopen)
+        self._run(provider, metadata={"node": "planner", USAGE_SINK: usage})
+
+        assert usage.output_tokens is None
+
+    def test_usage_that_does_not_reconcile_is_reported(self, monkeypatch, caplog):
+        """A counter this adapter does not read is the bug it already shipped once.
+
+        The reported total is defined as the sum of the parts, so a gap means either a new
+        counter or a misread one. Either way the spend figures are wrong, and wrong quietly.
+        """
+        monkeypatch.setenv("GOOGLE_ACCESS_TOKEN", "test-token-not-real")
+        provider = GeminiProvider(model="m", endpoint=self.endpoint)
+        usage = UsageSink()
+
+        def _urlopen(request, **kwargs):
+            del request, kwargs
+            return _FakeResponse(
+                self._answer(
+                    promptTokenCount=1981,
+                    candidatesTokenCount=36,
+                    thoughtsTokenCount=1048,
+                    # 400 tokens the adapter cannot name — a counter it does not read yet.
+                    totalTokenCount=3465,
+                )
+            )
+
+        monkeypatch.setattr(urllib.request, "urlopen", _urlopen)
+        with caplog.at_level(logging.WARNING):
+            self._run(provider, metadata={"node": "planner", USAGE_SINK: usage})
+
+        assert "gemini_usage_does_not_reconcile" in caplog.text
+        assert any(getattr(r, "unaccounted", None) == 400 for r in caplog.records)
+
+    def test_usage_that_reconciles_stays_quiet(self, monkeypatch, caplog):
+        monkeypatch.setenv("GOOGLE_ACCESS_TOKEN", "test-token-not-real")
+        provider = GeminiProvider(model="m", endpoint=self.endpoint)
+
+        def _urlopen(request, **kwargs):
+            del request, kwargs
+            return _FakeResponse(
+                self._answer(
+                    promptTokenCount=1981,
+                    candidatesTokenCount=36,
+                    thoughtsTokenCount=1048,
+                    totalTokenCount=3065,
+                )
+            )
+
+        monkeypatch.setattr(urllib.request, "urlopen", _urlopen)
+        with caplog.at_level(logging.WARNING):
+            self._run(provider, metadata={"node": "planner", USAGE_SINK: UsageSink()})
+
+        assert "gemini_usage_does_not_reconcile" not in caplog.text
+
+    def test_a_repaired_call_counts_the_reasoning_of_every_attempt(self, monkeypatch):
+        """A discarded attempt was still thought about, and still billed.
+
+        `duration_ms` already spans both generations. Counting the reasoning of only the
+        attempt that validated would make a node that had to be repaired look cheaper than
+        one that got it right first time — the exact inversion of what happened.
+        """
+        monkeypatch.setenv("GOOGLE_ACCESS_TOKEN", "test-token-not-real")
+        provider = GeminiProvider(model="m", endpoint=self.endpoint)
+        recorder = TraceRecorder("vertex-repair-case")
+        bodies = itertools.chain(
+            [
+                json.dumps(
+                    {
+                        "candidates": [{"content": {"parts": [{"text": "{"}]}}],
+                        "usageMetadata": {
+                            "promptTokenCount": 1981,
+                            "candidatesTokenCount": 4,
+                            "thoughtsTokenCount": 903,
+                            "totalTokenCount": 2888,
+                        },
+                    }
+                )
+            ],
+            itertools.repeat(
+                json.dumps(
+                    {
+                        "candidates": [
+                            {"content": {"parts": [{"text": EvidencePacket().model_dump_json()}]}}
+                        ],
+                        "usageMetadata": {
+                            "promptTokenCount": 2140,
+                            "candidatesTokenCount": 36,
+                            "thoughtsTokenCount": 1048,
+                            "totalTokenCount": 3224,
+                        },
+                    }
+                )
+            ),
+        )
+
+        def _urlopen(request, **kwargs):
+            del request, kwargs
+            return _FakeResponse(next(bodies).encode())
+
+        monkeypatch.setattr(urllib.request, "urlopen", _urlopen)
+        asyncio.run(
+            request_structured(
+                provider=provider,
+                role="primary",
+                node="candidate_generator",
+                prompt="p",
+                images=(),
+                response_model=EvidencePacket,
+                recorder=recorder,
+            )
+        )
+        recorder.record_node("candidate_generator")
+
+        call = recorder.build().events[0].provider_calls[0]
+        assert call.attempts == 2
+        assert call.input_tokens == 1981 + 2140
+        assert call.output_tokens == (4 + 903) + (36 + 1048)
+        assert call.reasoning_output_tokens == 903 + 1048
+        # The decomposition the trace is read through, on a node that had to be repaired.
+        assert call.output_tokens - call.reasoning_output_tokens == 4 + 36
+
+    def test_a_rejected_bearer_token_names_the_token_not_the_api_key(self, monkeypatch):
+        """Told to rotate GEMINI_API_KEY, a reader would rotate a key that was never sent."""
+        monkeypatch.setenv("GEMINI_API_KEY", "test-key-not-real")
+        monkeypatch.setenv("GOOGLE_ACCESS_TOKEN", "expired-token-not-real")
+        provider = GeminiProvider(model="m", endpoint=self.endpoint)
+
+        def _raise(*args, **kwargs):
+            raise urllib.error.HTTPError(
+                url=self.endpoint,
+                code=401,
+                msg="Unauthorized",
+                hdrs=None,  # type: ignore[arg-type]
+                fp=io.BytesIO(b'{"error":{"message":"Invalid authentication credential"}}'),
+            )
+
+        monkeypatch.setattr(urllib.request, "urlopen", _raise)
+        with pytest.raises(ProviderUnavailableError, match="GOOGLE_ACCESS_TOKEN"):
+            self._run(provider)
 
 
 class TestUsageAccounting:

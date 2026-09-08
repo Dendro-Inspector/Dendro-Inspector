@@ -60,6 +60,15 @@ class ProviderCallRecord(Contract):
         description="Prompt tokens served from the provider's cache, where it says so.",
     )
     output_tokens: int | None = Field(default=None, ge=0)
+    reasoning_output_tokens: int | None = Field(
+        default=None,
+        ge=0,
+        description=(
+            "The part of `output_tokens` a provider attributes to hidden reasoning, where "
+            "it reports one separately. It is billed as output and is already included in "
+            "`output_tokens`; this field says how much of that total was never shown."
+        ),
+    )
     reported_cost_usd: float | None = Field(
         default=None,
         ge=0,

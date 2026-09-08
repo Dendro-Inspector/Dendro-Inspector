@@ -7,6 +7,7 @@ by construction rather than by convention.
 from __future__ import annotations
 
 import asyncio
+import os
 from collections.abc import Callable
 from pathlib import Path
 
@@ -32,6 +33,25 @@ from dendro_inspector.schemas.evidence import (
     requires_wood_surface,
 )
 from dendro_inspector.schemas.input import CaseInput, DeclaredObjectType, ImageRef
+
+
+@pytest.fixture(autouse=True)
+def _contain_dotenv_leakage():
+    """Undo any `os.environ` write a test leaves behind.
+
+    `load_config` deliberately never reads `.env` so that a test cannot inherit the
+    provider a developer happens to have configured. The CLI entrypoint does read it, and
+    `CliRunner` invokes that entrypoint, so one integration test was enough to publish the
+    whole file into `os.environ` for every test that ran after it. The guarantee held only
+    on machines with no `.env` — which is to say, on CI and nowhere else.
+
+    `monkeypatch` cannot cover this: it restores what it set, not what the code under test
+    wrote directly.
+    """
+    before = os.environ.copy()
+    yield
+    os.environ.clear()
+    os.environ.update(before)
 
 
 @pytest.fixture(scope="session")

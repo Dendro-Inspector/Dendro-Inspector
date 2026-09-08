@@ -71,6 +71,10 @@ class UsageSink:
     input_tokens: int | None = None
     cached_input_tokens: int | None = None
     output_tokens: int | None = None
+    #: The share of ``output_tokens`` spent on reasoning the caller never sees. Kept beside
+    #: the total rather than instead of it: billing wants one number, and the question of
+    #: which node is expensive wants the other. Providers that hide nothing report ``None``.
+    reasoning_output_tokens: int | None = None
     reported_cost_usd: float | None = None
 
     def record(
@@ -79,6 +83,7 @@ class UsageSink:
         input_tokens: int | None = None,
         cached_input_tokens: int | None = None,
         output_tokens: int | None = None,
+        reasoning_output_tokens: int | None = None,
         reported_cost_usd: float | None = None,
     ) -> None:
         """Add one attempt's accounting to the call's running total.
@@ -91,6 +96,9 @@ class UsageSink:
         self.input_tokens = _accumulate(self.input_tokens, input_tokens)
         self.cached_input_tokens = _accumulate(self.cached_input_tokens, cached_input_tokens)
         self.output_tokens = _accumulate(self.output_tokens, output_tokens)
+        self.reasoning_output_tokens = _accumulate(
+            self.reasoning_output_tokens, reasoning_output_tokens
+        )
         self.reported_cost_usd = _accumulate_cost(self.reported_cost_usd, reported_cost_usd)
 
 
@@ -314,6 +322,7 @@ async def request_structured(
                     input_tokens=usage.input_tokens,
                     cached_input_tokens=usage.cached_input_tokens,
                     output_tokens=usage.output_tokens,
+                    reasoning_output_tokens=usage.reasoning_output_tokens,
                     reported_cost_usd=usage.reported_cost_usd,
                 )
             )
@@ -333,6 +342,7 @@ async def request_structured(
                 input_tokens=usage.input_tokens,
                 cached_input_tokens=usage.cached_input_tokens,
                 output_tokens=usage.output_tokens,
+                reasoning_output_tokens=usage.reasoning_output_tokens,
                 reported_cost_usd=usage.reported_cost_usd,
             )
         )

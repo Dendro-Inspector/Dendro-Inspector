@@ -2,8 +2,13 @@
 
 No SDK and no new dependency: the Generative Language API is plain HTTPS with a JSON body,
 so this adapter uses the standard library, in an executor thread since ``urllib`` blocks.
-The API key travels in the ``x-goog-api-key`` header rather than a query parameter, which
-keeps it out of proxy logs and browser history.
+Two hosts speak this protocol and they authenticate differently. The Generative Language
+API takes an API key, which travels in the ``x-goog-api-key`` header rather than a query
+parameter so it stays out of proxy logs and browser history. Vertex / Agent Platform takes
+an OAuth access token as a bearer credential instead; that route is the one where a Cloud
+billing account and its credits apply. The token is read from the environment rather than
+minted here: refreshing it is the caller's job, and an SDK to do so would be a dependency
+this adapter exists to avoid.
 
 Structured output is requested natively via ``responseSchema``. That field speaks a narrower
 dialect than Pydantic emits, so the schema goes through
@@ -26,6 +31,7 @@ from typing import Any
 
 from pydantic import ValidationError
 
+from dendro_inspector.observability.logging import get_logger
 from dendro_inspector.providers.base import (
     OUTPUT_SUBJECT_IDS,
     ImageInput,
@@ -40,6 +46,11 @@ from dendro_inspector.providers.schema_compat import to_gemini_schema
 
 DEFAULT_MODEL = "gemini-3.6-flash"
 DEFAULT_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta"
+DEFAULT_ACCESS_TOKEN_ENV = "GOOGLE_ACCESS_TOKEN"
+
+# Vertex rejects ``x-goog-api-key`` with a 401 that reads like a bad key. Recognising the
+# host lets a missing bearer token be reported as the configuration error it is.
+_VERTEX_HOST = "aiplatform.googleapis.com"
 
 _MAX_RETRY_SLEEP = 60.0
 _DEFAULT_RETRY_SLEEP = 5.0
@@ -87,13 +98,21 @@ class GeminiProvider:
         *,
         model: str | None = None,
         api_key_env: str = "GEMINI_API_KEY",
+        access_token_env: str = DEFAULT_ACCESS_TOKEN_ENV,
         endpoint: str | None = None,
+        thinking_level: str | None = None,
         timeout_seconds: float | None = None,
         rate_limit_retries: int = 3,
         sleep: Callable[[float], None] = time.sleep,
     ) -> None:
         self.model = model or DEFAULT_MODEL
         self._api_key_env = api_key_env
+        self._access_token_env = access_token_env
+        self._thinking_level = (
+            thinking_level
+            if thinking_level is not None
+            else os.environ.get("GEMINI_THINKING_LEVEL", "")
+        ).strip()
         self._endpoint = (endpoint or os.environ.get("GEMINI_ENDPOINT") or DEFAULT_ENDPOINT).rstrip(
             "/"
         )
@@ -111,6 +130,25 @@ class GeminiProvider:
             raise ProviderUnavailableError(msg)
         return key
 
+    def _auth_headers(self) -> dict[str, str]:
+        """Pick the credential the configured host actually accepts.
+
+        A bearer token wins when one is present: nothing sets it by accident, so its
+        presence is a deliberate choice of the Vertex route. Falling back to the API key on
+        a Vertex endpoint would spend a request to earn a 401 that names the wrong problem.
+        """
+        token = os.environ.get(self._access_token_env, "").strip()
+        if token:
+            return {"Authorization": f"Bearer {token}"}
+        if _VERTEX_HOST in self._endpoint:
+            msg = (
+                f"{self._endpoint} is a Vertex endpoint, which authenticates with a bearer "
+                f"token, but {self._access_token_env} is not set. Populate it from "
+                "`gcloud auth application-default print-access-token`."
+            )
+            raise ProviderUnavailableError(msg)
+        return {"x-goog-api-key": self._api_key()}
+
     @staticmethod
     def _image_part(image: ImageInput) -> dict[str, Any]:
         encoded = base64.b64encode(image.read_bytes()).decode("ascii")
@@ -124,10 +162,55 @@ class GeminiProvider:
         reported = payload.get("usageMetadata")
         if not isinstance(reported, Mapping):
             return
+        # ``thoughtsTokenCount`` is reported beside the answer, never inside it, and bills
+        # at the output rate. On a thinking model it is the larger of the two by an order of
+        # magnitude, so reading only ``candidatesTokenCount`` would understate spend — and
+        # would silently break the relationship between output length and elapsed time that
+        # the latency model is fitted on.
+        answer = reported.get("candidatesTokenCount")
+        thoughts = reported.get("thoughtsTokenCount")
+        billed_output = (
+            None if answer is None and thoughts is None else (answer or 0) + (thoughts or 0)
+        )
         usage.record(
             input_tokens=reported.get("promptTokenCount"),
             cached_input_tokens=reported.get("cachedContentTokenCount"),
-            output_tokens=reported.get("candidatesTokenCount"),
+            output_tokens=billed_output,
+            reasoning_output_tokens=thoughts,
+        )
+        GeminiProvider._check_usage_adds_up(reported)
+
+    @staticmethod
+    def _check_usage_adds_up(reported: Mapping[str, Any]) -> None:
+        """Warn when the reported parts stop summing to the reported total.
+
+        `usageMetadata` defines the total as prompt plus answer plus thoughts plus tool-use
+        prompt. That arithmetic is the cheapest available detector for the failure this
+        adapter has already had once: a counter that exists, bills, and is not being read.
+        A future field would show up here as a gap rather than as a quietly low number, so
+        this warns and never raises — an unread counter is a measurement bug, not a reason
+        to abandon an answer the caller already paid for.
+        """
+        parts = (
+            "promptTokenCount",
+            "candidatesTokenCount",
+            "thoughtsTokenCount",
+            "toolUsePromptTokenCount",
+        )
+        total = reported.get("totalTokenCount")
+        if not isinstance(total, int):
+            return
+        counted = sum(value for name in parts if isinstance(value := reported.get(name), int))
+        if counted == total:
+            return
+        get_logger("gemini").warning(
+            "gemini_usage_does_not_reconcile",
+            extra={
+                "reported_total": total,
+                "counted_total": counted,
+                "unaccounted": total - counted,
+                "fields_present": sorted(reported),
+            },
         )
 
     def _call(
@@ -140,21 +223,26 @@ class GeminiProvider:
     ) -> str:
         parts: list[dict[str, Any]] = [{"text": prompt}]
         parts.extend(self._image_part(image) for image in images)
+        generation_config: dict[str, Any] = {
+            "temperature": 0,
+            "responseMimeType": "application/json",
+            "responseSchema": schema,
+        }
+        if self._thinking_level:
+            # Not validated here: the API rejects an unknown level with a 400 naming the
+            # field, which is a better error than any list this adapter could keep current.
+            generation_config["thinkingConfig"] = {"thinkingLevel": self._thinking_level}
         body = json.dumps(
             {
                 "contents": [{"role": "user", "parts": parts}],
-                "generationConfig": {
-                    "temperature": 0,
-                    "responseMimeType": "application/json",
-                    "responseSchema": schema,
-                },
+                "generationConfig": generation_config,
             }
         ).encode("utf-8")
         for attempt in range(self._rate_limit_retries + 1):
             request = urllib.request.Request(
                 f"{self._endpoint}/models/{self.model}:generateContent",
                 data=body,
-                headers={"Content-Type": "application/json", "x-goog-api-key": self._api_key()},
+                headers={"Content-Type": "application/json", **self._auth_headers()},
                 method="POST",
             )
             try:
@@ -238,8 +326,13 @@ class GeminiProvider:
         except (json.JSONDecodeError, KeyError, TypeError):
             message = detail.strip() or "no detail"
         if exc.code in {401, 403}:
+            sent = (
+                self._access_token_env
+                if os.environ.get(self._access_token_env, "").strip()
+                else self._api_key_env
+            )
             return ProviderUnavailableError(
-                f"Gemini rejected the credential in {self._api_key_env} ({exc.code}): {message}"
+                f"Gemini rejected the credential in {sent} ({exc.code}): {message}"
             )
         if exc.code == 404:
             return ProviderUnavailableError(
