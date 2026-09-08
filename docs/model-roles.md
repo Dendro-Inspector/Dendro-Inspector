@@ -2,8 +2,8 @@
 
 - **Status:** Current
 - **Owner:** Dendro Inspector maintainers
-- **Date:** 2026-09-02
-- **Last-verified:** 2026-09-02
+- **Date:** 2026-09-06
+- **Last-verified:** 2026-09-06
 
 Three logical roles. Business logic names only these; which vendor and model satisfies each is
 configuration.
@@ -242,8 +242,8 @@ escalation precision and recall.
 | --- | --- | --- |
 | `species_level_proposed` | yes | The claim most likely to be wrong and most likely to be believed |
 | `possible_multiple_taxa` | yes | Averaging two subjects into one answer is a silent, plausible error |
-| `user_challenged_result` | yes | The user has information the system does not |
-| `instruction_like_content_detected` | yes | Untrusted content in play; a second look is cheap |
+| `user_challenged_result` | yes | The caller explicitly requests reconsideration of a previous result |
+| `instruction_like_content_detected` | yes | A warning signal requests a second look, without asserting an attack occurred |
 | `unresolved_contradiction` | yes | A critical finding survived adjudication |
 | `high_confidence_proposed` | no | A reviewer recommends high or the deterministic provisional verdict is high |
 | `leading_candidates_close` | no | The ranking is doing work the evidence may not support |
@@ -256,11 +256,15 @@ escalation precision and recall.
 
 ### Suppressors
 
-**Blocking** — a second opinion could not help; these override everything:
+**Blocking** — overrides hard triggers when enabled:
 
-* `evidence_insufficient` — arbitrating "I cannot tell" yields "I cannot tell", at twice
-  the price.
-* `already_abstaining`.
+* `already_abstaining` — every subject is abstained. Partial abstention leaves unaffected
+  subjects eligible for arbitration.
+
+Insufficient evidence never reaches this gate: the quality branch routes directly to the
+photo planner. The old `suppress_when_insufficient_evidence` field is deprecated and ignored,
+retained only so existing configurations still load. The routing contract and end-to-end
+tests, not a second policy knob, own that short circuit.
 
 **Cost** — these trade risk for money and are overridden by any hard trigger:
 
@@ -289,8 +293,7 @@ of a safety trigger. Regression-tested in
 
 The arbiter roughly doubles model cost on escalated cases. The public conformance suite is
 deliberately weighted toward hard cases, so its escalation rate is not a production cost
-forecast. v0.2.3 expanded the suite from sixteen to nineteen cases; v0.9.0 adds the
-high-confidence silent-reviewer escalation case, bringing the current suite to twenty. Tune
+forecast. Current cases and coverage are documented in [evaluation](evaluation.md). Tune
 with:
 
 ```python

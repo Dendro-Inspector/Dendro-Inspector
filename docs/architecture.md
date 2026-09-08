@@ -2,8 +2,8 @@
 
 - **Status:** Current
 - **Owner:** Dendro Inspector maintainers
-- **Date:** 2026-09-05
-- **Last-verified:** 2026-09-05
+- **Date:** 2026-09-06
+- **Last-verified:** 2026-09-06
 
 ## The problem this shape solves
 
@@ -302,6 +302,15 @@ Prompt trace metadata and `dendro prompt-info` record the domain and manifest ha
 manifest schema, policy revision, node revision and compatibility status. Composition order is
 fixed: domain prompt, optional response-register note, node prompt, then case context fenced as
 untrusted data.
+
+The input guard records warning signals; it does not certify or sanitise input. Its limited
+English and Ukrainian patterns run independently of the output locale, and matching one can
+request arbitration under the escalation policy. Context fencing and deterministic claim
+caps apply even when no pattern matches. A challenge to a previous result is explicit
+`CaseInput.user_challenges_previous_result` input (`--challenge` in the CLI), not inferred
+conversation history. It requests reconsideration and restrained tone, not an admission that
+an earlier answer was wrong. See [escalation policy](model-roles.md#escalation-policy) for
+precedence and the insufficient-evidence short circuit.
 
 ### Re-sealing
 

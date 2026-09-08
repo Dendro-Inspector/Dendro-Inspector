@@ -5,9 +5,10 @@ configurable (:class:`~dendro_inspector.config.EscalationPolicy`), because escal
 cost/risk tradeoff an operator owns, not a judgement call to delegate to the model whose
 work is under review.
 
-Suppressors are evaluated first and win outright. Arbitrating a case the system has already
-decided to abstain on buys nothing: a second opinion on "I cannot tell" is still "I cannot
-tell", at twice the price.
+When every subject has abstained, the blocking suppressor can skip arbitration. Partial
+abstention leaves other subjects eligible for review. Hard triggers override cost-saving
+suppressors. Insufficient evidence already takes the photo-planner branch of the graph;
+this gate does not repeat that routing decision.
 """
 
 from __future__ import annotations
@@ -39,25 +40,6 @@ HARD_TRIGGERS: frozenset[str] = frozenset(
 )
 
 
-def _blocking_suppressors(state: GraphState, policy: EscalationPolicy) -> tuple[str, ...]:
-    """Suppressors that apply unconditionally — a second opinion could not help here."""
-    reasons: list[str] = []
-    quality = state.quality
-    if (
-        policy.suppress_when_insufficient_evidence
-        and quality is not None
-        and not quality.sufficient
-    ):
-        reasons.append("evidence_insufficient")
-    if (
-        policy.suppress_when_abstaining
-        and state.abstained
-        and all(state.is_abstained(subject_id) for subject_id in state.subject_ids)
-    ):
-        reasons.append("already_abstaining")
-    return tuple(reasons)
-
-
 def _cost_suppressors(
     state: GraphState,
     policy: EscalationPolicy,
@@ -78,7 +60,7 @@ def _cost_suppressors(
         reasons.append("broad_and_low_risk")
     if policy.suppress_when_clean_and_medium_confidence and clean and modest_confidence:
         reasons.append("clean_review_and_modest_confidence")
-    return tuple(dict.fromkeys(reasons))
+    return tuple(reasons)
 
 
 def _triggers(
@@ -161,9 +143,14 @@ def decide(
 
     triggers = _triggers(state, policy, provisional)
 
-    blocking = _blocking_suppressors(state, policy)
-    if blocking:
-        return EscalationDecision(required=False, reasons=triggers, suppressed_by=blocking)
+    if (
+        policy.suppress_when_abstaining
+        and state.abstained
+        and all(state.is_abstained(subject_id) for subject_id in state.subject_ids)
+    ):
+        return EscalationDecision(
+            required=False, reasons=triggers, suppressed_by=("already_abstaining",)
+        )
 
     if set(triggers) & HARD_TRIGGERS:
         return EscalationDecision(required=True, reasons=triggers)

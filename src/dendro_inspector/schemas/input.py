@@ -1,9 +1,9 @@
 """Case input contracts.
 
 Everything here is untrusted: filenames, captions, EXIF, user text and declared object
-type all originate outside the system. The input guard (``nodes/input_guard.py``) is the
-only place allowed to interpret them, and it treats instruction-like content as evidence
-rather than instruction.
+type all originate outside the system. The input guard (``nodes/input_guard.py``) records
+instruction-like signals, not a safety verdict. Nodes receive case context as labelled
+data; deterministic evidence and claim rules apply whether or not a signal was detected.
 """
 
 from __future__ import annotations
@@ -64,6 +64,14 @@ class CaseInput(Contract):
     case_id: Identifier
     images: tuple[ImageRef, ...] = Field(default=(), max_length=16)
     user_text: str | None = Field(default=None, max_length=4000)
+    user_challenges_previous_result: bool = Field(
+        default=False,
+        description=(
+            "The caller explicitly requests reconsideration of a previous result. Not inferred "
+            "from free text and not proof that the previous result was wrong. Requests "
+            "independent review when the graph has a claim to review, and restrains tone."
+        ),
+    )
     user_claim: str | None = Field(
         default=None,
         max_length=120,

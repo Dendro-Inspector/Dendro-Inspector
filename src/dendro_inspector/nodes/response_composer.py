@@ -200,7 +200,7 @@ def decide_tone(state: GraphState) -> tuple[ToneMode, bool]:
     guard = state.guard
     decisions = state.decisions
 
-    # Section 12: the user corrected us and had the context to do it. No sarcasm, no joke.
+    # Section 12: an explicit challenge calls for restraint, not an assumed admission of error.
     if guard is not None and guard.user_challenges_previous_result:
         return ToneMode.CORRECTIVE, False
 

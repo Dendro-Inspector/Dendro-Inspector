@@ -181,6 +181,12 @@ dendro inspect --image examples/trunk.jpg --claim "дуб" --field-context
 the fruit, where the tree was felled. It blocks the system from contradicting you sharply,
 because in that situation you have evidence it does not.
 
+To challenge a previous result, resubmit the photograph and relevant context with
+`--challenge`. API callers set `CaseInput.user_challenges_previous_result=True`. This
+requests independent review when there is a claim to review and restrains the tone; it
+does not retrieve earlier conversation or assume the earlier answer was wrong. Challenge
+intent is no longer guessed from `--text`, in any language.
+
 ### Register
 
 The presentation register is a deployment choice, kept separate from the dendrology policy:

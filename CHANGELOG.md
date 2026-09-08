@@ -19,6 +19,13 @@ get entries.
   while the same frame showed scaly bark and the beech card calls beech bark smooth; it then
   reached four model calls. Silence on a decisive feature is still not disagreement with it,
   so a bark photograph that simply cannot show needles keeps its usual candidates.
+- Ordinary negation in photo descriptions no longer triggers arbitration or corrective
+  tone. Challenge intent is explicit via `--challenge` or
+  `CaseInput.user_challenges_previous_result`, not inferred from free text in any language.
+- The input guard recognises common Ukrainian instruction redirections as well as English
+  ones. Role-change warnings require a model/system role, not just phrases such as
+  "you are now looking at the trunk". These are limited warning patterns, not proof that
+  an input is safe or malicious.
 - Extraction validates image references against the provider call's image scope and repairs
   invalid references within the existing retry budget. Explicit offline replay remains
   available for declared synthetic fixture images.
@@ -121,6 +128,12 @@ get entries.
   training-data endpoint unless an operator opts in, and an unrecognised value is refused
   rather than guessed. OpenRouter requests additionally require parameter-compatible
   routing, so an upstream that silently drops the structured-output request is not selected.
+
+### Deprecated
+
+- `EscalationPolicy.suppress_when_insufficient_evidence` is retained for configuration
+  compatibility but ignored. Insufficient evidence already routes to the photo planner
+  before reaching escalation; the duplicate suppressor has been removed.
 
 ### Fixed
 

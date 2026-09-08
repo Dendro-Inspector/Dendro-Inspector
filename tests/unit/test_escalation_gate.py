@@ -12,6 +12,7 @@ from dendro_inspector.graph.state import (
     GraphState,
     GuardReport,
     InspectionPlan,
+    SubjectAbstention,
 )
 from dendro_inspector.nodes.escalation_gate import decide
 from dendro_inspector.nodes.escalation_gate import run as run_escalation_gate
@@ -210,12 +211,13 @@ class TestTriggers:
 
 
 class TestSuppressors:
-    def test_insufficient_evidence_blocks_escalation(self):
-        """A second opinion on 'I cannot tell' is still 'I cannot tell', at twice the price."""
-        state = _state(quality=EvidenceQualityReport(sufficient=False))
-        decision = _decide(state)
-        assert not decision.required
-        assert "evidence_insufficient" in decision.suppressed_by
+    def test_obsolete_quality_setting_is_deprecated_but_configs_still_load(self):
+        field = "suppress_when_insufficient_evidence"
+        assert EscalationPolicy.model_json_schema()["properties"][field]["deprecated"]
+        for value in (True, False):
+            policy = EscalationPolicy.model_validate({field: value})
+            assert policy.model_dump()[field] is value
+            assert _decide(_state(), policy) == _decide(_state())
 
     def test_abstaining_blocks_escalation(self):
         state = _state(abstained=True)
@@ -258,7 +260,7 @@ class TestPrecedence:
 
     def test_blocking_suppressor_does_override_a_hard_trigger(self):
         state = _state(
-            quality=EvidenceQualityReport(sufficient=False),
+            abstained=True,
             evidence=EvidencePacket(
                 subjects=(Subject(subject_id="log_1"),),
                 possible_multiple_taxa=True,
@@ -267,6 +269,25 @@ class TestPrecedence:
         decision = _decide(state)
         assert not decision.required
         assert "possible_multiple_taxa" in decision.reasons  # recorded, but not acted on
+        assert decision.suppressed_by == ("already_abstaining",)
+
+    @pytest.mark.parametrize("all_abstained", [False, True])
+    def test_only_case_wide_abstention_blocks_a_hard_trigger(self, all_abstained):
+        subjects = (Subject(subject_id="log_1"), Subject(subject_id="log_2"))
+        bounds = tuple(
+            SubjectAbstention(subject_id=subject.subject_id, resolution=Resolution.UNKNOWN)
+            for subject in (subjects if all_abstained else subjects[:1])
+        )
+        state = _state(
+            evidence=EvidencePacket(subjects=subjects),
+            abstained=True,
+            abstention_bounds=bounds,
+            guard=GuardReport(user_challenges_previous_result=True),
+        )
+        decision = _decide(state)
+        assert decision.required is not all_abstained
+        assert decision.suppressed_by == (("already_abstaining",) if all_abstained else ())
+        assert "user_challenged_result" in decision.reasons
 
     @pytest.mark.parametrize(
         "field",

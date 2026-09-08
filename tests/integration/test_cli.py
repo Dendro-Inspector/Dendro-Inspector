@@ -43,6 +43,51 @@ class TestGraphCommand:
 
 
 class TestInspectCommand:
+    @pytest.mark.parametrize(
+        "text", ["The leaves are not visible in this shot.", "Листя не видно на цьому фото."]
+    )
+    def test_descriptive_negation_neither_escalates_nor_changes_tone(self, text):
+        result = runner.invoke(
+            app,
+            [
+                "inspect",
+                "--fake",
+                "primary-pass",
+                "--image",
+                "examples/log.jpg",
+                "--text",
+                text,
+                "--json",
+            ],
+        )
+        assert result.exit_code == 0, result.exception
+        payload = json.loads(result.stdout)
+        assert not payload["trace"]["arbiter_used"]
+        assert payload["response"]["tone_mode"] != "corrective"
+
+    @pytest.mark.parametrize("lang", ["en", "uk"])
+    def test_explicit_challenge_reaches_gate_and_tone(self, lang):
+        result = runner.invoke(
+            app,
+            [
+                "inspect",
+                "--fake",
+                "arbiter-review",
+                "--image",
+                "examples/log.jpg",
+                "--challenge",
+                "--lang",
+                lang,
+                "--json",
+            ],
+        )
+        assert result.exit_code == 0, result.exception
+        payload = json.loads(result.stdout)
+        assert "user_challenged_result" in payload["trace"]["escalation_reasons"]
+        assert payload["trace"]["arbiter_used"]
+        assert payload["response"]["tone_mode"] == "corrective"
+        assert not payload["response"]["joke_allowed"]
+
     def test_fake_mode_produces_a_human_readable_answer(self):
         result = runner.invoke(
             app,
