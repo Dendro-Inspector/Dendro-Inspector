@@ -718,6 +718,146 @@ class TestEvidenceContradictingACardsOwnStrongFeature:
         assert "picea" in cards_in_play(evidence, knowledge, ("log_1",))
 
 
+class TestASecondReadingOfTheSamePathIsNotDisagreement:
+    """One organ read twice is the normal case, not a conflict.
+
+    From the taxon-description conformance review, finding F1
+    (``docs/reviews/TAXON-DESCRIPTION-CONFORMANCE-2026-09-08.md``). The veto read a card's
+    strong-positive values as the exhaustive list of readings that path may carry, so a
+    packet holding the card's own decisive value *and* a second permitted reading of the
+    same organ lost the candidate that first reading had just matched. The domain prompt
+    describes exactly those packets, which is why they are conformance failures rather than
+    a tuning preference.
+    """
+
+    def _admitted(self, taxon, evidence, knowledge):
+        candidate_set = CandidateSet(
+            subject_id="log_1",
+            candidates=(_candidate(taxon, 1, *[o.observation_id for o in evidence.observations]),),
+        )
+        validated = validate_candidate_set(candidate_set, evidence, knowledge)
+        return [candidate.taxon for candidate in validated.candidates]
+
+    def test_a_birch_read_at_two_heights_survives(self, knowledge):
+        """Domain prompt lines 429 and 436, in one packet.
+
+        White papery bark with black marks is the diagnostic reading; the base of an old
+        trunk may be dark and cracked. Both describe one birch, and the card declares
+        ``bark.pattern`` strong, so the second reading used to delete the first.
+        """
+        evidence = _packet(
+            _obs("obs-1", "bark.pattern", "white_papery_with_black_marks"),
+            _obs("obs-2", "bark.pattern", "pale_upper_dark_rough_base"),
+        )
+
+        assert "betula" in cards_in_play(evidence, knowledge, ("log_1",))
+        assert self._admitted("betula", evidence, knowledge) == ["betula"]
+
+    def test_one_fruit_described_as_a_drupe_and_as_an_apricot_keeps_the_genus(self, knowledge):
+        """The generic and the specific reading of one fruit, in one packet.
+
+        ``prunus`` declares ``fruit.type: drupe``; an apricot is a drupe. Naming the more
+        specific reading alongside it must not remove the group the prompt places it in.
+        """
+        evidence = _packet(
+            _obs("obs-1", "fruit.type", "drupe"),
+            _obs("obs-2", "fruit.type", "apricot"),
+        )
+
+        assert "prunus" in cards_in_play(evidence, knowledge, ("log_1",))
+        assert self._admitted("prunus", evidence, knowledge) == ["prunus"]
+
+    def test_the_same_packet_also_keeps_the_species(self, knowledge):
+        """The symmetric case: ``prunus_armeniaca`` declares ``fruit.type: apricot``.
+
+        The generic word for the same fruit used to remove the species, so one packet could
+        lose both the group and its member.
+        """
+        evidence = _packet(
+            _obs("obs-1", "fruit.type", "apricot"),
+            _obs("obs-2", "fruit.type", "drupe"),
+        )
+
+        assert "prunus_armeniaca" in cards_in_play(evidence, knowledge, ("log_1",))
+        assert self._admitted("prunus_armeniaca", evidence, knowledge) == ["prunus_armeniaca"]
+
+    def test_two_permitted_poplar_leaf_shapes_keep_the_genus(self, knowledge):
+        """Domain prompt line 449 lists triangular, rounded, cordate *and* lobed leaves.
+
+        Only the first three reached the genus card, so the fourth — a shape the paragraph
+        itself permits — vetoed the genus even beside a matching rounded leaf.
+        """
+        evidence = _packet(
+            _obs("obs-1", "leaf.shape", "rounded"),
+            _obs("obs-2", "leaf.shape", "rounded_or_triangular_lobed"),
+        )
+
+        assert "populus" in cards_in_play(evidence, knowledge, ("log_1",))
+        assert self._admitted("populus", evidence, knowledge) == ["populus"]
+
+    def test_agreement_on_one_path_does_not_cancel_a_veto_on_another(self, knowledge):
+        """The cancellation is scoped to the path, and must stay there.
+
+        A beech leaf says nothing about bark, so scaly bark still removes ``fagus`` — live
+        case ``20260510_100131``, which is the reason the veto exists at all. Widening the
+        cancellation to the whole card would reopen it.
+        """
+        evidence = _packet(
+            _obs("obs-1", "leaf.shape", "oval_entire_wavy_margin"),
+            _obs("obs-2", "bark.texture", "fine_scales"),
+        )
+
+        assert "fagus" not in cards_in_play(evidence, knowledge, ("log_1",))
+        assert self._admitted("fagus", evidence, knowledge) == []
+
+    @pytest.mark.xfail(
+        strict=True,
+        reason=(
+            "F1, second half (docs/reviews/TAXON-DESCRIPTION-CONFORMANCE-2026-09-08.md): a "
+            "value compatible with a declared one — more specific, more general, or an "
+            "allowed age variation — still vetoes when that path carries no exact hit. It "
+            "needs a declared compatibility relation between values, which no knowledge "
+            "file expresses yet. Open decision 1 of the review's decision order."
+        ),
+    )
+    @pytest.mark.parametrize(
+        ("taxon", "pairs"),
+        [
+            pytest.param(
+                "fagus",
+                (
+                    ("leaf.shape", "oval_entire_wavy_margin"),
+                    ("bark.texture", "smooth_grey_slightly_cracked"),
+                ),
+                id="beech-bark-the-prompt-allows-to-be-less-smooth-with-age",
+            ),
+            pytest.param(
+                "acer",
+                (
+                    ("samara.presence", "paired"),
+                    ("leaf.shape", "broad_palmate_five_lobed"),
+                ),
+                id="a-sycamore-shaped-leaf-is-still-a-palmate-lobed-leaf",
+            ),
+            pytest.param(
+                "juglans_regia",
+                (
+                    ("nut.presence", "present"),
+                    ("leaf.type", "compound_pinnate"),
+                ),
+                id="the-generic-wording-lacks-the-leaflet-detail-it-does-not-deny-it",
+            ),
+        ],
+    )
+    def test_a_compatible_value_on_an_unmatched_path_should_not_veto(self, knowledge, taxon, pairs):
+        evidence = _packet(
+            *[_obs(f"obs-{i}", feature, value) for i, (feature, value) in enumerate(pairs)]
+        )
+
+        assert taxon in cards_in_play(evidence, knowledge, ("log_1",))
+        assert self._admitted(taxon, evidence, knowledge) == [taxon]
+
+
 class TestAbiesClosesTheCaseBGap:
     """The live case that could not be won, on the same evidence, with the card present.
 

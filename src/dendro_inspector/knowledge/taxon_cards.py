@@ -92,7 +92,7 @@ def self_contradiction_hits(
     taxon's features. This needs no new card data: it is already implied by every card that
     names a strong positive.
 
-    Four things deliberately do **not** veto, because each is silence rather than
+    Five things deliberately do **not** veto. The first four are silence rather than
     disagreement, and promoting silence into contradiction would abstain on nearly every
     photograph:
 
@@ -101,14 +101,38 @@ def self_contradiction_hits(
       (:data:`~dendro_inspector.schemas.evidence.UNREADABLE_VALUES`) rather than a reading;
     * the observation belongs to another subject — callers pass same-subject observations;
     * the observation is not trusted positive evidence — callers filter that first.
+
+    The fifth is not silence but agreement: **the same path also carries a reading this card
+    declares**. One organ read twice is the normal case, not a conflict. The domain prompt
+    says so itself for the taxon that exposed this: section 14 gives Betula
+    ``bark.pattern = white_papery_with_black_marks`` as the diagnostic reading *and* then
+    says the base of an old trunk may be dark and cracked (line 436). A packet holding both
+    describes one birch from two heights. Vetoing it removed the candidate its own decisive
+    feature had just matched — and the same shape removed generic ``populus`` when the
+    prompt's own list of permitted leaf shapes (line 449) was read at two specificities, and
+    both ``prunus`` and ``prunus_armeniaca`` when one fruit was described as a drupe and as
+    an apricot in the same packet.
+
+    Scoped to the path, not the card: a match on ``fruit.type`` says nothing about
+    ``bark.texture``, so live case ``20260510_100131`` still vetoes — that packet read
+    ``bark.texture`` once, as ``fine_scales``, and never as ``smooth_grey``. Explicit
+    ``contradictions`` are unaffected, which is where a genuinely exclusive pair such as
+    ``leaf.arrangement`` opposite-versus-alternate is adjudicated.
     """
     declared: dict[str, set[str]] = {}
     for expectation in card.strong_positive_features:
         declared.setdefault(expectation.feature, set()).update(expectation.values)
+    satisfied = {
+        observation.feature
+        for observation in observations
+        if observation.value in declared.get(observation.feature, frozenset())
+        and is_positive_reading(observation.value)
+    }
     return tuple(
         observation.observation_id
         for observation in observations
         if observation.feature in declared
+        and observation.feature not in satisfied
         and is_positive_reading(observation.value)
         and observation.value not in declared[observation.feature]
     )
