@@ -812,3 +812,115 @@ claim.
 5. Apply accepted changes at their canonical source, update the contracts and regressions
    with them, and run the required gates. Prompt changes remain owner-only; this review
    changed no prompt, card, implementation, threshold, dependency or benchmark asset.
+
+## Owner disposition — 2026-09-08
+
+Reviewed and accepted. F1 is closed as a semantic defect; what remains of it is completeness
+of `knowledge/vocabulary.yaml`, which is not a blocker of the same category. Recorded
+decisions, one per finding:
+
+- Status board: **F1 ✅ landed · F2 ✅ landed · F3 ⛔ blocked on specification, deliberately ·
+  F4 ◑ split into three classes · F5 ◑ per-taxon, two of five change · F6 ◑ composition, not
+  taxonomy · F7 ◑ provenance first, behaviour unchanged.**
+- Revised execution order: **F3 decision → F2 primitive → F5 onto that primitive → F4
+  positive coverage → F6 composition → F7 feature-level provenance.** The first *code* step
+  was F2, not F3: F3 is blocked by a missing discriminating specification, while F2 already
+  had enough information for a deterministic implementation decision.
+- The regression evidence in this document — seven F1 rows moving `no / no → yes / yes` while
+  P09 and P11 stay negative controls — **stays in the repository** after the review closes.
+  It is the shape of evidence that makes a later change attributable.
+
+### F3 — blocked on specification, and that is the correct state
+
+**Do not add `fruit.type = drupe` as a strong positive for `Prunus avium`.**
+
+The prompt calls fruit strong evidence but never says *which* fruit character separates a
+sweet cherry from the rest of the Prunus group. A generic drupe does not carry species
+resolution, and P09 demonstrates exactly that rather than a bug. The `fruit_or_leaf`
+requirement for species-level high confidence is recorded as an **underdeveloped
+specification branch**.
+
+Two ways out, both requiring a source: the owner adds a discriminating sweet-cherry fruit
+description to the prompt, or an independently sourced botanical rule arrives with
+feature-level provenance. Then, in order: vocabulary → card → requirement → regression.
+Until such a source exists, **P09 must stay `no / no`.**
+
+### F4 — three classes, three different answers
+
+Not one annotation-sync pass. The classes do not share a remedy:
+
+**A. The prompt names an alternative as a positive observation.** Betula's oval and rhombic
+serrated leaves; generic Populus's lobed leaves. These must actually *match* the card, not
+merely fail to veto it — and that distinction is sharper after F1, because a vocabulary
+relation removes disagreement and never creates support. A permitted positive description
+belongs in card vocabulary, not in `vocabulary.yaml`.
+
+**B. The annotation adds a character the prose does not assert.** Pinus's counted fascicles,
+Picea's woody-peg attachment. Not to be deleted on sight, but their *prompt provenance is
+invalid*. Carried into F7.
+
+**C. Prose-only context.** Age effects, colours, Robinia's flowers, cut-wood detail. Not
+every sentence becomes a matcher rule; the principle already stated in F4 stands.
+
+### F5 — the hierarchy is a default, not an absolute law
+
+Architecturally the second conclusion of this review after F1. The ceilings behaved as
+`evidence tier → absolute maximum confidence`, while the prompt states taxon-specific
+exceptions to them. The accepted model is:
+
+```text
+default evidence ceiling
+  + explicit diagnostic exception
+  + resolution cap
+  + requirements
+  + contradictions / reductions
+```
+
+Emphatically **not** a global lift of foliage from 85–94 to 95–100. Per taxon:
+
+| Taxon | Disposition |
+| --- | --- |
+| Betula | **Change** — landed as F2, the primitive the rest of this table uses |
+| Acer | **Change, once the exact prompt condition is formalised** — an explicit genus-level exception for a sufficiently clear leaf character |
+| Malus | **No change** — prose `98–100` rendered as the `95–100` band is a representational difference, not a semantic defect |
+| Pinus | **No change yet** — "high" for combined wood-only evidence is too imprecise to equate with 95–100; the conservative ceiling stands until an explicit decision |
+| Acer saccharinum / Populus alba | **Requirements review, not score inflation** |
+
+### F6 — do not promote Tilia's nutlets; check the composition instead
+
+`fruit.type = nutlet_with_bract` is candidate-specific, satisfies the fruit requirement and
+sits at the fruit/seed tier, but the card marks it supporting and section 14 does not call it
+strong. **Taxonomy semantics are not to be changed without a source**, so the card stays as
+it is.
+
+P10 points at a different suspect. Card-level `supporting` appears to dominate the evidence
+tier so completely that a clear attached fruit scores merely `weak`. The invariant to test:
+
+> A candidate-specific trusted fruit or seed observation retains the fruit/seed evidence tier
+> even when its card relationship is `supporting`. `supporting` must not silently collapse
+> organ reliability into weak evidence.
+
+Fix the composition if that invariant fails. Do not fix it by writing
+`nutlet_with_bract: strong`.
+
+### F7 — provenance first, behaviour unchanged
+
+Abies and Larix keep their current behaviour and are **not** prompt-conformant knowledge.
+External correctness stays `UNKNOWN` until independent provenance exists. The same applies to
+Pinus's `cones.scale_shape = woody_umbo`, to any counted-fascicle detail absent from the
+prose, and to Picea's woody-peg attachment unless it came from another owner-approved part of
+the specification.
+
+The structural remedy is **feature-level provenance**, because one card today can hold five
+prompt-derived rules, one external botanical rule and one implementation choice, and
+card-level provenance hides that:
+
+```yaml
+provenance:
+  source_kind: domain_prompt | external_reference | inferred_demo
+  source: ...
+  locator: ...
+  review_state: ...
+```
+
+No botanical cleanup from intuition, in either direction.
