@@ -188,9 +188,15 @@ $batchRuns = @(
     Failed = @($batchRuns | Where-Object status -eq "failed").Count
     Escalated = @($batchRuns | Where-Object escalated -eq $true).Count
     Abstained = @($batchRuns | Where-Object abstained -eq $true).Count
+    NoTaxon = @($batchRuns | Where-Object { $null -eq $_.result.taxon }).Count
     Repairs = ($batchRuns | Measure-Object repair_count -Sum).Sum
 }
 ```
+
+`Abstained` counts only runs whose canonical `FinalDecision.abstained` flag is true: the
+explicit abstention route broadened the verdict. `NoTaxon` counts completed runs that
+returned no identity, including unknown or insufficient-evidence results reached through
+review bounds. Do not use either as an alias for the other.
 
 Inspect one run through the trace path stored in its ledger record. Do not infer provider
 success from the final taxon alone; inspect provider calls, validation failures, component

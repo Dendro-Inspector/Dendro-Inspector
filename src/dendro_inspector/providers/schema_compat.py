@@ -216,10 +216,12 @@ def to_strict_openai_schema(schema: Mapping[str, Any]) -> dict[str, Any]:
     """Make an OpenAI schema acceptable to strict structured-output decoders.
 
     Codex and OpenAI strict schemas require every object property to appear in that
-    object's ``required`` list and reject schema defaults. Requiring a field in the decoder
-    does not make it semantically non-optional: nullable fields retain their null branch,
-    while fields with Pydantic defaults must be emitted explicitly. The original Pydantic
-    model still validates the returned object after transport.
+    object's ``required`` list and reject schema defaults. Codex constrained decoding can
+    exhaust its output budget on regex-constrained arrays, so patterns remain the original
+    Pydantic model's responsibility. Requiring a field in the decoder does not make it
+    semantically non-optional: nullable fields retain their null branch, while fields with
+    Pydantic defaults must be emitted explicitly. The original Pydantic model still validates
+    the returned object after transport.
     """
 
     def strict(node: Any) -> Any:
@@ -229,7 +231,7 @@ def to_strict_openai_schema(schema: Mapping[str, Any]) -> dict[str, Any]:
             return node
         out: dict[str, Any] = {}
         for key, value in node.items():
-            if key == "default":
+            if key in {"default", "pattern"}:
                 continue
             if key in {"properties", "$defs"} and isinstance(value, dict):
                 out[key] = {name: strict(sub) for name, sub in value.items()}

@@ -2,8 +2,8 @@
 
 - **Status:** Current
 - **Owner:** Dendro Inspector maintainers
-- **Date:** 2026-08-30
-- **Last-verified:** 2026-08-30
+- **Date:** 2026-09-06
+- **Last-verified:** 2026-09-06
 
 ## The problem this shape solves
 
@@ -24,16 +24,16 @@ graph       (graph/, nodes/) who says it, in what order, and who checks
 ```
 
 Dependencies point one way: `schemas` knows nothing; `knowledge` depends on `schemas`;
-`nodes` depend on both plus `providers`; nothing depends on `nodes` except the registry and
-the runner. No node imports another node.
+`nodes` depend on both plus `providers` and the graph's state/context contracts. Node modules
+also share deterministic policy helpers, including final-decision composition and review
+admission; the registry binds their executable entrypoints.
 
 ## Contracts
 
-Every contract inherits `schemas/base.py:Contract` — frozen, `extra="forbid"`. Two
-consequences:
-
-* a node cannot smuggle state by mutating an object another node holds;
-* a model that invents a field fails validation instead of silently widening a contract.
+Every contract inherits `schemas/base.py:Contract` — frozen, `extra="forbid"`. Contract
+attributes cannot be reassigned, and invented fields fail validation. Frozen models do not
+deep-freeze nested dictionaries: nodes must treat those as read-only. `GraphState.evolve`
+reconstructs and revalidates the state returned by a node.
 
 Three constrained string types do most of the work:
 
@@ -68,6 +68,13 @@ Inference(
 They are separate types, so an inference cannot occupy an observation's slot.
 `derived_from` ids must exist in the same packet — enforced by a model validator, so an
 inference with no observable basis cannot be constructed.
+
+Extraction also binds observation, subject and image-limitation references to the IDs of
+images passed to that provider call. An unknown or skipped image reference fails structured
+validation and uses the existing repair budget; exhaustion raises a provider protocol error.
+The input contract rejects duplicate image IDs. Explicit fake-provider replay may reference
+declared synthetic fixture images without local photograph bytes, but cannot invent an
+undeclared ID. This checks provenance, not whether a model perceived the photograph correctly.
 
 ### Not visible is not absent
 
@@ -150,18 +157,18 @@ Only `confirmed_attached` evidence may support identification. The other states 
 packet, appear in the report, and can justify a finding or photo request, but project to
 context and cannot move the verdict.
 
-`confirmed_attached` is still a perception claim produced by the extractor. The final-decision
-engine therefore tests any detachable observation that is a hinge for the scientific outcome:
+`confirmed_attached` is still a perception claim produced by the extractor. The attachment
+authority gate tests detachable support before the reviewers run:
 it revalidates the proposed candidates with that observation demoted to `unknown` and compares
 taxon, status, resolution and confidence. It also records the opposite counterfactual when an
 otherwise matching model-proposed observation is currently `unknown`; that alternate outcome
 is telemetry only and can never strengthen the returned claim.
 
-When the outcome changes and the extractor supplied no independently normalized
-component-to-root chain, the conservative branch wins. A leaf on a branch that was visibly
-parented to the trunk and then folded into the root carries `source_component_id`; that
-code-owned projection corroborates attachment without banning useful foliage evidence as a
-class. The decision and run trace record the critical observation ids, the alternate outcome,
+The gate demotes support only when sensitivity intersects the observation's attachment risk.
+A component-to-root projection is not independent corroboration: its parent relation also
+came from the extractor. Demotions travel with both evidence and candidate sets, so reviewers
+inspect the same evidence world that the answer uses. The decision and run trace record the
+critical observation ids, the alternate outcome,
 the attachment state used for it and whether the authority policy changed the result.
 Acquisition follows the same priority: proving which tree owns potentially decisive foliage
 precedes a leaf-surface macro or another morphological discriminator.
@@ -183,11 +190,34 @@ Survivors preserve order but are renumbered densely; when none survive, the expl
 confidence and resolution, so a model cannot cite unrelated evidence to make a plausible name
 look earned.
 
+The generator creates an empty set for any usable subject the model omitted. Final decision
+covers every detected identity root, including subjects the quality gate found unusable;
+each receives either a supported verdict or an explicit insufficient-evidence result and
+photo request. A model's omission cannot silently remove a subject from the answer.
+
 ### Ordinal scores, not percentages
 
 `SupportStrength` is `weak | moderate | strong`. `Confidence` is `low | medium | high`.
 A model emitting `0.873` for a bark photograph is reporting a number it cannot justify, and
 a number invites arithmetic that the underlying evidence does not support.
+
+The strength a candidate carries out of admission is **adjudicated**, not accepted. The
+model proposes a label; the deterministic boundary derives one from the candidate's
+*validated* support against its own card, and the effective score is the lower of the two:
+
+| Derived | Condition on the candidate's surviving support ids |
+| --- | --- |
+| `strong` | a full-trust hit on a `strong_positive_features` entry, **and** the card's `required_for_high_confidence` is satisfied |
+| `moderate` | a hit at any positive trust on a `strong_positive_features` entry, or two hits on `supporting_features` |
+| `weak` | otherwise |
+
+Lower, never higher. A model that has looked at the photograph may have seen a reason to
+doubt its own support that no card can express, and that doubt is kept; the reverse — a
+card-thin candidate labelled `strong` — is a self-assessment seeding the verdict, which is
+exactly what the determinism boundary exists to prevent. `resolve_confidence` needs no
+special case: it reads `leader.score`, which is now a statement about evidence, and
+`leaders_are_close()` becomes one too. Every demotion is reported on the validation result
+rather than applied silently.
 
 ## Knowledge is data, not agents
 
@@ -226,8 +256,11 @@ Why data:
   at each broader level. Final decision composes the candidate, card, trusted-support and
   review bounds first, then selects an identity at or broader than that bound. If none exists,
   it returns `unknown`; a species name can never survive under a genus or family resolution.
-* **it scales down.** The loader is lazy and per-taxon. A thousand cards would not enlarge
-  a single prompt, because a request only ever loads the handful of taxa in play.
+* **it selects candidate context.** `candidate_validation.cards_in_play` scans the catalogue
+  for exact, trusted, non-colour support on usable subjects before candidate generation.
+  Only those cards and comparisons among them enter that prompt. There is no top-k cutoff:
+  every candidate that admission could keep must remain available. Catalogue scanning and
+  the extractor's combined feature vocabulary still grow with the knowledge base.
 
 Adding a genus is a YAML file plus an entry in a comparison card. It is not a code change.
 
@@ -251,7 +284,7 @@ rather than degrading to a low-confidence guess.
 
 The dendrology prompt is an **opaque, user-managed artifact**, but it is not admitted alone.
 `prompts/versions.yaml` is a frozen compatibility manifest that binds schema `1`, deterministic
-policy revision `0.8.0`, the canonical domain path/hash, node-prompt root/revision, and the
+policy revision `0.9.0`, the canonical domain path/hash, node-prompt root/revision, and the
 exact node-prompt file set and hashes.
 
 `runner.build_context()` validates the complete bundle before constructing
@@ -269,6 +302,15 @@ Prompt trace metadata and `dendro prompt-info` record the domain and manifest ha
 manifest schema, policy revision, node revision and compatibility status. Composition order is
 fixed: domain prompt, optional response-register note, node prompt, then case context fenced as
 untrusted data.
+
+The input guard records warning signals; it does not certify or sanitise input. Its limited
+English and Ukrainian patterns run independently of the output locale, and matching one can
+request arbitration under the escalation policy. Context fencing and deterministic claim
+caps apply even when no pattern matches. A challenge to a previous result is explicit
+`CaseInput.user_challenges_previous_result` input (`--challenge` in the CLI), not inferred
+conversation history. It requests reconsideration and restrained tone, not an admission that
+an earlier answer was wrong. See [escalation policy](model-roles.md#escalation-policy) for
+precedence and the insufficient-evidence short circuit.
 
 ### Re-sealing
 
@@ -297,7 +339,7 @@ Which nodes call a model, and which do not, is a deliberate line:
 | planner | input guard |
 | evidence extractor | evidence quality gate |
 | candidate generator | review synthesis (admissibility) |
-| botanical / confusion / confidence reviewers | escalation gate |
+| botanical / confusion / confidence reviewers | provisional decision and escalation gate |
 | arbiter | correction worker, abstain |
 | | final decision engine |
 | | response composer, tone layer |
@@ -317,7 +359,9 @@ its category.
 
 Reviewer model calls do not receive `GraphState`. Orchestration constructs a typed
 `ReviewProjection` containing the case, evidence, admitted candidates, knowledge-selection
-flags and (for arbitration) the deterministic proposed assessment. The initial boundary is
+flags and (for arbitration) the stored deterministic provisional verdict. The escalation
+gate computes that verdict once before deciding whether to call the arbiter, so the gate and
+arbiter see the same taxon, status, resolution and confidence. The initial boundary is
 intentionally pass-through for case photographs and evidence: candidate output is under
 review and therefore cannot decide which subjects or photographs the reviewers may inspect.
 Each returned `ReviewResult` is code-bound to the projection's evidence ids before synthesis.
@@ -329,11 +373,52 @@ same-result recommendation are validated and stored together as `AdmittedRerank`
 decision never scans raw recommendations. An absent, rejected, unsupported or conflicting
 ranking cannot move the answer.
 
+Confidence and resolution recommendations retain their subject and, when present, the exact
+accepted model finding that supplied them as `AdmittedRecommendation`. Their bounds affect
+only that subject. A recommendation can prevent double-counting its own finding, but cannot
+waive another review's downgrade or a deterministic finding. Bare recommendations only cap;
+recommendations supported entirely by rejected model findings are discarded. Aggregate
+synthesis deltas remain summaries, not case-wide decision bounds.
+
 ## State and execution
 
 `GraphState` is frozen and serializable. Nodes are `async (state, ctx) -> state`; they never
 mutate what they are given. "No hidden global state" is checkable rather than aspirational:
 if a node wants to change something, the change is in its return value or it did not happen.
+
+`provisional_decisions` holds the deterministic per-subject verdicts computed at the
+escalation gate before any arbiter result exists. Final decision may later incorporate an
+admitted arbiter finding, while the run trace retains both sides and records which verdict
+fields changed.
+
+If one concurrent reviewer fails, the executor cancels unfinished siblings and awaits their
+termination before propagating the original exception. It records every member in declaration
+order, retaining completed calls and projection metadata. Cancelled members carry a failed
+event with `detail="cancelled"`; no partial reviews are merged into a scientific verdict.
+
+### The composition record
+
+Every verdict in a run trace carries exactly one `DecisionDerivation`, so a disputed answer
+can be audited without re-running the engine:
+
+| Field | Records |
+| --- | --- |
+| `resolution_bounds` | every upper bound considered — proposed, card cap, tier ceiling, reviewer recommendation, abstention — each with its value |
+| `resolution_binding_source` | which of those bounds produced the composed value |
+| `resolution_action_applied` | whether a `lower_resolution` action was applied or skipped as already honoured |
+| `confidence_steps` | the ordered ledger: seed, tier cap, requirement cap, reviewer recommendation, each model finding, each deterministic finding, abstention |
+| `rerank_source` | `arbiter`, `internal` or `none`, with the admitted finding id that supplied the ranking |
+
+A step's `applied` flag says whether the operation ran, not whether the value moved. A
+verdict that arrives at `low` because one guardrail fired is indistinguishable in the result
+from one that arrived there because four reviewers each charged a step; the ledger is what
+tells them apart. Verdicts that never reached composition — no candidate survived, or the
+photo planner answered first — carry the terminal record rather than no record, so a missing
+derivation never has to be read as either "not composed" or "not recorded".
+
+It is telemetry, not a field of `FinalDecision`: the verdict stays the consumer-facing
+answer. The attachment counterfactual does not record one, because the arithmetic it runs
+belongs to a different evidence world than the one this answer was composed in.
 
 The executor (`graph/executor.py`) walks a pure routing function, runs the three reviewers
 concurrently, records an event per node, and refuses to exceed `max_steps`. It is about a

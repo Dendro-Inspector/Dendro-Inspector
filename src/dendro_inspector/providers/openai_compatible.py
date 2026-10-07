@@ -37,6 +37,8 @@ from dendro_inspector.providers.base import (
     ProviderUnavailableError,
     ResponseT,
     StructuredOutputError,
+    UsageSink,
+    usage_sink_of,
 )
 from dendro_inspector.providers.schema_compat import to_openai_schema
 
@@ -63,6 +65,21 @@ class OpenAICompatibleProvider:
     default_base_url = ""
     key_env = ""
     base_url_env = ""
+
+    def _provider_preferences(self) -> Mapping[str, Any] | None:
+        return None
+
+    def _structured_request(
+        self,
+        *,
+        prompt: str,
+        schema: Mapping[str, Any],
+        model_name: str,
+    ) -> tuple[str, Mapping[str, Any]]:
+        return prompt, {
+            "type": "json_schema",
+            "json_schema": {"name": model_name, "schema": schema, "strict": True},
+        }
 
     def __init__(
         self,
@@ -103,6 +120,22 @@ class OpenAICompatibleProvider:
             "image_url": {"url": f"data:{image.media_type};base64,{encoded}"},
         }
 
+    @staticmethod
+    def _record_usage(payload: Mapping[str, Any], usage: UsageSink | None) -> None:
+        """Read the OpenAI-dialect `usage` block, where the server sends one."""
+        if usage is None:
+            return
+        reported = payload.get("usage")
+        if not isinstance(reported, Mapping):
+            return
+        details = reported.get("prompt_tokens_details")
+        cached = details.get("cached_tokens") if isinstance(details, Mapping) else None
+        usage.record(
+            input_tokens=reported.get("prompt_tokens"),
+            cached_input_tokens=cached,
+            output_tokens=reported.get("completion_tokens"),
+        )
+
     def _call(
         self,
         *,
@@ -110,22 +143,27 @@ class OpenAICompatibleProvider:
         images: Sequence[ImageInput],
         schema: Mapping[str, Any],
         model_name: str,
+        usage: UsageSink | None = None,
     ) -> str:
+        prompt, response_format = self._structured_request(
+            prompt=prompt,
+            schema=schema,
+            model_name=model_name,
+        )
         content: list[dict[str, Any]] = [{"type": "text", "text": prompt}]
         content.extend(self._image_part(image) for image in images)
-        body = json.dumps(
-            {
-                "model": self.model,
-                "messages": [{"role": "user", "content": content}],
-                "temperature": 0,
-                "max_tokens": self._max_tokens,
-                "stream": False,
-                "response_format": {
-                    "type": "json_schema",
-                    "json_schema": {"name": model_name, "schema": schema, "strict": True},
-                },
-            }
-        ).encode("utf-8")
+        payload: dict[str, Any] = {
+            "model": self.model,
+            "messages": [{"role": "user", "content": content}],
+            "temperature": 0,
+            "max_tokens": self._max_tokens,
+            "stream": False,
+            "response_format": response_format,
+        }
+        provider_preferences = self._provider_preferences()
+        if provider_preferences is not None:
+            payload["provider"] = dict(provider_preferences)
+        body = json.dumps(payload).encode("utf-8")
         for attempt in range(self._retries + 1):
             request = urllib.request.Request(
                 f"{self._base_url}/chat/completions",
@@ -152,6 +190,7 @@ class OpenAICompatibleProvider:
                 msg = f"{self.adapter_name} did not respond within {self._timeout}s"
                 raise ProviderUnavailableError(msg) from exc
 
+            self._record_usage(payload, usage)
             return self._extract_text(payload)
 
         msg = "unreachable: the retry loop always returns or raises"  # pragma: no cover
@@ -215,6 +254,7 @@ class OpenAICompatibleProvider:
             images=images,
             schema=schema,
             model_name=response_model.__name__,
+            usage=usage_sink_of(metadata),
         )
         try:
             return response_model.model_validate(json.loads(_strip_fence(raw)))

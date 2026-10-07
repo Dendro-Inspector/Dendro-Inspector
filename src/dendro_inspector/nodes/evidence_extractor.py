@@ -12,7 +12,7 @@ rather than hoped for:
 
 from __future__ import annotations
 
-from dendro_inspector.config import Role
+from dendro_inspector.config import Adapter, Role
 from dendro_inspector.graph.executor import NodeContext
 from dendro_inspector.graph.state import GraphState
 from dendro_inspector.nodes._support import (
@@ -21,7 +21,7 @@ from dendro_inspector.nodes._support import (
     evidence_value_vocabulary_context,
     locale_of,
 )
-from dendro_inspector.providers.base import request_structured
+from dendro_inspector.providers.base import StructuredOutputError, request_structured
 from dendro_inspector.schemas.evidence import EvidencePacket, GeneratedEvidencePacket
 
 NODE = "evidence_extractor"
@@ -81,6 +81,23 @@ async def run(state: GraphState, ctx: NodeContext) -> GraphState:
         context_parts.append(corrections)
 
     provider = ctx.providers.get(Role.PRIMARY)
+    images = case_image_inputs(state, ctx)
+    # Explicit fixture replay consumes synthetic evidence, not photograph bytes. It may
+    # reference declared fixture images, but still cannot invent an undeclared image id.
+    replay = (
+        ctx.config.provider_for(Role.PRIMARY).adapter is Adapter.FAKE
+        and provider.adapter_name == "fake"
+    )
+    available_image_ids = frozenset(
+        state.case.image_ids if replay else (image.image_id for image in images)
+    )
+
+    def validate_images(packet: GeneratedEvidencePacket) -> None:
+        try:
+            packet.validate_image_references(available_image_ids)
+        except ValueError as exc:
+            raise StructuredOutputError(str(exc)) from exc
+
     generated = await request_structured(
         provider=provider,
         role=Role.PRIMARY.value,
@@ -90,11 +107,12 @@ async def run(state: GraphState, ctx: NodeContext) -> GraphState:
             context="\n\n".join(context_parts),
             locale=locale_of(state),
         ),
-        images=case_image_inputs(state, ctx),
+        images=images,
         response_model=GeneratedEvidencePacket,
         recorder=ctx.recorder,
         cache_prefix_chars=ctx.prompts.cacheable_prefix_chars(locale_of(state)),
         max_retries=ctx.config.provider_for(Role.PRIMARY).max_structured_retries,
+        validate_response=validate_images,
     )
 
     packet = reconcile_packet(state, generated.to_evidence_packet())

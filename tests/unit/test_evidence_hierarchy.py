@@ -6,12 +6,14 @@ import pytest
 
 from dendro_inspector.knowledge.evidence_hierarchy import (
     BAND_DECISIVE,
+    BARK_TIER_FAMILIES,
     EvidenceTier,
     EvidenceTrust,
     bark_only,
     best_tier,
     confidence_band,
     confidence_ceiling,
+    decisive_observations_for,
     effective_tier,
     observation_trust,
     project_evidence,
@@ -187,8 +189,9 @@ class TestTrustProjection:
                 Visibility.PARTIAL,
                 Reliability.HIGH,
                 True,
-                EvidenceTrust.CAPPED_POSITIVE,
-                EvidenceTier.BARK,
+                # A framing limit, not a reading limit: decisive, and keeps its own tier.
+                EvidenceTrust.DECISIVE_POSITIVE,
+                EvidenceTier.FOLIAGE,
             ),
             (
                 ObservationSource.IMAGE,
@@ -407,3 +410,204 @@ class TestSubjectLevel:
         )
         assert best_tier(packet, "log_1") is EvidenceTier.FOLIAGE
         assert best_tier(packet, "log_2") is EvidenceTier.BARK
+
+
+class TestVisibilityAndReliabilityAreOrthogonal:
+    """`PARTIAL` and `LOW` reliability answer different questions.
+
+    `PARTIAL` describes how much of the feature or frame is visible. `LOW` reliability
+    describes whether the extractor trusts what it thinks it saw. They are not synonyms,
+    and collapsing them into one bucket had a visible cost: a birch bark pattern read at
+    high reliability through a partial view was reported to the user as a decisive feature
+    "not visible", in the same answer that quoted that observation as its support.
+    """
+
+    @pytest.mark.parametrize(
+        ("visibility", "reliability", "expected_trust", "expected_tier"),
+        [
+            (
+                Visibility.CLEAR,
+                Reliability.HIGH,
+                EvidenceTrust.FULL_POSITIVE,
+                EvidenceTier.FOLIAGE,
+            ),
+            (
+                Visibility.PARTIAL,
+                Reliability.HIGH,
+                EvidenceTrust.DECISIVE_POSITIVE,
+                EvidenceTier.FOLIAGE,
+            ),
+            (
+                Visibility.CLEAR,
+                Reliability.LOW,
+                EvidenceTrust.CAPPED_POSITIVE,
+                EvidenceTier.BARK,
+            ),
+            (
+                Visibility.PARTIAL,
+                Reliability.LOW,
+                EvidenceTrust.CAPPED_POSITIVE,
+                EvidenceTier.BARK,
+            ),
+        ],
+        ids=["full+high", "partial+high", "full+low", "partial+low"],
+    )
+    def test_the_four_quadrants(self, visibility, reliability, expected_trust, expected_tier):
+        observation = _obs(
+            "o1", "leaf.shape", visibility=visibility, reliability=reliability, attached=True
+        )
+
+        assert observation_trust(observation) is expected_trust
+        assert effective_tier(observation) is expected_tier
+
+    def test_a_confidently_read_partial_view_keeps_the_tier_its_family_earned(self):
+        """A leaf at the edge of the frame is still a leaf, not bark."""
+        partial = _obs(
+            "o1",
+            "leaf.shape",
+            visibility=Visibility.PARTIAL,
+            reliability=Reliability.HIGH,
+            attached=True,
+        )
+
+        assert effective_tier(partial) is EvidenceTier.FOLIAGE
+
+    def test_a_partial_view_is_overcome_by_high_reliability_and_only_by_it(self):
+        """The two meanings of `PARTIAL` are told apart by the reading, and nothing else.
+
+        `PARTIAL` covers both "unambiguous but not filling the frame" — a birch bark
+        pattern across part of a trunk — and "partly hidden, so the reading is incomplete"
+        — a fascicle count behind a crossing branch. The schema does not distinguish them,
+        so the reliability the extractor attached decides.
+        """
+        assert (
+            observation_trust(
+                _obs(
+                    "o1",
+                    "leaf.shape",
+                    visibility=Visibility.PARTIAL,
+                    reliability=Reliability.HIGH,
+                    attached=True,
+                )
+            )
+            is EvidenceTrust.DECISIVE_POSITIVE
+        )
+        assert (
+            observation_trust(
+                _obs(
+                    "o1",
+                    "leaf.shape",
+                    visibility=Visibility.PARTIAL,
+                    reliability=Reliability.MEDIUM,
+                    attached=True,
+                )
+            )
+            is EvidenceTrust.CAPPED_POSITIVE
+        )
+
+    def test_low_reliability_caps_at_any_visibility(self):
+        for visibility in (Visibility.CLEAR, Visibility.PARTIAL):
+            observation = _obs(
+                "o1",
+                "leaf.shape",
+                visibility=visibility,
+                reliability=Reliability.LOW,
+                attached=True,
+            )
+            assert observation_trust(observation) is EvidenceTrust.CAPPED_POSITIVE
+
+    def test_a_decisive_reading_is_not_silently_promoted_to_a_clean_one(self):
+        """The partial view stays legible in the trace rather than being erased."""
+        partial = _obs(
+            "o1",
+            "leaf.shape",
+            visibility=Visibility.PARTIAL,
+            reliability=Reliability.HIGH,
+            attached=True,
+        )
+        clear = _obs("o2", "leaf.shape", attached=True)
+
+        assert observation_trust(partial) is not observation_trust(clear)
+        assert observation_trust(partial) < observation_trust(clear)
+
+
+class TestDecisiveSupportIsPerSubject:
+    """One subject's poor reading must not weaken another subject's good one.
+
+    Insurance, written because a sibling helper really did pool subjects: the
+    self-contradiction veto let one trunk's bark disqualify a card another trunk in the
+    same frame positively supported.
+    """
+
+    def test_a_low_reading_on_another_subject_does_not_downgrade_this_one(self):
+        packet = EvidencePacket(
+            subjects=(Subject(subject_id="tree_a"), Subject(subject_id="tree_b")),
+            observations=(
+                _obs(
+                    "o1",
+                    "bark.pattern",
+                    subject_id="tree_a",
+                    visibility=Visibility.PARTIAL,
+                    reliability=Reliability.HIGH,
+                ),
+                _obs(
+                    "o2",
+                    "bark.pattern",
+                    subject_id="tree_b",
+                    reliability=Reliability.LOW,
+                ),
+            ),
+        )
+
+        decisive_a = decisive_observations_for(packet, "tree_a")
+        decisive_b = decisive_observations_for(packet, "tree_b")
+
+        assert [o.observation_id for o in decisive_a] == ["o1"]
+        assert decisive_b == ()
+
+
+class TestTheTopBandIsEarnedTwoWays:
+    """95-100 is reserved, and a card-declared reading is the second thing that reserves it.
+
+    The domain prompt writes that band for a fruit in the frame and for a short list of
+    named readings, of which characteristic white papery birch bark is the bark-tier one.
+    Rendering it required a fruit until the confidence-exception primitive existed, so a
+    birch the prompt puts at 95-100 was displayed at 85-94 at best.
+    """
+
+    def test_a_fruit_still_earns_it_without_any_card_declaration(self):
+        assert confidence_band(Confidence.HIGH, EvidenceTier.FRUIT_SEED) == BAND_DECISIVE
+
+    def test_a_declared_decisive_reading_earns_it_below_the_fruit_tier(self):
+        assert (
+            confidence_band(Confidence.HIGH, EvidenceTier.BARK, decisive_reading=True)
+            == BAND_DECISIVE
+        )
+
+    def test_the_default_stays_conservative(self):
+        """A caller that knows nothing about card exceptions renders the lower band."""
+        assert confidence_band(Confidence.HIGH, EvidenceTier.BARK) != BAND_DECISIVE
+
+    @pytest.mark.parametrize("confidence", [Confidence.LOW, Confidence.MEDIUM])
+    def test_the_declaration_cannot_carry_a_claim_that_is_not_high(self, confidence):
+        """The exception raises a *ceiling*. Everything that lowers a claim still bites.
+
+        A reviewer finding, an unmet requirement or a contradiction leaves the claim below
+        high, and no card declaration renders that as the top band.
+        """
+        assert (
+            confidence_band(confidence, EvidenceTier.BARK, decisive_reading=True) != BAND_DECISIVE
+        )
+
+
+def test_the_bark_family_set_the_card_schema_mirrors_has_not_drifted():
+    """`schemas.taxon` mirrors this set, and cannot import from `knowledge` to get it.
+
+    The two are pinned equal here instead. The card schema uses its copy to reason about
+    bark-tier features without a circular import; a drift would let it validate a rule
+    against a tier this module no longer agrees with.
+    """
+    from dendro_inspector.schemas.taxon import _BARK_TIER_FAMILIES
+
+    assert BARK_TIER_FAMILIES == _BARK_TIER_FAMILIES
+    assert all(tier_of_feature(family) is EvidenceTier.BARK for family in BARK_TIER_FAMILIES)

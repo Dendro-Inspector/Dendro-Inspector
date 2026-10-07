@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import io
 import time
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -30,6 +30,88 @@ ResponseT = TypeVar("ResponseT", bound=BaseModel)
 #: may mark a breakpoint there; one whose provider caches automatically, or not at all,
 #: ignores it. Advisory in both directions: it never changes the text that is sent.
 CACHE_PREFIX_CHARS = "cache_prefix_chars"
+
+#: Call-metadata key carrying the code-owned subject identifiers a reviewer may return.
+#: Adapters with native enum-constrained output can bind every ``subject_id`` field to
+#: these exact values. Other adapters ignore it; Pydantic and review synthesis remain the
+#: final contract and semantic boundaries.
+OUTPUT_SUBJECT_IDS = "output_subject_ids"
+
+#: Call-metadata key carrying the code-owned evidence identifiers a model may point at.
+#: The mirror of :data:`OUTPUT_SUBJECT_IDS` for the other identifier space a proposal
+#: references. Advisory in the same way: an adapter that can bind it natively cannot then
+#: emit a reference to nothing, and one that cannot leaves the work to adjudication.
+OUTPUT_EVIDENCE_IDS = "output_evidence_ids"
+
+#: Call-metadata key carrying a mutable sink for provider-reported token accounting.
+#: Advisory like the two above: an adapter that does not fill it costs a missing number in
+#: the trace and nothing else, and nothing an adapter writes here can change what is sent.
+USAGE_SINK = "usage_sink"
+
+
+def _accumulate(current: int | None, addition: int | None) -> int | None:
+    if addition is None:
+        return current
+    return addition if current is None else current + addition
+
+
+def _accumulate_cost(current: float | None, addition: float | None) -> float | None:
+    if addition is None:
+        return current
+    return addition if current is None else current + addition
+
+
+@dataclass(slots=True)
+class UsageSink:
+    """One logical call's token accounting, written by an adapter and read into the trace.
+
+    A mutable sink rather than a return value, because ``generate_structured`` returns the
+    validated contract and nothing else. Widening that signature to carry telemetry would
+    put an accounting concern inside the one interface business logic is allowed to know
+    about.
+
+    ``None`` means the provider reported nothing, which is different from zero. Every field
+    stays ``None`` until some attempt reports it.
+    """
+
+    input_tokens: int | None = None
+    cached_input_tokens: int | None = None
+    output_tokens: int | None = None
+    #: The share of ``output_tokens`` spent on reasoning the caller never sees. Kept beside
+    #: the total rather than instead of it: billing wants one number, and the question of
+    #: which node is expensive wants the other. Providers that hide nothing report ``None``.
+    reasoning_output_tokens: int | None = None
+    reported_cost_usd: float | None = None
+
+    def record(
+        self,
+        *,
+        input_tokens: int | None = None,
+        cached_input_tokens: int | None = None,
+        output_tokens: int | None = None,
+        reasoning_output_tokens: int | None = None,
+        reported_cost_usd: float | None = None,
+    ) -> None:
+        """Add one attempt's accounting to the call's running total.
+
+        Attempts accumulate rather than overwrite. The ``duration_ms`` recorded beside these
+        numbers already spans every attempt, so a repaired call really did generate both
+        responses: reporting only the one that validated would understate the spend and
+        would break the relationship between output length and elapsed time.
+        """
+        self.input_tokens = _accumulate(self.input_tokens, input_tokens)
+        self.cached_input_tokens = _accumulate(self.cached_input_tokens, cached_input_tokens)
+        self.output_tokens = _accumulate(self.output_tokens, output_tokens)
+        self.reasoning_output_tokens = _accumulate(
+            self.reasoning_output_tokens, reasoning_output_tokens
+        )
+        self.reported_cost_usd = _accumulate_cost(self.reported_cost_usd, reported_cost_usd)
+
+
+def usage_sink_of(metadata: Mapping[str, Any]) -> UsageSink | None:
+    """Read the call's usage sink, or ``None`` when the caller supplied none."""
+    sink = metadata.get(USAGE_SINK)
+    return sink if isinstance(sink, UsageSink) else None
 
 
 def cache_prefix_of(metadata: Mapping[str, Any], prompt: str) -> int:
@@ -191,6 +273,7 @@ async def request_structured(
     recorder: TraceRecorder | None = None,
     max_retries: int = 1,
     cache_prefix_chars: int = 0,
+    validate_response: Callable[[ResponseT], None] | None = None,
 ) -> ResponseT:
     """Call a provider for structured output, repairing malformed output at most once.
 
@@ -202,9 +285,11 @@ async def request_structured(
     ``cache_prefix_chars`` is advisory and reaches adapters through call metadata: how much
     of the leading prompt is byte-identical across every node in the case.
     """
+    usage = UsageSink()
     call_metadata: dict[str, Any] = {
         "node": node,
         CACHE_PREFIX_CHARS: cache_prefix_chars,
+        USAGE_SINK: usage,
         **(metadata or {}),
     }
     attempt_prompt = prompt
@@ -221,6 +306,8 @@ async def request_structured(
                 response_model=response_model,
                 metadata=call_metadata,
             )
+            if validate_response is not None:
+                validate_response(result)
         except (ValidationError, StructuredOutputError) as exc:
             validation_failures += 1
             last_error = exc
@@ -238,6 +325,11 @@ async def request_structured(
                     attempts=attempt + 1,
                     validation_failures=validation_failures,
                     duration_ms=(time.perf_counter() - started) * 1000.0,
+                    input_tokens=usage.input_tokens,
+                    cached_input_tokens=usage.cached_input_tokens,
+                    output_tokens=usage.output_tokens,
+                    reasoning_output_tokens=usage.reasoning_output_tokens,
+                    reported_cost_usd=usage.reported_cost_usd,
                 )
             )
         return result
@@ -253,6 +345,11 @@ async def request_structured(
                 attempts=max_retries + 1,
                 validation_failures=validation_failures,
                 duration_ms=(time.perf_counter() - started) * 1000.0,
+                input_tokens=usage.input_tokens,
+                cached_input_tokens=usage.cached_input_tokens,
+                output_tokens=usage.output_tokens,
+                reasoning_output_tokens=usage.reasoning_output_tokens,
+                reported_cost_usd=usage.reported_cost_usd,
             )
         )
     msg = (

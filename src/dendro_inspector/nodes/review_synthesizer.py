@@ -12,6 +12,7 @@ from dendro_inspector.knowledge.loader import KnowledgeBase
 from dendro_inspector.schemas.candidates import Candidate, CandidateSet
 from dendro_inspector.schemas.evidence import EvidencePacket, Observation
 from dendro_inspector.schemas.reviews import (
+    AdmittedRecommendation,
     AdmittedRerank,
     CorrectionDirective,
     FindingCategory,
@@ -87,14 +88,21 @@ def _effective_subject(
     reviewed_evidence_ids: frozenset[str] | None,
 ) -> tuple[str | None, ReasonCode | None]:
     """Resolve one unambiguous subject and reject foreign evidence references."""
+    result_subject = result.subject_id if finding.origin is FindingOrigin.MODEL else None
     if (
         finding.subject_id is not None
-        and result.subject_id is not None
-        and finding.subject_id != result.subject_id
+        and result_subject is not None
+        and finding.subject_id != result_subject
     ):
         return None, ReasonCode.OUT_OF_SCOPE
 
-    subject_id = finding.subject_id or result.subject_id
+    subject_id = finding.subject_id or result_subject
+    if (
+        subject_id is not None
+        and evidence is not None
+        and subject_id not in {subject.subject_id for subject in evidence.subjects}
+    ):
+        return subject_id, ReasonCode.OUT_OF_SCOPE
     referenced_subjects: set[str] = set()
     for evidence_id in finding.evidence_ids:
         # Resolution first, scope second. The projection currently carries the whole packet,
@@ -260,6 +268,49 @@ def _reranks_conflict(reranks: list[AdmittedRerank]) -> bool:
     return any(len(rankings) > 1 for rankings in by_subject.values())
 
 
+def _admit_recommendations(
+    results: tuple[ReviewResult, ...],
+    accepted_by_result: dict[int, list[ReviewFinding]],
+    evidence: EvidencePacket | None,
+) -> tuple[AdmittedRecommendation, ...]:
+    known_subjects = {subject.subject_id for subject in evidence.subjects} if evidence else set()
+    recommendations: list[AdmittedRecommendation] = []
+    for index, result in enumerate(results):
+        if result.recommended_confidence is None and result.recommended_resolution is None:
+            continue
+        owned = tuple(
+            finding
+            for finding in accepted_by_result.get(index, ())
+            if finding.origin is FindingOrigin.MODEL
+        )
+        # A rejected model finding cannot carry its recommendation around admission. Code
+        # findings merged into this result do not lend authority to a model's suggestion.
+        if any(f.origin is FindingOrigin.MODEL for f in result.findings) and not owned:
+            continue
+        subjects = (
+            {result.subject_id}
+            if result.subject_id is not None
+            else {finding.subject_id for finding in owned if finding.subject_id is not None}
+        )
+        if not subjects and len(known_subjects) == 1:
+            subjects = known_subjects
+        for subject_id in sorted(subjects & known_subjects):
+            bindings: tuple[ReviewFinding | None, ...] = tuple(
+                finding for finding in owned if finding.subject_id == subject_id
+            ) or (None,)
+            for finding in bindings:
+                recommendations.append(
+                    AdmittedRecommendation(
+                        reviewer=result.reviewer,
+                        subject_id=subject_id,
+                        confidence=result.recommended_confidence,
+                        resolution=result.recommended_resolution,
+                        finding=finding,
+                    )
+                )
+    return tuple(recommendations)
+
+
 def adjudicate(
     results: tuple[ReviewResult, ...],
     *,
@@ -270,6 +321,7 @@ def adjudicate(
     accepted: list[ReviewFinding] = []
     rejected: list[ReviewFinding] = []
     admitted_reranks: list[AdmittedRerank] = []
+    accepted_by_result: dict[int, list[ReviewFinding]] = {}
     seen: set[MaterialSignature] = set()
     known_taxa = frozenset(knowledge.available_taxon_ids())
 
@@ -286,7 +338,7 @@ def adjudicate(
         )
     )
 
-    for _, _, result, finding in entries:
+    for result_index, _, result, finding in entries:
         reviewed_evidence_ids = (
             None
             if result.reviewed_evidence_ids is None
@@ -329,6 +381,7 @@ def adjudicate(
         if admitted:
             seen.add(_material_signature(effective))
             accepted.append(decided)
+            accepted_by_result.setdefault(result_index, []).append(decided)
             if rerank is not None:
                 admitted_reranks.append(
                     AdmittedRerank(
@@ -358,18 +411,20 @@ def adjudicate(
     )
     reviewer_disagreement = _reviewers_disagree(results) or _reranks_conflict(admitted_reranks)
     critical_finding = any(finding.severity is Severity.CRITICAL for finding in accepted)
+    recommendations = _admit_recommendations(results, accepted_by_result, evidence)
 
     return ReviewSynthesis(
         accepted_findings=tuple(accepted),
         rejected_findings=tuple(rejected),
         admitted_reranks=tuple(admitted_reranks),
+        recommendations=recommendations,
         required_corrections=corrections,
         candidate_delta=candidate_delta,
         confidence_delta=_lowest(
-            {r.recommended_confidence for r in results if r.recommended_confidence}
+            {r.confidence for r in recommendations if r.confidence is not None}
         ),
         resolution_delta=_broadest(
-            {r.recommended_resolution for r in results if r.recommended_resolution}
+            {r.resolution for r in recommendations if r.resolution is not None}
         ),
         retry_required=retry_required,
         reviewer_disagreement=reviewer_disagreement,

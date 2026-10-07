@@ -1,0 +1,147 @@
+{
+  "scenario": "unattached-contradiction-claim",
+  "description": "C3 — the only contradiction against the user's version is needle litter that cannot be traced to the log. It must not reject their version.",
+  "note_for_maintainers": "obs-3 carries attachment 'unknown' on purpose. It matches Picea's contradictions list, but an observation with no authority to support an identification has none to destroy one, so the ruling on the user's claim must stay short of 'rejected'.",
+  "responses": {
+    "primary:planner": {
+      "target_features": [
+        "needles.attachment",
+        "needles.fascicles",
+        "cones.scale_shape"
+      ],
+      "expect_multiple_subjects": false,
+      "bark_only_input": false,
+      "notes": [
+        "Needle litter lies on the log; confirm whether any shoot is continuous with it."
+      ]
+    },
+    "primary:evidence_extractor": {
+      "subjects": [
+        {
+          "subject_id": "foreground_log_1",
+          "kind": "log",
+          "description": "Single felled log, sawn end toward the camera, one cone on a branch stub and loose needle litter across the bark.",
+          "image_ids": [
+            "img-1"
+          ]
+        }
+      ],
+      "observations": [
+        {
+          "observation_id": "obs-1",
+          "feature": "cones.scale_shape",
+          "value": "woody_umbo",
+          "subject_id": "foreground_log_1",
+          "source": "image",
+          "visibility": "clear",
+          "reliability": "medium",
+          "image_id": "img-1",
+          "notes": "One cone still held on a branch stub of this log, scales clearly umbonate.",
+          "attachment": "confirmed_attached"
+        },
+        {
+          "observation_id": "obs-2",
+          "feature": "bark.texture",
+          "value": "scaly_plates",
+          "subject_id": "foreground_log_1",
+          "source": "image",
+          "visibility": "clear",
+          "reliability": "medium",
+          "image_id": "img-1"
+        },
+        {
+          "observation_id": "obs-3",
+          "feature": "needles.fascicles",
+          "value": "two",
+          "subject_id": "foreground_log_1",
+          "source": "image",
+          "visibility": "partial",
+          "reliability": "low",
+          "image_id": "img-1",
+          "notes": "Fallen needles resting on the bark. No shoot is continuous with this log, and the stand overhead is mixed.",
+          "attachment": "unknown"
+        }
+      ],
+      "inferences": [
+        {
+          "inference_id": "inf-1",
+          "claim": "umbonate_cone_on_this_log_suits_a_hard_pine",
+          "derived_from": [
+            "obs-1"
+          ],
+          "strength": "medium",
+          "limitations": [
+            "single_cone"
+          ]
+        }
+      ],
+      "absent_features": [],
+      "image_limitations": [
+        {
+          "image_id": "img-1",
+          "lighting": "overcast",
+          "white_balance": "uncorrected",
+          "scale": "absent"
+        }
+      ],
+      "context_limitations": [
+        "mixed_stand_overhead"
+      ],
+      "possible_multiple_taxa": false,
+      "instruction_like_content_detected": false
+    },
+    "primary:candidate_generator": {
+      "sets": [
+        {
+          "subject_id": "foreground_log_1",
+          "candidates": [
+            {
+              "taxon": "pinus",
+              "resolution": "genus",
+              "supporting_evidence_ids": [
+                "obs-1",
+                "obs-2",
+                "inf-1"
+              ],
+              "contradicting_evidence_ids": [],
+              "missing_decisive_features": [],
+              "score": "moderate",
+              "rank": 1
+            },
+            {
+              "taxon": "larix",
+              "resolution": "genus",
+              "supporting_evidence_ids": [
+                "obs-1"
+              ],
+              "contradicting_evidence_ids": [],
+              "missing_decisive_features": [
+                "needles_or_cones"
+              ],
+              "score": "weak",
+              "rank": 2
+            }
+          ]
+        }
+      ]
+    },
+    "reviewer:botanical_reviewer": {
+      "reviewer": "botanical",
+      "status": "pass",
+      "findings": [],
+      "recommended_resolution": "genus"
+    },
+    "reviewer:confusion_reviewer": {
+      "reviewer": "confusion",
+      "status": "pass",
+      "findings": [],
+      "recommended_resolution": "genus"
+    },
+    "reviewer:confidence_reviewer": {
+      "reviewer": "confidence",
+      "status": "pass",
+      "findings": [],
+      "recommended_resolution": "genus"
+    }
+  }
+}

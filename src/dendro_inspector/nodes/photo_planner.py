@@ -13,8 +13,9 @@ from __future__ import annotations
 from dendro_inspector.graph.executor import NodeContext
 from dendro_inspector.graph.state import GraphState
 from dendro_inspector.knowledge.evidence_authority import attachment_risk_for
-from dendro_inspector.knowledge.evidence_hierarchy import BAND_INSUFFICIENT, family_of
+from dendro_inspector.knowledge.evidence_hierarchy import BAND_INSUFFICIENT, bark_only, family_of
 from dendro_inspector.schemas.decisions import (
+    DecisionDerivation,
     DecisionStatus,
     FinalDecision,
     PhotoRequest,
@@ -113,7 +114,38 @@ _REASON_TEXT: dict[str, str] = {
     "no_usable_subject": "No subject in the frame carried usable evidence.",
     "no_evidence": "No evidence could be extracted from the input.",
     "input_unusable": "The request contained neither a readable image nor usable text.",
+    "knowledge_coverage_gap": (
+        "Features were resolvable in this frame, but no taxon card in this build describes "
+        "them, so no candidate could be opened. This is a limit of the reference data, not "
+        "of the photograph."
+    ),
 }
+
+
+def coverage_gap_text(state: GraphState) -> tuple[str, ...]:
+    """Name the features that fell outside the cards, so the gap is actionable.
+
+    Without the feature names the reader is told the knowledge base failed and given no way
+    to say *at what*, and the maintainer reading the same run has to open the log to learn
+    which card to write.
+    """
+    quality = state.quality
+    coverage = quality.knowledge_coverage if quality else None
+    if quality is None or coverage is None or not quality.coverage_gap_subject_ids:
+        return ()
+    lines: list[str] = []
+    if coverage.features_absent_from_all_cards:
+        lines.append(
+            "Outside the knowledge base entirely: "
+            + ", ".join(coverage.features_absent_from_all_cards)
+        )
+    if coverage.features_with_unknown_values:
+        lines.append(
+            "Known features whose observed value no card lists: "
+            + ", ".join(coverage.features_with_unknown_values)
+        )
+    return tuple(lines)
+
 
 _SUBJECT_KIND_TO_OBJECT_TYPE: dict[SubjectKind, DeclaredObjectType] = {
     SubjectKind.SPLIT_WOOD: DeclaredObjectType.SPLIT_FIREWOOD,
@@ -201,6 +233,37 @@ def attachment_request(
     return None
 
 
+def planned_attachment_request(
+    state: GraphState,
+    subject_id: str,
+    photo_targets: tuple[str, ...],
+) -> PhotoRequest | None:
+    """Prefer declared provenance evidence before morphology in a multi-tree bark view.
+
+    No current detachable observation exists for :func:`attachment_request` to inspect in
+    this case: the organ is precisely what the next photograph must add. If the knowledge
+    card already offers an attachment view, request it before a macro whose morphology the
+    graph could not yet credit to this trunk.
+    """
+    evidence = state.evidence
+    object_type = effective_object_type(state, subject_id)
+    if (
+        evidence is None
+        or not evidence.possible_multiple_taxa
+        or not bark_only(evidence, subject_id)
+        or object_type not in {DeclaredObjectType.BARK, DeclaredObjectType.STANDING_TREE}
+    ):
+        return None
+
+    offered = set(photo_targets)
+    for family in ("leaf", "leaflet", "needles", "fruit", "seed", "cones", "branch"):
+        target, reason = _ATTACHMENT_PHOTOS[family]
+        if target in offered:
+            return PhotoRequest(target=target, reason=reason, subject_id=subject_id)
+    target, reason = _BY_DECLARED_TYPE[DeclaredObjectType.BARK]
+    return PhotoRequest(target=target, reason=reason, subject_id=subject_id)
+
+
 def choose_request(
     state: GraphState,
     ctx: NodeContext,
@@ -212,6 +275,9 @@ def choose_request(
         authority_first = attachment_request(state, subject_id)
         if authority_first is not None:
             return authority_first
+        provenance_first = planned_attachment_request(state, subject_id, ())
+        if provenance_first is not None:
+            return provenance_first
     target, reason = _BY_DECLARED_TYPE.get(object_type, _DEFAULT_REQUEST)
     return PhotoRequest(target=target, reason=reason, subject_id=subject_id)
 
@@ -219,7 +285,10 @@ def choose_request(
 def limitation_text(state: GraphState) -> tuple[str, ...]:
     quality = state.quality
     reasons = quality.insufficient_reasons if quality else ()
-    described = tuple(_REASON_TEXT.get(reason, reason) for reason in reasons)
+    described = (
+        *(_REASON_TEXT.get(reason, reason) for reason in reasons),
+        *coverage_gap_text(state),
+    )
     guard = state.guard
     if guard is not None and guard.missing_images:
         described = (
@@ -240,11 +309,20 @@ async def run(state: GraphState, ctx: NodeContext) -> GraphState:
         UserClaimVerdict.NOT_EVALUABLE if state.case.user_claim else UserClaimVerdict.NOT_PROVIDED
     )
 
+    for subject_id in subjects:
+        ctx.recorder.record_derivation(DecisionDerivation.terminal(subject_id))
+
+    coverage_gap_subjects = frozenset(quality.coverage_gap_subject_ids if quality else ())
+
     return state.evolve(
         decisions=tuple(
             FinalDecision(
                 subject_id=subject_id,
-                status=DecisionStatus.INSUFFICIENT_EVIDENCE,
+                status=(
+                    DecisionStatus.KNOWLEDGE_COVERAGE_GAP
+                    if subject_id in coverage_gap_subjects
+                    else DecisionStatus.INSUFFICIENT_EVIDENCE
+                ),
                 unresolved_questions=limitation_text(state),
                 best_next_photo=choose_request(state, ctx, subject_id),
                 arbiter_used=state.arbiter_used,

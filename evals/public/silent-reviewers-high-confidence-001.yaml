@@ -1,0 +1,32 @@
+# C2 regression: reviewer silence must not hide a high-confidence provisional verdict
+# from the escalation gate.
+case_id: silent-reviewers-high-confidence-001
+title: High-confidence provisional verdict reaches arbitration
+description: >-
+  Clear attached diagnostic foliage supports a high-confidence Pinus genus verdict while
+  every reviewer passes. The deterministic provisional verdict must still trigger the
+  arbiter.
+scenario: silent-reviewers-high-confidence
+
+input:
+  case_id: silent-reviewers-high-confidence-001
+  images:
+    - image_id: img-1
+      path: examples/silent-reviewers-high-confidence-001.jpg
+      media_type: image/jpeg
+      caption: Attached needles and trunk bark on one standing tree
+  location: Kyiv Oblast, Ukraine
+  season: summer
+  declared_object_type: standing_tree
+
+expect:
+  expected_taxon: pinus
+  expected_resolution: genus
+  expected_status: identified
+  expected_evidence_tier: 6
+  max_resolution: genus
+  max_confidence: high
+  require_escalation: true
+  max_retries: 0
+
+placeholder_content: true

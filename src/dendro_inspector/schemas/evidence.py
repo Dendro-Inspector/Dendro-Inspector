@@ -312,6 +312,71 @@ class ImageLimitation(Contract):
     notes: ShortText | None = None
 
 
+#: Values that report a failure to read a feature rather than a reading of it. An extractor
+#: that fills `bark.texture` with `not_resolvable` is saying "I looked and could not tell",
+#: which is silence on that feature — never a positive observation that disagrees with a
+#: card. Keeping these out of value comparisons is what stops absence of evidence from being
+#: promoted into evidence of absence.
+UNREADABLE_VALUES: frozenset[str] = frozenset(
+    {
+        "not_resolvable",
+        "unresolvable",
+        "not_assessable",
+        "not_visible",
+        "indeterminate",
+        "unknown",
+        "obscured",
+        "absent",
+    }
+)
+
+
+def is_positive_reading(value: str) -> bool:
+    """Whether an observation's value is an actual reading of the feature."""
+    return value not in UNREADABLE_VALUES
+
+
+class KnowledgeCoverage(Contract):
+    """How much of one packet's trusted evidence the knowledge cards can represent.
+
+    A gap here measures the cards, never the photograph or the model. An observation that
+    lands outside the card vocabulary was seen, believed and carried — and then had nowhere
+    to go, because no card declares the feature it names.
+
+    The split matters more than the count. Colour and the project's explicitly
+    insufficient-alone features are *meant* to be unmatchable, so counting them as coverage
+    gaps would inflate the number with entries no card edit could ever recover. Only
+    :attr:`potential_gap_evidence_ids` names evidence a card author could act on.
+    """
+
+    observations_total: int = Field(default=0, ge=0)
+    intentionally_weak_evidence_ids: tuple[Identifier, ...] = Field(
+        default=(),
+        description="Unmatchable by existing policy — colour and insufficient-alone features.",
+    )
+    potential_gap_evidence_ids: tuple[Identifier, ...] = Field(
+        default=(),
+        description="Unmatchable evidence a card author could recover by editing the cards.",
+    )
+    features_absent_from_all_cards: tuple[FeaturePath, ...] = Field(
+        default=(),
+        description="Gap features no card declares at all. A missing card or a missing rule.",
+    )
+    features_with_unknown_values: tuple[FeaturePath, ...] = Field(
+        default=(),
+        description="Gap features some card declares, with a value no card lists.",
+    )
+
+    @property
+    def unmatchable_total(self) -> int:
+        return len(self.intentionally_weak_evidence_ids) + len(self.potential_gap_evidence_ids)
+
+    @property
+    def has_potential_gap(self) -> bool:
+        """Whether a card author could recover any of this run's discarded evidence."""
+        return bool(self.potential_gap_evidence_ids)
+
+
 class EvidencePacket(Contract):
     """Everything the graph believes it can see, with referential integrity enforced."""
 
@@ -383,6 +448,20 @@ class EvidencePacket(Contract):
                 )
                 raise ValueError(msg)
         return self
+
+    def validate_image_references(self, available_image_ids: frozenset[str]) -> None:
+        """Bind packet references to the code-owned image scope of the extraction call."""
+        referenced = {
+            observation.image_id
+            for observation in self.observations
+            if observation.image_id is not None
+        }
+        referenced.update(image_id for subject in self.subjects for image_id in subject.image_ids)
+        referenced.update(limitation.image_id for limitation in self.image_limitations)
+        unknown = referenced - available_image_ids
+        if unknown:
+            msg = f"evidence references unavailable image ids: {sorted(unknown)}"
+            raise ValueError(msg)
 
     def identity_root_id(self, subject_id: str) -> str:
         """Return the independent identity root for a validated subject id."""

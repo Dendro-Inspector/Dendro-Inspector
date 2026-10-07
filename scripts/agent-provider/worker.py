@@ -50,6 +50,10 @@ class WorkerRateLimitError(WorkerError):
         self.retry_after = retry_after
 
 
+class WorkerTerminalError(WorkerError):
+    """The current request cannot succeed by retrying the same upstream state."""
+
+
 @dataclass(frozen=True, slots=True)
 class Job:
     request_id: int
@@ -179,6 +183,14 @@ def _job_from_meta(meta_path: Path, state_dir: Path, route: str) -> Job | None:
         and isinstance(response_model, str)
     ):
         return None
+    terminal_path = state_dir / "failures" / f"req-{request_id:03d}-terminal.json"
+    if terminal_path.is_file():
+        try:
+            terminal = json.loads(terminal_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            terminal = {}
+        if terminal.get("cache_key") == cache_key:
+            return None
     answer_path = Path(answer_file)
     if answer_path.is_file():
         return None
@@ -542,6 +554,9 @@ class ClaudeBackend:
         )
         detail = (completed.stderr or completed.stdout).strip()[-2000:]
         if completed.returncode != 0:
+            terminal = _claude_terminal_quota_error(detail)
+            if terminal is not None:
+                raise terminal
             if "429" in detail or "rate limit" in detail.lower():
                 raise WorkerRateLimitError(f"Claude route rate-limited: {detail}")
             raise WorkerError(f"Claude exited {completed.returncode}: {detail}")
@@ -551,6 +566,9 @@ class ClaudeBackend:
             raise WorkerError(f"Claude returned invalid JSON envelope: {detail}") from exc
         if payload.get("is_error") or payload.get("subtype") == "error":
             message = payload.get("result") or payload.get("error") or "unknown Claude error"
+            terminal = _claude_terminal_quota_error(str(message))
+            if terminal is not None:
+                raise terminal
             if "429" in str(message) or "rate limit" in str(message).lower():
                 raise WorkerRateLimitError(f"Claude route rate-limited: {message}")
             raise WorkerError(f"Claude returned an error result: {message}")
@@ -672,8 +690,30 @@ class ClineBackend:
         )
 
 
+def _claude_terminal_quota_error(detail: str) -> WorkerTerminalError | None:
+    """Classify account/session exhaustion separately from a short rate limit."""
+    lowered = detail.lower()
+    terminal_markers = (
+        "monthly spend limit",
+        "session limit resets",
+    )
+    if not any(marker in lowered for marker in terminal_markers):
+        return None
+    return WorkerTerminalError(
+        "Claude route quota exhausted; retry after the account spend or session limit resets."
+    )
+
+
 def _record_failure(state_dir: Path, job: Job, worker_id: str, error: Exception) -> None:
-    payload = {
+    payload = _failure_payload(job, worker_id, error)
+    atomic_write_text(
+        state_dir / "failures" / f"{job.cache_key}-{worker_id}-{int(time.time())}.json",
+        json.dumps(payload, indent=2),
+    )
+
+
+def _failure_payload(job: Job, worker_id: str, error: Exception) -> dict[str, Any]:
+    return {
         "worker_id": worker_id,
         "request_id": job.request_id,
         "cache_key": job.cache_key,
@@ -681,8 +721,19 @@ def _record_failure(state_dir: Path, job: Job, worker_id: str, error: Exception)
         "error_type": type(error).__name__,
         "message": str(error)[:2000],
     }
+
+
+def record_terminal_failure(
+    state_dir: Path, job: Job, worker_id: str, error: WorkerTerminalError
+) -> None:
+    """Record a request-scoped marker that stops worker and bridge retry loops."""
+    payload = _failure_payload(job, worker_id, error)
     atomic_write_text(
         state_dir / "failures" / f"{job.cache_key}-{worker_id}-{int(time.time())}.json",
+        json.dumps(payload, indent=2),
+    )
+    atomic_write_text(
+        state_dir / "failures" / f"req-{job.request_id:03d}-terminal.json",
         json.dumps(payload, indent=2),
     )
 
@@ -803,6 +854,18 @@ def main() -> int:
         try:
             result = backend.generate(job)
             publish(job, worker_id=args.worker_id, result=result, started=started)
+        except WorkerTerminalError as exc:
+            record_terminal_failure(state_dir, job, args.worker_id, exc)
+            job.claim_path.unlink(missing_ok=True)
+            capacity_path.unlink(missing_ok=True)
+            print(
+                f"[worker:{args.worker_id}] terminal failure: {exc}",
+                file=sys.stderr,
+                flush=True,
+            )
+            if args.once:
+                return 4
+            continue
         except WorkerRateLimitError as exc:
             _record_failure(state_dir, job, args.worker_id, exc)
             job.claim_path.unlink(missing_ok=True)

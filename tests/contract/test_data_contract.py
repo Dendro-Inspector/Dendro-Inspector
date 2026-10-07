@@ -24,6 +24,7 @@ from dendro_inspector.schemas.taxon import (
     Resolution,
     SourceType,
     TaxonCard,
+    ValueVocabulary,
     resolution_rank,
 )
 
@@ -188,6 +189,63 @@ class TestKnowledgeCards:
         for path in _yaml_files(repo_root, "taxa"):
             card = TaxonCard.model_validate(yaml.safe_load(path.read_text(encoding="utf-8")))
             assert card.placeholder_content is True
+
+
+class TestValueVocabulary:
+    """`knowledge/vocabulary.yaml` says when two words describe one reading of an organ."""
+
+    def _vocabulary(self, repo_root):
+        path = repo_root / "knowledge" / "vocabulary.yaml"
+        return ValueVocabulary.model_validate(yaml.safe_load(path.read_text(encoding="utf-8")))
+
+    def test_the_file_validates(self, repo_root):
+        assert self._vocabulary(repo_root).refinements
+
+    def test_no_taxon_card_declares_its_own_value_relations(self, repo_root):
+        """One relation, one home.
+
+        `drupe` and `apricot` cannot be related on the Prunus card and unrelated on the
+        apricot card, so the relation is not card data — the loader composes the shared file
+        onto every card instead.
+        """
+        for path in _yaml_files(repo_root, "taxa"):
+            raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+            assert "value_vocabulary" not in raw, (
+                f"{path.name} declares value_vocabulary; it belongs in knowledge/vocabulary.yaml"
+            )
+
+    def test_every_related_value_is_one_some_card_actually_names(self, repo_root, knowledge):
+        """A relation between values no card carries relates nothing.
+
+        It would read as knowledge and behave as a comment — the same rot the requirement
+        selector gate exists to stop.
+        """
+        vocabulary = card_value_vocabulary(knowledge.taxa(knowledge.available_taxon_ids()))
+        dangling = [
+            (row.feature, value)
+            for row in self._vocabulary(repo_root).refinements
+            for value in (row.value, row.broader)
+            if value not in vocabulary.get(row.feature, frozenset())
+        ]
+
+        assert not dangling, f"value relations naming values no card declares: {dangling}"
+
+    def test_a_relation_is_symmetric_and_transitive_where_declared(self, repo_root):
+        """Compatibility is a question about two readings, not about their order."""
+        vocabulary = self._vocabulary(repo_root)
+
+        for row in vocabulary.refinements:
+            assert vocabulary.compatible(row.feature, row.value, row.broader)
+            assert vocabulary.compatible(row.feature, row.broader, row.value)
+
+    def test_an_unrelated_pair_stays_incompatible(self, repo_root):
+        """The carve-out is what the file declares, and nothing shelters under it."""
+        vocabulary = self._vocabulary(repo_root)
+
+        assert not vocabulary.compatible("fruit.type", "apple", "drupe")
+        assert not vocabulary.compatible("leaf.shape", "simple_lobed", "palmate_lobed")
+        # Declared on `fruit.type`; a same-named value on another path is not related.
+        assert not vocabulary.compatible("bark.texture", "apricot", "drupe")
 
 
 class TestEvaluationSuite:

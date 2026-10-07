@@ -2,8 +2,8 @@
 
 - **Status:** Current
 - **Owner:** Dendro Inspector maintainers
-- **Date:** 2026-08-24
-- **Last-verified:** 2026-08-24
+- **Date:** 2026-09-06
+- **Last-verified:** 2026-09-06
 
 Three logical roles. Business logic names only these; which vendor and model satisfies each is
 configuration.
@@ -70,7 +70,7 @@ route details live in
 | --- | --- | --- |
 | `openai` | `OPENAI_API_KEY` | Optional OpenAI SDK; native `json_schema` response format |
 | `anthropic` | `ANTHROPIC_API_KEY` | Optional Anthropic SDK; Messages API with schema in the prompt and Pydantic validation |
-| `gemini` | `GEMINI_API_KEY` | Direct HTTPS; native `responseSchema` after compatibility translation |
+| `gemini` | `GEMINI_API_KEY`, or `GOOGLE_ACCESS_TOKEN` on a Vertex `GEMINI_ENDPOINT` | Direct HTTPS; native `responseSchema` after compatibility translation |
 | `nvidia` | `NVIDIA_API_KEY` | Direct HTTPS; OpenAI-compatible chat-completions dialect |
 | `openrouter` | `OPENROUTER_API_KEY` | Direct HTTPS; OpenAI-compatible chat-completions dialect |
 | `ollama` | none | Local HTTP; Ollama schema format after compatibility translation |
@@ -88,6 +88,14 @@ DENDRO_PRIMARY_MODEL=gemini-3.6-flash   # the adapter's default
 
 Reads `GEMINI_API_KEY`, over plain HTTPS with no SDK. Structured output uses the API's
 native `responseSchema`.
+
+The same models are served through Vertex as well, and that host authenticates with a bearer
+token rather than an API key. Point `GEMINI_ENDPOINT` at the Vertex publisher path and set
+`GOOGLE_ACCESS_TOKEN`; a token wins over the API key when both are present, and a Vertex
+endpoint with no token fails before the request instead of after it with a `401` that reads
+like a bad key. `GEMINI_THINKING_LEVEL` passes a thinking budget through unvalidated — the API
+rejects an unknown level by name. Reported usage counts hidden reasoning tokens as output,
+with `reasoning_output_tokens` carrying the split. `.env.example` documents each setting.
 
 **Pro models are not on the free tier.** Verified 2026-07-27 against a free-tier key:
 `gemini-3.1-pro-preview`, `gemini-3-pro-preview`, `gemini-2.5-pro` and `gemini-pro-latest`
@@ -201,8 +209,10 @@ model. Budget for that: local runs spend more attempts per node than hosted ones
 
 ## What the arbiter receives
 
-Original images, original user context, the evidence packet, the candidate set, the proposed
-resolution and confidence, and the relevant taxon and comparison cards.
+Original images, original user context, the evidence packet, the candidate set, the stored
+deterministic provisional verdict, and the relevant taxon and comparison cards. The
+escalation gate computes that verdict before deciding to call the arbiter; the projection
+fails closed if it is absent.
 
 **It never receives the primary model's private reasoning.** This is structural, not a
 policy: the system stores no hidden chain-of-thought anywhere, so there is nothing to pass
@@ -240,10 +250,10 @@ escalation precision and recall.
 | --- | --- | --- |
 | `species_level_proposed` | yes | The claim most likely to be wrong and most likely to be believed |
 | `possible_multiple_taxa` | yes | Averaging two subjects into one answer is a silent, plausible error |
-| `user_challenged_result` | yes | The user has information the system does not |
-| `instruction_like_content_detected` | yes | Untrusted content in play; a second look is cheap |
+| `user_challenged_result` | yes | The caller explicitly requests reconsideration of a previous result |
+| `instruction_like_content_detected` | yes | A warning signal requests a second look, without asserting an attack occurred |
 | `unresolved_contradiction` | yes | A critical finding survived adjudication |
-| `high_confidence_proposed` | no | Confidence is the claim worth double-checking |
+| `high_confidence_proposed` | no | A reviewer recommends high or the deterministic provisional verdict is high |
 | `leading_candidates_close` | no | The ranking is doing work the evidence may not support |
 | `reviewer_disagreement` | no | Reviewer recommendations or admitted reranks conflict |
 | `critical_finding` | no | An accepted reviewer finding has critical severity |
@@ -254,16 +264,22 @@ escalation precision and recall.
 
 ### Suppressors
 
-**Blocking** — a second opinion could not help; these override everything:
+**Blocking** — overrides hard triggers when enabled:
 
-* `evidence_insufficient` — arbitrating "I cannot tell" yields "I cannot tell", at twice
-  the price.
-* `already_abstaining`.
+* `already_abstaining` — every subject is abstained. Partial abstention leaves unaffected
+  subjects eligible for arbitration.
+
+Insufficient evidence never reaches this gate: the quality branch routes directly to the
+photo planner. The old `suppress_when_insufficient_evidence` field is deprecated and ignored,
+retained only so existing configurations still load. The routing contract and end-to-end
+tests, not a second policy knob, own that short circuit.
 
 **Cost** — these trade risk for money and are overridden by any hard trigger:
 
-* `broad_and_low_risk` — a clean genus-or-broader result across all subjects.
-* `clean_review_and_modest_confidence` — no accepted findings, confidence not high.
+* `broad_and_low_risk` — a clean genus-or-broader result across all subjects, with no
+  high-confidence provisional verdict.
+* `clean_review_and_modest_confidence` — no accepted findings and no high-confidence
+  provisional verdict.
 
 ### Precedence
 
@@ -285,7 +301,8 @@ of a safety trigger. Regression-tested in
 
 The arbiter roughly doubles model cost on escalated cases. The public conformance suite is
 deliberately weighted toward hard cases, so its escalation rate is not a production cost
-forecast. v0.2.3 expands the suite from sixteen to nineteen cases. Tune with:
+forecast. Current cases and coverage are documented in [evaluation](evaluation.md). Tune
+with:
 
 ```python
 EscalationPolicy(

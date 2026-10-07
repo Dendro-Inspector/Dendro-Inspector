@@ -48,6 +48,8 @@ class TestSuiteHealth:
             "edge-foliage-001",
             # The counterweight: when evidence is decisive, commit.
             "apple-with-fruit-001",
+            # C2: the gate sees the deterministic verdict even when reviewers are silent.
+            "silent-reviewers-high-confidence-001",
             # Correctness-boundary regressions added in v0.2.2.
             "unrelated-high-tier-001",
             "candidate-sanitization-001",
@@ -61,6 +63,13 @@ class TestSuiteHealth:
             "rough-end-grain-anatomy-001",
             "split-face-colour-only-001",
             "log-pile-pinus-001",
+            # C3 and C5: what a contradiction may do, and what abstention must cost.
+            "unattached-contradiction-claim-001",
+            "abstention-visible-001",
+            # C1: a support-strength label is not evidence.
+            "strong-label-thin-support-001",
+            # C4: a hedged claim is a disjunction, not a lookup.
+            "disjunctive-user-claim-001",
         } == ids
 
     def test_no_case_crashed(self, report):

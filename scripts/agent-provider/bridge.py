@@ -45,6 +45,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
+from dendro_inspector.observability.upstream_usage import upstream_usage
+
 POLL_SECONDS = 0.5
 
 #: Constructs Pydantic emits that a host's structured-output dialect cannot accept. Listed
@@ -89,11 +91,19 @@ class State:
         self.answers = root / "answers"
         self.cache = root / "cache"
         self.images = root / "images"
+        self.failures = root / "failures"
         self.log = root / "log.jsonl"
         self.wait_timeout = wait_timeout
         self.counter = 0
         self.fault_calls: dict[str, int] = {}
-        for directory in (self.root, self.pending, self.answers, self.cache, self.images):
+        for directory in (
+            self.root,
+            self.pending,
+            self.answers,
+            self.cache,
+            self.images,
+            self.failures,
+        ):
             directory.mkdir(parents=True, exist_ok=True)
 
     def next_id(self) -> int:
@@ -360,7 +370,7 @@ class Handler(BaseHTTPRequestHandler):
                 [str(image["sha256"]) for image in saved],
                 model,
             )
-            answer, source = self._answer(
+            answer, source, usage = self._answer(
                 request_id,
                 dialect,
                 prompt,
@@ -375,7 +385,7 @@ class Handler(BaseHTTPRequestHandler):
                 answer = corrupt_answer(fault, answer)
                 source = f"{source}+fault:{fault}"
             self._log(request_id, dialect, model, wanted, stats, saved, "accepted", source, started)
-            self._send(200, self._envelope(dialect, model, answer))
+            self._send(200, self._envelope(dialect, model, answer, usage))
         except DialectRejectionError as exc:
             verdict = f"rejected: {exc.reason}"
             self._log(request_id, dialect, "-", wanted, stats, saved, verdict, "vendor", started)
@@ -597,17 +607,19 @@ class Handler(BaseHTTPRequestHandler):
         wanted: str,
         requested_model: str,
         stub_on_miss: bool = False,
-    ) -> tuple[str, str]:
+    ) -> tuple[str, str, dict[str, int] | None]:
         cached = self.state.cache / f"{key}.json"
         if cached.is_file():
             print(f"[bridge] req-{request_id:03d} {dialect} cache hit {key}", flush=True)
+            source, usage = self._answer_provenance(cached.with_suffix(".meta.json"), "cache")
             return (
                 cached.read_text(encoding="utf-8"),
-                self._answer_source(cached.with_suffix(".meta.json"), "cache"),
+                source,
+                usage,
             )
         if stub_on_miss:
             # A corrupting fault is about to damage this text anyway.
-            return "{}", "stub"
+            return "{}", "stub", None
         self._write_pending(
             request_id,
             dialect,
@@ -632,7 +644,17 @@ class Handler(BaseHTTPRequestHandler):
                 if answer_meta.is_file():
                     cache_meta.write_text(answer_meta.read_text(encoding="utf-8"), encoding="utf-8")
                 print(f"[bridge] req-{request_id:03d} answered ({len(text)} chars)", flush=True)
-                return text, self._answer_source(answer_meta, "live")
+                source, usage = self._answer_provenance(answer_meta, "live")
+                return text, source, usage
+            terminal = self._terminal_failure(request_id, key)
+            if terminal is not None:
+                error_type = str(terminal.get("error_type") or "WorkerTerminalError")
+                message = str(terminal.get("message") or "upstream worker failed")[:500]
+                raise DialectRejectionError(
+                    424,
+                    {"error": {"message": f"upstream worker failed: {message}"}},
+                    f"upstream worker terminal failure ({error_type})",
+                )
             time.sleep(POLL_SECONDS)
         raise DialectRejectionError(
             504,
@@ -652,6 +674,9 @@ class Handler(BaseHTTPRequestHandler):
         requested_model: str,
     ) -> None:
         stem = f"req-{request_id:03d}"
+        # Request ids restart with a restarted bridge. An old marker from the same state
+        # directory must not make a new request fail before a worker has examined it.
+        (self.state.failures / f"{stem}-terminal.json").unlink(missing_ok=True)
         (self.state.pending / f"{stem}-prompt.txt").write_text(prompt, encoding="utf-8")
         (self.state.pending / f"{stem}-schema.json").write_text(
             json.dumps(schema, indent=2), encoding="utf-8"
@@ -674,16 +699,34 @@ class Handler(BaseHTTPRequestHandler):
         )
 
     @staticmethod
-    def _answer_source(meta_path: Path, prefix: str) -> str:
-        """Name the worker without making provenance availability a response dependency."""
+    def _answer_provenance(meta_path: Path, prefix: str) -> tuple[str, dict[str, int] | None]:
+        """Read worker identity and measured usage without making metadata a dependency."""
         if not meta_path.is_file():
-            return f"{prefix}:manual"
+            return f"{prefix}:manual", None
         try:
             metadata = json.loads(meta_path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
-            return f"{prefix}:unknown"
+            return f"{prefix}:unknown", None
+        if not isinstance(metadata, dict):
+            return f"{prefix}:unknown", None
         worker_id = metadata.get("worker_id")
-        return f"{prefix}:{worker_id}" if isinstance(worker_id, str) else f"{prefix}:unknown"
+        source = f"{prefix}:{worker_id}" if isinstance(worker_id, str) else f"{prefix}:unknown"
+        upstream = metadata.get("upstream")
+        usage = upstream_usage(upstream) if isinstance(upstream, dict) else None
+        return source, usage
+
+    def _terminal_failure(self, request_id: int, cache_key: str) -> dict[str, Any] | None:
+        """Read only the terminal marker for this exact bridge request and cache key."""
+        path = self.state.failures / f"req-{request_id:03d}-terminal.json"
+        if not path.is_file():
+            return None
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return None
+        if not isinstance(payload, dict) or payload.get("cache_key") != cache_key:
+            return None
+        return payload
 
     def _log(
         self,
@@ -718,9 +761,14 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     @staticmethod
-    def _envelope(dialect: str, model: str, text: str) -> dict[str, Any]:
+    def _envelope(
+        dialect: str,
+        model: str,
+        text: str,
+        usage: dict[str, int] | None = None,
+    ) -> dict[str, Any]:
         if dialect == "openai":
-            return {
+            envelope: dict[str, Any] = {
                 "id": "chatcmpl-bridge",
                 "object": "chat.completion",
                 "created": int(time.time()),
@@ -733,18 +781,44 @@ class Handler(BaseHTTPRequestHandler):
                     }
                 ],
             }
+            if usage is not None:
+                envelope["usage"] = {
+                    "prompt_tokens": usage.get("input_tokens"),
+                    "completion_tokens": usage.get("output_tokens"),
+                    "prompt_tokens_details": {"cached_tokens": usage.get("cached_input_tokens")},
+                }
+            return envelope
         if dialect == "ollama":
-            return {
+            envelope = {
                 "model": model,
                 "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
                 "message": {"role": "assistant", "content": text},
                 "done": True,
                 "done_reason": "stop",
             }
+            if usage is not None:
+                envelope["prompt_eval_count"] = usage.get("input_tokens")
+                envelope["eval_count"] = usage.get("output_tokens")
+            return envelope
         if dialect == "anthropic":
             # `usage` and `stop_reason` are not decoration: the SDK parses this into typed
             # objects and a caller that reads `stop_reason` to detect truncation needs the
             # empty-text case to say `max_tokens`, exactly as the real API does.
+            bridge_usage = {
+                "input_tokens": usage.get("input_tokens") if usage is not None else None,
+                "cached_input_tokens": (
+                    usage.get("cached_input_tokens") if usage is not None else None
+                ),
+                "output_tokens": usage.get("output_tokens") if usage is not None else None,
+            }
+            anthropic_usage = {
+                # The Anthropic SDK requires these two integers. `dendro_usage` below
+                # carries the authoritative nullable bridge counters for the adapter.
+                "input_tokens": bridge_usage["input_tokens"] or 0,
+                "output_tokens": bridge_usage["output_tokens"] or 0,
+            }
+            if bridge_usage["cached_input_tokens"] is not None:
+                anthropic_usage["cache_read_input_tokens"] = bridge_usage["cached_input_tokens"]
             return {
                 "id": "msg_bridge",
                 "type": "message",
@@ -753,9 +827,10 @@ class Handler(BaseHTTPRequestHandler):
                 "content": [{"type": "text", "text": text}] if text else [],
                 "stop_reason": "end_turn" if text else "max_tokens",
                 "stop_sequence": None,
-                "usage": {"input_tokens": 0, "output_tokens": 0},
+                "usage": anthropic_usage,
+                "dendro_usage": bridge_usage,
             }
-        return {
+        envelope = {
             "candidates": [
                 {
                     "content": {"role": "model", "parts": [{"text": text}] if text else []},
@@ -765,6 +840,13 @@ class Handler(BaseHTTPRequestHandler):
             ],
             "modelVersion": model,
         }
+        if usage is not None:
+            envelope["usageMetadata"] = {
+                "promptTokenCount": usage.get("input_tokens"),
+                "cachedContentTokenCount": usage.get("cached_input_tokens"),
+                "candidatesTokenCount": usage.get("output_tokens"),
+            }
+        return envelope
 
 
 def main() -> None:

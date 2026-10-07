@@ -11,10 +11,11 @@ and confidence downstream.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 
 from dendro_inspector.graph.executor import NodeContext
 from dendro_inspector.graph.state import EvidenceQualityReport, GraphState
+from dendro_inspector.knowledge.candidate_validation import cards_in_play
 from dendro_inspector.knowledge.comparison_cards import (
     INSUFFICIENT_ALONE,
     relies_only_on_insufficient_features,
@@ -32,7 +33,7 @@ from dendro_inspector.knowledge.taxon_cards import (
     unmatchable_observations,
 )
 from dendro_inspector.observability.logging import get_logger
-from dendro_inspector.schemas.evidence import EvidencePacket, Observation
+from dendro_inspector.schemas.evidence import EvidencePacket, KnowledgeCoverage, Observation
 
 NODE = "evidence_quality"
 
@@ -63,6 +64,52 @@ def classify_vocabulary_diagnostics(
     return tuple(weak), tuple(possible_gaps)
 
 
+def summarise_coverage(
+    evidence: EvidencePacket,
+    vocabulary: Mapping[str, frozenset[str]],
+    unmatchable: tuple[Observation, ...],
+) -> KnowledgeCoverage:
+    """Classify what this packet observed that the cards cannot represent.
+
+    One measurement with three readers — the trace, the reader-facing limitations and the
+    structured log. Before this existed the classification was assembled inline while
+    building log extras, so the only consumer of the most actionable diagnostic the graph
+    produces was a warning line nothing downstream could see.
+
+    ``unmatchable`` is passed in rather than recomputed because the caller needs the same
+    tuple for :attr:`EvidenceQualityReport.unmatchable_evidence_ids`, and a second call
+    would be a second place for the two to drift apart.
+    """
+    weak, possible_gaps = classify_vocabulary_diagnostics(unmatchable)
+    return KnowledgeCoverage(
+        observations_total=len(evidence.observations),
+        intentionally_weak_evidence_ids=tuple(
+            sorted(observation.observation_id for observation in weak)
+        ),
+        potential_gap_evidence_ids=tuple(
+            sorted(observation.observation_id for observation in possible_gaps)
+        ),
+        features_absent_from_all_cards=tuple(
+            sorted(
+                {
+                    observation.feature
+                    for observation in possible_gaps
+                    if observation.feature not in vocabulary
+                }
+            )
+        ),
+        features_with_unknown_values=tuple(
+            sorted(
+                {
+                    observation.feature
+                    for observation in possible_gaps
+                    if observation.feature in vocabulary
+                }
+            )
+        ),
+    )
+
+
 def _colour_dependent(evidence: EvidencePacket, subject_id: str) -> bool:
     observations = contextual_observations_for(evidence, subject_id)
     if not observations:
@@ -81,8 +128,16 @@ def assess(
     min_observations: int,
     require_non_colour: bool,
     vocabulary: Mapping[str, frozenset[str]] | None = None,
+    cards_available: Callable[[str], bool] | None = None,
 ) -> EvidenceQualityReport:
-    """Pure quality assessment over an evidence packet."""
+    """Pure quality assessment over an evidence packet.
+
+    ``cards_available`` answers, for one subject, whether the knowledge base holds any card
+    the admission boundary could open on this evidence. Passed in as a predicate rather
+    than resolved here so this function stays free of the knowledge base and testable
+    without one. Omitting it disables the coverage-gap gate, which is what every caller
+    that has no cards to consult should get.
+    """
     reasons: list[str] = []
 
     if not evidence.subjects:
@@ -94,6 +149,22 @@ def assess(
     colour_dependence = False
     tiers: dict[str, int] = {}
     unattached: list[str] = []
+    coverage_gap_subjects: list[str] = []
+
+    unmatchable_obs = (
+        unmatchable_observations(evidence, vocabulary) if vocabulary is not None else ()
+    )
+    coverage = (
+        summarise_coverage(evidence, vocabulary, unmatchable_obs)
+        if vocabulary is not None
+        else None
+    )
+    gap_owners = {
+        observation.subject_id
+        for observation in unmatchable_obs
+        if coverage is not None
+        and observation.observation_id in coverage.potential_gap_evidence_ids
+    }
 
     for subject in evidence.subjects:
         subject_id = subject.subject_id
@@ -106,6 +177,18 @@ def assess(
             colour_dependence = True
 
         subject_usable = True
+        # The coverage-gap exit. Both halves are required. No card the boundary could open
+        # means the candidate generator has nothing to rank and admission would reject
+        # whatever it invented, so the call is provably wasted; the gap is what makes the
+        # cause the cards rather than the photograph, and decides what the reader is told.
+        if (
+            cards_available is not None
+            and not cards_available(subject_id)
+            and subject_id in gap_owners
+        ):
+            reasons.append("knowledge_coverage_gap")
+            coverage_gap_subjects.append(subject_id)
+            subject_usable = False
         if len(visible) < min_observations:
             reasons.append("too_few_resolvable_observations")
             subject_usable = False
@@ -121,14 +204,15 @@ def assess(
         if subject_usable:
             usable.append(subject_id)
 
-    if not usable and "no_usable_subject" not in reasons:
-        reasons.append("no_usable_subject")
-
-    unmatchable = (
-        tuple(o.observation_id for o in unmatchable_observations(evidence, vocabulary))
-        if vocabulary is not None
-        else ()
+    # The catch-all is skipped when the coverage gate already accounts for every subject.
+    # "No subject carried usable evidence" blames the frame, and on a coverage gap the
+    # frame was fine — that sentence is what sends someone back to re-shoot a photograph
+    # that was never the problem.
+    fully_explained_by_coverage = bool(coverage_gap_subjects) and len(coverage_gap_subjects) == len(
+        evidence.subjects
     )
+    if not usable and "no_usable_subject" not in reasons and not fully_explained_by_coverage:
+        reasons.append("no_usable_subject")
 
     return EvidenceQualityReport(
         sufficient=bool(usable),
@@ -137,7 +221,9 @@ def assess(
         colour_dependence_detected=colour_dependence,
         best_tier_by_subject=tiers,
         unattached_evidence_ids=tuple(unattached),
-        unmatchable_evidence_ids=unmatchable,
+        unmatchable_evidence_ids=tuple(o.observation_id for o in unmatchable_obs),
+        coverage_gap_subject_ids=tuple(coverage_gap_subjects),
+        knowledge_coverage=coverage,
     )
 
 
@@ -148,50 +234,48 @@ async def run(state: GraphState, ctx: NodeContext) -> GraphState:
             quality=EvidenceQualityReport(sufficient=False, insufficient_reasons=("no_evidence",))
         )
     vocabulary = card_value_vocabulary(ctx.knowledge.taxa(ctx.knowledge.available_taxon_ids()))
+
+    def cards_available(subject_id: str) -> bool:
+        """Whether the admission boundary could open any card for this subject.
+
+        The same function the candidate generator uses to choose which cards to show, so
+        the gate cannot conclude "nothing to rank" while the generator would have found
+        something to rank.
+        """
+        return bool(cards_in_play(evidence, ctx.knowledge, (subject_id,)))
+
     report = assess(
         evidence,
         min_observations=ctx.config.graph.min_observations_for_candidates,
         require_non_colour=ctx.config.graph.require_non_colour_evidence,
         vocabulary=vocabulary,
+        cards_available=cards_available,
     )
-    if report.unmatchable_evidence_ids:
+    coverage = report.knowledge_coverage
+    if coverage is not None:
+        # Recorded before the log line, and unconditionally: a run whose evidence fits the
+        # cards perfectly is itself a measurement, and a trace field that appears only on
+        # bad runs cannot be aggregated across a suite.
+        ctx.recorder.record_knowledge_coverage(coverage)
+    if coverage is not None and coverage.unmatchable_total:
         # Logged here rather than at the admission boundary because by then the reason is
         # gone: the candidate is simply rejected, and "the model saw nothing useful" and
         # "the cards describe nothing the model saw" look identical in the output.
-        by_id = {o.observation_id: o for o in evidence.observations}
-        unmatchable = tuple(
-            by_id[observation_id]
-            for observation_id in report.unmatchable_evidence_ids
-            if observation_id in by_id
-        )
-        weak, possible_gaps = classify_vocabulary_diagnostics(unmatchable)
         get_logger(NODE).warning(
             "evidence_outside_card_vocabulary",
             extra={
                 "case_id": state.case.case_id,
-                "unmatchable": len(report.unmatchable_evidence_ids),
-                "observations": len(evidence.observations),
-                "intentionally_weak": len(weak),
-                "intentionally_weak_evidence_ids": sorted(
-                    observation.observation_id for observation in weak
+                "unmatchable": coverage.unmatchable_total,
+                "observations": coverage.observations_total,
+                "intentionally_weak": len(coverage.intentionally_weak_evidence_ids),
+                "intentionally_weak_evidence_ids": list(coverage.intentionally_weak_evidence_ids),
+                "potential_coverage_gaps": len(coverage.potential_gap_evidence_ids),
+                "potential_coverage_gap_evidence_ids": list(coverage.potential_gap_evidence_ids),
+                "potential_gap_features_absent_from_all_cards": list(
+                    coverage.features_absent_from_all_cards
                 ),
-                "potential_coverage_gaps": len(possible_gaps),
-                "potential_coverage_gap_evidence_ids": sorted(
-                    observation.observation_id for observation in possible_gaps
-                ),
-                "potential_gap_features_absent_from_all_cards": sorted(
-                    {
-                        observation.feature
-                        for observation in possible_gaps
-                        if observation.feature not in vocabulary
-                    }
-                ),
-                "potential_gap_features_with_unknown_values": sorted(
-                    {
-                        observation.feature
-                        for observation in possible_gaps
-                        if observation.feature in vocabulary
-                    }
+                "potential_gap_features_with_unknown_values": list(
+                    coverage.features_with_unknown_values
                 ),
             },
         )

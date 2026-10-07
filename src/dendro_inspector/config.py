@@ -88,11 +88,17 @@ class EscalationPolicy(Contract):
     on_instruction_like_content: bool = True
     forced_by_eval_case: bool = False
 
-    # Suppressors — checked first; any one of these blocks escalation entirely.
-    suppress_when_insufficient_evidence: bool = True
+    # Blocking suppressor — wins even over hard triggers when every subject abstains.
     suppress_when_abstaining: bool = True
+
+    # Cost suppressors — only soft triggers may be overridden.
     suppress_when_broad_and_low_risk: bool = True
     suppress_when_clean_and_medium_confidence: bool = True
+
+    suppress_when_insufficient_evidence: bool = Field(
+        default=True,
+        deprecated="Ignored: insufficient evidence routes to the photo planner before escalation.",
+    )
 
 
 class GraphConfig(Contract):

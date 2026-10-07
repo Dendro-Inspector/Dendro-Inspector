@@ -52,11 +52,31 @@ class EvidenceTier(IntEnum):
 
 
 class EvidenceTrust(IntEnum):
-    """Whether model-produced evidence may positively support an identification."""
+    """Whether model-produced evidence may positively support an identification.
+
+    Four levels, because visibility and reliability answer different questions and
+    collapsing them was a real defect. "This feature is sharp and unambiguous but occupies
+    part of the frame" and "I am not confident in this reading" used to produce the same
+    value, so a decisive feature read at high reliability through a partial view was
+    reported to the user as *not visible* — while the same observation was quoted three
+    lines above as the evidence for the verdict.
+
+    A framing limit is not automatically a reading limit. `LOW` reliability caps a claim at
+    any visibility; a partial view is overcome by an explicit `HIGH` reading and capped
+    below that.
+    """
 
     CONTEXT_ONLY = 0
     CAPPED_POSITIVE = 1
-    FULL_POSITIVE = 2
+    DECISIVE_POSITIVE = 2
+    """Reliable enough to satisfy a card's decisive requirement, seen through a partial view.
+
+    Carries its family's full tier and can settle a `required_for_high_confidence` token.
+    Kept distinct from :attr:`FULL_POSITIVE` so the partial view stays visible in the trace
+    rather than being silently promoted to a clean one.
+    """
+
+    FULL_POSITIVE = 3
 
 
 @dataclass(frozen=True, slots=True)
@@ -235,8 +255,22 @@ def observation_trust(observation: Observation) -> EvidenceTrust:
         return EvidenceTrust.CONTEXT_ONLY
 
     trust = EvidenceTrust.FULL_POSITIVE
-    if observation.visibility is Visibility.PARTIAL or observation.reliability is Reliability.LOW:
+    if observation.reliability is Reliability.LOW:
+        # Doubt about the reading caps the claim at any visibility.
         trust = EvidenceTrust.CAPPED_POSITIVE
+    elif observation.visibility is Visibility.PARTIAL:
+        # A partial view is overcome by an explicit high-confidence reading, and only by
+        # that. `PARTIAL` is doing two jobs in this schema — "unambiguous but not filling
+        # the frame" (a birch bark pattern across part of a trunk) and "partly hidden, so
+        # the reading is incomplete" (a fascicle count behind a crossing branch). Nothing
+        # distinguishes them except the reliability the extractor attached, so that is what
+        # decides: HIGH means it stands behind the reading despite the framing, and
+        # anything less leaves a half-seen decisive feature capped.
+        trust = (
+            EvidenceTrust.DECISIVE_POSITIVE
+            if observation.reliability is Reliability.HIGH
+            else EvidenceTrust.CAPPED_POSITIVE
+        )
 
     if _requires_prepared_end_grain(observation.feature):
         if observation.wood_surface is not WoodSurface.PREPARED_END_GRAIN:
@@ -258,6 +292,9 @@ def _tier_at_trust(tier: EvidenceTier, trust: EvidenceTrust) -> EvidenceTier:
         return EvidenceTier.CONTEXT
     if trust is EvidenceTrust.CAPPED_POSITIVE:
         return min(tier, EvidenceTier.BARK)
+    # DECISIVE_POSITIVE keeps its family's tier: a leaf photographed at the edge of the
+    # frame is still a leaf, and demoting it to bark was how partial views lost a tier
+    # they had earned.
     return tier
 
 
@@ -345,11 +382,30 @@ def positive_observations_for(evidence: EvidencePacket, subject_id: str) -> tupl
 def full_positive_observations_for(
     evidence: EvidencePacket, subject_id: str
 ) -> tuple[Observation, ...]:
-    """Same-subject observations allowed to carry their feature family's normal tier."""
+    """Same-subject observations seen fully and read reliably.
+
+    The strictest band. Use :func:`decisive_observations_for` for anything asking "is this
+    good enough to settle a decisive requirement?" — that question is about the reading,
+    and this one additionally demands a complete view.
+    """
     return tuple(
         observation
         for observation in evidence.observations_for(subject_id)
         if observation_trust(observation) is EvidenceTrust.FULL_POSITIVE
+    )
+
+
+def decisive_observations_for(evidence: EvidencePacket, subject_id: str) -> tuple[Observation, ...]:
+    """Same-subject observations reliable enough to settle a card's decisive requirement.
+
+    Includes partial views read at normal or high reliability, and excludes anything capped
+    by doubt about the reading, by colour, or by an unprepared wood surface. This is the set
+    a `required_for_high_confidence` token is checked against.
+    """
+    return tuple(
+        observation
+        for observation in evidence.observations_for(subject_id)
+        if observation_trust(observation) >= EvidenceTrust.DECISIVE_POSITIVE
     )
 
 
@@ -397,13 +453,28 @@ def confidence_ceiling(tier: EvidenceTier) -> Confidence:
     return _CONFIDENCE_CEILING[tier]
 
 
-def confidence_band(confidence: Confidence, tier: EvidenceTier) -> str:
+#: Feature families this module places at bark tier. `schemas.taxon` mirrors this set to
+#: validate card-declared bark exemptions without importing from `knowledge`; a contract
+#: test asserts the two are equal.
+BARK_TIER_FAMILIES: frozenset[str] = frozenset(
+    family for family, tier in _FAMILY_TIERS if tier is EvidenceTier.BARK
+)
+
+
+def confidence_band(
+    confidence: Confidence, tier: EvidenceTier, *, decisive_reading: bool = False
+) -> str:
     """Render confidence on the domain prompt's X/100 scale, as a band.
 
-    The top band is reserved for the case the prompt reserves it for: a fruit, seed, cone or
-    acorn present in the frame, with confidence to match.
+    The top band is reserved for the two cases the prompt reserves it for: a fruit, seed,
+    cone or acorn present in the frame, with confidence to match — or a reading a card
+    declares diagnostic enough to reach it, which ``decisive_reading`` reports. Section 6
+    lists both, and characteristic white papery birch bark is its bark-tier example.
+
+    Defaults to the fruit-only rule, so a caller that does not know about card-declared
+    exceptions renders the more conservative band rather than the more generous one.
     """
-    if confidence is Confidence.HIGH and tier is EvidenceTier.FRUIT_SEED:
+    if confidence is Confidence.HIGH and (tier is EvidenceTier.FRUIT_SEED or decisive_reading):
         return BAND_DECISIVE
     return _BANDS[confidence]
 

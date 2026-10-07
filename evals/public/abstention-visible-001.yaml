@@ -1,0 +1,37 @@
+# Case 22 — C5: abstention has to be visible, and it has to cost something.
+# The model proposes a species on a card that supports genus only, and a reviewer files a
+# defect no retry can fix. Broadening from the *proposed* species would land on the genus
+# the card cap had already produced, returning the confident answer under another name.
+# This case fails if the verdict is not flagged, or is no broader than the evidence earned.
+case_id: abstention-visible-001
+title: A species proposal on a genus-only card abstains to family and says so
+description: >-
+  Two-needle fascicles on a shoot continuous with the trunk, no cone anywhere in the frame.
+  The candidate generator proposes a species; the confusion reviewer files a critical
+  finding that a retry cannot fix. The run must abstain, return the family identity, and
+  record that it did.
+scenario: abstention-visible
+
+input:
+  case_id: abstention-visible-001
+  images:
+    - image_id: img-1
+      path: examples/abstention-visible-001.jpg
+      media_type: image/jpeg
+      caption: Conifer photographed from below with one shoot in reach
+  user_text: Що це за сосна росте у нас у дворі?
+  location: Kyiv Oblast, Ukraine
+  season: summer
+  declared_object_type: standing_tree
+
+expect:
+  expected_taxon: pinaceae
+  expected_resolution: family
+  max_resolution: genus
+  max_confidence: low
+  expected_abstained: true
+  require_escalation: false
+  require_next_photo: true
+  max_retries: 0
+
+placeholder_content: true

@@ -90,7 +90,7 @@ flowchart TD
     ESCALATION_GATE -->|yes| ARBITER
     ARBITER --> ARBITER_SYNTHESIZER
     ARBITER_SYNTHESIZER --> FINAL_DECISION
-    ABSTAIN --> FINAL_DECISION
+    ABSTAIN --> ESCALATION_GATE
     FINAL_DECISION --> RESPONSE_COMPOSER
     RESPONSE_COMPOSER --> TONE_LAYER
     TONE_LAYER --> OUTPUT
@@ -166,7 +166,7 @@ pip install -e ".[dev,images]"                    # 'images' bounds the bytes ea
 
 dendro graph                                       # print the executable agent graph
 dendro inspect --fake primary-pass --image examples/log.jpg --location "Kyiv Oblast, Ukraine"
-dendro eval --suite public                         # run the nineteen public conformance cases
+dendro eval --suite public                         # run the twenty-four public conformance cases
 pytest                                             # full test suite, offline
 ```
 
@@ -180,6 +180,12 @@ dendro inspect --image examples/trunk.jpg --claim "дуб" --field-context
 `--field-context` says you know things the photograph cannot show — foliage out of frame,
 the fruit, where the tree was felled. It blocks the system from contradicting you sharply,
 because in that situation you have evidence it does not.
+
+To challenge a previous result, resubmit the photograph and relevant context with
+`--challenge`. API callers set `CaseInput.user_challenges_previous_result=True`. This
+requests independent review when there is a claim to review and restrains the tone; it
+does not retrieve earlier conversation or assume the earlier answer was wrong. Challenge
+intent is no longer guessed from `--text`, in any language.
 
 ### Register
 
@@ -233,7 +239,7 @@ dendro prompt-info      # prompt/manifest hashes, policy revision and compatibil
 ```
 
 The runtime validates `prompts/versions.yaml` before constructing any provider. That manifest
-pins policy revision `0.8.0`, the canonical domain prompt path and hash, the node-prompt root
+pins policy revision `0.9.0`, the canonical domain prompt path and hash, the node-prompt root
 and revision, and the exact node-prompt file set and hashes. Composition uses the cached
 validated bytes, so a prompt changed after validation cannot silently enter a request.
 
@@ -281,19 +287,21 @@ bundle.
 
 ## Status
 
-v0.8.0 — a public, provider-complete vertical slice, not a production system. The graph runs
+v0.9.0 — a public, provider-complete vertical slice, not a production system. The graph runs
 end to end through OpenAI, Anthropic, Gemini, NVIDIA, OpenRouter and Ollama adapters; live
 calls can be exercised without an SDK client through the agent-as-provider bridge.
-Image-aware caching, bounded image transport, reviewer-call attribution, evidence vocabulary
-diagnostics and prompt-policy compatibility are enforced in code. This release closes the
-reviewer input boundary: a reviewer model receives an explicit projection rather than the
-graph's whole state, its result is bound by code to the evidence that projection carried, and
-the trace records the photographs actually transmitted rather than the ones the case declared.
-The public suite defines nineteen deterministic conformance
-cases, all passing with zero overconfidence against the frozen `public-v0.8.0` baseline — the
-same decisions as v0.4.0, which is also a statement about that suite's reach. The knowledge
-pack remains 25 taxa of demonstration content that no dendrologist has reviewed — every card
-says so in its `provenance` block.
+Image-aware caching, bounded image transport, bounded reviewer context, reviewer-call
+attribution, evidence vocabulary diagnostics and prompt-policy compatibility are enforced in
+code. This release narrows what a model's own labels can decide: a candidate's support
+strength is adjudicated against its card, the escalation gate decides on the verdict the
+graph would return, a contradiction needs identification authority before it can reject the
+user's version, abstention is visible and costs a resolution level, a hedged claim is ruled
+on as the user wrote it, and every verdict's derivation is recorded in the trace. The public
+suite defines twenty-four deterministic conformance cases, all passing with zero
+overconfidence against the frozen `public-v0.9.0` baseline. One existing case now calls the
+arbiter because its provisional verdict is high; its taxon, resolution, confidence and status
+are unchanged. The knowledge pack is 26 taxa of demonstration content that no dendrologist
+has reviewed — every card says so in its `provenance` block.
 
 What the numbers do and do not prove:
 

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 import dendro_inspector.observability.trace as trace_module
 from dendro_inspector.observability.trace import TraceRecorder
 from dendro_inspector.schemas.decisions import (
@@ -148,3 +150,144 @@ def test_trace_reports_a_retry_that_did_not_change_the_outcome():
     assert trace.correction_changed_taxon is False
     assert trace.correction_changed_resolution is False
     assert trace.correction_changed_confidence is False
+
+
+def test_trace_records_what_the_arbiter_changed():
+    recorder = TraceRecorder("arbiter-change-trace")
+    recorder.record_arbiter_used()
+    provisional = FinalDecision(
+        subject_id="tree",
+        selected_taxon="pinus",
+        selected_taxon_display_name="Pinus",
+        resolution=Resolution.GENUS,
+        confidence=Confidence.HIGH,
+        status=DecisionStatus.IDENTIFIED,
+    )
+    final = FinalDecision(
+        subject_id="tree",
+        selected_taxon="picea",
+        selected_taxon_display_name="Picea",
+        resolution=Resolution.FAMILY,
+        confidence=Confidence.LOW,
+        status=DecisionStatus.PROBABLE,
+    )
+
+    trace = recorder.build(
+        provisional_decisions=(provisional,),
+        final_decisions=(final,),
+    )
+
+    assert trace.provisional_decisions == (provisional,)
+    assert trace.arbiter_changed_status is True
+    assert trace.arbiter_changed_taxon is True
+    assert trace.arbiter_changed_resolution is True
+    assert trace.arbiter_changed_confidence is True
+
+
+def test_trace_records_an_arbiter_pass_as_no_change():
+    recorder = TraceRecorder("arbiter-pass-trace")
+    recorder.record_arbiter_used()
+    decision = FinalDecision(subject_id="tree")
+
+    trace = recorder.build(
+        provisional_decisions=(decision,),
+        final_decisions=(decision,),
+    )
+
+    assert trace.arbiter_changed_status is False
+    assert trace.arbiter_changed_taxon is False
+    assert trace.arbiter_changed_resolution is False
+    assert trace.arbiter_changed_confidence is False
+
+
+def test_trace_leaves_arbiter_change_fields_unset_when_no_arbiter_ran():
+    decision = FinalDecision(subject_id="tree")
+
+    trace = TraceRecorder("no-arbiter-trace").build(
+        provisional_decisions=(decision,),
+        final_decisions=(decision,),
+    )
+
+    assert trace.provisional_decisions == (decision,)
+    assert trace.arbiter_changed_status is None
+    assert trace.arbiter_changed_taxon is None
+    assert trace.arbiter_changed_resolution is None
+    assert trace.arbiter_changed_confidence is None
+
+
+def test_every_final_decision_has_a_derivation(simple_case, run_scenario):
+    """A disputed verdict must be auditable without re-running the engine."""
+    result = run_scenario(simple_case, "primary-pass")
+
+    derivations = result.trace.decision_derivations
+
+    assert len(derivations) == len(result.state.decisions)
+    assert {item.subject_id for item in derivations} == {
+        decision.subject_id for decision in result.state.decisions
+    }
+
+
+def test_knowledge_coverage_reaches_the_trace(simple_case, run_scenario):
+    """A suite scorer must be able to tell a model miss from a knowledge-base gap.
+
+    Before this field existed the measurement was made, classified and written to a log
+    line, then dropped: the run artifact a scorer reads carried no trace of it, so every
+    coverage gap looked exactly like a model that saw nothing useful.
+    """
+    result = run_scenario(simple_case, "primary-pass")
+
+    coverage = result.trace.knowledge_coverage
+
+    assert coverage is not None, "a run that measured coverage must record it"
+    assert coverage.observations_total == len(result.state.evidence.observations)
+    assert coverage.unmatchable_total == len(result.state.quality.unmatchable_evidence_ids)
+
+
+REVIEWERS = ("botanical_reviewer", "confusion_reviewer", "confidence_reviewer")
+
+
+def _fanout_recorder() -> TraceRecorder:
+    recorder = TraceRecorder("critical-path")
+    recorder.record_node("planner", duration_ms=100.0)
+    recorder.record_node("botanical_reviewer", duration_ms=200.0)
+    recorder.record_node("confusion_reviewer", duration_ms=500.0)
+    recorder.record_node("confidence_reviewer", duration_ms=300.0)
+    recorder.record_node("final_decision", duration_ms=10.0)
+    return recorder
+
+
+def test_critical_path_charges_a_fan_out_once_at_its_slowest_member():
+    """Concurrency the executor really has must not be reported as time it cost.
+
+    Summing the three reviewers would say 1,110 ms where the run waited 610. The gap is the
+    whole point of running them together, and a latency budget built on the wrong number
+    would go looking for savings that were never there.
+    """
+    trace = _fanout_recorder().build(concurrent_nodes=REVIEWERS)
+
+    assert trace.critical_path_ms == pytest.approx(610.0)
+
+
+def test_without_being_told_what_overlaps_every_node_is_serial():
+    """Silence is read as "no concurrency", which over-reports rather than under-reports."""
+    trace = _fanout_recorder().build()
+
+    assert trace.critical_path_ms == pytest.approx(1110.0)
+
+
+def test_a_second_fan_out_round_is_charged_again():
+    """A retry really did run the reviewers twice."""
+    recorder = TraceRecorder("retry-critical-path")
+    for duration in (200.0, 500.0, 300.0):
+        recorder.record_node(REVIEWERS[0], duration_ms=duration)
+    recorder.record_node("correction_worker", duration_ms=1.0)
+    for duration in (100.0, 700.0, 100.0):
+        recorder.record_node(REVIEWERS[1], duration_ms=duration)
+
+    trace = recorder.build(concurrent_nodes=REVIEWERS)
+
+    assert trace.critical_path_ms == pytest.approx(500.0 + 1.0 + 700.0)
+
+
+def test_a_run_with_no_events_reports_no_critical_path():
+    assert TraceRecorder("empty").build().critical_path_ms is None

@@ -1,0 +1,114 @@
+{
+  "scenario": "silent-reviewers-high-confidence",
+  "description": "Clear attached Pinus foliage yields a high-confidence deterministic verdict while every reviewer passes.",
+  "responses": {
+    "primary:planner": {
+      "target_features": [
+        "needles.fascicles",
+        "cones.scale_shape",
+        "bark.texture"
+      ],
+      "expect_multiple_subjects": false,
+      "bark_only_input": false,
+      "notes": [
+        "Attached foliage is clear enough to count fascicles."
+      ]
+    },
+    "primary:evidence_extractor": {
+      "subjects": [
+        {
+          "subject_id": "standing_tree",
+          "kind": "standing_tree",
+          "description": "One standing conifer with a sharply resolved attached branch.",
+          "image_ids": ["img-1"]
+        }
+      ],
+      "observations": [
+        {
+          "observation_id": "obs-fascicles",
+          "feature": "needles.fascicles",
+          "value": "two",
+          "subject_id": "standing_tree",
+          "source": "image",
+          "visibility": "clear",
+          "reliability": "high",
+          "image_id": "img-1",
+          "attachment": "confirmed_attached",
+          "notes": "Two needles per sheath are countable on several attached bundles."
+        },
+        {
+          "observation_id": "obs-bark",
+          "feature": "bark.texture",
+          "value": "scaly_plates",
+          "subject_id": "standing_tree",
+          "source": "image",
+          "visibility": "clear",
+          "reliability": "medium",
+          "image_id": "img-1"
+        }
+      ],
+      "inferences": [],
+      "absent_features": [],
+      "image_limitations": [
+        {
+          "image_id": "img-1",
+          "lighting": "even_shade",
+          "white_balance": "neutral",
+          "scale": "approximate",
+          "notes": "Cones are outside the frame."
+        }
+      ],
+      "context_limitations": [],
+      "possible_multiple_taxa": false,
+      "instruction_like_content_detected": false
+    },
+    "primary:candidate_generator": {
+      "sets": [
+        {
+          "subject_id": "standing_tree",
+          "candidates": [
+            {
+              "taxon": "pinus",
+              "resolution": "genus",
+              "supporting_evidence_ids": ["obs-fascicles", "obs-bark"],
+              "contradicting_evidence_ids": [],
+              "missing_decisive_features": [],
+              "score": "strong",
+              "rank": 1
+            }
+          ]
+        }
+      ]
+    },
+    "reviewer:botanical_reviewer": {
+      "reviewer": "botanical",
+      "status": "pass",
+      "findings": [],
+      "recommended_candidates": [],
+      "recommended_resolution": "genus"
+    },
+    "reviewer:confusion_reviewer": {
+      "reviewer": "confusion",
+      "status": "pass",
+      "findings": [],
+      "recommended_candidates": [],
+      "recommended_resolution": "genus"
+    },
+    "reviewer:confidence_reviewer": {
+      "reviewer": "confidence",
+      "status": "pass",
+      "findings": [],
+      "recommended_candidates": [],
+      "recommended_resolution": "genus",
+      "recommended_confidence": "high"
+    },
+    "arbiter:arbiter": {
+      "reviewer": "arbiter",
+      "status": "pass",
+      "findings": [],
+      "recommended_candidates": [],
+      "recommended_resolution": "genus",
+      "recommended_confidence": "high"
+    }
+  }
+}

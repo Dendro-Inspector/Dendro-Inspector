@@ -14,10 +14,15 @@ from enum import StrEnum
 from pydantic import Field
 
 from dendro_inspector.schemas.base import Contract, Identifier, ShortText
-from dendro_inspector.schemas.decisions import AuthorityCheckTrace
+from dendro_inspector.schemas.decisions import (
+    AuthorityCheckTrace,
+    DecisionDerivation,
+    FinalDecision,
+)
+from dendro_inspector.schemas.evidence import KnowledgeCoverage
 from dendro_inspector.schemas.taxon import Confidence, Resolution
 
-GRAPH_VERSION = "0.8.0"
+GRAPH_VERSION = "0.9.0"
 
 
 class NodeStatus(StrEnum):
@@ -45,6 +50,30 @@ class ProviderCallRecord(Contract):
     attempts: int = Field(default=1, ge=1)
     validation_failures: int = Field(default=0, ge=0)
     duration_ms: float | None = Field(default=None, ge=0)
+    #: Provider-reported accounting, summed over every attempt this call made, because
+    #: `duration_ms` spans them all. `None` means the provider reported nothing, which is a
+    #: different fact from zero and must not be rendered as one.
+    input_tokens: int | None = Field(default=None, ge=0)
+    cached_input_tokens: int | None = Field(
+        default=None,
+        ge=0,
+        description="Prompt tokens served from the provider's cache, where it says so.",
+    )
+    output_tokens: int | None = Field(default=None, ge=0)
+    reasoning_output_tokens: int | None = Field(
+        default=None,
+        ge=0,
+        description=(
+            "The part of `output_tokens` a provider attributes to hidden reasoning, where "
+            "it reports one separately. It is billed as output and is already included in "
+            "`output_tokens`; this field says how much of that total was never shown."
+        ),
+    )
+    reported_cost_usd: float | None = Field(
+        default=None,
+        ge=0,
+        description="Cost as the provider reported it. Never estimated from a price table.",
+    )
 
 
 class ReviewerProjectionRecord(Contract):
@@ -121,6 +150,16 @@ class RunTrace(Contract):
     )
     events: tuple[NodeEvent, ...] = ()
     component_projections: tuple[ComponentProjection, ...] = ()
+    knowledge_coverage: KnowledgeCoverage | None = Field(
+        default=None,
+        description=(
+            "What this run observed that no knowledge card can represent. Recorded on every "
+            "run, including clean ones, so a suite can aggregate it — a field that appears "
+            "only when something is wrong cannot be a denominator. Without it a failed case "
+            "cannot be attributed between a model that did not see and cards that could not "
+            "accept what it saw."
+        ),
+    )
     retries: int = Field(default=0, ge=0)
     graph_retry_count: int = Field(
         default=0,
@@ -132,12 +171,31 @@ class RunTrace(Contract):
     correction_changed_taxon: bool | None = None
     correction_changed_resolution: bool | None = None
     correction_changed_confidence: bool | None = None
+    provisional_decisions: tuple[FinalDecision, ...] = Field(
+        default=(),
+        description="Deterministic verdicts immediately before any arbiter call.",
+    )
+    arbiter_changed_status: bool | None = None
+    arbiter_changed_taxon: bool | None = None
+    arbiter_changed_resolution: bool | None = None
+    arbiter_changed_confidence: bool | None = None
     authority_checks: tuple[AuthorityCheckTrace, ...] = Field(
         default=(),
         description=(
             "One attachment-authority record per subject. A run with two subjects has two "
             "records; flattening them produced critical evidence ids from one subject "
             "beside a counterfactual taxon from another, describing no world that existed."
+        ),
+    )
+    decision_derivations: tuple[DecisionDerivation, ...] = Field(
+        default=(),
+        description="One deterministic composition record per final subject verdict.",
+    )
+    user_claim_negated: bool = Field(
+        default=False,
+        description=(
+            "The user's claim named a taxon only to deny it. Nothing was offered to rule "
+            "on, so the verdict is `possible` rather than a ruling against the denied taxon."
         ),
     )
     evidence_authority_sensitive: bool = Field(
@@ -152,6 +210,15 @@ class RunTrace(Contract):
     started_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     finished_at: datetime | None = None
     duration_ms: float | None = Field(default=None, ge=0)
+    critical_path_ms: float | None = Field(
+        default=None,
+        ge=0,
+        description=(
+            "Wall time no amount of concurrency could remove: every serial node plus the "
+            "slowest member of each fan-out round. Compare against duration_ms to see what "
+            "running the reviewers together actually bought."
+        ),
+    )
 
     @property
     def executed_nodes(self) -> tuple[str, ...]:

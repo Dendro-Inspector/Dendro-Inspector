@@ -1,0 +1,40 @@
+# Case 24 — C4: a hedge is several claims, and the user is right if any of them is.
+# `conifer-log-001`'s photograph with a user who declines to commit between pine and spruce.
+# Pine is the answer, so their version is `accepted`. Before C4 the claim resolved to
+# whichever card the catalogue listed first — spruce — and the attached two-needle fascicle
+# disqualifies spruce, so the system told a user who had named the right tree that their
+# version was rejected. This case fails if the ruling is ever anything but `accepted`.
+case_id: disjunctive-user-claim-001
+title: A user who hedges between pine and spruce is right when pine is selected
+description: >-
+  A felled conifer log with attached, countable fascicles. The user names two taxa rather
+  than one; the system returns the first of them. A claim naming several taxa is a
+  disjunction and must be ruled on by its most favourable member, because a user who hedged
+  has not made a weaker claim — they have made two, and one of them is right.
+scenario: primary-pass
+
+input:
+  case_id: disjunctive-user-claim-001
+  images:
+    - image_id: img-1
+      path: examples/conifer-log-001.jpg
+      media_type: image/jpeg
+      caption: Felled log at the edge of a clearing
+  user_text: Це або сосна, або ялина — я в хвойних не сильний.
+  user_claim: сосна або ялина
+  location: Kyiv Oblast, Ukraine
+  season: autumn
+  habitat: mixed woodland edge
+  declared_object_type: log
+
+expect:
+  expected_taxon: pinus
+  expected_resolution: genus
+  max_resolution: genus
+  max_confidence: medium
+  expected_evidence_tier: 6
+  expected_user_claim_verdict: accepted
+  forbid_user_claim_rejection: true
+  max_retries: 0
+
+placeholder_content: true

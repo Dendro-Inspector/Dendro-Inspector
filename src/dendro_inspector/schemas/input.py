@@ -1,9 +1,9 @@
 """Case input contracts.
 
 Everything here is untrusted: filenames, captions, EXIF, user text and declared object
-type all originate outside the system. The input guard (``nodes/input_guard.py``) is the
-only place allowed to interpret them, and it treats instruction-like content as evidence
-rather than instruction.
+type all originate outside the system. The input guard (``nodes/input_guard.py``) records
+instruction-like signals, not a safety verdict. Nodes receive case context as labelled
+data; deterministic evidence and claim rules apply whether or not a signal was detected.
 """
 
 from __future__ import annotations
@@ -11,7 +11,7 @@ from __future__ import annotations
 from enum import StrEnum
 from pathlib import Path
 
-from pydantic import Field
+from pydantic import Field, model_validator
 
 from dendro_inspector.schemas.base import Contract, Identifier, ShortText
 
@@ -64,6 +64,14 @@ class CaseInput(Contract):
     case_id: Identifier
     images: tuple[ImageRef, ...] = Field(default=(), max_length=16)
     user_text: str | None = Field(default=None, max_length=4000)
+    user_challenges_previous_result: bool = Field(
+        default=False,
+        description=(
+            "The caller explicitly requests reconsideration of a previous result. Not inferred "
+            "from free text and not proof that the previous result was wrong. Requests "
+            "independent review when the graph has a claim to review, and restrains tone."
+        ),
+    )
     user_claim: str | None = Field(
         default=None,
         max_length=120,
@@ -89,6 +97,14 @@ class CaseInput(Contract):
         default_factory=dict,
         description="Untrusted key/value context (EXIF, upload metadata, caller hints).",
     )
+
+    @model_validator(mode="after")
+    def _image_ids_are_unique(self) -> CaseInput:
+        ids = [image.image_id for image in self.images]
+        if len(ids) != len(set(ids)):
+            msg = "duplicate image_id in case input"
+            raise ValueError(msg)
+        return self
 
     @property
     def image_ids(self) -> tuple[str, ...]:

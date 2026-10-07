@@ -1,0 +1,68 @@
+{
+  "scenario": "knowledge-coverage-gap",
+  "description": "Shaped from live case 20260510_100131, whose bark characters this pack could not represent at all. Those two features (bark.flake_geometry, bark.surface_marks) are now on the abies card, which is exactly what closing that gap means, so this fixture uses two other bark characters the pack still cannot describe. Its job is the deterministic path, not the photograph: only the planner and the extractor are scripted, so the fake provider raises UnscriptedCallError on any model call after the coverage decision, and the absence of downstream calls is enforced rather than asserted.",
+  "responses": {
+    "primary:planner": {
+      "target_features": [
+        "bark.lichen_cover",
+        "bark.buttressing",
+        "needles.attachment"
+      ],
+      "expect_multiple_subjects": false,
+      "bark_only_input": true,
+      "notes": [
+        "Lichened trunk with a flared base; no foliage traceable to it."
+      ]
+    },
+    "primary:evidence_extractor": {
+      "subjects": [
+        {
+          "subject_id": "foreground_tree",
+          "kind": "standing_tree",
+          "description": "Single mature trunk, heavily lichened, with a pronounced flare at the base.",
+          "image_ids": [
+            "img-1"
+          ]
+        }
+      ],
+      "observations": [
+        {
+          "observation_id": "obs-1",
+          "feature": "bark.lichen_cover",
+          "value": "extensive_foliose",
+          "subject_id": "foreground_tree",
+          "source": "image",
+          "visibility": "clear",
+          "reliability": "high",
+          "image_id": "img-1",
+          "notes": "Foliose lichen over most of the visible trunk; read directly."
+        },
+        {
+          "observation_id": "obs-2",
+          "feature": "bark.buttressing",
+          "value": "pronounced_basal_flare",
+          "subject_id": "foreground_tree",
+          "source": "image",
+          "visibility": "clear",
+          "reliability": "medium",
+          "image_id": "img-1",
+          "notes": "Base widens sharply into the ground line."
+        }
+      ],
+      "inferences": [],
+      "absent_features": [],
+      "image_limitations": [
+        {
+          "image_id": "img-1",
+          "scale": "absent",
+          "notes": "No scale reference; trunk diameter cannot be measured."
+        }
+      ],
+      "context_limitations": [
+        "no_location"
+      ],
+      "possible_multiple_taxa": false,
+      "instruction_like_content_detected": false
+    }
+  }
+}

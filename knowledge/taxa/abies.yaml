@@ -1,0 +1,99 @@
+# PLACEHOLDER demonstration content, not reviewed by a dendrologist. Like `larix` and
+# unlike the other cards, this taxon is NOT named anywhere in the domain prompt. It was
+# added because a live case (20260510_100131) photographed what is most likely a mature
+# fir, and the run was unwinnable by construction: no card could hold the answer, so the
+# graph spent its whole reasoning budget choosing between Picea and Fagus. A missing card
+# is not a model failure, and it should not be scored as one. See docs/dataset-policy.md.
+taxon_id: abies
+display_name: Abies (ялиця)
+native_resolution: genus
+broader_identities:
+  - resolution: family
+    taxon_id: pinaceae
+    display_name: Pinaceae (соснові)
+    provenance:
+      source: "Standard botanical taxonomy; the domain prompt names no family"
+      source_type: inferred
+aliases:
+  - ялиця
+  - ялица
+  - пихта
+  - fir
+  - silver fir
+  - abies
+supported_resolution:
+  - genus
+
+# Needle attachment is the one character that settles Abies against Picea, and it is the
+# reason both cards name the same feature path with different values: a fir needle leaves a
+# flat, round scar on the twig, a spruce needle sits on a small woody peg. Declaring both
+# lets the self-contradiction veto do real work — observing one value rules the other
+# genus out instead of leaving two weak candidates to be argued over.
+strong_positive_features:
+  - feature: needles.attachment
+    values:
+      - single_on_disc_base
+  - feature: cones.type
+    values:
+      - upright_disintegrating
+
+supporting_features:
+  - feature: bark.surface_marks
+    values:
+      - round_oval_scars
+      - resin_blisters
+  - feature: bark.texture
+    values:
+      - smooth_grey
+      - fine_scales
+  - feature: bark.flake_geometry
+    values:
+      - thin_irregular_edge_lifting
+  - feature: needles.arrangement
+    values:
+      - flat_two_ranked
+  - feature: crown.shape
+    values:
+      - conical
+
+contradictions:
+  - feature: needles.attachment
+    values:
+      - single_on_woody_peg
+  - feature: needles.fascicles
+    values:
+      - two
+      - three
+      - five
+  - feature: needles.persistence
+    values:
+      - deciduous
+
+common_confusions:
+  - picea
+  - pinus
+
+required_for_high_confidence:
+  - needles_or_cones
+
+follow_up_evidence:
+  - needle_attachment_macro
+  - cone_photo
+  - twig_underside_macro
+
+provenance:
+  source: >-
+    Not in the domain prompt; added after live case 20260510_100131 showed the pack could
+    not represent a mature fir. Bark progression (smooth grey when young, pale silver-grey,
+    becoming scaly and cracked on the lower trunk) and the needle-scar character are
+    general dendrological description, not a reviewed determination.
+  source_type: inferred
+  region: Eastern Europe
+  life_stage: any
+  season: any
+  confidence: low
+  review_state: unreviewed
+  reviewed_by: null
+  last_reviewed: null
+
+placeholder_content: true

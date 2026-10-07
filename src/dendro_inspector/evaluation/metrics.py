@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from dendro_inspector.schemas.decisions import DecisionStatus
+from dendro_inspector.schemas.decisions import NO_CLAIM_STATUSES
 from dendro_inspector.schemas.evaluation import CaseOutcome, EvalCase, EvalMetrics
 from dendro_inspector.schemas.taxon import Confidence, Resolution, confidence_rank, resolution_rank
 
@@ -66,7 +66,7 @@ def compute(scored: tuple[ScoredCase, ...]) -> EvalMetrics:
             )
 
         # Abstention quality: cases that should abstain, and did, without a bare shrug.
-        if expect.expected_status is DecisionStatus.INSUFFICIENT_EVIDENCE:
+        if expect.expected_status in NO_CLAIM_STATUSES:
             abstention_total += 1
             abstention_correct += int(
                 outcome.resolution in (None, Resolution.UNKNOWN)

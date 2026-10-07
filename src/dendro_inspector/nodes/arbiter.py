@@ -1,7 +1,7 @@
 """Independent arbiter review.
 
 The arbiter sees the same *material* as the primary model — images, user context, evidence
-packet, candidates, proposed resolution and confidence, and the relevant cards — and
+packet, candidates, the stored deterministic provisional verdict, and the relevant cards — and
 nothing else. In particular it never receives the primary model's private reasoning,
 which is guaranteed structurally rather than by policy: this system never stores hidden
 chain-of-thought anywhere, so there is nothing to pass on.

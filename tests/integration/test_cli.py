@@ -43,6 +43,51 @@ class TestGraphCommand:
 
 
 class TestInspectCommand:
+    @pytest.mark.parametrize(
+        "text", ["The leaves are not visible in this shot.", "Листя не видно на цьому фото."]
+    )
+    def test_descriptive_negation_neither_escalates_nor_changes_tone(self, text):
+        result = runner.invoke(
+            app,
+            [
+                "inspect",
+                "--fake",
+                "primary-pass",
+                "--image",
+                "examples/log.jpg",
+                "--text",
+                text,
+                "--json",
+            ],
+        )
+        assert result.exit_code == 0, result.exception
+        payload = json.loads(result.stdout)
+        assert not payload["trace"]["arbiter_used"]
+        assert payload["response"]["tone_mode"] != "corrective"
+
+    @pytest.mark.parametrize("lang", ["en", "uk"])
+    def test_explicit_challenge_reaches_gate_and_tone(self, lang):
+        result = runner.invoke(
+            app,
+            [
+                "inspect",
+                "--fake",
+                "arbiter-review",
+                "--image",
+                "examples/log.jpg",
+                "--challenge",
+                "--lang",
+                lang,
+                "--json",
+            ],
+        )
+        assert result.exit_code == 0, result.exception
+        payload = json.loads(result.stdout)
+        assert "user_challenged_result" in payload["trace"]["escalation_reasons"]
+        assert payload["trace"]["arbiter_used"]
+        assert payload["response"]["tone_mode"] == "corrective"
+        assert not payload["response"]["joke_allowed"]
+
     def test_fake_mode_produces_a_human_readable_answer(self):
         result = runner.invoke(
             app,
@@ -71,7 +116,7 @@ class TestInspectCommand:
         assert payload["response"]["results"][0]["taxonomic_resolution"] == "genus"
         prompt = payload["trace"]["domain_prompt"]
         assert prompt["sha256"]
-        assert prompt["policy_revision"] == "0.8.0"
+        assert prompt["policy_revision"] == "0.9.0"
         assert prompt["manifest_sha256"]
         assert prompt["compatibility_status"] == "compatible"
         assert payload["trace"]["code_commit_sha"]
@@ -219,7 +264,7 @@ class TestPromptSealCommand:
         manifest = deployment / "prompts" / "versions.yaml"
         manifest.write_text(
             manifest.read_text(encoding="utf-8").replace(
-                'policy_revision: "0.8.0"', 'policy_revision: "0.2.1"'
+                'policy_revision: "0.9.0"', 'policy_revision: "0.2.1"'
             ),
             encoding="utf-8",
         )
@@ -240,7 +285,7 @@ class TestPromptInfoCommand:
         assert payload["is_placeholder"] is False
         assert payload["version"] == "user-managed"
         assert payload["manifest_schema_version"] == "1"
-        assert payload["policy_revision"] == "0.8.0"
+        assert payload["policy_revision"] == "0.9.0"
         assert payload["node_prompt_revision"] == "0.3.0"
         assert len(payload["manifest_sha256"]) == 64
         assert payload["compatibility_status"] == "compatible"

@@ -1,12 +1,15 @@
 """Input guard.
 
-Every filename, caption, EXIF value and line of user text is untrusted. This node records
-instruction-like content as a *property of the input* and hands it downstream as evidence.
-It never executes it, never lets it reach a node as an instruction, and never routes on it.
+Case text and metadata are untrusted. This node records instruction-like content as a
+property of the input, not a command. A detected signal can request independent review;
+it is not proof of an attack, and absence of a signal is not proof of safety.
 
 The detector is deliberately conservative. Dendrology is full of imperative-sounding prose
 ("note the fascicles", "compare with Picea") and a guard that flagged ordinary botanical
-writing as an attack would be retrained by its users into being switched off.
+writing as an attack would be retrained by its users into being switched off. Patterns
+cover common English and Ukrainian redirections, regardless of the output locale, not all
+paraphrases or languages. Context fencing and deterministic claim caps do not depend on
+these patterns matching. Challenge intent is explicit input, never inferred from wording.
 """
 
 from __future__ import annotations
@@ -21,16 +24,19 @@ _INSTRUCTION_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     (
         "override_prior_instructions",
         re.compile(
-            r"\b(ignore|disregard|forget)\b[^.\n]{0,40}\b(previous|prior|above|earlier|all)\b[^.\n]{0,20}\b(instruction|prompt|rule|context)",
+            r"\b(ignore|disregard|forget)\b[^.\n]{0,40}\b(previous|prior|above|earlier|all)\b[^.\n]{0,20}\b(instruction|prompt|rule|context)"
+            r"|\b(ігноруй(?:те)?|нехтуй(?:те)?|забудь(?:те)?)\b[^.\n]{0,40}"
+            r"\b(попередн\w*|усі|всі)\b[^.\n]{0,20}\b(інструкці\w*|правил\w*|контекст\w*|промпт\w*)\b",
             re.I,
         ),
     ),
     (
         "role_reassignment",
         re.compile(
-            r"\byou are (now|actually)\b"
-            r"|\bact as\b[^.\n]{0,30}\b(assistant|model|system)\b"
-            r"|\bpretend to be\b",
+            r"\b(you are (now|actually)|act as|pretend to be)\b[^.\n]{0,30}"
+            r"\b(assistant|model|system)\b"
+            r"|\b((ти|ви) (тепер|відтепер)|дій(?:те)? як)\b[^.\n]{0,30}"
+            r"\b(асистент|модель|система)\b",
             re.I,
         ),
     ),
@@ -38,7 +44,9 @@ _INSTRUCTION_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
         "system_prompt_probe",
         re.compile(
             r"\b(reveal|print|show|repeat|output|leak)\b[^.\n]{0,30}"
-            r"\b(system prompt|instructions|configuration|api key)\b",
+            r"\b(system prompt|instructions|configuration|api key)\b"
+            r"|\b(покажи|покажіть|виведи|виведіть|розкрий(?:те)?|повтори|повторіть)\b[^.\n]{0,30}"
+            r"\b(системн\w* (промпт|інструкці\w*)|конфігураці\w*|ключ (api|апі))\b",
             re.I,
         ),
     ),
@@ -46,14 +54,19 @@ _INSTRUCTION_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
         "output_forcing",
         re.compile(
             r"\b(you must|always) (say|answer|reply|output|return)\b"
-            r"|\bregardless of (the )?evidence\b",
+            r"|\bregardless of (the )?evidence\b"
+            r"|\b(ти (маєш|мусиш)|ви (маєте|мусите)|завжди) "
+            r"(казати|говорити|відповідати|кажи|кажіть)\b"
+            r"|\bнезалежно від (доказів|свідчень)\b",
             re.I,
         ),
     ),
     (
         "confidence_forcing",
         re.compile(
-            r"\b(say|state|report) (it is|that it is)\b[^.\n]{0,30}\b(certain|definitely|100%)\b",
+            r"\b(say|state|report) (it is|that it is)\b[^.\n]{0,30}\b(certain|definitely|100%)\b"
+            r"|\b(скажи|скажіть|стверджуй(?:те)?)\b[^.\n]{0,15}\bце\b[^.\n]{0,30}"
+            r"(\b(точно|безсумнівно)\b|100%)",
             re.I,
         ),
     ),
@@ -65,37 +78,23 @@ _INSTRUCTION_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ),
 )
 
-#: A user pushing back on a previous answer is a legitimate escalation trigger (spec §4),
-#: not an attack. Kept separate from the injection patterns for exactly that reason.
-_CHALLENGE_PATTERN = re.compile(
-    r"\b(that('s| is) wrong|you('re| are) wrong|incorrect|not (a |an )?\w+|are you sure|i disagree|"
-    r"it('s| is) actually)\b",
-    re.I,
-)
 
-
-def _untrusted_strings(state: GraphState) -> tuple[tuple[str, str], ...]:
-    """Every untrusted string in the case, tagged with where it came from."""
+def _untrusted_strings(state: GraphState) -> tuple[str, ...]:
+    """Case text, filenames, captions and metadata values to scan."""
     case = state.case
-    items: list[tuple[str, str]] = []
-    if case.user_text:
-        items.append(("user_text", case.user_text))
-    if case.location:
-        items.append(("location", case.location))
-    if case.habitat:
-        items.append(("habitat", case.habitat))
+    items = [text for text in (case.user_text, case.location, case.habitat) if text]
     for image in case.images:
-        items.append((f"filename:{image.image_id}", image.path.name))
+        items.append(image.path.name)
         if image.caption:
-            items.append((f"caption:{image.image_id}", image.caption))
-    items.extend((f"metadata:{key}", value) for key, value in sorted(case.metadata.items()))
+            items.append(image.caption)
+    items.extend(value for _, value in sorted(case.metadata.items()))
     return tuple(items)
 
 
 def scan_for_instructions(state: GraphState) -> tuple[str, ...]:
     """Return the categories of instruction-like content found. Order-stable."""
     found: list[str] = []
-    for _source, text in _untrusted_strings(state):
+    for text in _untrusted_strings(state):
         for label, pattern in _INSTRUCTION_PATTERNS:
             if pattern.search(text) and label not in found:
                 found.append(label)
@@ -103,17 +102,16 @@ def scan_for_instructions(state: GraphState) -> tuple[str, ...]:
 
 
 def build_report(state: GraphState) -> GuardReport:
-    """Deterministic guard analysis. Pure — no I/O, no model."""
+    """Build the report without a model; image-path checks consult the filesystem."""
     case = state.case
     signals = scan_for_instructions(state)
     missing = tuple(image.image_id for image in case.images if not image.exists)
-    challenges = bool(case.user_text and _CHALLENGE_PATTERN.search(case.user_text))
 
     notes: list[str] = []
     if signals:
         notes.append(
             "Instruction-like content recorded as evidence about the input. "
-            "It has not been executed and does not alter graph behaviour."
+            "It is not a command; the escalation policy may request independent review."
         )
     if missing:
         notes.append(f"{len(missing)} referenced image file(s) could not be read from disk.")
@@ -125,7 +123,7 @@ def build_report(state: GraphState) -> GuardReport:
         safe_to_continue=has_any_input,
         instruction_like_signals=signals,
         missing_images=missing,
-        user_challenges_previous_result=challenges,
+        user_challenges_previous_result=case.user_challenges_previous_result,
         controlled_failure_reason=failure_reason,
         notes=tuple(notes),
     )

@@ -11,28 +11,48 @@ from pathlib import Path
 import pytest
 
 import dendro_inspector.nodes._support as support
+import dendro_inspector.nodes.candidate_generator as candidate_generator
 from dendro_inspector.config import Role
 from dendro_inspector.graph.definition import NodeName
 from dendro_inspector.graph.projections import build_review_projection
-from dendro_inspector.graph.state import GraphState
+from dendro_inspector.graph.state import EvidenceQualityReport, GraphState
 from dendro_inspector.knowledge.candidate_validation import validate_candidate_set
-from dendro_inspector.knowledge.evidence_hierarchy import EvidenceTier
+from dendro_inspector.knowledge.evidence_hierarchy import (
+    BAND_DECISIVE,
+    EvidenceTier,
+    confidence_ceiling,
+)
 from dendro_inspector.knowledge.taxon_cards import (
     card_value_vocabulary,
+    requirement_selectors,
     unmatchable_observations,
 )
 from dendro_inspector.nodes.evidence_quality import assess
-from dendro_inspector.nodes.final_decision import decide_subject
-from dendro_inspector.nodes.response_composer import build_result
+from dendro_inspector.nodes.final_decision import MISSING_DECISIVE_PHRASE, decide_subject
+from dendro_inspector.nodes.final_decision import (
+    MISSING_DECISIVE_PHRASE as _MISSING_DECISIVE_PHRASE,
+)
+from dendro_inspector.nodes.response_composer import build_result, render_human_readable
 from dendro_inspector.observability.events import ProviderCallRecord
 from dendro_inspector.observability.trace import TraceRecorder
-from dendro_inspector.providers.base import ImageInput
-from dendro_inspector.schemas.candidates import Candidate, CandidateSet, SupportStrength
-from dendro_inspector.schemas.decisions import DecisionStatus, FinalDecision
+from dendro_inspector.providers.base import (
+    OUTPUT_EVIDENCE_IDS,
+    OUTPUT_SUBJECT_IDS,
+    ImageInput,
+)
+from dendro_inspector.schemas.candidates import (
+    Candidate,
+    CandidateProposal,
+    CandidateSet,
+    SupportStrength,
+)
+from dendro_inspector.schemas.decisions import DecisionStatus, FinalDecision, ResponseFormat
 from dendro_inspector.schemas.evidence import (
     AttachmentStatus,
     EvidencePacket,
     ImageLimitation,
+    Inference,
+    KnowledgeCoverage,
     Observation,
     ObservationSource,
     Reliability,
@@ -41,6 +61,7 @@ from dendro_inspector.schemas.evidence import (
     SubjectKind,
     Visibility,
 )
+from dendro_inspector.schemas.input import DeclaredObjectType
 from dendro_inspector.schemas.reviews import Reviewer, ReviewResult, ReviewStatus, ReviewSynthesis
 from dendro_inspector.schemas.taxon import Confidence, Resolution
 
@@ -67,6 +88,51 @@ def _observation(
     )
 
 
+def test_candidate_generator_hands_both_identifier_spaces_to_the_provider(
+    simple_case, node_context, monkeypatch
+):
+    """Binding in the adapter is worth nothing if the node never supplies the ids.
+
+    Live HIGH-thinking runs leaked deliberation fragments into `supporting_evidence_ids`
+    and killed five of six mini-batch cases at the parser. The adapter could already
+    constrain `subject_id` natively, and this node was passing no metadata at all — so the
+    one mechanism that could have prevented it was never reached.
+    """
+    evidence = EvidencePacket(
+        subjects=(Subject(subject_id="tree_1"),),
+        observations=(
+            Observation(
+                observation_id="obs-1",
+                feature="bark.pattern",
+                value="white_papery_with_black_marks",
+                subject_id="tree_1",
+                source=ObservationSource.IMAGE,
+                image_id="img-1",
+            ),
+        ),
+        inferences=(
+            Inference(inference_id="inf-1", claim="betula_compatible", derived_from=("obs-1",)),
+        ),
+    )
+    state = GraphState(
+        case=simple_case,
+        evidence=evidence,
+        quality=EvidenceQualityReport(sufficient=True, usable_subject_ids=("tree_1",)),
+    )
+    seen: dict[str, object] = {}
+
+    async def _capture(**kwargs):
+        seen.update(kwargs["metadata"])
+        return CandidateProposal()
+
+    monkeypatch.setattr(candidate_generator, "request_structured", _capture)
+    asyncio.run(candidate_generator.run(state, node_context))
+
+    assert seen[OUTPUT_SUBJECT_IDS] == ["tree_1"]
+    # Both spaces a reference may legitimately name: observations and inferences.
+    assert seen[OUTPUT_EVIDENCE_IDS] == ["inf-1", "obs-1"]
+
+
 def test_extractor_vocabulary_uses_exact_card_tokens_without_taxon_names(node_context):
     context = support.evidence_value_vocabulary_context(node_context)
     payload = _json_block(context)
@@ -85,9 +151,11 @@ def test_arbiter_receives_deterministic_proposed_resolution_and_confidence(
     monkeypatch,
 ):
     prompts: list[str] = []
+    call_metadata: list[dict[str, object]] = []
 
     async def capture_request(**kwargs):
         prompts.append(kwargs["prompt"])
+        call_metadata.append(kwargs["metadata"])
         return ReviewResult(
             reviewer=Reviewer.ARBITER,
             status=ReviewStatus.PASS,
@@ -117,6 +185,12 @@ def test_arbiter_receives_deterministic_proposed_resolution_and_confidence(
         candidate_sets=(CandidateSet(subject_id="tree_1", candidates=(candidate,)),),
         synthesis=ReviewSynthesis(),
     )
+    state = state.evolve(
+        provisional_decisions=tuple(
+            decide_subject(state, node_context, candidate_set)
+            for candidate_set in state.candidate_sets
+        )
+    )
 
     arbiter_ctx = replace(
         node_context,
@@ -139,6 +213,7 @@ def test_arbiter_receives_deterministic_proposed_resolution_and_confidence(
     assert '"resolution": "genus"' in prompt
     assert '"confidence": "low"' in prompt
     assert result.reviewed_evidence_ids == ("obs-1",)
+    assert call_metadata == [{OUTPUT_SUBJECT_IDS: ("tree_1",)}]
 
 
 def test_weak_result_reports_visible_evidence_and_scoped_limitations(simple_case):
@@ -183,6 +258,77 @@ def test_weak_result_reports_visible_evidence_and_scoped_limitations(simple_case
     assert "crown_not_visible" in result.limitations
     assert "img-1: no scale reference in the frame" in result.limitations
     assert "other_subject_only" not in result.limitations
+
+
+def test_a_knowledge_coverage_gap_is_told_to_the_reader(simple_case):
+    """The reader is told when the limit was the reference data, not their photograph.
+
+    Live photo 058 asked for another conifer shoot while the run already held, in hand, the
+    fact that two of that trunk's bark features were describable by no card in the build.
+    The reader was told the frame was weak. The frame was not the weak part.
+    """
+    decision = FinalDecision(
+        subject_id="tree_1",
+        status=DecisionStatus.INSUFFICIENT_EVIDENCE,
+    )
+    evidence = EvidencePacket(
+        subjects=(Subject(subject_id="tree_1", image_ids=("img-1",)),),
+        observations=(_observation("obs-1"),),
+    )
+    state = GraphState(
+        case=simple_case,
+        evidence=evidence,
+        quality=EvidenceQualityReport(
+            sufficient=True,
+            usable_subject_ids=("tree_1",),
+            unmatchable_evidence_ids=("obs-1",),
+            knowledge_coverage=KnowledgeCoverage(
+                observations_total=1,
+                potential_gap_evidence_ids=("obs-1",),
+                features_absent_from_all_cards=("bark.flake_geometry",),
+            ),
+        ),
+    )
+
+    gapped = build_result(decision, "en", state)
+    clean = build_result(
+        decision,
+        "en",
+        state.evolve(
+            quality=EvidenceQualityReport(sufficient=True, usable_subject_ids=("tree_1",))
+        ),
+    )
+
+    phrase = "not described by any card in this knowledge base"
+    assert any(phrase in item for item in gapped.limitations)
+    assert not any(phrase in item for item in clean.limitations)
+
+
+def test_colour_only_unmatchable_evidence_does_not_claim_a_coverage_gap(simple_case):
+    """Colour is unmatchable by design. Reporting it as a gap would cry wolf on every run."""
+    decision = FinalDecision(subject_id="tree_1", status=DecisionStatus.PROBABLE)
+    state = GraphState(
+        case=simple_case,
+        evidence=EvidencePacket(
+            subjects=(Subject(subject_id="tree_1", image_ids=("img-1",)),),
+            observations=(_observation("obs-1"),),
+        ),
+        quality=EvidenceQualityReport(
+            sufficient=True,
+            usable_subject_ids=("tree_1",),
+            unmatchable_evidence_ids=("obs-1",),
+            knowledge_coverage=KnowledgeCoverage(
+                observations_total=1,
+                intentionally_weak_evidence_ids=("obs-1",),
+            ),
+        ),
+    )
+
+    result = build_result(decision, "en", state)
+
+    assert not any(
+        "not described by any card in this knowledge base" in item for item in result.limitations
+    )
 
 
 def _call(node: str, response_model: str = "ReviewResult") -> ProviderCallRecord:
@@ -502,14 +648,22 @@ def test_bark_evidence_satisfies_the_bark_limb_of_a_requirement(
     ), decision.unresolved_questions
 
 
-def test_a_satisfied_requirement_does_not_lift_the_bark_ceiling(
+def test_a_diagnostic_bark_pattern_reaches_the_band_the_prompt_names(
     simple_case, node_context, knowledge
 ):
-    """The requirement fix must change one field, not the verdict.
+    """The whole birch chain, end to end, on the evidence a real photograph produced.
 
-    Bark caps confidence at low and resolution at genus however characteristic it looks
-    (FAILURE 8). If correcting the token had turned this photograph into a high-confidence
-    species claim, the fix would have traded a false limitation for a false certainty.
+    `white_papery_with_black_marks` read at high reliability satisfies Betula's
+    `bark.pattern_or_leaf` requirement and earns the card-declared confidence exception, so
+    this trunk is no longer mechanically pinned at the bottom of the scale. This assertion
+    read `Confidence.LOW` before any exception existed and `MEDIUM` while the lift was
+    hard-coded at one band; both were the same defect from different distances. Section 6
+    of the domain prompt lists this exact bark among its 95-100 examples and section 14
+    permits very high confidence at genus, so that is what the card now declares.
+
+    The rest of the guard matters more than the lift and is unchanged: genus, never
+    species. Trading a false limitation for a false certainty would be the worse outcome,
+    and FAILURE 8 is about the certainty.
     """
     evidence = _bark_only_packet()
     state, validated = _betula_state(simple_case, evidence, knowledge)
@@ -518,8 +672,12 @@ def test_a_satisfied_requirement_does_not_lift_the_bark_ceiling(
 
     assert decision.selected_taxon == "betula"
     assert decision.resolution is Resolution.GENUS
-    assert decision.confidence is Confidence.LOW
     assert decision.evidence_tier == int(EvidenceTier.BARK)
+    # The card's own declaration decides this, not a constant in the decision engine: the
+    # exception says `very_high` at genus, which is `HIGH` plus the top display band.
+    assert decision.confidence is Confidence.HIGH
+    assert decision.confidence_band == BAND_DECISIVE
+    assert confidence_ceiling(EvidenceTier.BARK) is Confidence.LOW
 
 
 def test_a_resolved_bark_character_is_not_photographed_again(simple_case, node_context, knowledge):
@@ -544,13 +702,94 @@ def test_a_resolved_bark_character_is_not_photographed_again(simple_case, node_c
     )
 
 
-def test_an_unresolved_bark_character_is_still_worth_photographing(
+def test_bark_only_multi_tree_follow_up_proves_leaf_ownership_first(
     simple_case, node_context, knowledge
 ):
-    """The filter drops redundancy, not bark requests as a class.
+    """A leaf macro cannot be credited until the photographed tree owns the leaf.
 
-    With only the papery pattern read and peeling still unresolved, another bark macro is
-    the honest first ask — and it stays first.
+    This is the generalized failure class from a live bark-only run: validation retained
+    one weak broadleaf candidate, while the frame could contain several taxa. The candidate
+    card already offers an attachment photograph, but the flat follow-up order chose leaf
+    morphology first and asked the user for evidence the graph would not yet be allowed to
+    attach to the trunk.
+    """
+    evidence = EvidencePacket(
+        subjects=(Subject(subject_id="foreground_tree", kind=SubjectKind.STANDING_TREE),),
+        observations=(
+            Observation(
+                observation_id="obs-bark",
+                feature="bark.texture",
+                value="coarse_furrowed",
+                subject_id="foreground_tree",
+                source=ObservationSource.IMAGE,
+                image_id="img-1",
+                visibility=Visibility.CLEAR,
+                reliability=Reliability.HIGH,
+            ),
+        ),
+        possible_multiple_taxa=True,
+    )
+    proposed = CandidateSet(
+        subject_id="foreground_tree",
+        candidates=(
+            Candidate(
+                taxon="populus",
+                resolution=Resolution.GENUS,
+                supporting_evidence_ids=("obs-bark",),
+                score=SupportStrength.MODERATE,
+                rank=1,
+            ),
+        ),
+    )
+    validated = validate_candidate_set(proposed, evidence, knowledge)
+    case = simple_case.model_copy(update={"declared_object_type": DeclaredObjectType.STANDING_TREE})
+    state = GraphState(case=case, evidence=evidence, candidate_sets=(validated,))
+
+    decision = decide_subject(state, node_context, validated)
+
+    assert decision.best_next_photo is not None
+    assert decision.best_next_photo.target == "leaf_attachment_photo"
+    assert "continuously" in decision.best_next_photo.reason
+
+
+def test_unknown_result_omits_an_empty_nearest_alternatives_section(simple_case):
+    """An unresolved candidate list belongs under uncertainty, not under "none recorded"."""
+    decision = FinalDecision(
+        subject_id="foreground_tree",
+        supporting_evidence=("bark.texture = coarse_furrowed (high reliability)",),
+        unresolved_questions=("Quercus and Tilia remain plausible alternatives.",),
+    )
+    state = GraphState(case=simple_case, decisions=(decision,))
+    result = build_result(decision, "en", state)
+
+    text = render_human_readable(
+        (result,),
+        (decision,),
+        state,
+        locale="en",
+        response_format=ResponseFormat.WEAK_PHOTO,
+        placeholder_knowledge=False,
+    )
+
+    assert "Why not the nearest alternatives" not in text
+    assert "none recorded" not in text
+    assert "Quercus and Tilia remain plausible alternatives." in text
+
+
+def test_an_unresolved_bark_character_no_longer_outranks_an_organ(
+    simple_case, node_context, knowledge
+):
+    """A photograph that cannot raise the claim does not get asked for first.
+
+    This assertion read `bark_macro_mid_trunk` while the only question was whether a
+    target's features were already answered. `bark.peeling` is unresolved here, so by that
+    test another bark macro had something to answer — but the pattern is already read at
+    decisive trust, so the subject is at bark tier either way, and no bark photograph can
+    lift a verdict past the bark ceiling. A leaf can.
+
+    Bark requests are not dropped as a class. See the test below: when the bark in hand is
+    capped by doubt rather than decisive, a better bark photograph is the honest first ask
+    and still comes first.
     """
     evidence = _bark_only_packet()
     thin = tuple(
@@ -565,13 +804,44 @@ def test_an_unresolved_bark_character_is_still_worth_photographing(
     decision = decide_subject(state, node_context, validated)
 
     assert decision.best_next_photo is not None
+    assert decision.best_next_photo.target == "leaf_upper_macro"
+
+
+def test_bark_capped_by_doubt_is_still_worth_photographing_again(
+    simple_case, node_context, knowledge
+):
+    """Saturation is measured at decisive trust, so uncertain bark is not saturated.
+
+    The distant, backlit trunk of `light-trunk-birch-001` reads its pattern at low
+    reliability. That subject has no decisive evidence at all, so a better photograph of
+    the same bark is genuinely informative and must not be deprioritised — which is the
+    difference between an information-gain rule and a blanket ban on bark requests.
+    """
+    evidence = _bark_only_packet()
+    uncertain = tuple(
+        observation.model_copy(update={"reliability": Reliability.LOW})
+        for observation in evidence.observations
+    )
+    state, validated = _betula_state(
+        simple_case, evidence.model_copy(update={"observations": uncertain}), knowledge
+    )
+
+    decision = decide_subject(state, node_context, validated)
+
+    assert decision.best_next_photo is not None
     assert decision.best_next_photo.target == "bark_macro_mid_trunk"
 
 
 def test_an_unknown_value_does_not_resolve_a_visible_discriminator(
     simple_case, node_context, knowledge
 ):
-    """Visibility is not information gain when no relevant card can interpret the value."""
+    """Visibility is not information gain when no relevant card can interpret the value.
+
+    An unrecognised `bark.peeling` value leaves that discriminator unresolved, so the bark
+    macro is not dropped as redundant. It is still deprioritised behind the leaf, because
+    the pattern is read at decisive trust and bark tier is already reached — the two filters
+    ask different questions and this case exercises both.
+    """
     evidence = _bark_only_packet()
     observations = tuple(
         observation.model_copy(update={"value": "some_unrecognised_pattern"})
@@ -585,7 +855,7 @@ def test_an_unknown_value_does_not_resolve_a_visible_discriminator(
     decision = decide_subject(state, node_context, validated)
 
     assert decision.best_next_photo is not None
-    assert decision.best_next_photo.target == "bark_macro_mid_trunk"
+    assert decision.best_next_photo.target == "leaf_upper_macro"
 
 
 def test_multi_candidate_photo_reason_names_an_unresolved_discriminator(
@@ -661,4 +931,82 @@ def test_bark_only_decision_has_no_attachment_sensitivity_or_confidence_boost(
     assert decision.evidence_authority_sensitive is False
     assert decision.critical_evidence_ids == ()
     assert decision.selected_taxon == "betula"
-    assert decision.confidence is Confidence.LOW
+    # High since Betula's card declared this bark reading a very-high exception. What this
+    # test guards is that unattached foliage contributed nothing to it — the band comes from
+    # the card's own bark rule, not from leaves that could belong to the neighbouring tree.
+    assert decision.confidence is Confidence.HIGH
+
+
+def test_an_untrusted_reading_is_not_reported_as_an_invisible_feature():
+    """`observed but not trusted` and `not visible` are different claims.
+
+    A run once told the reader "Decisive feature not visible: bark.pattern_or_leaf" three
+    lines under "bark.pattern = white_papery_with_black_marks (high reliability)". The
+    feature was visible. It had failed a trust gate. Saying "not visible" sends the user to
+    re-shoot a photograph that already showed the thing.
+    """
+    assert "not visible" not in _MISSING_DECISIVE_PHRASE
+    assert "not established" in _MISSING_DECISIVE_PHRASE
+
+
+def test_the_answer_never_cites_a_feature_as_support_and_calls_it_unestablished(
+    simple_case, node_context, knowledge
+):
+    """The Case A self-contradiction, asserted on the composed answer rather than a constant.
+
+    The live run printed "Decisive feature not visible: bark.pattern_or_leaf" three lines
+    under "bark.pattern = white_papery_with_black_marks (high reliability)" in its evidence
+    list. Both statements were about the same observation, and they could not both be true.
+
+    Written as an invariant over the whole answer rather than as an expected string, so it
+    keeps holding when the wording, the requirement grammar or the trust bands change.
+    """
+    evidence = _bark_only_packet()
+    state, validated = _betula_state(simple_case, evidence, knowledge)
+
+    decision = decide_subject(state, node_context, validated)
+
+    cited = {item.split(" = ", maxsplit=1)[0] for item in decision.supporting_evidence}
+    assert cited, "the fixture must produce cited support for this to mean anything"
+
+    unestablished = [
+        question
+        for question in decision.unresolved_questions
+        if question.startswith(MISSING_DECISIVE_PHRASE)
+    ]
+    for question in unestablished:
+        token = question.split(": ", maxsplit=1)[1]
+        for selector in (part for alt in requirement_selectors(token) for part in alt):
+            assert not any(
+                feature == selector or feature.startswith(f"{selector}.") for feature in cited
+            ), (
+                f"the answer cites {selector!r} as evidence and reports it as unestablished: "
+                f"{question!r}"
+            )
+
+
+def test_the_case_a_birch_answer_is_no_longer_pinned_at_the_floor(
+    simple_case, node_context, knowledge
+):
+    """The whole chain the two live birch runs failed, in one assertion set.
+
+    Live run: genus Betula at 50-69/100, a decisive feature reported as not visible, and a
+    request for another bark macro. Every one of those was the pipeline rather than the
+    model, and each had a separate cause — the collapsed trust bands, the unconditional
+    bark ceiling, and a follow-up list consulted in order.
+    """
+    evidence = _bark_only_packet()
+    state, validated = _betula_state(simple_case, evidence, knowledge)
+
+    decision = decide_subject(state, node_context, validated)
+
+    assert decision.selected_taxon == "betula"
+    assert decision.resolution is Resolution.GENUS
+    assert decision.confidence is Confidence.HIGH
+    assert not [
+        question
+        for question in decision.unresolved_questions
+        if question.startswith(MISSING_DECISIVE_PHRASE)
+    ]
+    assert decision.best_next_photo is not None
+    assert decision.best_next_photo.target == "leaf_upper_macro"

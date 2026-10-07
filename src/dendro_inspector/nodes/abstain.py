@@ -13,15 +13,20 @@ outcome of this system, not a failure of it.
 from __future__ import annotations
 
 from dendro_inspector.graph.executor import NodeContext
-from dendro_inspector.graph.state import GraphState
-from dendro_inspector.schemas.reviews import ReviewSynthesis
-from dendro_inspector.schemas.taxon import Confidence, Resolution, lower_resolution, resolution_rank
+from dendro_inspector.graph.state import GraphState, SubjectAbstention
+from dendro_inspector.schemas.reviews import RequiredAction, ReviewSynthesis, Severity
+from dendro_inspector.schemas.taxon import (
+    Confidence,
+    Resolution,
+    lower_resolution,
+    resolution_rank,
+)
 
 NODE = "abstain"
 
 
 def degraded_synthesis(synthesis: ReviewSynthesis | None, leading: Resolution) -> ReviewSynthesis:
-    """Lower the recorded resolution one step below whatever was being claimed."""
+    """Legacy single-subject aggregate helper; new graph runs store subject bounds."""
     target = lower_resolution(leading)
     base = synthesis or ReviewSynthesis()
     existing = base.resolution_delta
@@ -36,14 +41,37 @@ def degraded_synthesis(synthesis: ReviewSynthesis | None, leading: Resolution) -
 
 
 async def run(state: GraphState, ctx: NodeContext) -> GraphState:
-    del ctx
-    leading = Resolution.UNKNOWN
-    for candidate_set in state.candidate_sets:
-        leader = candidate_set.leader
-        if leader is not None and resolution_rank(leader.resolution) > resolution_rank(leading):
-            leading = leader.resolution
+    from dendro_inspector.nodes.final_decision import decide_subject
+
+    synthesis = state.synthesis
+    blocking = tuple(
+        finding
+        for finding in (synthesis.accepted_findings if synthesis else ())
+        if finding.required_action is RequiredAction.RE_EXTRACT_EVIDENCE
+        or (
+            finding.required_action is RequiredAction.ABSTAIN
+            and finding.severity is Severity.CRITICAL
+        )
+    )
+    # An unscoped finding affects the case. Otherwise only the named subjects lose their
+    # claims; another tree's weaker bound is never folded into this subject's result.
+    whole_case = not blocking or any(finding.subject_id is None for finding in blocking)
+    affected = {finding.subject_id for finding in blocking}
+    bounds = []
+    for subject_id in state.subject_ids:
+        if not whole_case and subject_id not in affected:
+            continue
+        candidates = state.candidates_for(subject_id)
+        resolution = (
+            decide_subject(state, ctx, candidates).resolution
+            if candidates is not None
+            else Resolution.UNKNOWN
+        )
+        bounds.append(
+            SubjectAbstention(subject_id=subject_id, resolution=lower_resolution(resolution))
+        )
 
     return state.evolve(
         abstained=True,
-        synthesis=degraded_synthesis(state.synthesis, leading),
+        abstention_bounds=tuple(bounds),
     )

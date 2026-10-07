@@ -15,9 +15,10 @@ from pydantic import Field
 from dendro_inspector.schemas.base import Contract, FeaturePath, Identifier, ShortText, ValueToken
 from dendro_inspector.schemas.candidates import CandidateSet
 from dendro_inspector.schemas.decisions import AuthorityCheckTrace, CaseResponse, FinalDecision
-from dendro_inspector.schemas.evidence import EvidencePacket
+from dendro_inspector.schemas.evidence import EvidencePacket, KnowledgeCoverage
 from dendro_inspector.schemas.input import CaseInput
 from dendro_inspector.schemas.reviews import CorrectionDirective, ReviewResult, ReviewSynthesis
+from dendro_inspector.schemas.taxon import Resolution
 
 
 class GuardReport(Contract):
@@ -72,6 +73,23 @@ class EvidenceQualityReport(Contract):
             "coverage rather than photograph quality."
         ),
     )
+    coverage_gap_subject_ids: tuple[Identifier, ...] = Field(
+        default=(),
+        description=(
+            "Subjects held back because no card could be opened and part of their evidence "
+            "was outside the card vocabulary. The graph stops before the candidate "
+            "generator for these: a model asked to rank an empty card set cannot return "
+            "anything the admission boundary would keep."
+        ),
+    )
+    knowledge_coverage: KnowledgeCoverage | None = Field(
+        default=None,
+        description=(
+            "The classified form of `unmatchable_evidence_ids`, separating features no "
+            "card author could recover from ones they could. Carried on the report so the "
+            "trace, the reader-facing limitations and the log all read one measurement."
+        ),
+    )
 
     def tier_for(self, subject_id: str) -> int:
         """Strongest tier for a subject; context (1) when nothing is recorded."""
@@ -84,6 +102,13 @@ class EscalationDecision(Contract):
     required: bool = False
     reasons: tuple[ValueToken, ...] = ()
     suppressed_by: tuple[ValueToken, ...] = ()
+
+
+class SubjectAbstention(Contract):
+    """A conservative resolution bound for one subject whose review cannot continue."""
+
+    subject_id: Identifier
+    resolution: Resolution
 
 
 class GraphState(Contract):
@@ -114,6 +139,13 @@ class GraphState(Contract):
     )
     reviews: tuple[ReviewResult, ...] = ()
     synthesis: ReviewSynthesis | None = None
+    provisional_decisions: tuple[FinalDecision, ...] = Field(
+        default=(),
+        description=(
+            "Deterministic per-subject verdicts computed at the escalation gate, before any "
+            "arbiter call. The gate decides on these; the arbiter projection shows these."
+        ),
+    )
     corrections: tuple[CorrectionDirective, ...] = ()
     escalation: EscalationDecision | None = None
     arbiter_reviews: tuple[ReviewResult, ...] = ()
@@ -130,6 +162,18 @@ class GraphState(Contract):
     final_response: CaseResponse | None = None
     retries: int = Field(default=0, ge=0)
     abstained: bool = False
+    abstention_bounds: tuple[SubjectAbstention, ...] = ()
+
+    def abstention_for(self, subject_id: str) -> SubjectAbstention | None:
+        return next(
+            (bound for bound in self.abstention_bounds if bound.subject_id == subject_id), None
+        )
+
+    def is_abstained(self, subject_id: str) -> bool:
+        """Legacy run-wide abstention remains readable; new runs retain subject scope."""
+        return self.abstained and (
+            not self.abstention_bounds or self.abstention_for(subject_id) is not None
+        )
 
     def evolve(self, **changes: Any) -> Self:
         """Return a new state with ``changes`` applied and re-validated."""

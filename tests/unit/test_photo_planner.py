@@ -4,7 +4,13 @@ from __future__ import annotations
 
 from dendro_inspector.graph.state import GraphState
 from dendro_inspector.nodes.photo_planner import choose_request
-from dendro_inspector.schemas.evidence import EvidencePacket, Subject, SubjectKind
+from dendro_inspector.schemas.evidence import (
+    EvidencePacket,
+    Observation,
+    ObservationSource,
+    Subject,
+    SubjectKind,
+)
 from dendro_inspector.schemas.input import DeclaredObjectType
 
 
@@ -60,6 +66,34 @@ def test_bark_follow_up_is_neutral_without_a_taxon_candidate(simple_case, node_c
 
     assert request.target == "attached_foliage_or_reproductive_structure"
     assert "conifer" not in request.reason.lower()
+    assert "same subject" in request.reason.lower()
+
+
+def test_multi_tree_bark_view_proves_ownership_before_requesting_foliage_detail(
+    simple_case, node_context
+):
+    case = simple_case.model_copy(update={"declared_object_type": DeclaredObjectType.STANDING_TREE})
+    state = GraphState(
+        case=case,
+        evidence=EvidencePacket(
+            subjects=(Subject(subject_id="tree_1", kind=SubjectKind.STANDING_TREE),),
+            observations=(
+                Observation(
+                    observation_id="obs-bark",
+                    feature="bark.texture",
+                    value="coarse_furrowed",
+                    subject_id="tree_1",
+                    source=ObservationSource.IMAGE,
+                    image_id="img-1",
+                ),
+            ),
+            possible_multiple_taxa=True,
+        ),
+    )
+
+    request = choose_request(state, node_context, "tree_1")
+
+    assert request.target == "attached_foliage_or_reproductive_structure"
     assert "same subject" in request.reason.lower()
 
 

@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import asyncio
+
 import pytest
 from pydantic import ValidationError
 
 from dendro_inspector.graph.state import GraphState
+from dendro_inspector.knowledge.candidate_validation import validate_candidate_set
+from dendro_inspector.nodes import abstain
 from dendro_inspector.nodes.final_decision import (
     apply_reranking,
     cap_resolution,
@@ -13,6 +17,7 @@ from dendro_inspector.nodes.final_decision import (
     resolve_identity,
 )
 from dendro_inspector.nodes.response_composer import build_result
+from dendro_inspector.nodes.review_synthesizer import adjudicate
 from dendro_inspector.schemas.candidates import Candidate, CandidateSet, SupportStrength
 from dendro_inspector.schemas.decisions import DecisionStatus, FinalDecision
 from dendro_inspector.schemas.evidence import (
@@ -575,6 +580,24 @@ class TestRecommendationIsAFloor:
         state = _state(simple_case, (support,), candidates.candidates).model_copy(
             update={"synthesis": synthesis}
         )
+        # Exercise the real ownership boundary: a recommendation is a floor only for
+        # the accepted model findings from the same review and subject.
+        state = state.evolve(
+            synthesis=adjudicate(
+                (
+                    ReviewResult(
+                        reviewer=Reviewer.CONFIDENCE,
+                        status=ReviewStatus.PASS_WITH_FINDINGS,
+                        subject_id="tree_1",
+                        findings=synthesis.accepted_findings,
+                        recommended_confidence=synthesis.confidence_delta,
+                        recommended_resolution=synthesis.resolution_delta,
+                    ),
+                ),
+                evidence=state.evidence,
+                knowledge=node_context.knowledge,
+            )
+        )
         return decide_subject(state, node_context, candidates)
 
     def test_model_lower_resolution_stops_at_the_recommended_level(self, simple_case, node_context):
@@ -756,3 +779,134 @@ class TestSupportingEvidenceIsReportedInFull:
         decision, _ = self._decide(simple_case, node_context)
 
         assert decision.supporting_evidence[0].startswith("leaf.shape")
+
+
+class TestPhaseZeroHardeningGates:
+    """Failing gates for the findings in `docs/specs/core-logic-hardening.md`.
+
+    Each is strict, so the marker has to be removed in the same commit that fixes the
+    finding. Until then these record, executably, what the evidence says is wrong.
+    """
+
+    def test_a_label_cannot_buy_confidence_the_card_did_not_grant(self, simple_case, node_context):
+        """C1: on thin support the model's own adjective stops mattering.
+
+        The Phase 0 form of this gate asserted that identical evidence returns identical
+        confidence *whatever* the model said. C1 does not promise that, and deliberately so:
+        the effective strength is the **minimum** of the label and the strength the card
+        grants, because a model that looked at the photograph may have seen a reason to
+        doubt its own support that no card can express. What C1 does promise is this
+        direction — one supporting-feature hit is `weak` however boldly it is labelled, so
+        all three labels land on the same confidence.
+        """
+        support = _observation("support", "bark.texture", "scaly_plates")
+        confidences = set()
+        for score in SupportStrength:
+            proposed = CandidateSet(
+                subject_id="tree_1",
+                candidates=(
+                    Candidate(
+                        taxon="pinus",
+                        resolution=Resolution.GENUS,
+                        supporting_evidence_ids=("support",),
+                        score=score,
+                        rank=1,
+                    ),
+                ),
+            )
+            state = _state(simple_case, (support,), proposed.candidates)
+            assert state.evidence is not None
+            admitted = validate_candidate_set(proposed, state.evidence, node_context.knowledge)
+            confidences.add(decide_subject(state, node_context, admitted).confidence)
+
+        assert len(confidences) == 1
+
+    def test_a_doubtful_label_is_still_honoured_over_strong_card_support(
+        self, simple_case, node_context
+    ):
+        """The other half of the same rule, and the reason it is a minimum and not a
+        replacement: adjudication may lower the model's claim, never raise it."""
+        support = _observation("support", "needles.fascicles", "two")
+        proposed = CandidateSet(
+            subject_id="tree_1",
+            candidates=(
+                Candidate(
+                    taxon="pinus",
+                    resolution=Resolution.GENUS,
+                    supporting_evidence_ids=("support",),
+                    score=SupportStrength.WEAK,
+                    rank=1,
+                ),
+            ),
+        )
+        state = _state(simple_case, (support,), proposed.candidates)
+        assert state.evidence is not None
+
+        admitted = validate_candidate_set(proposed, state.evidence, node_context.knowledge)
+
+        assert admitted.leader is not None
+        assert admitted.leader.score is SupportStrength.WEAK
+
+    def test_conflicting_evidence_status_needs_a_disqualifying_hit(self, simple_case, node_context):
+        """Foliage that could not be traced to this trunk cannot convict the answer.
+
+        The Picea card declares `needles.fascicles` disqualifying. Here that observation
+        carries `attachment: unknown`, so the evidence hierarchy projects it to context and
+        it could not have supported any candidate.
+        """
+        support = _observation("support", "needles.attachment", "single_on_woody_peg")
+        loose = Observation(
+            observation_id="loose",
+            feature="needles.fascicles",
+            value="two",
+            subject_id="tree_1",
+            source=ObservationSource.IMAGE,
+            image_id="img-1",
+            attachment=AttachmentStatus.UNKNOWN,
+        )
+        candidates = CandidateSet(
+            subject_id="tree_1",
+            candidates=(
+                Candidate(
+                    taxon="picea",
+                    resolution=Resolution.GENUS,
+                    supporting_evidence_ids=("support",),
+                    score=SupportStrength.MODERATE,
+                    rank=1,
+                ),
+            ),
+        )
+        state = _state(simple_case, (support, loose), candidates.candidates)
+
+        decision = decide_subject(state, node_context, candidates)
+
+        assert decision.status is not DecisionStatus.CONFLICTING_EVIDENCE
+
+    def test_an_abstained_verdict_says_so_and_is_broader(self, simple_case, node_context):
+        """A species proposal capped to genus must not abstain to the same genus.
+
+        The card supports genus only, so the composed bound is already genus before
+        abstention. Lowering one step from the *proposed* species lands back on genus, and
+        the returned verdict is then indistinguishable from the confident one.
+        """
+        support = _observation("support", "needles.fascicles", "two")
+        candidates = CandidateSet(
+            subject_id="tree_1",
+            candidates=(
+                Candidate(
+                    taxon="pinus",
+                    resolution=Resolution.SPECIES,
+                    supporting_evidence_ids=("support",),
+                    score=SupportStrength.MODERATE,
+                    rank=1,
+                ),
+            ),
+        )
+        state = _state(simple_case, (support,), candidates.candidates)
+        abstained = asyncio.run(abstain.run(state, node_context))
+
+        decision = decide_subject(abstained, node_context, candidates)
+
+        assert decision.abstained
+        assert decision.resolution is Resolution.FAMILY
+        assert "abstained" in build_result(decision, "en", abstained).limitations[0]

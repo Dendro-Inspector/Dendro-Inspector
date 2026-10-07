@@ -15,7 +15,13 @@ import pytest
 from pydantic import BaseModel
 
 from dendro_inspector.providers.anthropic_adapter import AnthropicProvider
-from dendro_inspector.providers.base import CACHE_PREFIX_CHARS, ImageInput, cache_prefix_of
+from dendro_inspector.providers.base import (
+    CACHE_PREFIX_CHARS,
+    USAGE_SINK,
+    ImageInput,
+    UsageSink,
+    cache_prefix_of,
+)
 
 
 class _Answer(BaseModel):
@@ -117,3 +123,51 @@ def test_boundary_survives_the_repair_retry_appending_to_the_prompt():
     repaired = PROMPT + "\n\nYour previous output was invalid: ..."
     assert cache_prefix_of({CACHE_PREFIX_CHARS: BOUNDARY}, repaired) == BOUNDARY
     assert repaired[:BOUNDARY] == PROMPT[:BOUNDARY]
+
+
+def test_anthropic_bridge_unknown_usage_does_not_become_measured_zero():
+    class _BridgeClient:
+        messages: Any
+
+        def __init__(self) -> None:
+            self.messages = self
+
+        async def create(self, **kwargs: Any) -> Any:
+            del kwargs
+            block = type("Block", (), {"type": "text", "text": '{"verdict":"betula"}'})
+            usage = type(
+                "Usage",
+                (),
+                {"input_tokens": 0, "cache_read_input_tokens": None, "output_tokens": 0},
+            )
+            return type(
+                "Response",
+                (),
+                {
+                    "content": [block()],
+                    "usage": usage(),
+                    "dendro_usage": {
+                        "input_tokens": None,
+                        "cached_input_tokens": None,
+                        "output_tokens": None,
+                    },
+                },
+            )()
+
+    provider = AnthropicProvider(model="test")
+    provider._client = _BridgeClient()
+    sink = UsageSink()
+
+    asyncio.run(
+        provider.generate_structured(
+            role="primary",
+            prompt=PROMPT,
+            images=(),
+            response_model=_Answer,
+            metadata={"node": "planner", USAGE_SINK: sink},
+        )
+    )
+
+    assert sink.input_tokens is None
+    assert sink.cached_input_tokens is None
+    assert sink.output_tokens is None

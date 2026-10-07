@@ -171,12 +171,46 @@ class AdmittedRerank(Contract):
         return self.finding.finding_id
 
 
+class AdmittedRecommendation(Contract):
+    """A review bound for one subject, optionally tied to its own accepted finding.
+
+    A bare recommendation can cap a claim but cannot waive any finding. Embedding the
+    exact accepted finding follows the same binding contract as ``AdmittedRerank``;
+    equal ids alone are insufficient because separate reviewers may reuse an id.
+    """
+
+    reviewer: Reviewer | None = None
+    subject_id: Identifier
+    confidence: Confidence | None = None
+    resolution: Resolution | None = None
+    finding: ReviewFinding | None = None
+
+    @model_validator(mode="after")
+    def _finding_is_bound(self) -> AdmittedRecommendation:
+        if self.finding is not None and (
+            self.finding.status is not FindingStatus.ACCEPTED
+            or self.finding.origin is not FindingOrigin.MODEL
+            or self.finding.subject_id != self.subject_id
+        ):
+            msg = "recommendation must bind an accepted model finding for the same subject"
+            raise ValueError(msg)
+        return self
+
+
 class ReviewSynthesis(Contract):
     """The adjudicated result of all reviewer findings for one pass."""
 
     accepted_findings: tuple[ReviewFinding, ...] = ()
     rejected_findings: tuple[ReviewFinding, ...] = ()
     admitted_reranks: tuple[AdmittedRerank, ...] = ()
+    recommendations: tuple[AdmittedRecommendation, ...] | None = Field(
+        default=None,
+        description=(
+            "Code-owned subject and finding bindings. None denotes a legacy synthesis; "
+            "its aggregate deltas may cap a single subject but never waive findings. "
+            "New synthesis always supplies a tuple, including when nothing was admitted."
+        ),
+    )
     required_corrections: tuple[CorrectionDirective, ...] = ()
     candidate_delta: tuple[ShortText, ...] = ()
     confidence_delta: Confidence | None = None
@@ -191,6 +225,17 @@ class ReviewSynthesis(Contract):
         default=False,
         description="A critical finding that a retry cannot fix. Routes to abstain.",
     )
+
+    @model_validator(mode="after")
+    def _recommendations_reference_accepted_findings(self) -> ReviewSynthesis:
+        for recommendation in self.recommendations or ():
+            if (
+                recommendation.finding is not None
+                and recommendation.finding not in self.accepted_findings
+            ):
+                msg = "recommendation finding must belong to this synthesis"
+                raise ValueError(msg)
+        return self
 
     @property
     def has_critical(self) -> bool:

@@ -69,6 +69,7 @@ def _build_case(
     habitat: str | None,
     object_type: DeclaredObjectType,
     lang: str,
+    challenge: bool = False,
 ) -> CaseInput:
     return CaseInput(
         case_id=case_id,
@@ -77,6 +78,7 @@ def _build_case(
             for index, path in enumerate(images, start=1)
         ),
         user_text=text,
+        user_challenges_previous_result=challenge,
         user_claim=claim,
         user_has_field_context=field_context,
         location=location,
@@ -133,6 +135,13 @@ def inspect(
     trace_out: Annotated[
         Path | None, typer.Option("--trace-out", help="Directory to write the JSON trace into.")
     ] = None,
+    challenge: Annotated[
+        bool,
+        typer.Option(
+            "--challenge",
+            help="Reconsider a previous result: request independent review and restrained tone.",
+        ),
+    ] = False,
 ) -> None:
     """Identify the subject(s) in one or more photographs."""
     if not image and not text:
@@ -157,6 +166,7 @@ def inspect(
         habitat=habitat,
         object_type=object_type,
         lang=lang,
+        challenge=challenge,
     )
 
     try:

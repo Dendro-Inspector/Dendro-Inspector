@@ -1,0 +1,34 @@
+# Case 21 — C3: a contradiction with no authority to identify has none to reject.
+# Needle litter lying on a log matches Picea's contradictions list, but nothing ties it to
+# this log. It may lower confidence and it may be reported; it may not tell the user their
+# own version is wrong. This case fails if the verdict on their claim is ever "rejected".
+case_id: unattached-contradiction-claim-001
+title: Needle litter contradicts the user's spruce without being attached to anything
+description: >-
+  A sawn conifer log with resin on the cut face and loose needles across the bark. The
+  fallen needles are fascicled in twos, which Picea's card calls disqualifying, but no
+  shoot is continuous with the log and the stand overhead is mixed. The user says spruce.
+scenario: unattached-contradiction-claim
+
+input:
+  case_id: unattached-contradiction-claim-001
+  images:
+    - image_id: img-1
+      path: examples/unattached-contradiction-claim-001.jpg
+      media_type: image/jpeg
+      caption: Sawn log with needle litter across the bark
+  user_text: Це ялина, її валили минулого тижня.
+  user_claim: ялина
+  location: Kyiv Oblast, Ukraine
+  season: autumn
+  declared_object_type: log
+
+expect:
+  expected_taxon: pinus
+  expected_user_claim_verdict: doubtful
+  forbid_user_claim_rejection: true
+  max_resolution: genus
+  require_next_photo: true
+  max_retries: 0
+
+placeholder_content: true

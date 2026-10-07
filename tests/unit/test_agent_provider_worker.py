@@ -3,8 +3,12 @@ from __future__ import annotations
 import importlib.util
 import json
 import sys
+import threading
+import time
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
+
+import pytest
 
 
 def _load_script(name: str) -> ModuleType:
@@ -273,6 +277,95 @@ def test_bridge_cache_separates_model_routes() -> None:
     assert ox_key != sol_key
 
 
+@pytest.mark.parametrize(
+    ("dialect", "expected"),
+    (
+        (
+            "openai",
+            {
+                "usage": {
+                    "prompt_tokens": 120,
+                    "completion_tokens": 15,
+                    "prompt_tokens_details": {"cached_tokens": 80},
+                }
+            },
+        ),
+        (
+            "ollama",
+            {"prompt_eval_count": 120, "eval_count": 15},
+        ),
+        (
+            "anthropic",
+            {
+                "usage": {
+                    "input_tokens": 120,
+                    "cache_read_input_tokens": 80,
+                    "output_tokens": 15,
+                },
+                "dendro_usage": {
+                    "input_tokens": 120,
+                    "cached_input_tokens": 80,
+                    "output_tokens": 15,
+                },
+            },
+        ),
+        (
+            "gemini",
+            {
+                "usageMetadata": {
+                    "promptTokenCount": 120,
+                    "cachedContentTokenCount": 80,
+                    "candidatesTokenCount": 15,
+                }
+            },
+        ),
+    ),
+)
+def test_bridge_projects_cached_worker_usage_into_provider_envelopes(
+    tmp_path: Path,
+    dialect: str,
+    expected: dict[str, object],
+) -> None:
+    bridge = _load_script("bridge")
+    state = bridge.State(tmp_path, wait_timeout=1)
+    cached = state.cache / "abc123.json"
+    cached.write_text('{"status":"OK"}', encoding="utf-8")
+    cached.with_suffix(".meta.json").write_text(
+        json.dumps(
+            {
+                "worker_id": "codex-sol-all",
+                "upstream": {
+                    "provider": "codex",
+                    "usage": {
+                        "input_tokens": 120,
+                        "cached_input_tokens": 80,
+                        "output_tokens": 15,
+                    },
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    handler = object.__new__(bridge.Handler)
+    handler.state = state
+
+    answer, source, usage = handler._answer(
+        1,
+        dialect,
+        "prompt",
+        {"type": "object"},
+        [],
+        "abc123",
+        "Probe",
+        "sol-all",
+    )
+    envelope = handler._envelope(dialect, "sol-all", answer, usage)
+
+    assert source == "cache:codex-sol-all"
+    for key, value in expected.items():
+        assert envelope[key] == value
+
+
 def test_claude_backend_uses_read_only_structured_output(tmp_path: Path, monkeypatch) -> None:
     worker = _load_script("worker")
     _pending_request(tmp_path, route="claude-main")
@@ -328,3 +421,147 @@ def test_claude_backend_uses_read_only_structured_output(tmp_path: Path, monkeyp
     assert kwargs["env"]["PYTHONIOENCODING"] == "utf-8"
     assert json.loads(result.text) == {"status": "CLAUDE_OK"}
     assert result.upstream["provider"] == "claude-code"
+
+
+def test_claude_backend_treats_account_quota_as_terminal(tmp_path: Path, monkeypatch) -> None:
+    worker = _load_script("worker")
+    _pending_request(tmp_path, route="claude-main")
+    (tmp_path / "claims").mkdir()
+    job = worker.claim_next_job(
+        state_dir=tmp_path,
+        route="claude-main",
+        worker_id="claude-main",
+        claim_ttl_seconds=60,
+    )
+    assert job is not None
+
+    quota_message = "You've hit your monthly spend limit; "
+    quota_message += "your session limit resets later today"
+    monkeypatch.setattr(
+        worker.subprocess,
+        "run",
+        lambda *args, **kwargs: SimpleNamespace(
+            returncode=1,
+            stderr="",
+            stdout=json.dumps(
+                {
+                    "api_error_status": 429,
+                    "is_error": True,
+                    "result": quota_message,
+                }
+            ),
+        ),
+    )
+    backend = worker.ClaudeBackend(
+        executable=sys.executable,
+        model="opus",
+        timeout_seconds=60,
+    )
+
+    with pytest.raises(worker.WorkerTerminalError, match="quota exhausted"):
+        backend.generate(job)
+
+
+def test_claude_backend_keeps_transient_rate_limit_retryable(tmp_path: Path, monkeypatch) -> None:
+    worker = _load_script("worker")
+    _pending_request(tmp_path, route="claude-main")
+    (tmp_path / "claims").mkdir()
+    job = worker.claim_next_job(
+        state_dir=tmp_path,
+        route="claude-main",
+        worker_id="claude-main",
+        claim_ttl_seconds=60,
+    )
+    assert job is not None
+
+    monkeypatch.setattr(
+        worker.subprocess,
+        "run",
+        lambda *args, **kwargs: SimpleNamespace(
+            returncode=1,
+            stderr="HTTP 429 rate limit; retry shortly",
+            stdout="",
+        ),
+    )
+    backend = worker.ClaudeBackend(
+        executable=sys.executable,
+        model="opus",
+        timeout_seconds=60,
+    )
+
+    with pytest.raises(worker.WorkerRateLimitError):
+        backend.generate(job)
+
+
+def test_terminal_failure_removes_request_from_worker_queue(tmp_path: Path) -> None:
+    worker = _load_script("worker")
+    _pending_request(tmp_path, route="claude-main")
+    for directory in ("claims", "failures"):
+        (tmp_path / directory).mkdir()
+    job = worker.claim_next_job(
+        state_dir=tmp_path,
+        route="claude-main",
+        worker_id="claude-main",
+        claim_ttl_seconds=60,
+    )
+    assert job is not None
+
+    worker.record_terminal_failure(
+        tmp_path,
+        job,
+        "claude-main",
+        worker.WorkerTerminalError("Claude route quota exhausted"),
+    )
+    job.claim_path.unlink()
+
+    assert (
+        worker.claim_next_job(
+            state_dir=tmp_path,
+            route="claude-main",
+            worker_id="claude-main",
+            claim_ttl_seconds=60,
+        )
+        is None
+    )
+
+
+def test_bridge_returns_terminal_worker_failure_without_waiting(tmp_path: Path) -> None:
+    bridge = _load_script("bridge")
+    state = bridge.State(tmp_path, wait_timeout=30)
+    marker = {
+        "request_id": 1,
+        "cache_key": "abc123",
+        "error_type": "WorkerTerminalError",
+        "message": "Claude route quota exhausted",
+    }
+    handler = object.__new__(bridge.Handler)
+    handler.state = state
+
+    def write_terminal_marker() -> None:
+        pending = state.pending / "req-001-meta.json"
+        while not pending.is_file():
+            time.sleep(0.01)
+        (state.failures / "req-001-terminal.json").write_text(json.dumps(marker), encoding="utf-8")
+
+    publisher = threading.Thread(target=write_terminal_marker)
+    publisher.start()
+
+    started = time.perf_counter()
+    try:
+        with pytest.raises(bridge.DialectRejectionError) as caught:
+            handler._answer(
+                1,
+                "anthropic",
+                "prompt",
+                {"type": "object"},
+                [],
+                "abc123",
+                "Probe",
+                "claude-main",
+            )
+    finally:
+        publisher.join(timeout=1)
+
+    assert caught.value.status == 424
+    assert "quota exhausted" in caught.value.body["error"]["message"]
+    assert time.perf_counter() - started < 2

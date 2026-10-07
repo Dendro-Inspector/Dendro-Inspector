@@ -11,13 +11,33 @@ from collections.abc import Collection, Iterable, Mapping
 from dataclasses import dataclass
 
 from dendro_inspector.knowledge.evidence_hierarchy import (
+    EvidenceTier,
     contextual_observations_for,
-    full_positive_observations_for,
+    decisive_observations_for,
     positive_observations_for,
     project_observation,
+    tier_of_feature,
 )
-from dendro_inspector.schemas.evidence import EvidencePacket, Observation
-from dendro_inspector.schemas.taxon import FeatureExpectation, TaxonCard
+from dendro_inspector.schemas.evidence import (
+    EvidencePacket,
+    Observation,
+    is_positive_reading,
+)
+from dendro_inspector.schemas.taxon import (
+    ConfidenceException,
+    ExceptionCeiling,
+    FeatureExpectation,
+    Resolution,
+    TaxonCard,
+    resolution_rank,
+)
+
+#: Which declared ceiling wins when a card earns more than one exception at once.
+_CEILING_ORDER: dict[ExceptionCeiling, int] = {
+    ExceptionCeiling.MEDIUM: 0,
+    ExceptionCeiling.HIGH: 1,
+    ExceptionCeiling.VERY_HIGH: 2,
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -28,12 +48,23 @@ class CardMatch:
     strong_hits: tuple[str, ...]
     supporting_hits: tuple[str, ...]
     contradiction_hits: tuple[str, ...]
+    disqualifying_hits: tuple[str, ...]
     missing_for_high_confidence: tuple[str, ...]
     full_strong_hits: tuple[str, ...]
+    self_contradiction_hits: tuple[str, ...] = ()
 
     @property
     def has_contradiction(self) -> bool:
         return bool(self.contradiction_hits)
+
+    @property
+    def is_disqualified(self) -> bool:
+        return bool(self.disqualifying_hits)
+
+    @property
+    def contradicts_own_card(self) -> bool:
+        """Whether the evidence disagrees with this card on a path the card calls decisive."""
+        return bool(self.self_contradiction_hits)
 
     @property
     def high_confidence_supported(self) -> bool:
@@ -54,6 +85,152 @@ def _matches(
     return tuple(hits)
 
 
+def self_contradiction_hits(
+    card: TaxonCard, observations: tuple[Observation, ...]
+) -> tuple[str, ...]:
+    """Evidence that disagrees with the card on a path the card itself calls decisive.
+
+    A card's ``strong_positive_features`` are its own statement of what this taxon looks
+    like. Reading that exact feature clearly and getting a *different* value is not the
+    absence of a hit — it is disagreement on the card's own terms, and the dendrological
+    reading is blunt: beech bark is smooth, this bark is scaly, therefore not beech.
+
+    Live case ``20260510_100131`` is why this exists. ``bark.texture = fine_scales`` sat in
+    the packet while ``fagus`` declares ``bark.texture: smooth_grey`` as strong-positive, and
+    ``fagus`` was admitted anyway — opened by ``trunk.form = straight_cylindrical``, a
+    supporting feature that describes most trees. It then travelled into four model calls,
+    roughly 260 seconds of a 354-second run, and the reviewers argued about a beech whose
+    own card the evidence already contradicted.
+
+    Distinct from ``contradictions``, which a card author writes out explicitly for another
+    taxon's features. This needs no new card data: it is already implied by every card that
+    names a strong positive.
+
+    Five things deliberately do **not** veto. The first four are silence rather than
+    disagreement, and promoting silence into contradiction would abstain on nearly every
+    photograph:
+
+    * the card's strong path was never observed;
+    * it was observed with a value reporting a failure to read it
+      (:data:`~dendro_inspector.schemas.evidence.UNREADABLE_VALUES`) rather than a reading;
+    * the observation belongs to another subject — callers pass same-subject observations;
+    * the observation is not trusted positive evidence — callers filter that first.
+
+    The fifth is not silence but agreement: **the same path also carries a reading this card
+    declares**. One organ read twice is the normal case, not a conflict. The domain prompt
+    says so itself for the taxon that exposed this: section 14 gives Betula
+    ``bark.pattern = white_papery_with_black_marks`` as the diagnostic reading *and* then
+    says the base of an old trunk may be dark and cracked (line 436). A packet holding both
+    describes one birch from two heights. Vetoing it removed the candidate its own decisive
+    feature had just matched — and the same shape removed generic ``populus`` when the
+    prompt's own list of permitted leaf shapes (line 449) was read at two specificities, and
+    both ``prunus`` and ``prunus_armeniaca`` when one fruit was described as a drupe and as
+    an apricot in the same packet.
+
+    Scoped to the path, not the card: a match on ``fruit.type`` says nothing about
+    ``bark.texture``, so live case ``20260510_100131`` still vetoes — that packet read
+    ``bark.texture`` once, as ``fine_scales``, and never as ``smooth_grey``. Explicit
+    ``contradictions`` are unaffected, which is where a genuinely exclusive pair such as
+    ``leaf.arrangement`` opposite-versus-alternate is adjudicated.
+
+    Nor is a *different word for the same reading* disagreement. The card's
+    :class:`~dendro_inspector.schemas.taxon.ValueVocabulary` declares where one organ is
+    described at two levels of detail — an apricot is a drupe, a broad five-lobed palmate
+    leaf is a palmate lobed leaf, beech bark the prompt allows to be less than perfectly
+    smooth with age is still beech bark. Those readings lack the detail the card names, or
+    add detail beyond it; neither denies it. Only declared relations count, so a value
+    nobody has related to the card's own is still disagreement.
+    """
+    declared: dict[str, set[str]] = {}
+    for expectation in card.strong_positive_features:
+        declared.setdefault(expectation.feature, set()).update(expectation.values)
+    vocabulary = card.value_vocabulary
+    satisfied = {
+        observation.feature
+        for observation in observations
+        if observation.value in declared.get(observation.feature, frozenset())
+        and is_positive_reading(observation.value)
+    }
+    return tuple(
+        observation.observation_id
+        for observation in observations
+        if observation.feature in declared
+        and observation.feature not in satisfied
+        and is_positive_reading(observation.value)
+        and not any(
+            vocabulary.compatible(observation.feature, observation.value, value)
+            for value in declared[observation.feature]
+        )
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class ConfidenceExceptionHit:
+    """One card-declared exception that this subject's evidence actually earns."""
+
+    exception: ConfidenceException
+    evidence_ids: tuple[str, ...]
+
+
+def confidence_exception_for(
+    card: TaxonCard,
+    evidence: EvidencePacket,
+    subject_id: str,
+    resolution: Resolution,
+) -> ConfidenceExceptionHit | None:
+    """The strongest exception this card declares that this evidence and claim earn.
+
+    The evidence-tier ceilings exist because "definitely an oak, from the bark" is the most
+    common way this kind of system embarrasses itself (domain prompt FAILURE 8). They were
+    also unconditional, which put them in direct conflict with the same prompt: section 6
+    lists characteristic white papery birch bark among its 95-100 examples, while the
+    ceiling said no bark observation could ever be more than `low`. The card lost silently,
+    so a correctly identified birch could not be reported above 50-69/100 no matter what the
+    photograph showed.
+
+    A default with declared exceptions, not a loosened default. Four conditions, all
+    required, and each one is a thing that went wrong somewhere:
+
+    * the card declares this exact feature *and* value — a pale trunk is not white papery
+      bark, and generic peeling bark is not either;
+    * every required reading is present at decisive trust — reliably read, whether or not it
+      filled the frame, which is the same trust the rest of the policy asks for;
+    * the claim is no narrower than the exception's own ``max_resolution`` — recognising the
+      genus from bark is not the same assertion as naming the species;
+    * nothing in the same packet contradicts the card being lifted, on its own terms or on
+      the terms it wrote out for other taxa. An exception is not a way to out-argue the
+      evidence that the card is wrong.
+
+    Returns the strongest earned exception, so a card may declare several without their
+    order in the file deciding the answer.
+    """
+    if not card.confidence_exceptions:
+        return None
+    match = match_card(card, evidence, subject_id)
+    if match.has_contradiction or match.contradicts_own_card:
+        return None
+    decisive = decisive_observations_for(evidence, subject_id)
+    earned: list[ConfidenceExceptionHit] = []
+    for exception in card.confidence_exceptions:
+        if resolution_rank(resolution) > resolution_rank(exception.max_resolution):
+            continue
+        matched: list[str] = []
+        for expectation in exception.requires:
+            hits = _matches((expectation,), decisive)
+            if not hits:
+                matched = []
+                break
+            matched.extend(hits)
+        if not matched:
+            continue
+        earned.append(
+            ConfidenceExceptionHit(exception=exception, evidence_ids=tuple(dict.fromkeys(matched)))
+        )
+    if not earned:
+        return None
+    return max(earned, key=lambda hit: _CEILING_ORDER[hit.exception.ceiling])
+
+
 def match_card(
     card: TaxonCard,
     evidence: EvidencePacket,
@@ -62,25 +239,39 @@ def match_card(
     """Match one subject's evidence against a taxon card at the shared trust boundary.
 
     Positive hits must be trusted image evidence. Contextual observations stay available for
-    contradiction detection, while high-confidence requirements require full (not capped)
-    positive support.
+    contradiction detection, while high-confidence requirements require decisive support —
+    reliably read, whether or not the feature filled the frame.
     """
     positive = positive_observations_for(evidence, subject_id)
-    full_positive = full_positive_observations_for(evidence, subject_id)
+    # Decisive requirements ask about the *reading*, not the framing. A feature read at
+    # normal or high reliability through a partial view settles the requirement; only doubt
+    # about the reading itself leaves it open. Checking the strictest band here is what made
+    # a clearly-read bark pattern appear as support and as "not visible" in one answer.
+    decisive = decisive_observations_for(evidence, subject_id)
     missing = tuple(
         requirement
         for requirement in card.required_for_high_confidence
-        if not _requirement_satisfied(requirement, full_positive)
+        if not _requirement_satisfied(requirement, decisive)
+    )
+    contextual = contextual_observations_for(evidence, subject_id)
+    contradiction_hits = _matches(card.contradictions, contextual)
+    by_id = {observation.observation_id: observation for observation in contextual}
+    disqualifying_hits = tuple(
+        evidence_id
+        for evidence_id in contradiction_hits
+        if (observation := by_id.get(evidence_id)) is not None
+        and project_observation(observation).supports_identification
+        and tier_of_feature(observation.feature) > EvidenceTier.BARK
     )
     return CardMatch(
         taxon_id=card.taxon_id,
         strong_hits=_matches(card.strong_positive_features, positive),
         supporting_hits=_matches(card.supporting_features, positive),
-        contradiction_hits=_matches(
-            card.contradictions, contextual_observations_for(evidence, subject_id)
-        ),
+        contradiction_hits=contradiction_hits,
+        disqualifying_hits=disqualifying_hits,
         missing_for_high_confidence=missing,
-        full_strong_hits=_matches(card.strong_positive_features, full_positive),
+        full_strong_hits=_matches(card.strong_positive_features, decisive),
+        self_contradiction_hits=self_contradiction_hits(card, positive),
     )
 
 

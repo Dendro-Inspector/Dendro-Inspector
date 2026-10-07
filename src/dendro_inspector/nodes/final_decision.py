@@ -16,12 +16,14 @@ Three rules are absolute here:
 Composition has one limit. A reviewer that names a level in ``recommended_resolution`` or
 ``recommended_confidence`` has stated where its own findings stop; applying those findings
 again on top of the recommendation charges the same correction twice, and three reviewers
-writing up one overclaim charge it three times. The recommendation is therefore a floor for
-model-raised findings — never for deterministic ones, which a model must not be able to
-waive by recommending a comfortable number.
+writing up one overclaim charge it three times. The recommendation is therefore a floor
+only for its own accepted model findings on the same subject. It cannot waive another
+review's findings or deterministic checks. A bare recommendation supplies only a cap.
 """
 
 from __future__ import annotations
+
+import re
 
 from dendro_inspector.graph.executor import NodeContext
 from dendro_inspector.graph.state import GraphState
@@ -30,6 +32,7 @@ from dendro_inspector.knowledge.candidate_validation import (
     candidate_support_tier,
 )
 from dendro_inspector.knowledge.comparison_cards import (
+    deprioritise_saturated_photos,
     drop_resolved_photos,
     follow_up_photos,
     photo_bindings,
@@ -39,34 +42,50 @@ from dendro_inspector.knowledge.evidence_hierarchy import (
     bark_only,
     confidence_band,
     confidence_ceiling,
-    full_positive_observations_for,
+    decisive_observations_for,
     resolution_ceiling,
+    tier_of_feature,
 )
-from dendro_inspector.knowledge.taxon_cards import card_value_vocabulary, match_card
+from dendro_inspector.knowledge.loader import KnowledgeBase
+from dendro_inspector.knowledge.taxon_cards import (
+    card_value_vocabulary,
+    confidence_exception_for,
+    match_card,
+)
 from dendro_inspector.nodes.photo_planner import (
     attachment_request,
     choose_request,
     effective_object_type,
+    planned_attachment_request,
 )
 from dendro_inspector.schemas.candidates import Candidate, CandidateSet, SupportStrength
 from dendro_inspector.schemas.decisions import (
     AuthorityCheckStatus,
+    ConfidenceStep,
+    ConfidenceStepSource,
+    DecisionDerivation,
     DecisionStatus,
     FinalDecision,
     PhotoRequest,
+    RerankSource,
+    ResolutionBound,
+    ResolutionBoundSource,
     UserClaimVerdict,
 )
 from dendro_inspector.schemas.evidence import EvidencePacket
 from dendro_inspector.schemas.input import DeclaredObjectType
 from dendro_inspector.schemas.reviews import (
+    AdmittedRecommendation,
     FindingCategory,
     FindingOrigin,
     RequiredAction,
+    ReviewFinding,
     ReviewSynthesis,
     Severity,
 )
 from dendro_inspector.schemas.taxon import (
     Confidence,
+    ExceptionCeiling,
     Resolution,
     TaxonCard,
     TaxonIdentity,
@@ -77,6 +96,15 @@ from dendro_inspector.schemas.taxon import (
 )
 
 NODE = "final_decision"
+
+#: How an unmet decisive requirement is described to the reader.
+#:
+#: Deliberately not "not visible". That phrasing is a claim about the photograph, and it was
+#: wrong whenever the feature was in frame but failed a trust gate — the same answer would
+#: quote that observation as its support two lines earlier. "Not established" describes what
+#: the gate actually decided, and does not send the user to re-shoot a photograph that
+#: already showed the thing.
+MISSING_DECISIVE_PHRASE = "Decisive feature not established"
 
 #: Candidate support strength maps to a confidence ceiling, never to certainty.
 _SCORE_TO_CONFIDENCE: dict[SupportStrength, Confidence] = {
@@ -125,6 +153,16 @@ def _actions_for(state: GraphState, subject_id: str) -> tuple[RequiredAction, ..
     )
 
 
+def _findings_for(state: GraphState, subject_id: str) -> tuple[ReviewFinding, ...]:
+    """Accepted findings in the order their confidence operations are composed."""
+    return tuple(
+        finding
+        for synthesis in _syntheses(state)
+        for finding in synthesis.accepted_findings
+        if finding.subject_id in (None, subject_id)
+    )
+
+
 def _deterministic_actions_for(state: GraphState, subject_id: str) -> tuple[RequiredAction, ...]:
     """Actions the code raised against itself, which a model's recommendation cannot waive."""
     return tuple(
@@ -139,40 +177,50 @@ def _deterministic_actions_for(state: GraphState, subject_id: str) -> tuple[Requ
 def _single_admitted_rerank(
     synthesis: ReviewSynthesis,
     subject_id: str,
-) -> CandidateSet | None:
-    rankings = tuple(
-        rerank.candidate_set
+) -> tuple[CandidateSet, str] | None:
+    admitted = tuple(
+        rerank
         for rerank in synthesis.admitted_reranks
         if rerank.candidate_set.subject_id == subject_id
     )
-    if not rankings:
+    if not admitted:
         return None
-    signatures = {candidate_ranking_signature(ranking) for ranking in rankings}
-    return rankings[0] if len(signatures) == 1 else None
+    signatures = {candidate_ranking_signature(rerank.candidate_set) for rerank in admitted}
+    if len(signatures) != 1:
+        return None
+    return admitted[0].candidate_set, admitted[0].finding_id
+
+
+def _apply_reranking_with_source(
+    state: GraphState,
+    candidate_set: CandidateSet,
+) -> tuple[CandidateSet, RerankSource, str | None]:
+    """Return the effective ranking and the exact finding that supplied it."""
+    passes: tuple[tuple[RerankSource, ReviewSynthesis | None], ...] = (
+        ("arbiter", state.arbiter_synthesis),
+        ("internal", state.synthesis),
+    )
+    for source, synthesis in passes:
+        if synthesis is None:
+            continue
+        for_subject = tuple(
+            rerank
+            for rerank in synthesis.admitted_reranks
+            if rerank.candidate_set.subject_id == candidate_set.subject_id
+        )
+        if not for_subject:
+            continue
+        selected = _single_admitted_rerank(synthesis, candidate_set.subject_id)
+        if selected is None:
+            return candidate_set, "none", None
+        ranking, finding_id = selected
+        return ranking, source, finding_id
+    return candidate_set, "none", None
 
 
 def apply_reranking(state: GraphState, candidate_set: CandidateSet) -> CandidateSet:
     """Consume finding-bound validated reranks only, preferring an unambiguous arbiter."""
-    arbiter = state.arbiter_synthesis
-    if arbiter is not None:
-        arbiter_for_subject = tuple(
-            rerank
-            for rerank in arbiter.admitted_reranks
-            if rerank.candidate_set.subject_id == candidate_set.subject_id
-        )
-        if arbiter_for_subject:
-            return _single_admitted_rerank(arbiter, candidate_set.subject_id) or candidate_set
-
-    internal = state.synthesis
-    if internal is not None:
-        internal_for_subject = tuple(
-            rerank
-            for rerank in internal.admitted_reranks
-            if rerank.candidate_set.subject_id == candidate_set.subject_id
-        )
-        if internal_for_subject:
-            return _single_admitted_rerank(internal, candidate_set.subject_id) or candidate_set
-    return candidate_set
+    return _apply_reranking_with_source(state, candidate_set)[0]
 
 
 def cap_resolution(claimed: Resolution, card: TaxonCard | None) -> Resolution:
@@ -200,17 +248,97 @@ def normalise_claim(text: str) -> str:
     return "".join(character for character in text.lower().strip() if character.isalnum())
 
 
-def _claim_matches(claim: str, taxon_id: str, display_name: str, aliases: tuple[str, ...]) -> bool:
-    normalised = normalise_claim(claim)
-    if not normalised:
-        return False
-    candidates = {normalise_claim(taxon_id), normalise_claim(display_name)}
-    candidates.update(normalise_claim(alias) for alias in aliases)
-    return any(
-        normalised == candidate or normalised in candidate or candidate in normalised
-        for candidate in candidates
-        if candidate
+#: Words that turn the taxon token following them into a denial rather than a claim. Full
+#: negation semantics — "it is *not* an oak" as a testable statement the system could go on
+#: to check — are a separate decision; this only stops the denial being read as the claim.
+_NEGATIONS: frozenset[str] = frozenset({"не", "ні", "not", "no"})
+
+#: Below this length a name matches only as a whole token. "a" is inside twenty-two of the
+#: twenty-five cards and "дуб" is inside "дубок"; "quercus" is inside nothing by accident.
+_SUBSTRING_MIN = 4
+
+
+def _claim_words(claim: str) -> tuple[str, ...]:
+    """Split a free-text claim into normalised word tokens, in the order they were written."""
+    words = (normalise_claim(word) for word in re.findall(r"\w+", claim))
+    return tuple(word for word in words if word)
+
+
+def _asserted_words(claim: str) -> tuple[str, ...]:
+    """The words the user asserted, with each negation and the word it denies removed."""
+    kept: list[str] = []
+    denied = False
+    for word in _claim_words(claim):
+        if word in _NEGATIONS:
+            denied = True
+            continue
+        if denied:
+            denied = False
+            continue
+        kept.append(word)
+    return tuple(kept)
+
+
+def claim_is_wholly_negated(claim: str) -> bool:
+    """Whether the user named something and then took every name back."""
+    return bool(_claim_words(claim)) and not _asserted_words(claim)
+
+
+def _card_names(taxon_id: str, card: TaxonCard) -> tuple[tuple[str, bool], ...]:
+    """Each comparable form of a card's name, with whether it may match as a substring.
+
+    The display name is a composite label: "Quercus (дуб)" reduces to a string nobody types,
+    and letting it match loosely makes it the longest match for any claim naming either half.
+    It is matched whole or not at all.
+    """
+    forms = (
+        (normalise_claim(taxon_id), True),
+        (normalise_claim(card.display_name), False),
+        *((normalise_claim(alias), True) for alias in card.aliases),
     )
+    seen: dict[str, bool] = {}
+    for form, loose in forms:
+        if form:
+            seen[form] = seen.get(form, False) or loose
+    return tuple(seen.items())
+
+
+def _match_weight(word: str, names: tuple[tuple[str, bool], ...]) -> int:
+    """Length of the longest card name this word matches, or zero for no match.
+
+    Substring matching survives for long names, because people write "сосни" and "quercus
+    robur" and mean the card; it is withdrawn when either side is short, because that is how
+    a single letter came to match most of the pack.
+    """
+    best = 0
+    for name, loose in names:
+        if word == name or (
+            loose
+            and len(name) >= _SUBSTRING_MIN
+            and len(word) >= _SUBSTRING_MIN
+            and (name in word or word in name)
+        ):
+            best = max(best, len(name))
+    return best
+
+
+def resolve_user_claim(claim: str, knowledge: KnowledgeBase) -> tuple[str, ...]:
+    """Every taxon the user's claim names, longest matching name first.
+
+    A claim is a disjunction, not a lookup. "дуб або ясен" names two taxa and the user is
+    right if either is the answer; resolving it to whichever card the catalogue happens to
+    list first makes the verdict an accident of iteration order.
+    """
+    weights: dict[str, int] = {}
+    for word in _asserted_words(claim):
+        for taxon_id in knowledge.available_taxon_ids():
+            card = knowledge.try_taxon(taxon_id)
+            if card is None:
+                continue
+            weight = _match_weight(word, _card_names(taxon_id, card))
+            if weight > weights.get(taxon_id, 0):
+                weights[taxon_id] = weight
+    return tuple(sorted(weights, key=lambda taxon_id: (-weights[taxon_id], taxon_id)))
 
 
 def rule_on_user_claim(
@@ -231,25 +359,58 @@ def rule_on_user_claim(
     if not claim:
         return UserClaimVerdict.NOT_PROVIDED
 
-    matched: str | None = None
-    for taxon_id in ctx.knowledge.available_taxon_ids():
-        card = ctx.knowledge.try_taxon(taxon_id)
-        if card is not None and _claim_matches(claim, taxon_id, card.display_name, card.aliases):
-            matched = taxon_id
-            break
-
-    if matched is None:
+    matched = resolve_user_claim(claim, ctx.knowledge)
+    if not matched:
+        if claim_is_wholly_negated(claim):
+            # They said what it is not. That is not a version this system can rule on, and
+            # reading the denial as the claim would rule against the taxon they excluded.
+            ctx.recorder.record_negated_claim()
         # We do not have a card for what they said. That is our gap, not their error.
         return UserClaimVerdict.POSSIBLE
 
+    # A hedge is not a weaker claim, it is several claims. Ruling on the most favourable
+    # member is the only reading that does not punish a user for being careful.
+    return max(
+        (
+            _rule_on_one_taxon(
+                state, ctx, subject_id, candidate_set, evidence, selected_taxon, taxon_id
+            )
+            for taxon_id in matched
+        ),
+        key=_claim_favourability,
+    )
+
+
+#: Most favourable first. A disjunction is ruled on by its best member.
+_CLAIM_FAVOURABILITY: dict[UserClaimVerdict, int] = {
+    UserClaimVerdict.ACCEPTED: 3,
+    UserClaimVerdict.POSSIBLE: 2,
+    UserClaimVerdict.DOUBTFUL: 1,
+    UserClaimVerdict.REJECTED: 0,
+}
+
+
+def _claim_favourability(verdict: UserClaimVerdict) -> int:
+    return _CLAIM_FAVOURABILITY.get(verdict, 0)
+
+
+def _rule_on_one_taxon(
+    state: GraphState,
+    ctx: NodeContext,
+    subject_id: str,
+    candidate_set: CandidateSet,
+    evidence: EvidencePacket,
+    selected_taxon: str | None,
+    matched: str,
+) -> UserClaimVerdict:
+    """Rule on one taxon the claim named. The restraint clauses, in the prompt's order."""
     if matched == selected_taxon:
         return UserClaimVerdict.ACCEPTED
 
     in_candidates = any(candidate.taxon == matched for candidate in candidate_set.ordered)
     card = ctx.knowledge.try_taxon(matched)
-    contradicted = card is not None and match_card(card, evidence, subject_id).has_contradiction
+    contradicted = card is not None and match_card(card, evidence, subject_id).is_disqualified
 
-    # Restraint clauses, in the order the prompt states them.
     if bark_only(evidence, subject_id) or state.case.user_has_field_context:
         return (
             UserClaimVerdict.POSSIBLE
@@ -264,22 +425,51 @@ def rule_on_user_claim(
     return UserClaimVerdict.DOUBTFUL
 
 
-def _broadest_recommendation(state: GraphState) -> Resolution | None:
-    """The broadest level any reviewer explicitly recommended, across both passes."""
+def _recommendations_for(state: GraphState, subject_id: str) -> tuple[AdmittedRecommendation, ...]:
+    recommendations: list[AdmittedRecommendation] = []
+    for synthesis in _syntheses(state):
+        if synthesis.recommendations is not None:
+            recommendations.extend(
+                item for item in synthesis.recommendations if item.subject_id == subject_id
+            )
+        elif state.subject_ids == (subject_id,):
+            # Released/custom synthesis can still supply conservative single-subject caps.
+            # Without a finding binding, a legacy aggregate cannot waive any downgrade.
+            recommendations.append(
+                AdmittedRecommendation(
+                    subject_id=subject_id,
+                    resolution=synthesis.resolution_delta,
+                    confidence=synthesis.confidence_delta,
+                )
+            )
+    return tuple(recommendations)
+
+
+def _broadest_recommendation(
+    state: GraphState, subject_id: str, finding: ReviewFinding | None = None
+) -> Resolution | None:
+    """This subject's cap, or the floor bound to one exact model finding."""
+    if state.is_abstained(subject_id):
+        # The abstention bound already incorporates this subject's review recommendations.
+        return None
     recommendations = [
-        synthesis.resolution_delta
-        for synthesis in _syntheses(state)
-        if synthesis.resolution_delta is not None
+        item.resolution
+        for item in _recommendations_for(state, subject_id)
+        if item.resolution is not None and (finding is None or item.finding == finding)
     ]
     return min(recommendations, key=resolution_rank) if recommendations else None
 
 
-def _lowest_recommendation(state: GraphState) -> Confidence | None:
-    """The lowest confidence any reviewer explicitly recommended, across both passes."""
+def _lowest_recommendation(
+    state: GraphState, subject_id: str, finding: ReviewFinding | None = None
+) -> Confidence | None:
+    """This subject's cap, or the floor bound to one exact model finding."""
+    if state.is_abstained(subject_id):
+        return None
     recommendations = [
-        synthesis.confidence_delta
-        for synthesis in _syntheses(state)
-        if synthesis.confidence_delta is not None
+        item.confidence
+        for item in _recommendations_for(state, subject_id)
+        if item.confidence is not None and (finding is None or item.finding == finding)
     ]
     return min(recommendations, key=confidence_rank) if recommendations else None
 
@@ -290,38 +480,51 @@ def resolve_resolution(
     leader: Candidate,
     card: TaxonCard | None,
     tier: EvidenceTier,
-) -> Resolution:
+) -> tuple[Resolution, tuple[ResolutionBound, ...], ResolutionBoundSource, bool]:
     """Compose every upper bound first, then apply at most one explicit downgrade."""
-    recommended = _broadest_recommendation(state)
+    recommended = _broadest_recommendation(state, subject_id)
     bounds = [
-        leader.resolution,
-        cap_resolution(leader.resolution, card),
-        resolution_ceiling(tier),
+        ResolutionBound(source="proposed", value=leader.resolution),
+        ResolutionBound(source="card_cap", value=cap_resolution(leader.resolution, card)),
+        ResolutionBound(source="tier_ceiling", value=resolution_ceiling(tier)),
     ]
     if recommended is not None:
-        bounds.append(recommended)
-    resolution = min(bounds, key=resolution_rank)
+        bounds.append(ResolutionBound(source="reviewer_recommendation", value=recommended))
+    if state.is_abstained(subject_id):
+        abstention = state.abstention_for(subject_id)
+        abstention_bound = (
+            abstention.resolution
+            if abstention is not None
+            else state.synthesis.resolution_delta
+            if state.synthesis is not None and state.subject_ids == (subject_id,)
+            else None
+        )
+        if abstention_bound is not None:
+            bounds.append(ResolutionBound(source="abstention", value=abstention_bound))
+
+    binding = min(bounds, key=lambda bound: resolution_rank(bound.value))
+    resolution = binding.value
     already_broadened = resolution_rank(resolution) < resolution_rank(leader.resolution)
 
     # A reviewer that names a level has said where to stop. Reviewers who write "species
     # overreaches, genus is the highest defensible level" file a lower-resolution finding to
     # say so, and applying that finding on top of the genus they asked for lands on family —
     # one step below the answer every reviewer recommended. The recommendation is therefore a
-    # floor as well as a ceiling, for findings the models raised.
-    honoured = recommended is not None and resolution_rank(resolution) <= resolution_rank(
-        recommended
-    )
-    actions = (
-        _deterministic_actions_for(state, subject_id)
-        if honoured
-        else _actions_for(state, subject_id)
-    )
+    # floor as well as a ceiling, for that review's own accepted model findings.
+    actions = list(_deterministic_actions_for(state, subject_id))
+    for finding in _findings_for(state, subject_id):
+        if finding.origin is not FindingOrigin.MODEL:
+            continue
+        own_bound = _broadest_recommendation(state, subject_id, finding)
+        if own_bound is None or resolution_rank(resolution) > resolution_rank(own_bound):
+            actions.append(finding.required_action)
 
     # A lower-resolution finding commonly records the same overclaim already represented by
     # a card, evidence, or synthesis bound. Do not apply the same correction twice.
-    if not already_broadened and RequiredAction.LOWER_RESOLUTION in actions:
+    action_applied = not already_broadened and RequiredAction.LOWER_RESOLUTION in actions
+    if action_applied:
         resolution = lower_resolution(resolution)
-    return resolution
+    return resolution, tuple(bounds), binding.source, action_applied
 
 
 def resolve_identity(card: TaxonCard | None, resolution: Resolution) -> TaxonIdentity | None:
@@ -355,6 +558,32 @@ def _nearest_alternative(
     return None
 
 
+#: What each declared ceiling means on this project's three-valued confidence scale.
+#: `VERY_HIGH` is `HIGH` plus the top display band — see `confidence_band`.
+_EXCEPTION_CONFIDENCE: dict[ExceptionCeiling, Confidence] = {
+    ExceptionCeiling.MEDIUM: Confidence.MEDIUM,
+    ExceptionCeiling.HIGH: Confidence.HIGH,
+    ExceptionCeiling.VERY_HIGH: Confidence.HIGH,
+}
+
+
+def _reaches_the_top_band(
+    card: TaxonCard | None,
+    evidence: EvidencePacket,
+    subject_id: str,
+    resolution: Resolution,
+) -> bool:
+    """Whether a card-declared exception earns this claim the 95-100 band.
+
+    Recomputed from the same pure function that raised the ceiling rather than carried out
+    of `resolve_confidence`, so the band can never disagree with the step that produced it.
+    """
+    if card is None:
+        return False
+    hit = confidence_exception_for(card, evidence, subject_id, resolution)
+    return hit is not None and hit.exception.ceiling is ExceptionCeiling.VERY_HIGH
+
+
 def resolve_confidence(
     state: GraphState,
     subject_id: str,
@@ -362,48 +591,127 @@ def resolve_confidence(
     card: TaxonCard | None,
     evidence: EvidencePacket,
     tier: EvidenceTier,
-) -> Confidence:
+    resolution: Resolution = Resolution.GENUS,
+) -> tuple[Confidence, tuple[ConfidenceStep, ...]]:
+    """Compose the confidence band and the ordered ledger of every step considered.
+
+    The ledger records the steps that were skipped as well as the ones that bit. A verdict
+    that arrives at ``low`` because one guardrail fired reads identically to one that arrived
+    there because four reviewers each charged a step, and telling those apart afterwards is
+    the whole reason the record exists.
+    """
     confidence = _SCORE_TO_CONFIDENCE[leader.score]
+    steps: list[ConfidenceStep] = [
+        ConfidenceStep(source="seed", before=confidence, after=confidence, applied=True)
+    ]
+
+    def step(
+        source: ConfidenceStepSource,
+        before: Confidence,
+        after: Confidence,
+        *,
+        applied: bool,
+        finding_id: str | None = None,
+    ) -> None:
+        steps.append(
+            ConfidenceStep(
+                source=source,
+                finding_id=finding_id,
+                before=before,
+                after=after,
+                applied=applied,
+            )
+        )
 
     # The evidence hierarchy ceiling comes first and is not negotiable. Bark caps at low
-    # however characteristic it looks — FAILURE 8.
+    # however characteristic it looks — FAILURE 8 — with one narrow, card-declared escape
+    # below.
     tier_cap = confidence_ceiling(tier)
-    if confidence_rank(tier_cap) < confidence_rank(confidence):
+    capped = confidence_rank(tier_cap) < confidence_rank(confidence)
+    before = confidence
+    if capped:
         confidence = tier_cap
+    step("tier_cap", before, confidence, applied=capped)
+
+    # The card-declared exception. Everything narrowing it lives on the card and in
+    # `confidence_exception_for`; what happens here is only the arithmetic, so the policy
+    # cannot be read one way by this node and another way by anything else that asks.
+    # It raises a ceiling and never lowers one.
+    exception = (
+        confidence_exception_for(card, evidence, subject_id, resolution)
+        if card is not None
+        else None
+    )
+    if exception is not None:
+        raised = _EXCEPTION_CONFIDENCE[exception.exception.ceiling]
+        before = confidence
+        lifts = confidence_rank(raised) > confidence_rank(confidence)
+        if lifts:
+            confidence = raised
+        step("diagnostic_exception", before, confidence, applied=lifts)
 
     if card is not None:
         match = match_card(card, evidence, subject_id)
-        if match.missing_for_high_confidence and confidence is Confidence.HIGH:
+        short = bool(match.missing_for_high_confidence) and confidence is Confidence.HIGH
+        before = confidence
+        if short:
             confidence = Confidence.MEDIUM
+        step("requirement_cap", before, confidence, applied=short)
 
-    recommended = _lowest_recommendation(state)
-    if recommended is not None and confidence_rank(recommended) < confidence_rank(confidence):
-        confidence = recommended
+    recommended = _lowest_recommendation(state, subject_id)
+    if recommended is not None:
+        lowers = confidence_rank(recommended) < confidence_rank(confidence)
+        before = confidence
+        if lowers:
+            confidence = recommended
+        step("reviewer_recommendation", before, confidence, applied=lowers)
 
     # Each accepted finding costs a full step, and three reviewers writing up the same
     # overclaim cost three — which is how a claim the reviewers themselves called `high`
     # arrives as `low`. A model's own recommendation is the floor for the findings that
     # model raised; the deterministic guardrails keep biting past it, because a model must
     # never be able to waive them by recommending a comfortable number.
-    model_downgrades = sum(
-        1 for action in _actions_for(state, subject_id) if action is RequiredAction.LOWER_CONFIDENCE
-    ) - sum(
-        1
-        for action in _deterministic_actions_for(state, subject_id)
-        if action is RequiredAction.LOWER_CONFIDENCE
-    )
-    for _ in range(model_downgrades):
-        if recommended is not None and confidence_rank(confidence) <= confidence_rank(recommended):
-            break
-        confidence = lower_confidence(confidence)
-
-    for action in _deterministic_actions_for(state, subject_id):
-        if action is RequiredAction.LOWER_CONFIDENCE:
+    findings = _findings_for(state, subject_id)
+    for finding in findings:
+        if finding.required_action is not RequiredAction.LOWER_CONFIDENCE:
+            continue
+        if finding.origin is FindingOrigin.DETERMINISTIC:
+            continue
+        own_bound = _lowest_recommendation(state, subject_id, finding)
+        floored = own_bound is not None and confidence_rank(confidence) <= confidence_rank(
+            own_bound
+        )
+        before = confidence
+        if not floored:
             confidence = lower_confidence(confidence)
+        step(
+            "model_finding",
+            before,
+            confidence,
+            applied=not floored,
+            finding_id=finding.finding_id,
+        )
 
-    if state.abstained:
+    for finding in findings:
+        if finding.required_action is not RequiredAction.LOWER_CONFIDENCE:
+            continue
+        if finding.origin is not FindingOrigin.DETERMINISTIC:
+            continue
+        before = confidence
+        confidence = lower_confidence(confidence)
+        step(
+            "deterministic_finding",
+            before,
+            confidence,
+            applied=True,
+            finding_id=finding.finding_id,
+        )
+
+    if state.is_abstained(subject_id):
+        before = confidence
         confidence = Confidence.LOW
-    return confidence
+        step("abstention", before, confidence, applied=True)
+    return confidence, tuple(steps)
 
 
 def _unsupported_user_claim(state: GraphState, evidence: EvidencePacket, subject_id: str) -> bool:
@@ -434,7 +742,7 @@ def decide_status(
         return DecisionStatus.INSUFFICIENT_EVIDENCE
 
     card = ctx.knowledge.try_taxon(taxon)
-    if card is not None and match_card(card, evidence, subject_id).has_contradiction:
+    if card is not None and match_card(card, evidence, subject_id).is_disqualified:
         return DecisionStatus.CONFLICTING_EVIDENCE
     if _unsupported_user_claim(state, evidence, subject_id):
         return DecisionStatus.UNSUPPORTED_USER_CLAIM
@@ -478,7 +786,7 @@ def _contradiction_summary(
     card = ctx.knowledge.try_taxon(selected.taxon_id)
     if card is not None:
         by_id = {observation.observation_id: observation for observation in evidence.observations}
-        for evidence_id in match_card(card, evidence, subject_id).contradiction_hits:
+        for evidence_id in match_card(card, evidence, subject_id).disqualifying_hits:
             observation = by_id.get(evidence_id)
             if observation is not None:
                 return f"{observation.feature} = {observation.value}"
@@ -540,11 +848,24 @@ def _next_photo(
     vocabulary = card_value_vocabulary(candidate_cards)
     resolved = frozenset(
         observation.feature
-        for observation in full_positive_observations_for(evidence, candidate_set.subject_id)
+        for observation in decisive_observations_for(evidence, candidate_set.subject_id)
         if observation.value in vocabulary.get(observation.feature, frozenset())
     )
+    # The tier this subject has already reached at decisive trust. A photograph resolving
+    # only features at or below it cannot raise the claim, however well it is shot.
+    reached_tier = max(
+        (
+            tier_of_feature(observation.feature)
+            for observation in decisive_observations_for(evidence, candidate_set.subject_id)
+        ),
+        default=EvidenceTier.CONTEXT,
+    )
     comparison_cards = ctx.knowledge.comparisons_for(taxa)
-    photos = follow_up_photos(comparison_cards, taxa, resolved)
+    photos = deprioritise_saturated_photos(
+        follow_up_photos(comparison_cards, taxa, resolved),
+        photo_bindings(ctx.knowledge.comparisons(), frozenset(vocabulary)),
+        reached_tier,
+    )
     comparison_request = bool(photos)
     if not photos:
         # No look-alike group applies, so the leader's own follow-up list is all there is.
@@ -553,11 +874,19 @@ def _next_photo(
         # whose every usable feature this subject has already answered.
         card = ctx.knowledge.try_taxon(leader.taxon)
         usable = frozenset(card_value_vocabulary((card,))) if card is not None else frozenset()
-        photos = drop_resolved_photos(
-            ctx.knowledge.follow_up_for((leader.taxon,)),
-            photo_bindings(ctx.knowledge.comparisons(), usable),
-            resolved,
+        own_bindings = photo_bindings(ctx.knowledge.comparisons(), usable)
+        photos = deprioritise_saturated_photos(
+            drop_resolved_photos(
+                ctx.knowledge.follow_up_for((leader.taxon,)),
+                own_bindings,
+                resolved,
+            ),
+            own_bindings,
+            reached_tier,
         )
+    ownership_first = planned_attachment_request(state, candidate_set.subject_id, photos)
+    if ownership_first is not None:
+        return ownership_first
     if not photos:
         return None
     return PhotoRequest(
@@ -584,7 +913,7 @@ def _unresolved(
             "be different taxa."
         )
     questions.extend(
-        f"Decisive feature not visible: {item}" for item in leader.missing_decisive_features
+        f"{MISSING_DECISIVE_PHRASE}: {item}" for item in leader.missing_decisive_features
     )
     questions.extend(
         finding.summary
@@ -601,16 +930,40 @@ def decide_subject_base(
     candidate_set: CandidateSet,
     *,
     already_reranked: bool = False,
+    record: bool = True,
 ) -> FinalDecision:
+    """Compose one subject's verdict, recording how it was composed unless it is a probe.
+
+    ``record`` is off for the attachment counterfactual, which asks what a different evidence
+    world would have said. That world's arithmetic is real but it is not this verdict's, and
+    a trace that carried it would answer "how was this composed?" with someone else's answer.
+    """
     evidence = state.evidence
     if evidence is None:  # pragma: no cover - routing guarantees this; loud if it ever breaks
         msg = "final decision reached without an evidence packet"
         raise RuntimeError(msg)
 
-    reranked = candidate_set if already_reranked else apply_reranking(state, candidate_set)
+    reranked, rerank_source, rerank_finding_id = (
+        (candidate_set, "none", None)
+        if already_reranked
+        else _apply_reranking_with_source(state, candidate_set)
+    )
     leader = reranked.leader
     subject_id = reranked.subject_id
+
+    def keep(derivation: DecisionDerivation) -> None:
+        if record:
+            ctx.recorder.record_derivation(derivation)
+
     if leader is None:
+        keep(
+            DecisionDerivation.terminal(subject_id).model_copy(
+                update={
+                    "rerank_source": rerank_source,
+                    "rerank_finding_id": rerank_finding_id,
+                }
+            )
+        )
         return FinalDecision(
             subject_id=subject_id,
             status=DecisionStatus.INSUFFICIENT_EVIDENCE,
@@ -620,9 +973,48 @@ def decide_subject_base(
 
     card = ctx.knowledge.try_taxon(leader.taxon)
     tier = candidate_support_tier(leader, evidence, subject_id)
-    resolution_bound = resolve_resolution(state, subject_id, leader, card, tier)
+    resolution_bound, bounds, binding_source, action_applied = resolve_resolution(
+        state, subject_id, leader, card, tier
+    )
+    derivation = DecisionDerivation(
+        subject_id=subject_id,
+        proposed_strength=leader.score,
+        effective_strength=leader.score,
+        resolution_bounds=bounds,
+        resolution_binding_source=binding_source,
+        resolution_action_applied=action_applied,
+        confidence_steps=(
+            ConfidenceStep(
+                source="seed",
+                before=_SCORE_TO_CONFIDENCE[leader.score],
+                after=_SCORE_TO_CONFIDENCE[leader.score],
+                applied=True,
+            ),
+        ),
+        rerank_source=rerank_source,
+        rerank_finding_id=rerank_finding_id,
+    )
+
     selected = resolve_identity(card, resolution_bound)
     if selected is None:
+        # The bound was composed; no declared identity exists at or broader than it. The
+        # confidence ledger stops there, and the verdict is floored rather than composed.
+        seed = _SCORE_TO_CONFIDENCE[leader.score]
+        keep(
+            derivation.model_copy(
+                update={
+                    "confidence_steps": (
+                        *derivation.confidence_steps,
+                        ConfidenceStep(
+                            source="no_identity",
+                            before=seed,
+                            after=Confidence.LOW,
+                            applied=True,
+                        ),
+                    )
+                }
+            )
+        )
         verdict = rule_on_user_claim(state, ctx, subject_id, reranked, evidence, None)
         return FinalDecision(
             subject_id=subject_id,
@@ -638,7 +1030,10 @@ def decide_subject_base(
         )
 
     resolution = selected.resolution
-    confidence = resolve_confidence(state, subject_id, leader, card, evidence, tier)
+    confidence, confidence_steps = resolve_confidence(
+        state, subject_id, leader, card, evidence, tier, resolution
+    )
+    keep(derivation.model_copy(update={"confidence_steps": confidence_steps}))
     verdict = rule_on_user_claim(state, ctx, subject_id, reranked, evidence, selected.taxon_id)
     return FinalDecision(
         subject_id=subject_id,
@@ -665,7 +1060,11 @@ def decide_subject_base(
         arbiter_used=state.arbiter_used,
         user_claim_verdict=verdict,
         evidence_tier=int(tier),
-        confidence_band=confidence_band(confidence, tier),
+        confidence_band=confidence_band(
+            confidence,
+            tier,
+            decisive_reading=_reaches_the_top_band(card, evidence, subject_id, resolution),
+        ),
     )
 
 
@@ -682,6 +1081,9 @@ def decide_subject(
     the record describes the world every model downstream has already been reasoning in.
     """
     decision = decide_subject_base(state, ctx, candidate_set)
+    decision = decision.model_copy(
+        update={"abstained": state.is_abstained(candidate_set.subject_id)}
+    )
     check = state.authority_check_for(candidate_set.subject_id)
     if check is None or check.status is not AuthorityCheckStatus.SENSITIVE:
         return decision.model_copy(
@@ -723,7 +1125,8 @@ async def run(state: GraphState, ctx: NodeContext) -> GraphState:
     if state.decisions:
         # The photo-planner path already produced terminal decisions.
         return state
-    if state.evidence is None or not state.candidate_sets:
+    if state.evidence is None or not state.evidence.subjects:
+        ctx.recorder.record_derivation(DecisionDerivation.terminal("case"))
         return state.evolve(
             decisions=(
                 FinalDecision(
@@ -738,8 +1141,17 @@ async def run(state: GraphState, ctx: NodeContext) -> GraphState:
                 ),
             )
         )
-    return state.evolve(
-        decisions=tuple(
-            decide_subject(state, ctx, candidate_set) for candidate_set in state.candidate_sets
-        )
-    )
+    decisions = []
+    for subject_id in state.subject_ids:
+        candidate_set = state.candidates_for(subject_id)
+        if candidate_set is None:
+            # A detected subject with insufficient evidence still receives its own explicit
+            # terminal result. A reviewer cannot resurrect a subject excluded by quality.
+            decisions.append(
+                decide_subject_base(
+                    state, ctx, CandidateSet(subject_id=subject_id), already_reranked=True
+                ).model_copy(update={"abstained": state.is_abstained(subject_id)})
+            )
+        else:
+            decisions.append(decide_subject(state, ctx, candidate_set))
+    return state.evolve(decisions=tuple(decisions))

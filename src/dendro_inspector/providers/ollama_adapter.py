@@ -23,6 +23,8 @@ from dendro_inspector.providers.base import (
     ProviderUnavailableError,
     ResponseT,
     StructuredOutputError,
+    UsageSink,
+    usage_sink_of,
 )
 from dendro_inspector.providers.schema_compat import to_ollama_schema
 
@@ -72,7 +74,24 @@ class OllamaProvider:
     def _image_payload(image: ImageInput) -> str:
         return base64.b64encode(image.read_bytes()).decode("ascii")
 
-    def _call(self, *, prompt: str, images: Sequence[ImageInput], schema: dict[str, Any]) -> str:
+    @staticmethod
+    def _record_usage(payload: Mapping[str, Any], usage: UsageSink | None) -> None:
+        """Ollama names its counts `prompt_eval_count` and `eval_count`."""
+        if usage is None:
+            return
+        usage.record(
+            input_tokens=payload.get("prompt_eval_count"),
+            output_tokens=payload.get("eval_count"),
+        )
+
+    def _call(
+        self,
+        *,
+        prompt: str,
+        images: Sequence[ImageInput],
+        schema: dict[str, Any],
+        usage: UsageSink | None = None,
+    ) -> str:
         message: dict[str, Any] = {"role": "user", "content": prompt}
         if images:
             message["images"] = [self._image_payload(image) for image in images]
@@ -119,6 +138,7 @@ class OllamaProvider:
             msg = f"Ollama at {self._host()} did not respond within {self._timeout}s"
             raise ProviderUnavailableError(msg) from exc
 
+        self._record_usage(payload, usage)
         try:
             content: str = payload["message"]["content"]
         except (KeyError, TypeError) as exc:
@@ -137,7 +157,13 @@ class OllamaProvider:
     ) -> ResponseT:
         del role
         schema = to_ollama_schema(response_model.model_json_schema())
-        raw = await asyncio.to_thread(self._call, prompt=prompt, images=images, schema=schema)
+        raw = await asyncio.to_thread(
+            self._call,
+            prompt=prompt,
+            images=images,
+            schema=schema,
+            usage=usage_sink_of(metadata),
+        )
         try:
             return response_model.model_validate(json.loads(raw))
         except (json.JSONDecodeError, ValidationError) as exc:

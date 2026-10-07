@@ -19,6 +19,13 @@ import time
 from pathlib import Path
 from typing import Any
 
+from dendro_inspector.observability.upstream_usage import (
+    numeric as _numeric,
+)
+from dendro_inspector.observability.upstream_usage import (
+    upstream_usage as _upstream_usage,
+)
+
 CONFIGURATION_ID = re.compile(r"^[a-z][a-z0-9]*(?:_[a-z0-9]+)*_v[1-9][0-9]*$")
 BATCH_ID = re.compile(r"^[a-z0-9][a-z0-9-]{0,79}$")
 DATASET_VERSION = 1
@@ -199,62 +206,6 @@ def utf8_subprocess_environment() -> dict[str, str]:
     return environment
 
 
-def _numeric(value: Any) -> int | float | None:
-    if isinstance(value, bool) or not isinstance(value, int | float):
-        return None
-    return value
-
-
-def _usage_total(payload: Any, aliases: tuple[str, ...]) -> int | None:
-    """Read one token counter from a flat usage object or per-model child objects."""
-    if not isinstance(payload, dict):
-        return None
-    for alias in aliases:
-        direct = _numeric(payload.get(alias))
-        if direct is not None:
-            return int(direct)
-    children = [
-        _usage_total(child, aliases) for child in payload.values() if isinstance(child, dict)
-    ]
-    present = [value for value in children if value is not None]
-    return sum(present) if present else None
-
-
-def _upstream_usage(upstream: dict[str, Any]) -> dict[str, int] | None:
-    raw = upstream.get("usage") or upstream.get("model_usage") or upstream.get("tokens")
-    if not isinstance(raw, dict):
-        return None
-    input_tokens = _usage_total(raw, ("input_tokens", "inputTokens", "prompt_tokens"))
-    cached_input_tokens = _usage_total(
-        raw,
-        (
-            "cached_input_tokens",
-            "cachedInputTokens",
-            "cached_tokens",
-            "cache_read_input_tokens",
-            "cacheReadInputTokens",
-        ),
-    )
-    cache_write_input_tokens = _usage_total(
-        raw, ("cache_write_input_tokens", "cacheWriteInputTokens")
-    )
-    output_tokens = _usage_total(raw, ("output_tokens", "outputTokens", "completion_tokens"))
-    reasoning_output_tokens = _usage_total(
-        raw, ("reasoning_output_tokens", "reasoningOutputTokens", "reasoning_tokens")
-    )
-    total_tokens = _usage_total(raw, ("total_tokens", "totalTokens"))
-    values = {
-        "input_tokens": input_tokens,
-        "cached_input_tokens": cached_input_tokens,
-        "cache_write_input_tokens": cache_write_input_tokens,
-        "output_tokens": output_tokens,
-        "reasoning_output_tokens": reasoning_output_tokens,
-        "total_tokens": total_tokens,
-    }
-    present = {key: value for key, value in values.items() if value is not None}
-    return present or None
-
-
 def provider_metadata_files(state_dir: Path | None) -> frozenset[Path]:
     if state_dir is None:
         return frozenset()
@@ -381,6 +332,9 @@ def completed_run(
         round(float(duration_ms) / 1000.0, 3) if duration_ms is not None else round(elapsed, 3)
     )
     taxon = decision.get("selected_taxon")
+    abstained = decision.get("abstained")
+    if not isinstance(abstained, bool):
+        abstained = None
     return {
         "run_id": run_id,
         "configuration": configuration,
@@ -392,7 +346,7 @@ def completed_run(
             "decision": decision.get("status"),
         },
         "escalated": bool(trace.get("escalation_triggered")),
-        "abstained": taxon is None,
+        "abstained": abstained,
         "reviewer_disagreement": disagreement,
         "repair_count": structured_repair_count(trace),
         "duration_seconds": duration,

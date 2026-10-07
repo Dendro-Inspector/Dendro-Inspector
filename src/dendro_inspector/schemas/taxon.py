@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from datetime import date
 from enum import StrEnum
+from typing import Any
 
 from pydantic import Field, model_validator
 
@@ -198,6 +199,206 @@ class TaxonIdentity(Contract):
         return self
 
 
+class ValueRefinement(Contract):
+    """One value that is a narrower reading of another on the same feature path."""
+
+    feature: FeaturePath
+    value: ValueToken
+    broader: ValueToken
+
+    @model_validator(mode="after")
+    def _a_value_cannot_refine_itself(self) -> ValueRefinement:
+        if self.value == self.broader:
+            msg = f"{self.feature}: {self.value!r} cannot be a narrower reading of itself"
+            raise ValueError(msg)
+        return self
+
+
+class ValueVocabulary(Contract):
+    """Which values describe one reading of an organ at two levels of detail.
+
+    A card's strong positives are also, unavoidably, a statement about what the taxon does
+    *not* look like: read the card's decisive feature and get a different value, and that is
+    disagreement. The failure this contract fixes is that string inequality was standing in
+    for disagreement, so an apricot denied that the fruit was a drupe and a sycamore leaf
+    denied that the leaf was palmate-lobed.
+
+    Deliberately not derived from the strings. ``compound_pinnate_large_leaflets`` happens
+    to contain ``compound_pinnate``, but ``apricot`` contains nothing of ``drupe``, and a
+    prefix rule would silently relate values that merely share a word. Every relation is
+    declared, cited, and reviewable — the same standard the cards are held to.
+
+    Not a matching rule: values here are never promoted to hits. The relation only removes
+    a veto, so the more specific reading still has to appear on a card to support anything.
+    """
+
+    refinements: tuple[ValueRefinement, ...] = ()
+    provenance: Provenance
+
+    @model_validator(mode="before")
+    @classmethod
+    def _accept_the_nested_mapping(cls, data: Any) -> Any:
+        """Read ``{feature: {value: broader}}``, which is how the YAML file is written.
+
+        Flat rows are what the rest of the schemas look like; a nested mapping is what a
+        person reading the file wants, because it groups a path's relations together.
+        """
+        if not isinstance(data, dict):
+            return data
+        refinements = data.get("refinements")
+        if not isinstance(refinements, dict):
+            return data
+        rows = [
+            {"feature": feature, "value": value, "broader": broader}
+            for feature, pairs in refinements.items()
+            if isinstance(pairs, dict)
+            for value, broader in pairs.items()
+        ]
+        return {**data, "refinements": rows}
+
+    @model_validator(mode="after")
+    def _the_relation_is_acyclic(self) -> ValueVocabulary:
+        for row in self.refinements:
+            seen = {row.value}
+            current = row.broader
+            while (nxt := self._broader(row.feature, current)) is not None:
+                if current in seen:
+                    msg = f"{row.feature}: {current!r} is a narrower reading of itself"
+                    raise ValueError(msg)
+                seen.add(current)
+                current = nxt
+        return self
+
+    def _broader(self, feature: str, value: str) -> str | None:
+        for row in self.refinements:
+            if row.feature == feature and row.value == value:
+                return row.broader
+        return None
+
+    def _with_broader_readings(self, feature: str, value: str) -> frozenset[str]:
+        chain = {value}
+        current = value
+        while (broader := self._broader(feature, current)) is not None and broader not in chain:
+            chain.add(broader)
+            current = broader
+        return frozenset(chain)
+
+    def compatible(self, feature: str, observed: str, declared: str) -> bool:
+        """Whether two readings of ``feature`` can describe the same organ.
+
+        True when they are equal, or when either is a narrower reading of the other —
+        directly or through a chain. Both directions count: a packet may carry the general
+        word for a detail the card names precisely, or the precise word for a general one.
+        Neither is a denial; only one of them is *support*, and that is matching's job.
+        """
+        return (
+            observed == declared
+            or declared in self._with_broader_readings(feature, observed)
+            or observed in self._with_broader_readings(feature, declared)
+        )
+
+
+#: A vocabulary declaring no relations: every distinct value disagrees with every other.
+#: The fail-closed default, so a caller that never loaded the file keeps the older, stricter
+#: behaviour instead of silently admitting more.
+NO_VALUE_RELATIONS = ValueVocabulary(
+    provenance=Provenance(
+        source="No declared value relations",
+        source_type=SourceType.INFERRED,
+    )
+)
+
+
+#: Feature families the evidence hierarchy places at bark tier. Declared here because
+#: `schemas` must not import from `knowledge`; a contract test asserts this set is exactly
+#: the bark-tier families `evidence_hierarchy` recognises, so the two cannot drift.
+_BARK_TIER_FAMILIES: frozenset[str] = frozenset({"bark", "inner_bark", "lenticels"})
+
+#: Colour suffixes, mirrored from `evidence_hierarchy` for the same reason and under the
+#: same contract test. Colour is supporting evidence however favourable the photograph, so
+#: no colour reading may carry a confidence exception.
+_COLOUR_SUFFIXES: tuple[str, ...] = (".colour", ".color", ".tone")
+
+
+class ExceptionCeiling(StrEnum):
+    """How far one declared diagnostic reading may lift a claim.
+
+    Distinct from :class:`Confidence`, which stays three-valued because a model is asked for
+    three levels. ``VERY_HIGH`` is the same ordinal confidence as ``HIGH`` plus the top
+    display band: the domain prompt writes 95-100 for a handful of named readings, and a
+    band is the only place that distinction is honest.
+    """
+
+    MEDIUM = "medium"
+    HIGH = "high"
+    VERY_HIGH = "very_high"
+
+
+class ConfidenceException(Contract):
+    """One reading a card declares strong enough to lift the evidence-tier ceiling.
+
+    The hierarchy's ceilings are the right default and the wrong absolute: bark caps at
+    ``LOW`` because "definitely an oak, from the bark" is the most common way this kind of
+    system embarrasses itself, and section 6 of the domain prompt then puts characteristic
+    white papery birch bark among its 95-100 examples. Both are true. A default with
+    declared, per-value exceptions is the shape that holds both; a global loosening is not.
+
+    Every field narrows. ``requires`` is opt-in per feature *and* value, and every pair must
+    also be a strong positive on the card, so a card cannot exempt evidence it does not
+    otherwise call decisive. ``max_resolution`` is the narrowest claim the exception can
+    carry, because "the genus is birch" and "the species is silver birch" are not the same
+    assertion from the same bark. The exception raises a ceiling and never lowers one, it
+    cannot apply to a colour reading, and it is refused outright when the same evidence
+    contradicts the card it is lifting.
+    """
+
+    requires: tuple[FeatureExpectation, ...] = Field(min_length=1)
+    max_resolution: Resolution
+    ceiling: ExceptionCeiling
+    note: ShortText | None = None
+    provenance: Provenance | None = Field(
+        default=None,
+        description=(
+            "Overrides the card's provenance for this exception. An exception is a "
+            "confidence policy claim, not a feature rule, and rarely shares a source with "
+            "the rules it lifts."
+        ),
+    )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _accept_the_requires_mapping(cls, data: Any) -> Any:
+        """Read ``requires: {feature: value}``, or ``{feature: [value, ...]}``."""
+        if not isinstance(data, dict):
+            return data
+        requires = data.get("requires")
+        if not isinstance(requires, dict):
+            return data
+        rows = [
+            {"feature": feature, "values": tuple(value) if isinstance(value, list) else (value,)}
+            for feature, value in requires.items()
+        ]
+        return {**data, "requires": rows}
+
+    @model_validator(mode="after")
+    def _the_exception_is_answerable(self) -> ConfidenceException:
+        if self.max_resolution is Resolution.UNKNOWN:
+            msg = "a confidence exception cannot apply at resolution=unknown"
+            raise ValueError(msg)
+        for expectation in self.requires:
+            if expectation.feature.endswith(_COLOUR_SUFFIXES):
+                msg = (
+                    f"a confidence exception cannot rest on a colour reading; "
+                    f"{expectation.feature!r} is one"
+                )
+                raise ValueError(msg)
+        features = [expectation.feature for expectation in self.requires]
+        if len(set(features)) != len(features):
+            msg = f"a confidence exception names {features} twice; one row per feature"
+            raise ValueError(msg)
+        return self
+
+
 class TaxonCard(Contract):
     """Structured, declarative knowledge about one taxon."""
 
@@ -229,7 +430,29 @@ class TaxonCard(Contract):
             "a selector no observable feature can match fails a contract test."
         ),
     )
+    confidence_exceptions: tuple[ConfidenceException, ...] = Field(
+        default=(),
+        description=(
+            "Readings this card declares strong enough to lift the evidence-tier confidence "
+            "ceiling, each with the narrowest claim it may carry. Opt-in per feature *and* "
+            "value: `bark.pattern = white_papery_with_black_marks` earns one, "
+            "`bark.texture = smooth_grey` does not, and appearing among a card's strong "
+            "positives is not sufficient on its own. Every required pair must also appear in "
+            "`strong_positive_features`."
+        ),
+    )
     follow_up_evidence: tuple[ValueToken, ...] = ()
+    value_vocabulary: ValueVocabulary = Field(
+        default=NO_VALUE_RELATIONS,
+        description=(
+            "Which values describe one organ at two levels of detail, composed by the "
+            "loader from `knowledge/vocabulary.yaml`. Not card data: a card file that "
+            "declares it fails a contract test, because the relation between `drupe` and "
+            "`apricot` cannot be one thing on the Prunus card and another on the apricot "
+            "card. The default declares no relations, so a card built without the loader "
+            "keeps the stricter behaviour rather than silently admitting more."
+        ),
+    )
     provenance: Provenance
     placeholder_content: bool = Field(
         default=True,
@@ -268,6 +491,37 @@ class TaxonCard(Contract):
         if len(set(taxon_ids)) != len(taxon_ids):
             msg = f"native and broader taxon ids for {self.taxon_id!r} must be unique"
             raise ValueError(msg)
+
+        # A confidence exception may only rest on evidence this card already calls decisive,
+        # and may not claim past what the card itself supports. Validated here rather than
+        # trusted, because the whole point of the ceilings it lifts is that these are the
+        # claims easiest to overstate.
+        strong = {
+            (expectation.feature, value)
+            for expectation in self.strong_positive_features
+            for value in expectation.values
+        }
+        for exception in self.confidence_exceptions:
+            for expectation in exception.requires:
+                missing = sorted(
+                    value
+                    for value in expectation.values
+                    if (expectation.feature, value) not in strong
+                )
+                if missing:
+                    msg = (
+                        f"confidence_exceptions for {self.taxon_id!r} must also appear in "
+                        f"strong_positive_features; {expectation.feature!r} lacks {missing}"
+                    )
+                    raise ValueError(msg)
+            narrowest = max(resolution_rank(supported) for supported in self.supported_resolution)
+            if resolution_rank(exception.max_resolution) > narrowest:
+                msg = (
+                    f"confidence_exceptions for {self.taxon_id!r} may not reach "
+                    f"{exception.max_resolution.value}; the card supports "
+                    f"{[r.value for r in self.supported_resolution]}"
+                )
+                raise ValueError(msg)
         return self
 
     @property

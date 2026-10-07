@@ -25,11 +25,16 @@ from dendro_inspector.observability.events import (
 )
 from dendro_inspector.observability.logging import get_logger
 from dendro_inspector.schemas.decisions import AuthorityCheckStatus
+from dendro_inspector.schemas.evidence import KnowledgeCoverage
 from dendro_inspector.schemas.review_context import ReviewProjection
 from dendro_inspector.schemas.taxon import Confidence, Resolution
 
 if TYPE_CHECKING:
-    from dendro_inspector.schemas.decisions import AuthorityCheckTrace, FinalDecision
+    from dendro_inspector.schemas.decisions import (
+        AuthorityCheckTrace,
+        DecisionDerivation,
+        FinalDecision,
+    )
     from dendro_inspector.schemas.evidence import EvidencePacket
 
 
@@ -60,9 +65,12 @@ class TraceRecorder:
         self._pending_review_projections: dict[str, ReviewerProjectionRecord] = {}
         self._providers: dict[str, str] = {}
         self._component_projections: tuple[ComponentProjection, ...] = ()
+        self._decision_derivations: dict[str, DecisionDerivation] = {}
         self._prompt: PromptMetadata | None = None
+        self._knowledge_coverage: KnowledgeCoverage | None = None
         self._retries = 0
         self._escalation_triggered = False
+        self._user_claim_negated = False
         self._escalation_reasons: tuple[str, ...] = ()
         self._arbiter_used = False
         self._started_at = datetime.now(UTC)
@@ -153,6 +161,22 @@ class TraceRecorder:
     def record_arbiter_used(self) -> None:
         self._arbiter_used = True
 
+    def record_knowledge_coverage(self, coverage: KnowledgeCoverage) -> None:
+        """Record what the cards could not represent, so a suite can attribute a failure.
+
+        Recorded even when the coverage is complete. "No gap" and "nobody measured" are
+        different facts, and only one of them can be aggregated.
+        """
+        self._knowledge_coverage = coverage
+
+    def record_negated_claim(self) -> None:
+        """The user named a taxon only to deny it, so no version was offered to rule on."""
+        self._user_claim_negated = True
+
+    def record_derivation(self, derivation: DecisionDerivation) -> None:
+        """Keep the latest composition for a subject; final evaluation replaces probes."""
+        self._decision_derivations[derivation.subject_id] = derivation
+
     @property
     def retries(self) -> int:
         return self._retries
@@ -163,8 +187,10 @@ class TraceRecorder:
         final_resolution: Resolution | None = None,
         final_confidence: Confidence | None = None,
         pre_correction_decisions: tuple[FinalDecision, ...] = (),
+        provisional_decisions: tuple[FinalDecision, ...] = (),
         final_decisions: tuple[FinalDecision, ...] = (),
         authority_checks: tuple[AuthorityCheckTrace, ...] = (),
+        concurrent_nodes: tuple[str, ...] = (),
     ) -> RunTrace:
         finished_at = datetime.now(UTC)
         if self._pending_review_projections:
@@ -200,6 +226,19 @@ class TraceRecorder:
             for field in ("status", "selected_taxon", "resolution", "confidence")
         }
         changed_values = tuple(value for value in correction_changes.values() if value is not None)
+        arbiter_changes = {
+            field: (
+                _decision_field_changed(provisional_decisions, final_decisions, field)
+                if self._arbiter_used
+                else None
+            )
+            for field in ("status", "selected_taxon", "resolution", "confidence")
+        }
+        derivations = tuple(
+            self._decision_derivations[decision.subject_id]
+            for decision in final_decisions
+            if decision.subject_id in self._decision_derivations
+        )
         return RunTrace(
             case_id=self._case_id,
             graph_version=GRAPH_VERSION,
@@ -209,6 +248,7 @@ class TraceRecorder:
             providers=dict(self._providers),
             events=tuple(self._events),
             component_projections=self._component_projections,
+            knowledge_coverage=self._knowledge_coverage,
             retries=self._retries,
             graph_retry_count=self._retries,
             correction_changed_outcome=(any(changed_values) if changed_values else None),
@@ -216,11 +256,18 @@ class TraceRecorder:
             correction_changed_taxon=correction_changes["selected_taxon"],
             correction_changed_resolution=correction_changes["resolution"],
             correction_changed_confidence=correction_changes["confidence"],
+            provisional_decisions=provisional_decisions,
+            arbiter_changed_status=arbiter_changes["status"],
+            arbiter_changed_taxon=arbiter_changes["selected_taxon"],
+            arbiter_changed_resolution=arbiter_changes["resolution"],
+            arbiter_changed_confidence=arbiter_changes["confidence"],
             authority_checks=authority_checks,
+            decision_derivations=derivations,
             evidence_authority_sensitive=any(
                 check.status is AuthorityCheckStatus.SENSITIVE for check in authority_checks
             ),
             escalation_triggered=self._escalation_triggered,
+            user_claim_negated=self._user_claim_negated,
             escalation_reasons=self._escalation_reasons,
             arbiter_used=self._arbiter_used,
             final_resolution=final_resolution,
@@ -228,7 +275,35 @@ class TraceRecorder:
             started_at=self._started_at,
             finished_at=finished_at,
             duration_ms=(time.perf_counter() - self._started_perf) * 1000.0,
+            critical_path_ms=_critical_path_ms(tuple(self._events), frozenset(concurrent_nodes)),
         )
+
+
+def _critical_path_ms(events: tuple[NodeEvent, ...], concurrent: frozenset[str]) -> float | None:
+    """Serial node time plus the slowest member of each fan-out round.
+
+    Rounds are runs of consecutive events from ``concurrent``, so a retry that fans out a
+    second time is counted twice — it really did happen twice. The caller names the
+    concurrent nodes because this module deliberately knows nothing about the graph; with
+    no names supplied every node is serial, which is the honest reading of "not told".
+    """
+    if not events:
+        return None
+    total = 0.0
+    round_max = 0.0
+    in_round = False
+    for event in events:
+        duration = event.duration_ms or 0.0
+        if event.node in concurrent:
+            in_round = True
+            round_max = max(round_max, duration)
+            continue
+        if in_round:
+            total += round_max
+            round_max = 0.0
+            in_round = False
+        total += duration
+    return total + round_max if in_round else total
 
 
 def _discover_code_revision(root: Path) -> tuple[str | None, bool | None]:

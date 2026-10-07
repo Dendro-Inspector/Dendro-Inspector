@@ -2,8 +2,8 @@
 
 - **Status:** Current
 - **Owner:** Dendro Inspector maintainers
-- **Date:** 2026-08-24
-- **Last-verified:** 2026-08-24
+- **Date:** 2026-09-05
+- **Last-verified:** 2026-09-05
 
 ```bash
 dendro eval --suite public            # summary
@@ -16,12 +16,18 @@ The suite is deterministic: each case replays a recorded provider scenario from
 on every pull request, including pull requests from forks, which never have repository
 secrets.
 
+Fake replay uses the image IDs declared by each case as its synthetic image scope, even
+when the example files are absent. Unknown image IDs still fail extraction validation.
+Live providers are bound to images actually passed to the extraction call. Regression
+coverage for image provenance, review ownership, omitted subjects, retrieval and cancellation
+is in [the architecture boundary tests](../tests/unit/test_architecture_boundaries.py).
+
 ## What assertions check
 
 Assertions run against the **graph's decisions**, never against prose. Rewriting the tone
 layer must not turn the evaluation red; changing what the system concludes must.
 
-## The nineteen cases
+## The twenty-four cases
 
 Cases 1–5 cover the core mechanics. Cases 6–8 are named failure modes from section 13 of the
 domain prompt. Case 9 is the counterweight — proof the system still commits when the evidence
@@ -30,6 +36,12 @@ trusted evidence, fail-closed candidate admission, resolution-consistent identit
 deterministic-finding precedence and finding-bound reranks. Cases 15–16 hold the two
 behaviours that six v0.2.2 fixture repairs would otherwise have quietly deleted. Cases 17–19
 lock the v0.2.3 wood-surface boundary while preserving corroborated pile-level conclusions.
+Case 20 proves that the escalation gate sees the verdict code would return even when every
+reviewer is silent. Cases 21–22 lock the two halves of the v0.9.0 restraint boundary: what a
+contradiction has the authority to do, and what abstention has to cost. Case 23 holds the
+line the whole determinism boundary rests on: a model's own confidence in itself is not
+evidence. Case 24 rules on the version the user actually gave, rather than on whichever
+taxon their words happened to match first.
 
 ### 1. `conifer-log-001` — probable Pinus
 
@@ -104,8 +116,9 @@ Expects: the claim falls back to what bark supports (tier 3, confidence ≤ low)
 The counterweight. A machine that hedges everything is as useless as one that hedges
 nothing, so when a fruit is attached to the branch the system must commit.
 
-Expects: Malus, status `identified`, evidence tier 7, the user's version accepted, no
-escalation. This is the only tier that unlocks the 95–100 band.
+Expects: Malus, status `identified`, evidence tier 7, the user's version accepted, and
+escalation because the deterministic provisional verdict is high. This is the only tier that
+unlocks the 95–100 band.
 
 ### 10. `unrelated-high-tier-001` — unrelated high-tier evidence cannot raise a candidate
 
@@ -191,6 +204,60 @@ may receive a conservative genus conclusion, without proving every separated pie
 
 Expects: `pinus`, genus, confidence low, tier 3, no escalation.
 
+### 20. `silent-reviewers-high-confidence-001` — the gate sees the verdict
+
+Clear attached Pinus foliage and exact card-matched support produce a deterministic
+high-confidence genus verdict. All three internal reviewers pass with no findings, so their
+silence cannot be the gate's only view of confidence.
+
+Expects: `pinus`, genus, confidence high, tier 6, escalation with
+`high_confidence_proposed`, and no retries.
+
+### 21. `unattached-contradiction-claim-001` — a contradiction that may not convict
+
+Needle litter lying on a sawn log is fascicled in twos, which the Picea card calls
+disqualifying, but no shoot is continuous with the log and the canopy overhead is mixed.
+The user says spruce. Evidence with no authority to identify has none to reject: the
+contradiction is still recorded and may still lower confidence, but the ruling on the user's
+own version must stop short of `rejected`.
+
+Expects: `pinus`, resolution ≤ genus, user claim `doubtful`, never rejected, a next photo,
+and no retries.
+
+### 22. `abstention-visible-001` — abstention has to cost something
+
+A species is proposed on a card that supports genus only, and the confusion reviewer files a
+critical finding no retry can fix. Broadening from the *proposed* species would land on the
+genus the card cap had already produced — the confident answer returned under another name.
+Abstention must broaden from the composed verdict instead, and must say that it did.
+
+Expects: `pinaceae`, family, confidence low, `abstained`, no escalation, a next photo, and no
+retries.
+
+### 23. `strong-label-thin-support-001` — a label is not evidence
+
+An attached leaf and dark platy bark: two of the Alnus card's supporting features, and no
+match for the persistent cones that are its only strong-positive one. The model calls the
+candidate `strong` and all three reviewers pass in silence. Nothing else in the pipeline
+lowers this verdict — the card's high-confidence requirement is satisfied, so no
+deterministic finding fires, and the evidence tier permits `high`. The adjective alone is
+therefore load-bearing, which is why it must not be.
+
+Expects: `alnus`, genus, confidence ≤ medium, status `probable`, tier 6, no escalation, no
+admitted reranks, and no retries.
+
+### 24. `disjunctive-user-claim-001` — a hedge is several claims
+
+`conifer-log-001`'s photograph with a user who declines to commit between pine and spruce.
+Pine is the answer, so their version is right. Before C4 the claim resolved to whichever card
+the catalogue listed first — spruce — and the attached two-needle fascicle disqualifies
+spruce, so the system returned `pinus` while telling a user who had named the right tree
+that their version was **rejected**. A user who hedged has not made a weaker claim; they have
+made two, and the ruling belongs to the most favourable of them.
+
+Expects: `pinus`, genus, confidence ≤ medium, tier 6, user claim `accepted`, never rejected,
+and no retries.
+
 ## Metrics
 
 Every rate is reported alongside the count it was computed from. A "100% top-1 accuracy"
@@ -269,8 +336,22 @@ bound by code to the evidence ids that projection carried. Every metric and ever
 decision is identical to v0.7.0, which is the point: a boundary that changes what a reviewer
 may cite should not change what the system concludes on cases where reviewers cited honestly.
 
-Read the result honestly: nineteen hand-built cases over recorded fixtures can show that the
-machinery follows these contracts. It says nothing about identification accuracy on real
+The v0.9.0 result is **twenty-four passing cases, zero failures and zero overconfidence**,
+frozen in `evals/baselines/public-v0.9.0.json`. The gate now computes and stores the
+deterministic verdict before deciding on escalation. `apple-with-fruit-001.arbiter_used`
+intentionally moves from `false` to `true`, and the new silent-reviewer case proves the same
+path directly. All taxon, resolution, confidence and status fields from the previous baseline
+remain unchanged. Cases 21 to 24 join the same baseline: all four are new, so none moves a
+frozen decision, and each fails on the code that preceded it.
+
+Case 23 is worth a note. Adjudicated support strength was expected to move existing frozen
+verdicts, and it moved none: every scripted `score` in the suite already matched the support
+scripted beside it. That is a statement about the fixtures, not about the change — no
+recorded case had ever exercised a label that outran its evidence, which is precisely why
+one had to be written.
+
+Read the result honestly: twenty-four hand-built cases over recorded fixtures can show that
+the machinery follows these contracts. It says nothing about identification accuracy on real
 photographs, which has not been measured.
 
 ## Adding a case
@@ -323,8 +404,38 @@ This suite (`evals/public/`) is a **conformance and regression** suite, not an a
 benchmark. Adding a public case for a newly-understood failure class is expected and is not
 overfitting: the fixtures are synthetic and the case documents a rule rather than an answer.
 
+## Measuring cost and latency
+
+The suite measures what the system concludes. It says nothing about what a run costs or how
+long it takes, because it replays recorded fixtures with no network at all. Those questions
+are answered from run traces instead.
+
+```bash
+dendro inspect --trace-out traces/ --image photo.jpg   # write one trace
+python scripts/bench/trace_stats.py traces/            # summarise a directory of them
+python scripts/bench/bridge_stats.py .bridge           # the same, from agent-bridge state
+```
+
+`trace_stats.py` reports per-node wall time with its percentiles, model calls and provider
+attempts per run, escalation reasons, and per-node token accounting where the provider
+reported any. It also groups the recorded arbiter verdict-change rate and per-field changes
+by every trigger that fired, so a multi-trigger run contributes to each policy signal being
+measured. `bridge_stats.py` joins the local bridge's pending requests to its answers, so it
+can additionally report prompt size as sent and the upstream's own cost, and it fits elapsed
+time against output length.
+
+Two numbers deserve reading together. `duration_ms` is what the run took;
+`critical_path_ms` is what it could not have avoided, being every serial node plus the
+slowest member of each reviewer fan-out. The gap between them is what concurrency bought.
+
+Neither script makes a model call or needs a credential, and neither estimates a price: a
+cost appears only where the provider reported one. A provider that reports no tokens leaves
+those fields empty rather than zero, and the tables say so rather than printing a confident
+nought.
+
 ## Implementation references
 
 - [`src/dendro_inspector/evaluation/`](../src/dendro_inspector/evaluation)
 - [`evals/public/`](../evals/public), [`evals/fixtures/`](../evals/fixtures)
 - [`tests/evaluation/test_public_suite.py`](../tests/evaluation/test_public_suite.py)
+- [`scripts/bench/`](../scripts/bench)
