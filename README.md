@@ -166,7 +166,7 @@ pip install -e ".[dev,images]"                    # 'images' bounds the bytes ea
 
 dendro graph                                       # print the executable agent graph
 dendro inspect --fake primary-pass --image examples/log.jpg --location "Kyiv Oblast, Ukraine"
-dendro eval --suite public                         # run the twenty public conformance cases
+dendro eval --suite public                         # run the twenty-four public conformance cases
 pytest                                             # full test suite, offline
 ```
 
@@ -290,18 +290,18 @@ bundle.
 v0.9.0 — a public, provider-complete vertical slice, not a production system. The graph runs
 end to end through OpenAI, Anthropic, Gemini, NVIDIA, OpenRouter and Ollama adapters; live
 calls can be exercised without an SDK client through the agent-as-provider bridge.
-Image-aware caching, bounded image transport, reviewer-call attribution, evidence vocabulary
-diagnostics and prompt-policy compatibility are enforced in code. This release closes the
-reviewer input boundary: a reviewer model receives an explicit projection rather than the
-graph's whole state, its result is bound by code to the evidence that projection carried, and
-the trace records the photographs actually transmitted rather than the ones the case declared.
-The escalation gate now stores the deterministic verdict before it decides whether to call
-the arbiter, and the trace records which verdict fields arbitration changes. The public suite
-defines twenty deterministic conformance cases, all passing with zero overconfidence against
-the frozen `public-v0.9.0` baseline. One existing case now calls the arbiter because its
-provisional verdict is high; its taxon, resolution, confidence and status are unchanged. The knowledge
-pack remains 25 taxa of demonstration content that no dendrologist has reviewed — every card
-says so in its `provenance` block.
+Image-aware caching, bounded image transport, bounded reviewer context, reviewer-call
+attribution, evidence vocabulary diagnostics and prompt-policy compatibility are enforced in
+code. This release narrows what a model's own labels can decide: a candidate's support
+strength is adjudicated against its card, the escalation gate decides on the verdict the
+graph would return, a contradiction needs identification authority before it can reject the
+user's version, abstention is visible and costs a resolution level, a hedged claim is ruled
+on as the user wrote it, and every verdict's derivation is recorded in the trace. The public
+suite defines twenty-four deterministic conformance cases, all passing with zero
+overconfidence against the frozen `public-v0.9.0` baseline. One existing case now calls the
+arbiter because its provisional verdict is high; its taxon, resolution, confidence and status
+are unchanged. The knowledge pack is 26 taxa of demonstration content that no dendrologist
+has reviewed — every card says so in its `provenance` block.
 
 What the numbers do and do not prove:
 

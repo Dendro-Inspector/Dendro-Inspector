@@ -471,8 +471,8 @@ partial, the file records which parts it covers.
 
 ### Known limitations
 
-- Knowledge is **demonstration content**: 25 taxa, no dendrologist review. 24 have feature
-  rules from the domain prompt's §14; `larix` is not in the prompt at all.
+- Knowledge is **demonstration content**: 26 taxa, no dendrologist review. 24 have feature
+  rules from the domain prompt's §14; `larix` and `abies` are not in the prompt at all.
 - Node prompts ask for `bark.flake_geometry`, which no taxon card declares — evidence for it
   is recorded and then admits nothing. Unresolved: see
   `docs/reviews/CORRECTNESS-BOUNDARY-2026-07-26.md`.
@@ -615,12 +615,12 @@ overfitting, whatever else it is called. Send it back.
 
 ### Separation of concerns
 
-- **Golden material never informs card authoring.** The 25 shipped cards' *feature rules*
+- **Golden material never informs card authoring.** The 26 shipped cards' *feature rules*
   derive from the domain prompt's section 14 and nothing else, which is what makes the first
   benchmark run a genuine measurement rather than a self-assessment. Provenance is recorded
   per card, per feature rule and per declared identity, because not everything on a card
   comes from that one source: family placements are standard taxonomy the prompt never
-  states, and `larix` is not in the prompt at all. Each says so where it sits.
+  states, and `larix` and `abies` are not in the prompt at all. Each says so where it sits.
 - **Public fixtures and golden cases stay apart.** `evals/fixtures/` scripts provider
   responses to exercise the machinery; `evals/golden/` measures botanical correctness.
   Fixture wording must never be copied from a golden case, and no card may contain a value

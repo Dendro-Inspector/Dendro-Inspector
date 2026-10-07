@@ -336,7 +336,7 @@ bound by code to the evidence ids that projection carried. Every metric and ever
 decision is identical to v0.7.0, which is the point: a boundary that changes what a reviewer
 may cite should not change what the system concludes on cases where reviewers cited honestly.
 
-The v0.9.0 result is **twenty-two passing cases, zero failures and zero overconfidence**,
+The v0.9.0 result is **twenty-four passing cases, zero failures and zero overconfidence**,
 frozen in `evals/baselines/public-v0.9.0.json`. The gate now computes and stores the
 deterministic verdict before deciding on escalation. `apple-with-fruit-001.arbiter_used`
 intentionally moves from `false` to `true`, and the new silent-reviewer case proves the same

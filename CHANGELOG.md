@@ -10,138 +10,53 @@ get entries.
 
 ## [Unreleased]
 
-### Changed
+## [0.9.0] — 2026-10-07
 
-- A taxon card declares its own confidence exceptions, and Betula's reaches the band the
-  domain prompt gives it. `TaxonCard.diagnostic_bark_features` — bark-only, always exactly
-  one band — is replaced by `confidence_exceptions`, where a card names the required feature
-  *and* value, the narrowest claim the exception may carry, and how far it lifts. Betula
-  declares `bark.pattern = white_papery_with_black_marks` as `very_high` at genus, which is
-  what section 6 lists among its 95–100 examples and what section 14 permits; a confidently
-  read birch trunk is reported there instead of at 70–84. Everything that made the old rule
-  narrow is unchanged and one guard is new: pale bark earns nothing, a distant trunk the
-  extractor was unsure of earns nothing, generic peeling bark earns nothing, no exception
-  reaches a species claim, and a card the same packet contradicts earns nothing. The
-  confidence trace step is now `diagnostic_exception` rather than `bark_exemption`.
-
-### Fixed
-
-- A candidate is no longer removed because its own decisive feature was described twice.
-  A card's strong positives were also acting as the exhaustive list of readings that feature
-  path may carry, so a birch photographed from white papery bark *and* from the dark cracked
-  base the domain prompt says an old trunk may have lost the candidate its first reading had
-  just matched — as did a poplar whose leaf was read at two of the shapes the prompt permits,
-  and a fruit described as both a drupe and an apricot, which removed the group and the
-  species at once. A path that already carries a reading the card declares no longer vetoes
-  itself, and `knowledge/vocabulary.yaml` now declares where two words describe one organ at
-  two levels of detail: an apricot is a drupe, a broad five-lobed palmate leaf is a palmate
-  lobed leaf, and beech bark the prompt allows to be less than perfectly smooth with age is
-  still beech bark. Both narrowings are deliberately small. Agreement about a leaf still
-  cannot cancel disagreement about bark, only declared relations count, and a broader wording
-  removes a veto without becoming support — so the scaly-barked trunk that this veto exists
-  for is still not a beech, and a generic compound pinnate leaf still cannot identify a
-  walnut on its own.
-- The next photograph asked for is the one that could raise the claim. A target whose every
-  declared feature sits at or below the evidence tier this subject already reached at
-  decisive trust now ranks behind one that reaches higher: two live birch runs asked for
-  another bark macro of bark they had already read, and no bark photograph can lift a verdict
-  past the bark ceiling. Bark requests are not dropped as a class — when the bark in hand is
-  capped by doubt rather than decisive, a better photograph of it is still the honest first
-  ask, and saturated targets are reordered rather than removed so a redundant question is
-  never preferred to no question.
-- A taxon card can declare a specific bark feature and value diagnostic enough to lift the
-  bark confidence ceiling by exactly one band, at genus resolution or broader, when a
-  reliably-read observation matches it. `Betula` declares
-  `bark.pattern = white_papery_with_black_marks` and is the only card in this pack that
-  does, so a confidently-read birch is no longer pinned at the bottom of the scale while its
-  own card calls that pattern decisive. Opt-in per value: appearing among a card's strong
-  positives earns nothing, generic rough or fissured bark earns nothing, and a distant trunk
-  whose pattern the extractor was unsure of earns nothing. The lift is recorded in the trace
-  as its own confidence step.
-- How much of the frame a feature filled and how much the reading is trusted are no longer
-  the same thing. A decisive feature read at high reliability through a partial view now
-  satisfies a card's requirement and keeps its own evidence tier, instead of being demoted
-  to bark-equivalent authority. Below high reliability a partial view stays capped as before,
-  because `partial` covers both "unambiguous but not filling the frame" and "partly hidden,
-  so the reading is incomplete" and only the attached reliability tells them apart.
-- An unmet decisive requirement is described as "not established" rather than "not visible".
-  The old wording was a claim about the photograph, and it was wrong whenever the feature was
-  in frame but failed a trust gate — the same answer quoted that observation as its support
-  two lines earlier, and sent the reader to re-shoot an image that already showed the thing.
-- A taxon whose own decisive feature the photograph contradicts is no longer offered as a
-  candidate. When a card names a feature among its strong positives and that exact feature
-  is read clearly with a different value, the card is neither retrieved nor admitted, however
-  many of its general features match. Beech opened on "the trunk is straight and cylindrical"
-  while the same frame showed scaly bark and the beech card calls beech bark smooth; it then
-  reached four model calls. Silence on a decisive feature is still not disagreement with it,
-  so a bark photograph that simply cannot show needles keeps its usual candidates.
-- Ordinary negation in photo descriptions no longer triggers arbitration or corrective
-  tone. Challenge intent is explicit via `--challenge` or
-  `CaseInput.user_challenges_previous_result`, not inferred from free text in any language.
-- The input guard recognises common Ukrainian instruction redirections as well as English
-  ones. Role-change warnings require a model/system role, not just phrases such as
-  "you are now looking at the trunk". These are limited warning patterns, not proof that
-  an input is safe or malicious.
-- Extraction validates image references against the provider call's image scope and repairs
-  invalid references within the existing retry budget. Explicit offline replay remains
-  available for declared synthetic fixture images.
-- Review recommendations retain their subject and accepted-finding ownership. A review of
-  one tree no longer changes another tree's bounds, rejected findings cannot carry a
-  confidence recommendation around admission, and model-selected subjects cannot suppress
-  deterministic findings about other trees.
-  Abstention also retains subject scope, while unaffected subjects still pass the escalation
-  gate before their final decisions.
-- Every detected subject receives a result, including an explicit insufficient-evidence
-  result and photo request when candidate generation omits it or its evidence is unusable.
-- A failed concurrent reviewer cancels and joins unfinished siblings before the error
-  propagates. Every member retains an execution event; partial reviews are not merged.
-- Bark-only tree assessments in frames that may contain multiple taxa now request a declared
-  attachment photograph before a leaf-surface macro, so the next image establishes which tree
-  owns the foliage before its morphology can affect the verdict. Unknown results also omit the
-  empty "nearest alternatives: none recorded" block when no alternative was structurally
-  ruled out.
-- Codex-backed provider runs no longer exhaust their output allowance while constrained by
-  regex patterns inside structured-output arrays. Regex validation remains enforced by the
-  canonical Pydantic contract before any model answer is admitted.
-- A contradiction can no longer reject the user's own version, mark a verdict as
-  conflicting or be printed as the strongest contradiction unless the contradicting
-  observation could itself have supported an identification: same subject, attached where
-  attachment matters, and above bark level. Weaker contradictions are still recorded as
-  findings and can still lower confidence.
-- The user's own version is now read as they wrote it. A claim naming more than one taxon is
-  a disjunction, ruled on by its most favourable member, so hedging between two trees is no
-  longer resolved to whichever card happened to be listed first — which could return a
-  rejection to a user who had named the right tree. A taxon named only to deny it ("не дуб")
-  no longer becomes the claim being ruled on, and names shorter than four characters match
-  whole words only, so a one-letter claim no longer matches most of the catalogue.
-- An abstained run now says so in the structured result and in the limitations it prints,
-  and its resolution is one level broader than the same evidence would otherwise have
-  earned. Previously abstention could return the identical taxon, resolution and status with
-  only the confidence lowered.
+The package, graph, deterministic policy and public baseline move together to `0.9.0`
+because less of what a model says about itself can now reach the verdict: a candidate's
+support strength is adjudicated against its own card rather than taken from the model's
+label, the escalation gate decides on the verdict the graph would return rather than on the
+proposal, a contradiction needs identification authority before it can reject the user's
+version, abstention is visible and costs a resolution level, and a hedged claim is ruled on
+as the user wrote it. Prompt bytes and model routing are unchanged. One frozen decision
+moves — `apple-with-fruit-001` now calls the arbiter, with its taxon, resolution, confidence
+and status unchanged — and five new cases take the public suite to twenty-four, all passing
+with zero overconfidence. A deployment that carries its own prompt manifest must re-pin its
+`policy_revision` to `0.9.0` after reviewing compatibility; a manifest bound to `0.8.0` is
+refused rather than upgraded.
 
 ### Changed
 
-- Candidate generation receives only taxon cards with exact, trusted, non-colour support
-  on usable subjects, plus comparisons among those cards. Retrieval has no top-k cutoff
-  and preserves every taxon that the existing admission rules could accept.
+- The escalation gate now computes and stores the deterministic verdict the graph would
+  return before it decides whether to call the arbiter. High-confidence provisional verdicts
+  therefore reach arbitration even when every internal reviewer passes silently; the
+  broad/low-risk cost suppressor applies only below high confidence.
 - A candidate's support strength is now adjudicated against its own taxon card from the
   evidence that survived admission, and the model's label can only lower it, never raise it.
   Confidence and the `identified` status therefore follow visible features rather than the
   primary model's self-assessment. No frozen public case moved: every recorded fixture's
-  scripted strength already matched its scripted support, so the deterministic policy
-  revision stays at `0.9.0` and no deployment needs to re-seal.
-- The package, graph, deterministic policy and public baseline move together to `0.9.0`.
-  The escalation gate now computes and stores the deterministic verdict the graph would
-  return before it decides whether to call the arbiter. High-confidence provisional verdicts
-  therefore reach arbitration even when every internal reviewer passes silently; the
-  broad/low-risk cost suppressor applies only below high confidence. Prompt bytes and model
-  routing are unchanged.
+  scripted strength already matched its scripted support, which is why a case exercising a
+  label that outruns its evidence had to be written.
+- Candidate generation receives only taxon cards with exact, trusted, non-colour support
+  on usable subjects, plus comparisons among those cards. Retrieval has no top-k cutoff
+  and preserves every taxon that the existing admission rules could accept.
+- A taxon card declares its own confidence exceptions. `TaxonCard.confidence_exceptions`
+  names the required feature *and* value, the narrowest claim the exception may carry, and
+  how far it lifts the evidence-tier ceiling. Betula declares
+  `bark.pattern = white_papery_with_black_marks` as `very_high` at genus, which is what
+  section 6 of the domain prompt lists among its 95–100 examples and what section 14
+  permits; a confidently read birch trunk is reported there instead of being held at 50–69
+  by the bark ceiling. The exception is narrow by construction: pale bark earns nothing, a
+  distant trunk the extractor was unsure of earns nothing, generic peeling bark earns
+  nothing, no exception reaches a species claim, and a card the same packet contradicts
+  earns nothing. The lift is recorded in the trace as its own `diagnostic_exception`
+  confidence step.
 - Frozen decision movement: `apple-with-fruit-001.arbiter_used` changes from `false` to
-  `true` under F2. Its selected taxon, status, resolution and confidence do not move. The new
-  `silent-reviewers-high-confidence-001` case locks the same path directly. Two further
-  cases, `unattached-contradiction-claim-001` and `abstention-visible-001`, lock the
-  contradiction-authority and abstention rules above; both are new, so neither moves a frozen
-  decision, `strong-label-thin-support-001` locks the adjudicated strength above and
+  `true`. Its selected taxon, status, resolution and confidence do not move. Five cases are
+  new, so none moves a frozen decision: `silent-reviewers-high-confidence-001` locks the
+  provisional-verdict path directly, `unattached-contradiction-claim-001` and
+  `abstention-visible-001` lock the contradiction-authority and abstention rules below,
+  `strong-label-thin-support-001` locks the adjudicated strength above and
   `disjunctive-user-claim-001` locks the hedged claim. The public suite stands at twenty-four
   cases with zero overconfidence.
 
@@ -186,6 +101,13 @@ get entries.
   per-node latency, prompt size, token accounting, escalation reasons and arbiter verdict
   changes per trigger. Both scripts read local files only, need no credentials, and make no
   model calls.
+- The Gemini adapter can use the Vertex route, the one a Cloud billing account and its
+  credits apply to. Point `GEMINI_ENDPOINT` at the Vertex publisher path and set
+  `GOOGLE_ACCESS_TOKEN`: the adapter sends the bearer credential that host accepts, a token
+  wins over `GEMINI_API_KEY` when both are set, and a Vertex endpoint with no token fails
+  before the request instead of after it with a `401` that reads like a bad key.
+  `GEMINI_THINKING_LEVEL` passes a thinking budget through when set; an unknown value is
+  rejected by the API by name, not guessed at locally.
 - `OPENROUTER_DATA_COLLECTION` selects whether OpenRouter may route a request to an upstream
   that logs submitted content. It defaults to `deny`, so photographs are not sent to a
   training-data endpoint unless an operator opts in, and an unrecognised value is refused
@@ -200,8 +122,109 @@ get entries.
 
 ### Fixed
 
+- A candidate is no longer removed because its own decisive feature was described twice.
+  A card's strong positives were also acting as the exhaustive list of readings that feature
+  path may carry, so a birch photographed from white papery bark *and* from the dark cracked
+  base the domain prompt says an old trunk may have lost the candidate its first reading had
+  just matched — as did a poplar whose leaf was read at two of the shapes the prompt permits,
+  and a fruit described as both a drupe and an apricot, which removed the group and the
+  species at once. A path that already carries a reading the card declares no longer vetoes
+  itself, and `knowledge/vocabulary.yaml` now declares where two words describe one organ at
+  two levels of detail: an apricot is a drupe, a broad five-lobed palmate leaf is a palmate
+  lobed leaf, and beech bark the prompt allows to be less than perfectly smooth with age is
+  still beech bark. Both narrowings are deliberately small. Agreement about a leaf still
+  cannot cancel disagreement about bark, only declared relations count, and a broader wording
+  removes a veto without becoming support — so the scaly-barked trunk that this veto exists
+  for is still not a beech, and a generic compound pinnate leaf still cannot identify a
+  walnut on its own.
+- A taxon whose own decisive feature the photograph contradicts is no longer offered as a
+  candidate. When a card names a feature among its strong positives and that exact feature
+  is read clearly with a different value, the card is neither retrieved nor admitted, however
+  many of its general features match. Beech opened on "the trunk is straight and cylindrical"
+  while the same frame showed scaly bark and the beech card calls beech bark smooth; it then
+  reached four model calls. Silence on a decisive feature is still not disagreement with it,
+  so a bark photograph that simply cannot show needles keeps its usual candidates.
+- The next photograph asked for is the one that could raise the claim. A target whose every
+  declared feature sits at or below the evidence tier this subject already reached at
+  decisive trust now ranks behind one that reaches higher: two live birch runs asked for
+  another bark macro of bark they had already read, and no bark photograph can lift a verdict
+  past the bark ceiling. Bark requests are not dropped as a class — when the bark in hand is
+  capped by doubt rather than decisive, a better photograph of it is still the honest first
+  ask, and saturated targets are reordered rather than removed so a redundant question is
+  never preferred to no question.
+- How much of the frame a feature filled and how much the reading is trusted are no longer
+  the same thing. A decisive feature read at high reliability through a partial view now
+  satisfies a card's requirement and keeps its own evidence tier, instead of being demoted
+  to bark-equivalent authority. Below high reliability a partial view stays capped as before,
+  because `partial` covers both "unambiguous but not filling the frame" and "partly hidden,
+  so the reading is incomplete" and only the attached reliability tells them apart.
+- An unmet decisive requirement is described as "not established" rather than "not visible".
+  The old wording was a claim about the photograph, and it was wrong whenever the feature was
+  in frame but failed a trust gate — the same answer quoted that observation as its support
+  two lines earlier, and sent the reader to re-shoot an image that already showed the thing.
+- A contradiction can no longer reject the user's own version, mark a verdict as
+  conflicting or be printed as the strongest contradiction unless the contradicting
+  observation could itself have supported an identification: same subject, attached where
+  attachment matters, and above bark level. Weaker contradictions are still recorded as
+  findings and can still lower confidence.
+- The user's own version is now read as they wrote it. A claim naming more than one taxon is
+  a disjunction, ruled on by its most favourable member, so hedging between two trees is no
+  longer resolved to whichever card happened to be listed first — which could return a
+  rejection to a user who had named the right tree. A taxon named only to deny it ("не дуб")
+  no longer becomes the claim being ruled on, and names shorter than four characters match
+  whole words only, so a one-letter claim no longer matches most of the catalogue.
+- An abstained run now says so in the structured result and in the limitations it prints,
+  and its resolution is one level broader than the same evidence would otherwise have
+  earned. Previously abstention could return the identical taxon, resolution and status with
+  only the confidence lowered.
+- Ordinary negation in photo descriptions no longer triggers arbitration or corrective
+  tone. Challenge intent is explicit via `--challenge` or
+  `CaseInput.user_challenges_previous_result`, not inferred from free text in any language.
+- The input guard recognises common Ukrainian instruction redirections as well as English
+  ones. Role-change warnings require a model/system role, not just phrases such as
+  "you are now looking at the trunk". These are limited warning patterns, not proof that
+  an input is safe or malicious.
+- Extraction validates image references against the provider call's image scope and repairs
+  invalid references within the existing retry budget. Explicit offline replay remains
+  available for declared synthetic fixture images.
+- A candidate proposal whose evidence reference is not even shaped like an identifier no
+  longer aborts the run. The two evidence-reference fields on a candidate are bounded strings
+  rather than identifiers, so a fragment of model deliberation leaking into
+  `supporting_evidence_ids` is dropped by the same admission rule that already discards a
+  well-formed reference to nothing. A candidate left without usable support is rejected
+  exactly as before, and `malformed_evidence_ids` on the validation result reports the subset
+  that was malformed, so a provider decoding defect stays legible instead of being filed under
+  ordinary disagreement. `subject_id`, `taxon` and every other identifier keep their pattern.
+  Adapters whose schema dialect supports enums additionally bind the candidate generator's
+  `subject_id` and evidence references to the code-owned values, so the model is told the
+  admissible set up front.
+- Review recommendations retain their subject and accepted-finding ownership. A review of
+  one tree no longer changes another tree's bounds, rejected findings cannot carry a
+  confidence recommendation around admission, and model-selected subjects cannot suppress
+  deterministic findings about other trees.
+  Abstention also retains subject scope, while unaffected subjects still pass the escalation
+  gate before their final decisions.
+- Every detected subject receives a result, including an explicit insufficient-evidence
+  result and photo request when candidate generation omits it or its evidence is unusable.
+- A failed concurrent reviewer cancels and joins unfinished siblings before the error
+  propagates. Every member retains an execution event; partial reviews are not merged.
+- Bark-only tree assessments in frames that may contain multiple taxa now request a declared
+  attachment photograph before a leaf-surface macro, so the next image establishes which tree
+  owns the foliage before its morphology can affect the verdict. Unknown results also omit the
+  empty "nearest alternatives: none recorded" block when no alternative was structurally
+  ruled out.
+- Codex-backed provider runs no longer exhaust their output allowance while constrained by
+  regex patterns inside structured-output arrays. Regex validation remains enforced by the
+  canonical Pydantic contract before any model answer is admitted.
 - Latency and cost tables now print `n/a` when a provider did not report a metric. They no
   longer render missing cached-token or cost data as a measured zero.
+- Gemini `output_tokens` now counts the model's hidden reasoning tokens, which the API
+  reports beside the visible answer count and bills at the output rate. The visible count
+  alone understated billable output by a factor of twenty-six on the one control case
+  measured. `reasoning_output_tokens` carries the split so an answer-only figure stays
+  derivable, both counters accumulate across attempts to match the duration recorded beside
+  them, and a usage report whose parts do not add up to its total is logged as an
+  observability warning rather than trusted.
 - The Gemini adapter retries a peer connection reset within its existing bounded budget. On
   Windows an HTTPS reset can escape `urlopen` outside the handler the adapter watched, which
   aborted an otherwise healthy graph during the concurrent reviewer fan-out.
@@ -255,7 +278,7 @@ identical to `0.7.0`.
   image ids are the photographs that actually reached the provider, not the ones the case
   declared, so an unreadable file cannot appear in a trace as evidence a reviewer saw.
 
-## [0.7.0] — 2026-08-24
+## 0.7.0 — 2026-08-24
 
 The package, graph, deterministic policy and public baseline move together to `0.7.0`
 because attachment authority can now change the returned scientific claim. Prompt bytes and
@@ -296,7 +319,7 @@ model routing are unchanged.
   tokens and provider-reported cost per immutable run; it does not estimate prices when the
   upstream reports no cost.
 
-## [0.6.0] — 2026-08-24
+## 0.6.0 — 2026-08-24
 
 The deterministic policy, graph, package and public baseline move together to `0.6.0`.
 Unlike the earlier experiment branch, two runs can no longer claim the same policy identity
@@ -909,9 +932,13 @@ documents, GitHub Actions CI with a blocking secret scan.
   currently carries a previous result into a new case).
 - A hosted API surface.
 
-Git history begins at v0.2.1; the older entries remain as unlinked release notes.
+Git history begins at v0.2.1; the older entries remain as unlinked release notes, as do
+0.6.0 and 0.7.0, which were never tagged: `main` moved from v0.5.0 to v0.8.0.
 
-[Unreleased]: https://github.com/Dendro-Inspector/Dendro-Inspector/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/Dendro-Inspector/Dendro-Inspector/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/Dendro-Inspector/Dendro-Inspector/compare/v0.8.0...v0.9.0
+[0.8.0]: https://github.com/Dendro-Inspector/Dendro-Inspector/compare/v0.5.0...v0.8.0
+[0.5.0]: https://github.com/Dendro-Inspector/Dendro-Inspector/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/Dendro-Inspector/Dendro-Inspector/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/Dendro-Inspector/Dendro-Inspector/compare/v0.2.3...v0.3.0
 [0.2.3]: https://github.com/Dendro-Inspector/Dendro-Inspector/compare/v0.2.2...v0.2.3
