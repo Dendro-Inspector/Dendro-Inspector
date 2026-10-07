@@ -70,7 +70,7 @@ route details live in
 | --- | --- | --- |
 | `openai` | `OPENAI_API_KEY` | Optional OpenAI SDK; native `json_schema` response format |
 | `anthropic` | `ANTHROPIC_API_KEY` | Optional Anthropic SDK; Messages API with schema in the prompt and Pydantic validation |
-| `gemini` | `GEMINI_API_KEY` | Direct HTTPS; native `responseSchema` after compatibility translation |
+| `gemini` | `GEMINI_API_KEY`, or `GOOGLE_ACCESS_TOKEN` on a Vertex `GEMINI_ENDPOINT` | Direct HTTPS; native `responseSchema` after compatibility translation |
 | `nvidia` | `NVIDIA_API_KEY` | Direct HTTPS; OpenAI-compatible chat-completions dialect |
 | `openrouter` | `OPENROUTER_API_KEY` | Direct HTTPS; OpenAI-compatible chat-completions dialect |
 | `ollama` | none | Local HTTP; Ollama schema format after compatibility translation |
@@ -88,6 +88,14 @@ DENDRO_PRIMARY_MODEL=gemini-3.6-flash   # the adapter's default
 
 Reads `GEMINI_API_KEY`, over plain HTTPS with no SDK. Structured output uses the API's
 native `responseSchema`.
+
+The same models are served through Vertex as well, and that host authenticates with a bearer
+token rather than an API key. Point `GEMINI_ENDPOINT` at the Vertex publisher path and set
+`GOOGLE_ACCESS_TOKEN`; a token wins over the API key when both are present, and a Vertex
+endpoint with no token fails before the request instead of after it with a `401` that reads
+like a bad key. `GEMINI_THINKING_LEVEL` passes a thinking budget through unvalidated — the API
+rejects an unknown level by name. Reported usage counts hidden reasoning tokens as output,
+with `reasoning_output_tokens` carrying the split. `.env.example` documents each setting.
 
 **Pro models are not on the free tier.** Verified 2026-07-27 against a free-tier key:
 `gemini-3.1-pro-preview`, `gemini-3-pro-preview`, `gemini-2.5-pro` and `gemini-pro-latest`

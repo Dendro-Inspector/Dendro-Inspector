@@ -6,10 +6,10 @@
 - **Last-verified:** 2026-09-02
 
 Three draft specifications, originally written against the working tree at `d6f8247`.
-Phase 0's tests and base telemetry are implemented, as are hardening C2 and the remainder of
-latency L1. The remaining phases stay proposals. Each specification carries its own verified
-findings, contracts, tests and evidence. This page is the one place that says in which order
-they land and which decisions gate them.
+Phase 0's tests and base telemetry are implemented, as are hardening C1 through C6 (C4 pulled
+forward from PR 9) and the remainder of latency L1. The remaining phases stay proposals. Each
+specification carries its own verified findings, contracts, tests and evidence. This page is
+the one place that says in which order they land and which decisions gate them.
 
 | Specification | Owns | Quality effect |
 | --- | --- | --- |
@@ -43,9 +43,10 @@ PR 8  latency L4 (output diet, re-seal, conformance review)
 PR 9  modernisation N3, N4, N5;  hardening C4, C7;  latency L6, L7 experiments
 ```
 
-PR 1 and PR 2 now provide the measurement boundary for the remaining work. PR 2 closes the
-worst verified quality gap (a `high` verdict the gate never looked at) and makes the arbiter's
-marginal value measurable for the first time.
+PR 1 and PR 2 provide the measurement boundary for the remaining work, and PR 3 and PR 5 have
+landed on it, with C4 pulled forward from PR 9. PR 2 closes the worst verified quality gap (a
+`high` verdict the gate never looked at) and makes the arbiter's marginal value measurable for
+the first time.
 
 ## Decision register
 
