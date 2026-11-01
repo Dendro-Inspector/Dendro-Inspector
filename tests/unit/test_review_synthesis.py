@@ -525,7 +525,27 @@ class TestDerivedActions:
         assert synthesis.retry_required
         assert not synthesis.unresolvable
 
-    def test_critical_abstain_request_is_unresolvable(self, knowledge):
+    def test_critical_abstain_request_citing_evidence_is_unresolvable(self, knowledge):
+        synthesis = _adjudicate(
+            knowledge,
+            _result(
+                _finding(
+                    category=FindingCategory.UNSUPPORTED_CLAIM,
+                    severity=Severity.CRITICAL,
+                    required_action=RequiredAction.ABSTAIN,
+                    evidence_ids=("obs-1",),
+                )
+            ),
+        )
+        assert synthesis.unresolvable
+        assert not synthesis.unverified_abstention
+
+    def test_unevidenced_model_abstain_request_waits_for_arbitration(self, knowledge):
+        """Accepted on its category, but a model's word alone cannot route to abstain.
+
+        Abstaining there suppresses the arbiter once every subject has abstained, so one
+        reviewer could withdraw a claim with no independent look at it.
+        """
         synthesis = _adjudicate(
             knowledge,
             _result(
@@ -536,7 +556,47 @@ class TestDerivedActions:
                 )
             ),
         )
+        assert len(synthesis.accepted_findings) == 1
+        assert not synthesis.unresolvable
+        assert synthesis.unverified_abstention
+        assert synthesis.has_critical
+        assert synthesis.escalation_recommended
+
+    def test_deterministic_abstain_request_needs_no_citation(self, knowledge):
+        synthesis = _adjudicate(
+            knowledge,
+            _result(
+                _finding(
+                    category=FindingCategory.CONTRACT_VIOLATION,
+                    severity=Severity.CRITICAL,
+                    required_action=RequiredAction.ABSTAIN,
+                    origin=FindingOrigin.DETERMINISTIC,
+                )
+            ),
+        )
         assert synthesis.unresolvable
+        assert not synthesis.unverified_abstention
+
+    def test_grounded_and_unverified_requests_are_recorded_separately(self, knowledge):
+        synthesis = _adjudicate(
+            knowledge,
+            _result(
+                _finding(
+                    category=FindingCategory.UNSUPPORTED_CLAIM,
+                    severity=Severity.CRITICAL,
+                    required_action=RequiredAction.ABSTAIN,
+                    evidence_ids=("obs-1",),
+                ),
+                _finding(
+                    finding_id="f2",
+                    category=FindingCategory.CONFIDENCE_MISCALIBRATION,
+                    severity=Severity.CRITICAL,
+                    required_action=RequiredAction.ABSTAIN,
+                ),
+            ),
+        )
+        assert synthesis.unresolvable
+        assert synthesis.unverified_abstention
 
     def test_reviewer_disagreement_recommends_escalation(self, knowledge):
         synthesis = _adjudicate(

@@ -267,7 +267,10 @@ escalation precision and recall.
 **Blocking** — overrides hard triggers when enabled:
 
 * `already_abstaining` — every subject is abstained. Partial abstention leaves unaffected
-  subjects eligible for arbitration.
+  subjects eligible for arbitration. Only a grounded finding abstains before this gate; an
+  uncited model `critical` + `abstain` leaves its subjects eligible, so this suppressor cannot
+  be reached on a model's word alone. See
+  [`docs/review-pipeline.md`](review-pipeline.md#an-abstention-needs-a-basis-or-a-second-opinion).
 
 Insufficient evidence never reaches this gate: the quality branch routes directly to the
 photo planner. The old `suppress_when_insufficient_evidence` field is deprecated and ignored,

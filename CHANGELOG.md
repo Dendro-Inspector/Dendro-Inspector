@@ -10,6 +10,20 @@ get entries.
 
 ## [Unreleased]
 
+### Changed
+
+- A model reviewer's `critical` + `abstain` finding that cites no evidence no longer
+  withdraws a claim on its own. It is still accepted and still critical, but it no longer
+  routes straight to abstention — which, once every subject had abstained, also skipped the
+  arbiter. The run proceeds to the escalation gate instead, where the
+  `unresolved_contradiction` hard trigger calls the arbiter, and the subject abstains only
+  if the arbiter's own accepted findings independently request it. If arbitration does not
+  run (disabled or switched off), the subject abstains as before. A finding that cites
+  admitted evidence, or one raised by code, abstains directly exactly as before.
+  `ReviewSynthesis` gains `unverified_abstention` to record the held finding;
+  `unresolvable` now means the grounded case only. No public evaluation case moves: the one
+  abstention case cites its evidence.
+
 ## [0.9.0] — 2026-10-07
 
 The package, graph, deterministic policy and public baseline move together to `0.9.0`

@@ -52,6 +52,7 @@ from dendro_inspector.knowledge.taxon_cards import (
     confidence_exception_for,
     match_card,
 )
+from dendro_inspector.nodes.abstain import settle_unverified_abstention
 from dendro_inspector.nodes.photo_planner import (
     attachment_request,
     choose_request,
@@ -1141,6 +1142,9 @@ async def run(state: GraphState, ctx: NodeContext) -> GraphState:
                 ),
             )
         )
+    # Every route to this node has passed the escalation gate, so arbitration has either run
+    # or will not: an abstention a model asserted without evidence can be settled now.
+    state = settle_unverified_abstention(state, ctx)
     decisions = []
     for subject_id in state.subject_ids:
         candidate_set = state.candidates_for(subject_id)

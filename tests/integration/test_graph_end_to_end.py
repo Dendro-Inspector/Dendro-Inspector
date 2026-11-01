@@ -3,14 +3,16 @@
 from __future__ import annotations
 
 import asyncio
+import json
 
 import pytest
 
 from dendro_inspector.config import EscalationPolicy
-from dendro_inspector.runner import run_case
+from dendro_inspector.runner import CaseRunResult, run_case
 from dendro_inspector.schemas.decisions import DecisionStatus
 from dendro_inspector.schemas.input import DeclaredObjectType
 from dendro_inspector.schemas.taxon import Confidence, Resolution
+from tests.conftest import make_config
 
 
 class TestHappyPath:
@@ -232,6 +234,84 @@ class TestArbitration:
     def test_decision_records_that_an_arbiter_was_used(self, simple_case, run_scenario):
         result = run_scenario(simple_case, "arbiter-review")
         assert result.state.decisions[0].arbiter_used
+
+
+class TestUnverifiedAbstention:
+    """A reviewer's uncited critical `abstain` is checked by the arbiter, not obeyed outright.
+
+    Built from the `abstention-visible` script with the reviewer's citation removed, so the
+    one difference from the grounded case is whether the finding rests on evidence.
+    """
+
+    @staticmethod
+    def _run(case, repo_root, tmp_path, *, arbiter=None, escalation=None) -> CaseRunResult:
+        script = json.loads(
+            (repo_root / "evals/fixtures/abstention-visible.json").read_text(encoding="utf-8")
+        )
+        responses = script["responses"]
+        finding = responses["reviewer:confusion_reviewer"]["findings"][0]
+        finding["evidence_ids"] = []
+        finding["subject_id"] = None
+        if arbiter is not None:
+            responses["arbiter:arbiter"] = {
+                "reviewer": "arbiter",
+                "status": "fail_unresolvable" if arbiter else "pass",
+                "findings": arbiter,
+            }
+        (tmp_path / "unverified.json").write_text(json.dumps(script), encoding="utf-8")
+        config = make_config("unverified").model_copy(
+            update={
+                "fixtures_root": tmp_path,
+                "escalation": escalation or EscalationPolicy(),
+            }
+        )
+        return asyncio.run(run_case(case, config=config, root=repo_root))
+
+    def test_the_arbiter_runs_and_can_decline_to_confirm(
+        self, standing_tree_case, repo_root, tmp_path
+    ):
+        result = self._run(standing_tree_case, repo_root, tmp_path, arbiter=[])
+
+        assert "abstain" not in result.trace.executed_nodes
+        assert result.trace.arbiter_used
+        assert "unresolved_contradiction" in result.trace.escalation_reasons
+        decision = result.state.decisions[0]
+        assert not decision.abstained
+        assert decision.resolution is Resolution.GENUS
+
+    def test_an_independent_arbiter_finding_confirms_it(
+        self, standing_tree_case, repo_root, tmp_path
+    ):
+        confirming = {
+            "finding_id": "arbiter-no-species",
+            "category": "unsupported_claim",
+            "severity": "critical",
+            "summary": "Nothing visible separates the hard pines here.",
+            "evidence_ids": ["obs-1"],
+            "subject_id": "standing_tree_1",
+            "required_action": "abstain",
+            "impact": "resolution_change",
+        }
+        result = self._run(standing_tree_case, repo_root, tmp_path, arbiter=[confirming])
+
+        assert result.trace.arbiter_used
+        decision = result.state.decisions[0]
+        assert decision.abstained
+        assert decision.resolution is Resolution.FAMILY
+        assert decision.confidence is Confidence.LOW
+
+    def test_it_fails_closed_when_arbitration_is_off(self, standing_tree_case, repo_root, tmp_path):
+        result = self._run(
+            standing_tree_case,
+            repo_root,
+            tmp_path,
+            escalation=EscalationPolicy(enabled=False),
+        )
+
+        assert not result.trace.arbiter_used
+        decision = result.state.decisions[0]
+        assert decision.abstained
+        assert decision.resolution is Resolution.FAMILY
 
 
 class TestTermination:

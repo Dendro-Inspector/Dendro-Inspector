@@ -8,12 +8,19 @@ from dataclasses import replace
 
 import pytest
 
-from dendro_inspector.config import Role
-from dendro_inspector.graph.definition import REVIEW_FANOUT
+from dendro_inspector.config import EscalationPolicy, Role
+from dendro_inspector.graph.definition import REVIEW_FANOUT, NodeName
 from dendro_inspector.graph.executor import _run_fanout
+from dendro_inspector.graph.routing import route_internal_gate
 from dendro_inspector.graph.state import EvidenceQualityReport, GraphState
 from dendro_inspector.knowledge.candidate_validation import validate_candidate_set
-from dendro_inspector.nodes import abstain, candidate_generator, evidence_extractor, final_decision
+from dendro_inspector.nodes import (
+    abstain,
+    candidate_generator,
+    escalation_gate,
+    evidence_extractor,
+    final_decision,
+)
 from dendro_inspector.nodes._support import merge_findings
 from dendro_inspector.nodes.botanical_reviewer import card_contradiction_findings
 from dendro_inspector.nodes.review_synthesizer import adjudicate
@@ -471,6 +478,8 @@ def test_abstention_preserves_other_subjects_bounds(action, simple_case, node_co
 
 
 def test_case_wide_abstention_still_covers_every_subject(simple_case, node_context):
+    # Code-raised, because a model finding with no citation no longer reaches this node: it
+    # is settled after arbitration instead (see the unverified-abstention tests below).
     state = _state(simple_case, node_context.knowledge)
     review = ReviewResult.model_validate(
         {
@@ -478,7 +487,11 @@ def test_case_wide_abstention_still_covers_every_subject(simple_case, node_conte
             "status": "fail_unresolvable",
             "findings": (
                 _lower_finding(
-                    subject_id=None, evidence_ids=(), required_action="abstain", severity="critical"
+                    subject_id=None,
+                    evidence_ids=(),
+                    required_action="abstain",
+                    severity="critical",
+                    origin="deterministic",
                 ),
             ),
         }
@@ -490,3 +503,160 @@ def test_case_wide_abstention_still_covers_every_subject(simple_case, node_conte
         assert decision.abstained
         assert decision.resolution is Resolution.FAMILY
         assert decision.confidence is Confidence.LOW
+
+
+def _unverified_abstain(**updates):
+    """A model's critical abstain request with nothing cited: accepted on its category alone."""
+    return _lower_finding(
+        finding_id="unverified",
+        subject_id=None,
+        evidence_ids=(),
+        required_action="abstain",
+        severity="critical",
+        **updates,
+    )
+
+
+def _review(*findings, reviewer="confidence"):
+    return ReviewResult.model_validate(
+        {
+            "reviewer": reviewer,
+            "status": "fail_unresolvable" if findings else "pass",
+            "findings": findings,
+        }
+    )
+
+
+def _arbitrated(state, ctx, *findings):
+    return state.evolve(
+        arbiter_synthesis=adjudicate(
+            (_review(*findings, reviewer="arbiter"),),
+            evidence=state.evidence,
+            knowledge=ctx.knowledge,
+        )
+    )
+
+
+class TestUnverifiedAbstention:
+    """A model cannot withdraw a claim on its word alone and also switch off the arbiter."""
+
+    def test_it_does_not_route_to_abstain_and_does_reach_the_arbiter(
+        self, simple_case, node_context
+    ):
+        state = _synthesized(
+            _state(simple_case, node_context.knowledge),
+            node_context,
+            _review(_unverified_abstain()),
+        )
+        assert route_internal_gate(state, node_context.config.graph) is NodeName.ESCALATION_GATE
+
+        escalation = escalation_gate.decide(state, EscalationPolicy(), ())
+        assert escalation.required
+        assert "unresolved_contradiction" in escalation.reasons
+        assert not escalation.suppressed_by
+
+    def test_the_abstain_node_withdraws_only_what_has_a_basis(self, simple_case, node_context):
+        state = _synthesized(
+            _state(simple_case, node_context.knowledge),
+            node_context,
+            _review(
+                _lower_finding(required_action="abstain", severity="critical"),
+                _unverified_abstain(),
+            ),
+        )
+        assert state.synthesis.unresolvable
+
+        result = asyncio.run(abstain.run(state, node_context))
+
+        assert result.is_abstained("tree_a")
+        assert not result.is_abstained("tree_b")
+        # tree_b is still eligible, so the blocking suppressor cannot skip the arbiter.
+        assert escalation_gate.decide(result, EscalationPolicy(), ()).required
+
+    def test_it_fails_closed_when_arbitration_does_not_run(self, simple_case, node_context):
+        state = _synthesized(
+            _state(simple_case, node_context.knowledge),
+            node_context,
+            _review(_unverified_abstain()),
+        )
+        assert not escalation_gate.decide(state, EscalationPolicy(enabled=False), ()).required
+
+        settled = abstain.settle_unverified_abstention(state, node_context)
+
+        for subject in state.subject_ids:
+            decision = _verdict(settled, node_context, subject)
+            assert decision.abstained
+            assert decision.confidence is Confidence.LOW
+
+    def test_it_stands_down_when_the_arbiter_does_not_confirm(self, simple_case, node_context):
+        state = _synthesized(
+            _state(simple_case, node_context.knowledge),
+            node_context,
+            _review(_unverified_abstain()),
+        )
+        arbitrated = _arbitrated(state, node_context)
+
+        settled = abstain.settle_unverified_abstention(arbitrated, node_context)
+
+        assert not settled.abstained
+        for subject in state.subject_ids:
+            decision = _verdict(settled, node_context, subject)
+            assert not decision.abstained
+            assert decision.resolution is Resolution.GENUS
+
+    def test_a_non_abstaining_arbiter_finding_is_not_confirmation(self, simple_case, node_context):
+        state = _synthesized(
+            _state(simple_case, node_context.knowledge),
+            node_context,
+            _review(_unverified_abstain()),
+        )
+        arbitrated = _arbitrated(state, node_context, _lower_finding(severity="critical"))
+
+        assert not abstain.settle_unverified_abstention(arbitrated, node_context).abstained
+
+    def test_arbiter_confirmation_applies_only_to_the_subjects_it_names(
+        self, simple_case, node_context
+    ):
+        state = _synthesized(
+            _state(simple_case, node_context.knowledge),
+            node_context,
+            _review(_unverified_abstain()),
+        )
+        arbitrated = _arbitrated(
+            state,
+            node_context,
+            _lower_finding(finding_id="arbiter-a", required_action="abstain", severity="critical"),
+        )
+
+        settled = abstain.settle_unverified_abstention(arbitrated, node_context)
+
+        assert _verdict(settled, node_context, "tree_a").abstained
+        assert not _verdict(settled, node_context, "tree_b").abstained
+
+    def test_settlement_keeps_existing_bounds(self, simple_case, node_context):
+        state = _synthesized(
+            _state(simple_case, node_context.knowledge),
+            node_context,
+            _review(
+                _lower_finding(required_action="abstain", severity="critical"),
+                _unverified_abstain(),
+            ),
+        )
+        abstained = asyncio.run(abstain.run(state, node_context))
+
+        settled = abstain.settle_unverified_abstention(abstained, node_context)
+
+        assert [bound.subject_id for bound in settled.abstention_bounds] == ["tree_a", "tree_b"]
+        assert settled.abstention_for("tree_a") == abstained.abstention_for("tree_a")
+
+    def test_final_decision_settles_before_deciding(self, simple_case, node_context):
+        state = _synthesized(
+            _state(simple_case, node_context.knowledge),
+            node_context,
+            _review(_unverified_abstain()),
+        )
+
+        result = asyncio.run(final_decision.run(state, node_context))
+
+        assert result.abstained
+        assert all(decision.abstained for decision in result.decisions)

@@ -122,6 +122,11 @@ candidate-specific support. The graph topology did not need a new node to enforc
 Precedence at the internal gate matters. An unresolvable finding must not be retried, and a
 retry request with no budget left degrades to abstention rather than looping.
 
+`unresolvable` is set only by a grounded finding. A model's uncited `critical` + `abstain`
+takes the `otherwise` branch and is settled before `final_decision`: abstained if the arbiter
+independently confirms it or if arbitration does not run. See
+[`docs/review-pipeline.md`](review-pipeline.md#an-abstention-needs-a-basis-or-a-second-opinion).
+
 ## Parallelism
 
 The three reviewers are independent and run concurrently as one logical step. They receive

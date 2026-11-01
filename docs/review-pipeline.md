@@ -172,12 +172,35 @@ inert.
 | Synthesis field | Derived from |
 | --- | --- |
 | `retry_required` | any accepted finding with `re_extract_evidence` |
-| `unresolvable` | any accepted **critical** finding with `abstain` |
+| `unresolvable` | any accepted **critical** finding with `abstain` that is code-raised or cites evidence |
+| `unverified_abstention` | any accepted **critical** model finding with `abstain` and no evidence citation |
 | `recommendations` | subject-scoped bounds, optionally bound to exact accepted model findings |
 | `confidence_delta` | summary: the **lowest** admitted confidence recommendation |
 | `resolution_delta` | summary: the **broadest** admitted resolution recommendation |
 | `candidate_delta` | exact accepted finding-bound `AdmittedRerank` artifacts |
 | `escalation_recommended` | reviewer disagreement, or any accepted critical finding |
+
+### An abstention needs a basis or a second opinion
+
+Calibration and contradiction categories are admitted without a citation, so a model can
+file `critical` + `abstain` on its word alone. Routed straight to abstain, that finding would
+also switch off the arbiter once every subject had abstained — one reviewer withdrawing a claim
+with no independent look at it. So only a **grounded** finding — code-raised, or citing
+admitted evidence — sets `unresolvable`. An uncited model finding sets `unverified_abstention`
+instead: it stays accepted and critical, the graph proceeds to the escalation gate, where
+`unresolved_contradiction` (a hard trigger) requests the arbiter, and
+`abstain.settle_unverified_abstention` settles it, per subject, just before final decision:
+
+| After the escalation gate | Outcome for each subject the finding names |
+| --- | --- |
+| Arbiter ran; its own accepted findings request `critical` + `abstain` for the subject | abstains |
+| Arbiter ran and did not | claim stands, still bounded by the reviewer's admitted recommendation |
+| Arbitration did not run (disabled, triggers switched off) | abstains — fails closed |
+
+The arbiter is not shown the internal findings, so its agreement is independent. An
+uncited finding cannot name another subject's evidence, which is why only uncited findings
+can be case-wide; a grounded model finding is always scoped to the subject its evidence
+belongs to.
 
 Final decision consumes `recommendations` for the selected subject, not these aggregate
 deltas. An explicit result subject must exist; otherwise scope is inferred from accepted
