@@ -123,8 +123,9 @@ class GraphConfig(Contract):
         description=(
             "Longest edge of the image actually transmitted, or None to send originals. "
             "Every node re-sends the same photograph, so this multiplies by node count. "
-            "Requires the 'images' extra; without Pillow the original is sent and a "
-            "warning is logged."
+            "Also strips embedded metadata (EXIF, XMP, comments). Requires the 'images' "
+            "extra; without Pillow the original is sent, metadata included, and a warning "
+            "is logged."
         ),
     )
 

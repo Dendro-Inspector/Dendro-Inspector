@@ -29,8 +29,9 @@ dependencies = [
 [project.optional-dependencies]
 openai = ["openai>=1.40"]
 anthropic = ["anthropic>=0.34"]
-# Bounds the image bytes actually transmitted (GraphConfig.image_max_edge_px). Optional
-# because the core has no imaging dependency: without it, originals are sent as before.
+# Bounds the image bytes actually transmitted (GraphConfig.image_max_edge_px) and strips
+# embedded metadata (EXIF, XMP, comments) from them. Optional because the core has no
+# imaging dependency: without it, originals are sent as before, metadata included.
 images = ["pillow>=10.0"]
 dev = [
   "pytest>=8.0",

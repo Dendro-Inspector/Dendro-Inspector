@@ -105,7 +105,18 @@ Treat every output as untrusted if the input was.
 ## Data handling
 
 The run trace deliberately excludes: API keys, image bytes, full user metadata, hidden model
-reasoning, and prompt or response bodies. See
+reasoning, and prompt or response bodies.
+
+Images leave the process only at the provider boundary (`providers/base.py`):
+
+- A file larger than `MAX_IMAGE_FILE_BYTES` is refused before it is read, whatever else is
+  installed.
+- With the `images` extra, transmitted images are bounded to `GraphConfig.image_max_edge_px`
+  and carry no embedded EXIF (including GPS position), XMP or comments. Without it, originals
+  are sent as they are, metadata included, and a warning is logged once.
+- `ImageRef.path` is operator input, and the file it names is sent to every configured
+  provider. A service accepting cases from untrusted callers must store uploads in a
+  directory it owns and build the reference itself, never pass through a caller's path. See
 [`docs/dataset-policy.md`](docs/dataset-policy.md) for what must never be committed.
 
 ## Not a safety tool

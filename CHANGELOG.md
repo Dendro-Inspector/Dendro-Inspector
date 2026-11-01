@@ -44,6 +44,18 @@ get entries.
   On expiry the node in flight is cancelled, recorded in the trace as failed with detail
   `cancelled`, and the run fails with `GraphExecutionError`; no partial answer is returned.
   A node's own `TimeoutError` is not reported as the run deadline.
+- An image file larger than `MAX_IMAGE_FILE_BYTES` (32 MiB) is refused with
+  `ImageTooLargeError` before it is read, with or without the `images` extra. At most the
+  ceiling plus one byte is ever read.
+
+### Fixed
+
+- With the `images` extra, a transmitted image no longer carries embedded metadata. A
+  photograph already within `image_max_edge_px` was sent as the original file, EXIF (GPS
+  position, device identity) included; it is now sent untouched only when it carries
+  nothing but pixels, and re-encoded like a larger one otherwise. A re-encoded JPEG also
+  kept its free-text comment, because Pillow writes it back by default; that is dropped too.
+  Without the extra, originals are still sent as they are, and the warning now says so.
 
 ## [0.9.0] — 2026-10-07
 

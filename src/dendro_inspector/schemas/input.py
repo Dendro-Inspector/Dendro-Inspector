@@ -58,7 +58,14 @@ class DeclaredObjectType(StrEnum):
 
 
 class ImageRef(Contract):
-    """A reference to an image. Bytes are never carried through graph state."""
+    """A reference to an image. Bytes are never carried through graph state.
+
+    ``path`` is **operator** input: the file is read and sent to every configured provider.
+    The CLI passes the path its operator typed. A service accepting cases from untrusted
+    callers must store each upload in a directory it owns and build this reference itself;
+    it must never pass through a caller-supplied path, which would let the caller have any
+    readable file sent to a model provider.
+    """
 
     image_id: Identifier
     path: Path
