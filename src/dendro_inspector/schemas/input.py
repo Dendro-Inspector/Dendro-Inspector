@@ -21,6 +21,12 @@ from dendro_inspector.schemas.base import Contract, Identifier, ShortText
 #: common EXIF readers emit keys such as ``Image Make``.
 MetadataKey = Annotated[str, StringConstraints(pattern=r"^[A-Za-z0-9][A-Za-z0-9 _.:-]{0,63}$")]
 
+#: The whole mapping is rendered into every model call of the run, so its size multiplies by
+#: the number of calls. Bounded like the other free-text fields: a curated EXIF subset fits, a
+#: raw dump with maker notes does not, and should be filtered by the caller.
+MetadataValue = Annotated[str, StringConstraints(max_length=400)]
+MAX_METADATA_ENTRIES = 64
+
 #: Sent to providers inside the request (``data:<media_type>;base64,...``) and shown to the
 #: model, so it must be an image MIME type and nothing else.
 MediaType = Annotated[str, StringConstraints(pattern=r"^image/[A-Za-z0-9][A-Za-z0-9.+-]{0,63}$")]
@@ -103,8 +109,9 @@ class CaseInput(Contract):
     season: Season = Season.UNKNOWN
     habitat: str | None = Field(default=None, max_length=200)
     declared_object_type: DeclaredObjectType = DeclaredObjectType.UNKNOWN
-    metadata: dict[MetadataKey, str] = Field(
+    metadata: dict[MetadataKey, MetadataValue] = Field(
         default_factory=dict,
+        max_length=MAX_METADATA_ENTRIES,
         description="Untrusted key/value context (EXIF, upload metadata, caller hints).",
     )
 

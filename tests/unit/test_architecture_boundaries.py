@@ -10,12 +10,18 @@ import pytest
 
 from dendro_inspector.config import EscalationPolicy, Role
 from dendro_inspector.graph.definition import REVIEW_FANOUT, NodeName
-from dendro_inspector.graph.executor import _run_fanout
+from dendro_inspector.graph.executor import (
+    GraphExecutionError,
+    NodeContext,
+    _run_fanout,
+    run_graph,
+)
 from dendro_inspector.graph.routing import route_internal_gate
 from dendro_inspector.graph.state import EvidenceQualityReport, GraphState
 from dendro_inspector.knowledge.candidate_validation import validate_candidate_set
 from dendro_inspector.nodes import (
     abstain,
+    build_registry,
     candidate_generator,
     escalation_gate,
     evidence_extractor,
@@ -24,6 +30,7 @@ from dendro_inspector.nodes import (
 from dendro_inspector.nodes._support import merge_findings
 from dendro_inspector.nodes.botanical_reviewer import card_contradiction_findings
 from dendro_inspector.nodes.review_synthesizer import adjudicate
+from dendro_inspector.observability.events import NodeStatus
 from dendro_inspector.providers.base import StructuredOutputError
 from dendro_inspector.providers.fake import ScriptedProvider
 from dendro_inspector.providers.registry import ProviderRegistry
@@ -425,6 +432,57 @@ def test_cancelling_the_fanout_joins_all_reviewers(simple_case, node_context):
         assert all(event.detail == "cancelled" for event in events)
 
     asyncio.run(run())
+
+
+class TestRunDeadline:
+    """One inspection has a wall-clock bound, and running out of it is a failure, not an answer."""
+
+    @staticmethod
+    def _within(ctx: NodeContext, deadline_seconds: float) -> NodeContext:
+        graph = ctx.config.graph.model_copy(update={"deadline_seconds": deadline_seconds})
+        return replace(ctx, config=ctx.config.model_copy(update={"graph": graph}))
+
+    def test_an_expired_deadline_fails_the_run_and_records_the_cut_node(
+        self, simple_case, node_context
+    ):
+        async def stalled(state, ctx):
+            await asyncio.sleep(60)
+            return state
+
+        registry = {**build_registry(), NodeName.PLANNER: stalled}
+        ctx = self._within(node_context, 0.05)
+
+        with pytest.raises(GraphExecutionError, match="deadline_seconds"):
+            asyncio.run(run_graph(simple_case, ctx, registry))
+
+        last = ctx.recorder.build().events[-1]
+        assert last.node == NodeName.PLANNER.value
+        assert last.status is NodeStatus.FAILED
+        assert last.detail == "cancelled"
+
+    def test_a_node_timeout_is_not_reported_as_the_run_deadline(self, simple_case, node_context):
+        async def own_timeout(state, ctx):
+            raise TimeoutError("provider did not answer")
+
+        registry = {**build_registry(), NodeName.PLANNER: own_timeout}
+
+        with pytest.raises(TimeoutError, match="provider did not answer"):
+            asyncio.run(run_graph(simple_case, self._within(node_context, 30.0), registry))
+
+    def test_a_run_inside_its_deadline_completes(self, simple_case, node_context):
+        result = asyncio.run(
+            run_graph(simple_case, self._within(node_context, 30.0), build_registry())
+        )
+        assert result.state.decisions
+
+
+def test_metadata_is_bounded_in_entries_and_value_length():
+    """The mapping is rendered into every model call, so its size multiplies by call count."""
+    CaseInput(case_id="c1", metadata={f"k{i}": "v" * 400 for i in range(64)})
+    with pytest.raises(ValueError, match="metadata"):
+        CaseInput(case_id="c1", metadata={f"k{i}": "v" for i in range(65)})
+    with pytest.raises(ValueError, match="metadata"):
+        CaseInput(case_id="c1", metadata={"k": "v" * 401})
 
 
 def test_input_cannot_assign_the_same_id_to_different_images(simple_case):

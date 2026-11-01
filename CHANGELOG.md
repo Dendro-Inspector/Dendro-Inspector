@@ -32,6 +32,18 @@ get entries.
   (`^[A-Za-z0-9][A-Za-z0-9 _.:-]{0,63}$`; spaces stay legal for EXIF-reader keys such as
   `Image Make`), and `ImageRef.media_type` must be an `image/*` MIME type. Inputs outside
   these shapes are rejected at validation instead of reaching a prompt or a provider request.
+- **Input contract:** `CaseInput.metadata` now holds at most 64 entries of at most 400
+  characters each. The mapping is rendered into every model call of a run, so its size
+  multiplies by the call count; a curated EXIF subset fits, a raw dump should be filtered by
+  the caller.
+
+### Added
+
+- `GraphConfig.deadline_seconds` bounds the wall-clock time of one inspection. Off by
+  default, since each adapter already has a per-call timeout and local models can be slow.
+  On expiry the node in flight is cancelled, recorded in the trace as failed with detail
+  `cancelled`, and the run fails with `GraphExecutionError`; no partial answer is returned.
+  A node's own `TimeoutError` is not reported as the run deadline.
 
 ## [0.9.0] — 2026-10-07
 

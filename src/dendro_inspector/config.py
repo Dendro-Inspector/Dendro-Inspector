@@ -106,6 +106,15 @@ class GraphConfig(Contract):
 
     retry_budget: int = Field(default=1, ge=0, le=3)
     max_steps: int = Field(default=64, ge=8, le=512)
+    deadline_seconds: float | None = Field(
+        default=None,
+        gt=0,
+        description=(
+            "Wall-clock limit for one inspection, or None for no limit beyond each provider "
+            "call's own timeout. On expiry the run is cancelled and fails with "
+            "GraphExecutionError; it never returns a partial answer."
+        ),
+    )
     min_observations_for_candidates: int = Field(default=2, ge=1)
     require_non_colour_evidence: bool = True
     image_max_edge_px: int | None = Field(

@@ -437,6 +437,14 @@ Therefore the loop runs at most `retry_budget` times (1 in v0.1) and the graph t
 When the budget is spent, routing degrades to abstention rather than looping. `max_steps` is
 a backstop against a routing bug, not the primary guarantee.
 
+Termination bounds the number of model calls, not the time they take. Each adapter carries
+its own per-call timeout; `GraphConfig.deadline_seconds`, off by default, bounds the whole
+inspection, cancelling the node in flight and failing with `GraphExecutionError` rather than
+returning a partial answer. Input size is bounded by the case contract
+(`schemas/input.py`): image count, every free-text field, and the metadata mapping's entry
+count, key shape and value length — the whole mapping is rendered into every model call, so
+an unbounded one multiplies by the call count.
+
 ## Implementation references
 
 - [`src/dendro_inspector/schemas/`](../src/dendro_inspector/schemas) — contracts
