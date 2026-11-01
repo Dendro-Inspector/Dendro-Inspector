@@ -23,6 +23,15 @@ get entries.
   `ReviewSynthesis` gains `unverified_abstention` to record the held finding;
   `unresolvable` now means the grounded case only. No public evaluation case moves: the one
   abstention case cites its evidence.
+- The input guard now scans metadata **keys** as well as values, and image media types.
+  Both are rendered into every model prompt beside the text it already scanned. Token-shaped
+  fields are scanned with `_`, `-`, `.`, `:`, `/` and `+` read as spaces, so a sentence packed
+  into one key (`ignore_all_previous_instructions`) is recognised; filenames get the same
+  treatment.
+- **Input contract:** a `CaseInput.metadata` key must now be a bounded ASCII field name
+  (`^[A-Za-z0-9][A-Za-z0-9 _.:-]{0,63}$`; spaces stay legal for EXIF-reader keys such as
+  `Image Make`), and `ImageRef.media_type` must be an `image/*` MIME type. Inputs outside
+  these shapes are rejected at validation instead of reaching a prompt or a provider request.
 
 ## [0.9.0] — 2026-10-07
 

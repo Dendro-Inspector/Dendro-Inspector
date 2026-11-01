@@ -57,8 +57,12 @@ input. It is never an instruction to the graph.**
 
 How that is enforced:
 
-1. **Detection, not obedience.** `nodes/input_guard.py` scans every untrusted string and
-   records the *category* of instruction-like content found. It never acts on the content.
+1. **Detection, not obedience.** `nodes/input_guard.py` scans every untrusted string that
+   reaches a prompt — user text, location, habitat, captions, media types, and metadata keys
+   as well as values — plus filenames, and records the *category* of instruction-like
+   content found. It never acts on the content. Token-shaped fields are held to their shape
+   by the input contract: a metadata key is a bounded ASCII field name, a media type is an
+   `image/*` MIME type.
 2. **Recording is authoritative.** The extractor cannot erase the guard's finding: if the
    guard saw injection, `instruction_like_content_detected` is set on the evidence packet
    regardless of what the model returned.

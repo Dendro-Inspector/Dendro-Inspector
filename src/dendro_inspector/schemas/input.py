@@ -10,10 +10,20 @@ from __future__ import annotations
 
 from enum import StrEnum
 from pathlib import Path
+from typing import Annotated
 
-from pydantic import Field, model_validator
+from pydantic import Field, StringConstraints, model_validator
 
 from dendro_inspector.schemas.base import Contract, Identifier, ShortText
+
+#: A metadata key reaches every prompt beside its value, so it is held to the shape of a
+#: field name: ASCII, no line breaks, quotes or markup, bounded. Spaces stay legal because
+#: common EXIF readers emit keys such as ``Image Make``.
+MetadataKey = Annotated[str, StringConstraints(pattern=r"^[A-Za-z0-9][A-Za-z0-9 _.:-]{0,63}$")]
+
+#: Sent to providers inside the request (``data:<media_type>;base64,...``) and shown to the
+#: model, so it must be an image MIME type and nothing else.
+MediaType = Annotated[str, StringConstraints(pattern=r"^image/[A-Za-z0-9][A-Za-z0-9.+-]{0,63}$")]
 
 
 class Season(StrEnum):
@@ -46,7 +56,7 @@ class ImageRef(Contract):
 
     image_id: Identifier
     path: Path
-    media_type: str = Field(default="image/jpeg", max_length=80)
+    media_type: MediaType = "image/jpeg"
     caption: ShortText | None = Field(
         default=None,
         description="User- or file-supplied caption. Untrusted text.",
@@ -93,7 +103,7 @@ class CaseInput(Contract):
     season: Season = Season.UNKNOWN
     habitat: str | None = Field(default=None, max_length=200)
     declared_object_type: DeclaredObjectType = DeclaredObjectType.UNKNOWN
-    metadata: dict[str, str] = Field(
+    metadata: dict[MetadataKey, str] = Field(
         default_factory=dict,
         description="Untrusted key/value context (EXIF, upload metadata, caller hints).",
     )
