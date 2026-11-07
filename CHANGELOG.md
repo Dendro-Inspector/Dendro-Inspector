@@ -10,6 +10,53 @@ get entries.
 
 ## [Unreleased]
 
+### Changed
+
+- A model reviewer's `critical` + `abstain` finding that cites no evidence no longer
+  withdraws a claim on its own. It is still accepted and still critical, but it no longer
+  routes straight to abstention — which, once every subject had abstained, also skipped the
+  arbiter. The run proceeds to the escalation gate instead, where the
+  `unresolved_contradiction` hard trigger calls the arbiter, and the subject abstains only
+  if the arbiter's own accepted findings independently request it. If arbitration does not
+  run (disabled or switched off), the subject abstains as before. A finding that cites
+  admitted evidence, or one raised by code, abstains directly exactly as before.
+  `ReviewSynthesis` gains `unverified_abstention` to record the held finding;
+  `unresolvable` now means the grounded case only. No public evaluation case moves: the one
+  abstention case cites its evidence.
+- The input guard now scans metadata **keys** as well as values, and image media types.
+  Both are rendered into every model prompt beside the text it already scanned. Token-shaped
+  fields are scanned with `_`, `-`, `.`, `:`, `/` and `+` read as spaces, so a sentence packed
+  into one key (`ignore_all_previous_instructions`) is recognised; filenames get the same
+  treatment.
+- **Input contract:** a `CaseInput.metadata` key must now be a bounded ASCII field name
+  (`^[A-Za-z0-9][A-Za-z0-9 _.:-]{0,63}$`; spaces stay legal for EXIF-reader keys such as
+  `Image Make`), and `ImageRef.media_type` must be an `image/*` MIME type. Inputs outside
+  these shapes are rejected at validation instead of reaching a prompt or a provider request.
+- **Input contract:** `CaseInput.metadata` now holds at most 64 entries of at most 400
+  characters each. The mapping is rendered into every model call of a run, so its size
+  multiplies by the call count; a curated EXIF subset fits, a raw dump should be filtered by
+  the caller.
+
+### Added
+
+- `GraphConfig.deadline_seconds` bounds the wall-clock time of one inspection. Off by
+  default, since each adapter already has a per-call timeout and local models can be slow.
+  On expiry the node in flight is cancelled, recorded in the trace as failed with detail
+  `cancelled`, and the run fails with `GraphExecutionError`; no partial answer is returned.
+  A node's own `TimeoutError` is not reported as the run deadline.
+- An image file larger than `MAX_IMAGE_FILE_BYTES` (32 MiB) is refused with
+  `ImageTooLargeError` before it is read, with or without the `images` extra. At most the
+  ceiling plus one byte is ever read.
+
+### Fixed
+
+- With the `images` extra, a transmitted image no longer carries embedded metadata. A
+  photograph already within `image_max_edge_px` was sent as the original file, EXIF (GPS
+  position, device identity) included; it is now sent untouched only when it carries
+  nothing but pixels, and re-encoded like a larger one otherwise. A re-encoded JPEG also
+  kept its free-text comment, because Pillow writes it back by default; that is dropped too.
+  Without the extra, originals are still sent as they are, and the warning now says so.
+
 ## [0.9.0] — 2026-10-07
 
 The package, graph, deterministic policy and public baseline move together to `0.9.0`

@@ -59,6 +59,23 @@ MaterialSignature = tuple[
 ]
 
 
+def requests_abstention(finding: ReviewFinding) -> bool:
+    """A critical finding asking for the claim to be withdrawn rather than corrected."""
+    return (
+        finding.required_action is RequiredAction.ABSTAIN and finding.severity is Severity.CRITICAL
+    )
+
+
+def is_grounded(finding: ReviewFinding) -> bool:
+    """Raised by code, or citing evidence ids. Applies to findings that admission accepted.
+
+    Admission resolves every cited id against the packet and the reviewer's projection, so an
+    accepted finding with citations rests on evidence that exists. A model finding admitted
+    on its category alone rests on nothing but the model's own assertion.
+    """
+    return finding.origin is FindingOrigin.DETERMINISTIC or bool(finding.evidence_ids)
+
+
 def _evidence_sources(
     evidence: EvidencePacket | None, evidence_id: str
 ) -> tuple[Observation, ...] | None:
@@ -396,10 +413,13 @@ def adjudicate(
     retry_required = any(
         finding.required_action is RequiredAction.RE_EXTRACT_EVIDENCE for finding in accepted
     )
-    unresolvable = any(
-        finding.required_action is RequiredAction.ABSTAIN and finding.severity is Severity.CRITICAL
-        for finding in accepted
-    )
+    # Abstention suppresses arbitration once every subject has abstained, so a critical
+    # abstain finding with nothing verifiable behind it must not take that route alone. It
+    # stays accepted - it is still critical and still recommends escalation - and is settled
+    # after arbitration by `abstain.settle_unverified_abstention`.
+    blocking = tuple(finding for finding in accepted if requests_abstention(finding))
+    unresolvable = any(is_grounded(finding) for finding in blocking)
+    unverified_abstention = any(not is_grounded(finding) for finding in blocking)
     corrections = tuple(
         _directive(finding)
         for finding in accepted
@@ -430,6 +450,7 @@ def adjudicate(
         reviewer_disagreement=reviewer_disagreement,
         escalation_recommended=reviewer_disagreement or critical_finding,
         unresolvable=unresolvable,
+        unverified_abstention=unverified_abstention,
     )
 
 

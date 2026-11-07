@@ -10,10 +10,26 @@ from __future__ import annotations
 
 from enum import StrEnum
 from pathlib import Path
+from typing import Annotated
 
-from pydantic import Field, model_validator
+from pydantic import Field, StringConstraints, model_validator
 
 from dendro_inspector.schemas.base import Contract, Identifier, ShortText
+
+#: A metadata key reaches every prompt beside its value, so it is held to the shape of a
+#: field name: ASCII, no line breaks, quotes or markup, bounded. Spaces stay legal because
+#: common EXIF readers emit keys such as ``Image Make``.
+MetadataKey = Annotated[str, StringConstraints(pattern=r"^[A-Za-z0-9][A-Za-z0-9 _.:-]{0,63}$")]
+
+#: The whole mapping is rendered into every model call of the run, so its size multiplies by
+#: the number of calls. Bounded like the other free-text fields: a curated EXIF subset fits, a
+#: raw dump with maker notes does not, and should be filtered by the caller.
+MetadataValue = Annotated[str, StringConstraints(max_length=400)]
+MAX_METADATA_ENTRIES = 64
+
+#: Sent to providers inside the request (``data:<media_type>;base64,...``) and shown to the
+#: model, so it must be an image MIME type and nothing else.
+MediaType = Annotated[str, StringConstraints(pattern=r"^image/[A-Za-z0-9][A-Za-z0-9.+-]{0,63}$")]
 
 
 class Season(StrEnum):
@@ -42,11 +58,18 @@ class DeclaredObjectType(StrEnum):
 
 
 class ImageRef(Contract):
-    """A reference to an image. Bytes are never carried through graph state."""
+    """A reference to an image. Bytes are never carried through graph state.
+
+    ``path`` is **operator** input: the file is read and sent to every configured provider.
+    The CLI passes the path its operator typed. A service accepting cases from untrusted
+    callers must store each upload in a directory it owns and build this reference itself;
+    it must never pass through a caller-supplied path, which would let the caller have any
+    readable file sent to a model provider.
+    """
 
     image_id: Identifier
     path: Path
-    media_type: str = Field(default="image/jpeg", max_length=80)
+    media_type: MediaType = "image/jpeg"
     caption: ShortText | None = Field(
         default=None,
         description="User- or file-supplied caption. Untrusted text.",
@@ -93,8 +116,9 @@ class CaseInput(Contract):
     season: Season = Season.UNKNOWN
     habitat: str | None = Field(default=None, max_length=200)
     declared_object_type: DeclaredObjectType = DeclaredObjectType.UNKNOWN
-    metadata: dict[str, str] = Field(
+    metadata: dict[MetadataKey, MetadataValue] = Field(
         default_factory=dict,
+        max_length=MAX_METADATA_ENTRIES,
         description="Untrusted key/value context (EXIF, upload metadata, caller hints).",
     )
 

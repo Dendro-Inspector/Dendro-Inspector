@@ -136,11 +136,44 @@ class StructuredOutputError(ProviderError):
     """The model returned output that does not satisfy the requested contract."""
 
 
+class ImageTooLargeError(ProviderError):
+    """An image file exceeds the size any provider request may carry."""
+
+
 #: Formats worth re-encoding. Anything else is passed through untouched rather than
 #: guessed at — a bounded edge is an optimisation, never a reason to corrupt an input.
 _RESIZABLE_MEDIA_TYPES: dict[str, str] = {"image/jpeg": "JPEG", "image/png": "PNG"}
 
 _JPEG_QUALITY = 88
+
+#: Hard ceiling on a file read for transmission, applied with or without Pillow and before
+#: any decoding. Generous for a photograph; it exists so that a path to something that is
+#: not one is refused instead of being read into memory and uploaded once per node.
+MAX_IMAGE_FILE_BYTES = 32 * 1024 * 1024
+
+#: Embedded metadata a vision model does not need and a third party should not receive:
+#: EXIF (GPS position, device serials, owner names), XMP, IPTC and free-text comments.
+_METADATA_INFO_KEYS = frozenset({"exif", "xmp", "XML:com.adobe.xmp", "photoshop", "comment"})
+
+
+def _read_bounded(path: Path) -> bytes:
+    """Read at most the ceiling, so a file that grows after a size check is still refused."""
+    with path.open("rb") as handle:
+        data = handle.read(MAX_IMAGE_FILE_BYTES + 1)
+    if len(data) > MAX_IMAGE_FILE_BYTES:
+        msg = f"image {path.name!r} exceeds {MAX_IMAGE_FILE_BYTES} bytes; refusing to send it"
+        raise ImageTooLargeError(msg)
+    return data
+
+
+def _carries_metadata(image: Any) -> bool:
+    """Embedded metadata, PNG text chunks, or extra frames (MPO depth maps, secondary shots)."""
+    return (
+        bool(_METADATA_INFO_KEYS & image.info.keys())
+        or bool(getattr(image, "text", None))
+        or getattr(image, "n_frames", 1) > 1
+    )
+
 
 _pillow_warning_issued = False
 
@@ -155,8 +188,8 @@ def _warn_pillow_missing_once(max_edge_px: int) -> None:
         extra={
             "max_edge_px": max_edge_px,
             "detail": (
-                "Pillow is not installed; sending originals. "
-                "Install the 'images' extra to bound the transmitted size."
+                "Pillow is not installed; sending originals, embedded metadata included. "
+                "Install the 'images' extra to bound the transmitted size and strip it."
             ),
         },
     )
@@ -175,21 +208,31 @@ def _bounded_bytes(
         from PIL import Image, ImageOps
     except ImportError:
         _warn_pillow_missing_once(max_edge_px)
-        return path.read_bytes()
+        return _read_bounded(path)
 
-    with Image.open(path) as opened:
+    original = _read_bounded(path)
+    with Image.open(io.BytesIO(original)) as opened:
         # Re-encoding drops EXIF, so the rotation flag has to be baked into the pixels
         # first. Phone cameras store a portrait photograph as landscape plus an
         # orientation tag; dropping the tag without applying it hands the model a tree
         # lying on its side. Every photograph in this project's golden set is tagged.
         upright = ImageOps.exif_transpose(opened)
-        if max(upright.size) <= max_edge_px and upright.size == opened.size:
-            # Already small enough and already upright. Returning the original avoids a
-            # pointless second generation of JPEG loss on evidence the model is asked to
-            # read closely.
-            return path.read_bytes()
+        if (
+            max(upright.size) <= max_edge_px
+            and upright.size == opened.size
+            and not _carries_metadata(opened)
+        ):
+            # Already small enough, already upright, and carrying nothing but pixels.
+            # Returning the original avoids a pointless second generation of JPEG loss on
+            # evidence the model is asked to read closely. A small photograph that still
+            # carries EXIF or a comment is re-encoded like a large one: its GPS position
+            # and device identifiers are not evidence.
+            return original
         upright.thumbnail((max_edge_px, max_edge_px), Image.Resampling.LANCZOS)
         prepared = upright.convert("RGB") if pillow_format == "JPEG" else upright
+        # Pillow writes a JPEG comment back by default; EXIF and XMP only when asked.
+        for key in _METADATA_INFO_KEYS:
+            prepared.info.pop(key, None)
         buffer = io.BytesIO()
         save_options: dict[str, object] = (
             {"quality": _JPEG_QUALITY, "optimize": True} if pillow_format == "JPEG" else {}
@@ -216,7 +259,7 @@ class ImageInput:
     def read_bytes(self) -> bytes:
         pillow_format = _RESIZABLE_MEDIA_TYPES.get(self.media_type)
         if self.max_edge_px is None or pillow_format is None:
-            return self.path.read_bytes()
+            return _read_bounded(self.path)
         stat = self.path.stat()
         return _bounded_bytes(
             self.path,

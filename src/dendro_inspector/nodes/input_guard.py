@@ -79,15 +79,31 @@ _INSTRUCTION_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
 )
 
 
+_TOKEN_SEPARATORS = re.compile(r"[_.:/+-]+")
+
+
+def _as_words(token: str) -> str:
+    """Space out a token-shaped field so `ignore_all_previous_instructions` reads as words."""
+    return _TOKEN_SEPARATORS.sub(" ", token)
+
+
 def _untrusted_strings(state: GraphState) -> tuple[str, ...]:
-    """Case text, filenames, captions and metadata values to scan."""
+    """Every untrusted string that reaches a prompt, plus filenames.
+
+    Metadata keys and media types are rendered into the case context beside the values, so
+    they are scanned like the values. They are token-shaped by contract, and the patterns
+    need word boundaries, so they are scanned with their separators spaced out.
+    """
     case = state.case
     items = [text for text in (case.user_text, case.location, case.habitat) if text]
     for image in case.images:
-        items.append(image.path.name)
+        items.append(_as_words(image.path.name))
+        items.append(_as_words(image.media_type))
         if image.caption:
             items.append(image.caption)
-    items.extend(value for _, value in sorted(case.metadata.items()))
+    for key, value in sorted(case.metadata.items()):
+        items.append(_as_words(key))
+        items.append(value)
     return tuple(items)
 
 

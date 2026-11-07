@@ -12,6 +12,7 @@ import pytest
 
 import dendro_inspector.nodes._support as support
 import dendro_inspector.nodes.candidate_generator as candidate_generator
+import dendro_inspector.providers.base as provider_base
 from dendro_inspector.config import Role
 from dendro_inspector.graph.definition import NodeName
 from dendro_inspector.graph.projections import build_review_projection
@@ -39,6 +40,7 @@ from dendro_inspector.providers.base import (
     OUTPUT_EVIDENCE_IDS,
     OUTPUT_SUBJECT_IDS,
     ImageInput,
+    ImageTooLargeError,
 )
 from dendro_inspector.schemas.candidates import (
     Candidate,
@@ -559,6 +561,71 @@ def test_untagged_small_image_still_takes_the_untouched_shortcut(tmp_path):
     assert ImageInput(image_id="img-1", path=path, max_edge_px=1568).read_bytes() == (
         path.read_bytes()
     )
+
+
+_GPS_MARKER = "Example Camera Co"
+_COMMENT_MARKER = b"owner: user@example.com"
+
+
+def _write_tagged_photo(path: Path, size: tuple[int, int], fmt: str = "JPEG") -> Path:
+    """An upright photograph carrying what a phone writes: GPS, a maker, a free-text comment."""
+    pil_image = pytest.importorskip("PIL.Image", reason="the 'images' extra is not installed")
+    image = pil_image.new("RGB", size, (110, 90, 60))
+    exif = image.getexif()
+    exif[0x010F] = _GPS_MARKER
+    exif[0x0112] = 1
+    exif[0x8825] = {1: "N", 2: (50.0, 27.0, 0.0)}
+    if fmt == "JPEG":
+        image.save(path, format="JPEG", quality=95, exif=exif, comment=_COMMENT_MARKER)
+    else:
+        from PIL.PngImagePlugin import PngInfo
+
+        text = PngInfo()
+        text.add_text("Comment", _COMMENT_MARKER.decode())
+        image.save(path, format="PNG", exif=exif, pnginfo=text)
+    return path
+
+
+@pytest.mark.parametrize(
+    ("fmt", "media_type", "size"),
+    [
+        ("JPEG", "image/jpeg", (800, 600)),
+        ("JPEG", "image/jpeg", (4000, 3000)),
+        ("PNG", "image/png", (800, 600)),
+    ],
+)
+def test_transmitted_image_carries_no_embedded_metadata(tmp_path, fmt, media_type, size):
+    """GPS position, device identity and comments are not evidence, and leave with the bytes.
+
+    The small case used to take the untouched shortcut with its EXIF intact; the large case
+    was re-encoded, but Pillow writes a JPEG comment back by default.
+    """
+    pil_image = pytest.importorskip("PIL.Image", reason="the 'images' extra is not installed")
+    path = _write_tagged_photo(tmp_path / f"tagged.{fmt.lower()}", size, fmt)
+
+    sent = ImageInput(
+        image_id="img-1", path=path, media_type=media_type, max_edge_px=1568
+    ).read_bytes()
+
+    assert _GPS_MARKER.encode() not in sent
+    assert _COMMENT_MARKER not in sent
+    with pil_image.open(io.BytesIO(sent)) as decoded:
+        assert not decoded.getexif()
+        assert "comment" not in decoded.info
+        assert not getattr(decoded, "text", None)
+        assert max(decoded.size) == min(1568, max(size))
+
+
+def test_an_oversized_file_is_refused_before_it_is_read_or_sent(tmp_path, monkeypatch):
+    """Applies whether or not Pillow is installed, and whether or not a bound is configured."""
+    monkeypatch.setattr(provider_base, "MAX_IMAGE_FILE_BYTES", 1024)
+    path = tmp_path / "huge.jpg"
+    path.write_bytes(b"\xff\xd8" + b"\0" * 2048)
+
+    for max_edge_px in (None, 1568):
+        image = ImageInput(image_id="img-1", path=path, max_edge_px=max_edge_px)
+        with pytest.raises(ImageTooLargeError, match=r"huge\.jpg"):
+            image.read_bytes()
 
 
 def _bark_only_packet() -> EvidencePacket:

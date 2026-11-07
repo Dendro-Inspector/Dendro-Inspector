@@ -223,7 +223,18 @@ class ReviewSynthesis(Contract):
     escalation_recommended: bool = False
     unresolvable: bool = Field(
         default=False,
-        description="A critical finding that a retry cannot fix. Routes to abstain.",
+        description=(
+            "A critical abstain finding with a verifiable basis: raised by code, or citing "
+            "admitted evidence. A retry cannot fix it. Routes to abstain."
+        ),
+    )
+    unverified_abstention: bool = Field(
+        default=False,
+        description=(
+            "A critical abstain finding asserted by a model with no evidence citation. It "
+            "does not route to abstain; it abstains only if independent arbitration confirms "
+            "it, or fails closed if arbitration does not run."
+        ),
     )
 
     @model_validator(mode="after")

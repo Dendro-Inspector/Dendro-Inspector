@@ -132,7 +132,50 @@ async def run_graph(
     ctx: NodeContext,
     registry: Mapping[NodeName, NodeRunner],
 ) -> GraphRunResult:
-    """Execute the graph for one case."""
+    """Execute the graph for one case, within the configured wall-clock deadline."""
+    logger = get_logger("graph")
+    deadline = ctx.config.graph.deadline_seconds
+    scope = asyncio.timeout(deadline)
+    try:
+        async with scope:
+            state = await _walk(case, ctx, registry)
+    except TimeoutError as exc:
+        # Only the run's own deadline becomes a graph failure; a node's TimeoutError is its own.
+        if not scope.expired():
+            raise
+        msg = f"inspection exceeded deadline_seconds={deadline}; no partial answer is returned"
+        raise GraphExecutionError(msg) from exc
+
+    decision = state.decisions[0] if state.decisions else None
+    trace = ctx.recorder.build(
+        final_resolution=decision.resolution if decision else None,
+        final_confidence=decision.confidence if decision else None,
+        pre_correction_decisions=state.pre_correction_decisions,
+        provisional_decisions=state.provisional_decisions,
+        final_decisions=state.decisions,
+        authority_checks=state.authority_checks,
+        # The executor owns which nodes run together, so it is the only place that can tell
+        # the recorder which node times overlap rather than accumulate.
+        concurrent_nodes=tuple(node.value for node in REVIEW_FANOUT),
+    )
+    logger.info(
+        "graph_complete",
+        extra={
+            "case_id": case.case_id,
+            "nodes": len(trace.events),
+            "retries": trace.retries,
+            "arbiter_used": trace.arbiter_used,
+        },
+    )
+    return GraphRunResult(state=state, trace=trace)
+
+
+async def _walk(
+    case: CaseInput,
+    ctx: NodeContext,
+    registry: Mapping[NodeName, NodeRunner],
+) -> GraphState:
+    """Follow the routing function from entry to terminal, one recorded event per node."""
     logger = get_logger("graph")
     state = GraphState(case=case)
     current = ENTRY_NODE
@@ -162,6 +205,16 @@ async def run_graph(
         try:
             node_ctx = _context_for_node(current, state, ctx)
             state = await runner(state, node_ctx)
+        except asyncio.CancelledError:
+            # A deadline or a caller cancelled the run mid-node: a failed execution, as in
+            # the fan-out, never a missing event.
+            ctx.recorder.record_node(
+                current.value,
+                status=NodeStatus.FAILED,
+                detail="cancelled",
+                duration_ms=(time.perf_counter() - started) * 1000.0,
+            )
+            raise
         except Exception:
             ctx.recorder.record_node(current.value, status=NodeStatus.FAILED)
             logger.exception("node_failed", extra={"node": current.value, "case_id": case.case_id})
@@ -171,26 +224,4 @@ async def run_graph(
             duration_ms=(time.perf_counter() - started) * 1000.0,
         )
         current = next_step(current, state, ctx.config.graph)
-
-    decision = state.decisions[0] if state.decisions else None
-    trace = ctx.recorder.build(
-        final_resolution=decision.resolution if decision else None,
-        final_confidence=decision.confidence if decision else None,
-        pre_correction_decisions=state.pre_correction_decisions,
-        provisional_decisions=state.provisional_decisions,
-        final_decisions=state.decisions,
-        authority_checks=state.authority_checks,
-        # The executor owns which nodes run together, so it is the only place that can tell
-        # the recorder which node times overlap rather than accumulate.
-        concurrent_nodes=tuple(node.value for node in REVIEW_FANOUT),
-    )
-    logger.info(
-        "graph_complete",
-        extra={
-            "case_id": case.case_id,
-            "nodes": len(trace.events),
-            "retries": trace.retries,
-            "arbiter_used": trace.arbiter_used,
-        },
-    )
-    return GraphRunResult(state=state, trace=trace)
+    return state

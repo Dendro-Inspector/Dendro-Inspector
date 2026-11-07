@@ -57,8 +57,12 @@ input. It is never an instruction to the graph.**
 
 How that is enforced:
 
-1. **Detection, not obedience.** `nodes/input_guard.py` scans every untrusted string and
-   records the *category* of instruction-like content found. It never acts on the content.
+1. **Detection, not obedience.** `nodes/input_guard.py` scans every untrusted string that
+   reaches a prompt — user text, location, habitat, captions, media types, and metadata keys
+   as well as values — plus filenames, and records the *category* of instruction-like
+   content found. It never acts on the content. Token-shaped fields are held to their shape
+   by the input contract: a metadata key is a bounded ASCII field name, a media type is an
+   `image/*` MIME type.
 2. **Recording is authoritative.** The extractor cannot erase the guard's finding: if the
    guard saw injection, `instruction_like_content_detected` is set on the evidence packet
    regardless of what the model returned.
@@ -101,7 +105,18 @@ Treat every output as untrusted if the input was.
 ## Data handling
 
 The run trace deliberately excludes: API keys, image bytes, full user metadata, hidden model
-reasoning, and prompt or response bodies. See
+reasoning, and prompt or response bodies.
+
+Images leave the process only at the provider boundary (`providers/base.py`):
+
+- A file larger than `MAX_IMAGE_FILE_BYTES` is refused before it is read, whatever else is
+  installed.
+- With the `images` extra, transmitted images are bounded to `GraphConfig.image_max_edge_px`
+  and carry no embedded EXIF (including GPS position), XMP or comments. Without it, originals
+  are sent as they are, metadata included, and a warning is logged once.
+- `ImageRef.path` is operator input, and the file it names is sent to every configured
+  provider. A service accepting cases from untrusted callers must store uploads in a
+  directory it owns and build the reference itself, never pass through a caller's path. See
 [`docs/dataset-policy.md`](docs/dataset-policy.md) for what must never be committed.
 
 ## Not a safety tool
