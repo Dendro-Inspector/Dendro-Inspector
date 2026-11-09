@@ -426,3 +426,37 @@ def test_run_stores_the_verdict_it_used_for_escalation(node_context):
     assert updated.escalation.required
     assert len(updated.provisional_decisions) == 1
     assert updated.provisional_decisions[0].confidence is Confidence.HIGH
+
+
+class TestReviewEveryDecision:
+    EVERY = EscalationPolicy(review_every_decision=True)
+
+    def test_off_by_default(self):
+        assert EscalationPolicy().review_every_decision is False
+        assert not _decide(_state()).required
+
+    def test_overrides_cost_suppressors(self):
+        decision = _decide(_state(), self.EVERY)
+        assert decision.required
+        assert "review_every_decision" in decision.reasons
+        assert decision.suppressed_by == ()
+
+    def test_reviews_even_when_every_subject_abstained(self):
+        decision = _decide(_state(abstained=True), self.EVERY)
+        assert decision.required
+        assert decision.suppressed_by == ()
+
+    def test_disabled_policy_still_wins(self):
+        policy = EscalationPolicy(enabled=False, review_every_decision=True)
+        assert not _decide(_state(), policy).required
+
+
+@pytest.mark.parametrize(("value", "expected"), [("true", True), ("0", False), (None, False)])
+def test_every_decision_switch_reads_the_environment(monkeypatch, value, expected):
+    from dendro_inspector.config import load_config
+
+    if value is None:
+        monkeypatch.delenv("DENDRO_ARBITER_EVERY_DECISION", raising=False)
+    else:
+        monkeypatch.setenv("DENDRO_ARBITER_EVERY_DECISION", value)
+    assert load_config().escalation.review_every_decision is expected

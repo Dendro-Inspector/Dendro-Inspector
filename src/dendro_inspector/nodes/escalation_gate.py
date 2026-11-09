@@ -36,6 +36,7 @@ HARD_TRIGGERS: frozenset[str] = frozenset(
         "instruction_like_content_detected",
         "unresolved_contradiction",
         "forced_by_configuration",
+        "review_every_decision",
     }
 )
 
@@ -124,6 +125,8 @@ def _triggers(
         reasons.append("instruction_like_content_detected")
     if policy.forced_by_eval_case:
         reasons.append("forced_by_configuration")
+    if policy.review_every_decision:
+        reasons.append("review_every_decision")
 
     return tuple(dict.fromkeys(reasons))
 
@@ -145,6 +148,7 @@ def decide(
 
     if (
         policy.suppress_when_abstaining
+        and not policy.review_every_decision
         and state.abstained
         and all(state.is_abstained(subject_id) for subject_id in state.subject_ids)
     ):
