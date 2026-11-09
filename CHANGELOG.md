@@ -112,6 +112,11 @@ get entries.
 
 ### Fixed
 
+- The agent bridge (`scripts/agent-provider/bridge.py`) accepts the Anthropic key as an
+  `Authorization: Bearer` header as well as `x-api-key`, as the real API does. Anthropic SDK
+  releases on API version 2026-10-21 send only the bearer form, so the bridge rejected every
+  request from the Anthropic adapter with `401 invalid x-api-key`. A Codex failure now also
+  reports the reason Codex printed on stdout (with `--json`, stderr holds only progress).
 - The OpenAI adapter works against Azure OpenAI and Microsoft Foundry endpoints. It sent
   the chat-completions `metadata` field (node and role tags) to every endpoint, and those
   services reject it with HTTP 400 unless `store` is enabled. It is now sent only to

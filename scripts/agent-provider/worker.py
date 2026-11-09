@@ -467,7 +467,9 @@ class CodexBackend:
                 check=False,
             )
             if completed.returncode != 0:
-                detail = (completed.stderr or completed.stdout).strip()[-2000:]
+                # With --json the reason (e.g. model_not_found) is an event on stdout, while
+                # stderr holds only progress lines, so keep the tail of both.
+                detail = f"{completed.stderr.strip()}\n{completed.stdout.strip()}".strip()[-2000:]
                 if "429" in detail or "rate limit" in detail.lower():
                     raise WorkerRateLimitError(f"Codex route rate-limited: {detail}")
                 raise WorkerError(f"Codex exited {completed.returncode}: {detail}")

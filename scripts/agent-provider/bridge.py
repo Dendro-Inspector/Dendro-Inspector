@@ -431,7 +431,11 @@ class Handler(BaseHTTPRequestHandler):
             name = schema.get("title", "unknown")
             return "ollama", message["content"], images, schema, body.get("model", "?"), name
         if path.endswith("/v1/messages"):
-            self._require_header("x-api-key", "")
+            # SDK releases on API version 2026-10-21 send the key as a bearer token; older
+            # ones use x-api-key. The real host accepts both, so the bridge does too.
+            bearer = self.headers.get("authorization") or ""
+            if not (bearer.startswith("Bearer ") and bearer[7:].strip()):
+                self._require_header("x-api-key", "")
             self._require_header("anthropic-version", "")
             if not body.get("max_tokens"):
                 raise DialectRejectionError(
