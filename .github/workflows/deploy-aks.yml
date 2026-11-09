@@ -4,20 +4,26 @@ name: Deploy to AKS
 # control function, waits for a short smoke run on real photographs, and reports its result
 # and pod logs in the job summary.
 #
-#   pull request  same-repository branches only; images run as a smoke test, the cluster's
-#                 default images do not change
+#   pull request  images run as a smoke test; the cluster's default images do not change
 #   push to main  smoke run, then the images become the default for new runs
 #   manual        smoke run; "promote" decides whether they become the default
 #
-# Privileged, so it is kept apart from the fork-safe checks (AGENTS.md §11): pull requests
-# from forks never run it (GitHub gives them no OIDC token or secrets either), and every job
-# runs in the `aks` environment, where required reviewers can gate each deploy. Azure sign-in
-# is OpenID Connect; the identity can only build images. The control function is called with
-# a key valid for its deployment, run-status, log and summary endpoints only.
-# Setup: deploy/k8s/README.md.
+# Maintainers only. The `authorize` job lets a run deploy only when the person who triggered
+# it, and for a pull request also its author, has the admin or maintain role on this
+# repository. Everyone else's pull request gets a notice and no deploy.
+#
+# Why pull_request_target: it runs this file as it is on the base branch, so a pull request
+# cannot edit the check away. AGENTS.md §11 warns against pull_request_target with a checkout
+# of untrusted code; here the code is checked out only after `authorize` has confirmed a
+# maintainer, without credentials, and the runner never executes it: it is uploaded to the
+# registry, which builds it. Every step that runs on the runner comes from the base branch.
+#
+# Azure sign-in is OpenID Connect to an identity that can only build images, inside the `aks`
+# environment. The control function is called with a key valid for its deployment,
+# run-status, log and summary endpoints only. Setup: deploy/k8s/README.md.
 
 on:
-  pull_request:
+  pull_request_target:
     types: [opened, synchronize, reopened]
   push:
     branches: [main]
@@ -34,18 +40,48 @@ on:
 
 permissions:
   contents: read
-  id-token: write
 
 concurrency:
   group: deploy-aks-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request_target' }}
 
 jobs:
+  authorize:
+    name: Maintainer check
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      allowed: ${{ steps.check.outputs.allowed }}
+    steps:
+      - id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ACTOR: ${{ github.triggering_actor }}
+          AUTHOR: ${{ github.event.pull_request.user.login }}
+        run: |
+          set -euo pipefail
+          role() {
+            gh api "repos/$GITHUB_REPOSITORY/collaborators/$1/permission" \
+              --jq '.user.role_name' 2>/dev/null || echo none
+          }
+          allowed=true
+          for login in $ACTOR $AUTHOR; do
+            r="$(role "$login")"
+            echo "$login: $r"
+            case "$r" in admin|maintain) ;; *) allowed=false ;; esac
+          done
+          echo "allowed=$allowed" >> "$GITHUB_OUTPUT"
+          if [ "$allowed" != true ]; then
+            echo "::notice::Deploy skipped: only maintainers can deploy to the cluster."
+          fi
+
   deploy:
     name: Build, deploy and smoke-test
-    if: >-
-      github.event_name != 'pull_request' ||
-      github.event.pull_request.head.repo.full_name == github.repository
+    needs: authorize
+    if: needs.authorize.outputs.allowed == 'true'
+    permissions:
+      contents: read
+      id-token: write
     runs-on: ubuntu-latest
     timeout-minutes: 45
     environment: aks
@@ -55,7 +91,7 @@ jobs:
       CONTROL_KEY: ${{ secrets.AKS_CONTROL_KEY }}
       SHA: ${{ github.event.pull_request.head.sha || github.sha }}
       SOURCE: >-
-        ${{ github.event_name == 'pull_request' && 'pr'
+        ${{ github.event_name == 'pull_request_target' && 'pr'
         || github.event_name == 'push' && 'main' || 'manual' }}
       PROMOTE: ${{ github.event_name == 'push' || inputs.promote == true }}
       # format() keeps a manual 0 from falling through to the default.
@@ -63,10 +99,13 @@ jobs:
         ${{ github.event_name == 'workflow_dispatch' && format('{0}', inputs.smoke_cases)
         || vars.AKS_SMOKE_CASES || '3' }}
     steps:
-      # A pull request deploys its head commit, not the merge commit GitHub would build.
+      # The build context for the registry: a pull request's head commit, without credentials.
+      # Nothing from it runs here; the steps below are the base branch's.
       - uses: actions/checkout@v4
         with:
+          repository: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
           ref: ${{ env.SHA }}
+          persist-credentials: false
 
       - name: Check configuration
         env:

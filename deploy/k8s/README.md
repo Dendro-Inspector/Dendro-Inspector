@@ -40,13 +40,22 @@ and fails if any photograph failed.
 
 | Trigger | Smoke run | Default images for new runs |
 |---|---|---|
-| Pull request from a branch of this repository | yes | unchanged |
+| Pull request | yes | unchanged |
 | Push to `main` | yes | replaced |
 | Manual (Actions → Deploy to AKS → Run workflow) | `smoke_cases` input | replaced if `promote` is ticked |
 
-Pull requests from forks never run it. Every job runs in the `aks` environment; adding required
-reviewers there makes each deploy wait for approval. A smoke run uses the models configured on
-the cluster, so each one costs a few photographs' worth of tokens.
+**Maintainers only.** A first job, with no secrets, looks up the repository role of whoever
+triggered the run and, for a pull request, of its author. Unless both are admin or maintain,
+the run stops there with a notice, and the deploy job never starts. The workflow runs on
+`pull_request_target`, so it is always the base branch's copy of this file, and a pull request
+cannot change the check. The pull request's code is only uploaded to the registry as the build
+context; nothing from it runs on the runner that holds the credentials.
+
+Every deploy runs in the `aks` environment; adding required reviewers there makes each one wait
+for approval as well. A smoke run uses the models configured on the cluster, so each one costs
+a few photographs' worth of tokens.
+
+A change to `deploy-aks.yml` itself takes effect only once it is on `main`.
 
 The control function's dashboard lists every deployment with its pull request, commit, image
 and smoke run.
