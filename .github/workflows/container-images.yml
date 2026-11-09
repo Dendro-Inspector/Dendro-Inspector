@@ -39,9 +39,9 @@ jobs:
           docker run --rm --read-only --tmpfs /tmp dendro-inspector:ci eval --suite public
           docker run --rm --entrypoint python dendro-inspector:ci -c \
             "import openai, anthropic, PIL; from dendro_inspector.providers import openai_adapter"
-          docker run --rm --entrypoint python dendro-inspector:ci -m py_compile \
-            /app/scripts/batch/run_dataset_case.py /app/scripts/batch/run_upload_case.py \
-            /app/scripts/batch/summarize_run.py
+          # Parse only: /app is read-only for the runtime user, so nothing may be written there.
+          docker run --rm --entrypoint python dendro-inspector:ci -c \
+            "import ast, glob; [ast.parse(open(f).read(), f) for f in glob.glob('/app/scripts/batch/*.py')]"
 
       - name: Build agents image
         run: >-

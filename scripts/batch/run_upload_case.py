@@ -28,7 +28,7 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).parent))
 
-from run_dataset_case import (  # noqa: E402
+from run_dataset_case import (
     RECORD_SCHEMA,
     SAFE_ID,
     SHA256,
@@ -108,8 +108,10 @@ def run(env: dict[str, str]) -> int:
     else:
         record["error"] = completed.stderr[-4000:]
     write_atomic(target, record)
-    print(f"{case_id}: {len(manifest['photos'])} photos, exit {completed.returncode} "
-          f"in {record['wall_seconds']}s")
+    print(
+        f"{case_id}: {len(manifest['photos'])} photos, exit {completed.returncode} "
+        f"in {record['wall_seconds']}s"
+    )
     return completed.returncode
 
 
