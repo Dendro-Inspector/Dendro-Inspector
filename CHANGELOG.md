@@ -50,6 +50,11 @@ get entries.
 
 ### Fixed
 
+- The OpenAI adapter works against Azure OpenAI and Microsoft Foundry endpoints. It sent
+  the chat-completions `metadata` field (node and role tags) to every endpoint, and those
+  services reject it with HTTP 400 unless `store` is enabled. It is now sent only to
+  `api.openai.com`.
+
 - With the `images` extra, a transmitted image no longer carries embedded metadata. A
   photograph already within `image_max_edge_px` was sent as the original file, EXIF (GPS
   position, device identity) included; it is now sent untouched only when it carries
