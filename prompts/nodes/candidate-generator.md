@@ -41,3 +41,24 @@ Per candidate:
   set whose second entry cannot possibly be right is not a candidate set.
 - If nothing is supportable above family, say `family`. If nothing is supportable at all,
   return an empty candidate list for that subject.
+
+## Taxa with no card
+
+Applies only when the case context carries an `Open-world discovery` section. Without it,
+propose taxa from the supplied cards, as above.
+
+With it, a candidate may name a taxon no supplied card describes, when this subject's own
+observations show features you can tie to that taxon. For a subject listed under
+`subjects_without_cards` there is no card to rank at all, so this is the only way to report
+what its evidence shows.
+
+- Use the scientific name as the `taxon` id: lowercase, words joined by `_`, genus first —
+  `juglans_nigra`, or `juglans` for a genus. Never a common name or a description.
+- Cite only this subject's observations that show the features the name rests on. A name
+  with no such observation is discarded.
+- Claim the highest defensible level, exactly as for a card. Detached or unattributed
+  evidence counts no more here than anywhere else.
+- Do not propose a name you could not defend to a botanist. If none is supportable, return
+  an empty candidate list for that subject.
+- Such a candidate is never the answer. It is reported as a hypothesis outside the knowledge
+  base, bounded by what the photograph shows, so a confident ranking gains it nothing.

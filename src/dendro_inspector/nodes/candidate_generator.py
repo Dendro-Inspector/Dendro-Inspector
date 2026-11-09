@@ -11,6 +11,8 @@ admitted; see :class:`~dendro_inspector.schemas.candidates.OpenWorldCandidate`.
 
 from __future__ import annotations
 
+import json
+
 from dendro_inspector.config import Role
 from dendro_inspector.graph.executor import NodeContext
 from dendro_inspector.graph.state import GraphState
@@ -37,8 +39,36 @@ from dendro_inspector.schemas.candidates import (
     CandidateSet,
     OpenWorldCandidate,
 )
+from dendro_inspector.schemas.evidence import EvidencePacket
 
 NODE = "candidate_generator"
+
+#: The heading the node prompt's open-world rule is keyed on. A contract test asserts the
+#: prompt names it, so the rule and the section that switches it on cannot drift apart.
+OPEN_WORLD_SECTION = "Open-world discovery"
+
+
+def open_world_context(
+    evidence: EvidencePacket, ctx: NodeContext, subject_ids: tuple[str, ...]
+) -> str:
+    """The section that switches on the prompt's rule for taxa with no card. Empty when off.
+
+    Closed-world runs never carry it, so the rule stays inert there. Lists the subjects no
+    card could be opened for: the model has nothing to rank for those, and without being
+    told so it tends to return an empty list rather than the name the evidence suggests.
+    """
+    if not ctx.config.graph.open_world_discovery:
+        return ""
+    payload = {
+        "enabled": True,
+        "subjects_without_cards": [
+            subject_id
+            for subject_id in subject_ids
+            if not cards_in_play(evidence, ctx.knowledge, (subject_id,))
+        ],
+    }
+    body = json.dumps(payload, indent=2)
+    return f"## {OPEN_WORLD_SECTION} (project data)\n\n```json\n{body}\n```"
 
 
 async def run(state: GraphState, ctx: NodeContext) -> GraphState:
@@ -55,13 +85,16 @@ async def run(state: GraphState, ctx: NodeContext) -> GraphState:
         prompt=ctx.prompts.compose(
             NODE,
             context="\n\n".join(
-                [
+                section
+                for section in (
                     case_context(state.case),
                     evidence_context(evidence),
                     knowledge_context(
                         ctx, cards_in_play(evidence, ctx.knowledge, quality.usable_subject_ids)
                     ),
-                ]
+                    open_world_context(evidence, ctx, quality.usable_subject_ids),
+                )
+                if section
             ),
             locale=locale_of(state),
         ),

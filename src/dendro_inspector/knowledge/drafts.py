@@ -100,12 +100,8 @@ def draft_card(record: ReferenceRecord, *, known_taxon_ids: frozenset[str]) -> T
         broader_identities=broader,
         supported_resolution=(native,),
         supporting_features=tuple(
-            FeatureExpectation(
-                feature=documented.feature,
-                values=documented.values,
-                provenance=provenance,
-            )
-            for documented in record.documented_features
+            FeatureExpectation(feature=feature, values=values, provenance=provenance)
+            for feature, values in record.documented_values().items()
         ),
         common_confusions=tuple(
             lookalike for lookalike in record.lookalikes if lookalike in known_taxon_ids

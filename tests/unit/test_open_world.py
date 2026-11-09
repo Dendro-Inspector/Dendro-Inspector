@@ -8,6 +8,8 @@ nothing". These tests pin what replaced that, and the lines it must not cross.
 from __future__ import annotations
 
 import dataclasses
+import json
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -20,6 +22,7 @@ from dendro_inspector.graph.state import GraphState
 from dendro_inspector.knowledge.candidate_validation import validate_candidate_set_with_report
 from dendro_inspector.knowledge.loader import KnowledgeBase
 from dendro_inspector.knowledge.taxon_cards import card_value_vocabulary
+from dendro_inspector.nodes.candidate_generator import OPEN_WORLD_SECTION, open_world_context
 from dendro_inspector.nodes.evidence_quality import assess
 from dendro_inspector.nodes.final_decision import decide_subject_base
 from dendro_inspector.schemas.candidates import (
@@ -39,7 +42,7 @@ from dendro_inspector.schemas.evidence import (
     Visibility,
 )
 from dendro_inspector.schemas.input import CaseInput, DeclaredObjectType, ImageRef
-from dendro_inspector.schemas.reference import ReferenceStatus
+from dendro_inspector.schemas.reference import ReferenceCitation, ReferenceStatus, SourceTrust
 from dendro_inspector.schemas.taxon import Confidence, Resolution
 from tests.conftest import _attachment
 
@@ -297,10 +300,32 @@ class TestBoundedByEvidence:
             OpenWorldCandidate.model_validate({**base, field: value})
 
 
+def _verified(candidate: OpenWorldCandidate) -> OpenWorldCandidate:
+    """As an authoritative source this system queried itself would leave it. Synthetic."""
+    citation = ReferenceCitation(
+        source_id="example_flora",
+        source_trust=SourceTrust.AUTHORITATIVE_RETRIEVAL,
+        outcome=ReferenceStatus.EXTERNALLY_VERIFIED,
+        reason="documented_feature_match",
+        source_url=f"https://references.example.org/taxon/{candidate.taxon}",
+        retrieved_at=datetime(2026, 1, 15, 10, tzinfo=UTC),
+        matched_features=("fruit.type",),
+    )
+    return OpenWorldCandidate.model_validate(
+        {
+            **candidate.model_dump(),
+            "reference_status": ReferenceStatus.EXTERNALLY_VERIFIED,
+            "references": (citation,),
+        }
+    )
+
+
 def _state(
     evidence: EvidencePacket,
     proposal: CandidateSet,
     knowledge: KnowledgeBase,
+    *,
+    verified: tuple[str, ...] = (),
 ) -> tuple[GraphState, CandidateSet]:
     result = validate_candidate_set_with_report(proposal, evidence, knowledge)
     vocabulary = card_value_vocabulary(knowledge.taxa(knowledge.available_taxon_ids()))
@@ -320,13 +345,16 @@ def _state(
         quality=quality,
         proposed_candidate_sets=(proposal,),
         candidate_sets=(result.candidate_set,),
-        open_world_candidates=result.open_world,
+        open_world_candidates=tuple(
+            _verified(candidate) if candidate.taxon in verified else candidate
+            for candidate in result.open_world
+        ),
     )
     return state, result.candidate_set
 
 
 @pytest.fixture
-def open_world_context(node_context):
+def open_world_context_(node_context):
     """The decision rules below are open-world rules; closed-world, none of them runs."""
     graph = node_context.config.graph.model_copy(update={"open_world_discovery": True})
     return dataclasses.replace(
@@ -335,15 +363,15 @@ def open_world_context(node_context):
 
 
 class TestDecisionRules:
-    def test_only_open_world_on_uncovered_evidence_is_a_coverage_gap(self, open_world_context):
+    def test_only_open_world_on_uncovered_evidence_is_a_coverage_gap(self, open_world_context_):
         evidence = _packet(FOLIAGE, FRUIT)
         proposal = CandidateSet(
             subject_id=SUBJECT,
             candidates=(_candidate("aesculus_hippocastanum", 1, "obs-leaf", "obs-fruit"),),
         )
-        state, admitted = _state(evidence, proposal, open_world_context.knowledge)
+        state, admitted = _state(evidence, proposal, open_world_context_.knowledge)
 
-        decision = decide_subject_base(state, open_world_context, admitted, record=False)
+        decision = decide_subject_base(state, open_world_context_, admitted, record=False)
 
         assert decision.status is DecisionStatus.KNOWLEDGE_COVERAGE_GAP
         assert decision.selected_taxon is None
@@ -354,7 +382,7 @@ class TestDecisionRules:
         assert "fruit.husk" in text  # the reader learns what the cards lacked
 
     def test_an_off_card_name_on_representable_evidence_does_not_move_the_blame(
-        self, open_world_context
+        self, open_world_context_
     ):
         """Naming an off-card taxon is not evidence the knowledge base is the limit.
 
@@ -368,17 +396,17 @@ class TestDecisionRules:
             subject_id=SUBJECT,
             candidates=(_candidate("eucalyptus", 1, "obs-bark", resolution=Resolution.GENUS),),
         )
-        state, admitted = _state(evidence, proposal, open_world_context.knowledge)
+        state, admitted = _state(evidence, proposal, open_world_context_.knowledge)
 
-        decision = decide_subject_base(state, open_world_context, admitted, record=False)
+        decision = decide_subject_base(state, open_world_context_, admitted, record=False)
 
         assert decision.status is DecisionStatus.INSUFFICIENT_EVIDENCE
         assert [c.taxon for c in decision.open_world_candidates] == ["eucalyptus"]
 
-    def test_an_outranking_uncovered_congener_caps_the_admitted_look_alike_at_genus(
-        self, open_world_context
+    def test_a_verified_congener_on_the_same_evidence_caps_the_look_alike_at_genus(
+        self, open_world_context_
     ):
-        """No silent substitution: the model led with a species this pack lacks."""
+        """No silent substitution: the model led with a real species this pack lacks."""
         fruit = _obs("obs-fruit", "fruit.type", "small_round_drupe")
         evidence = _packet(fruit)
         baseline_proposal = CandidateSet(
@@ -393,13 +421,18 @@ class TestDecisionRules:
         )
 
         baseline_state, baseline_set = _state(
-            evidence, baseline_proposal, open_world_context.knowledge
+            evidence, baseline_proposal, open_world_context_.knowledge
         )
-        state, admitted = _state(evidence, outranked_proposal, open_world_context.knowledge)
+        state, admitted = _state(
+            evidence,
+            outranked_proposal,
+            open_world_context_.knowledge,
+            verified=("prunus_domestica",),
+        )
         baseline = decide_subject_base(
-            baseline_state, open_world_context, baseline_set, record=False
+            baseline_state, open_world_context_, baseline_set, record=False
         )
-        decision = decide_subject_base(state, open_world_context, admitted, record=False)
+        decision = decide_subject_base(state, open_world_context_, admitted, record=False)
 
         assert baseline.selected_taxon == "prunus_cerasifera"
         assert baseline.resolution is Resolution.SPECIES
@@ -409,7 +442,32 @@ class TestDecisionRules:
         assert [c.taxon for c in decision.open_world_candidates] == ["prunus_domestica"]
         assert "Prunus domestica" in " | ".join(decision.unresolved_questions)
 
-    def test_a_lower_ranked_uncovered_alternative_does_not_cap(self, open_world_context):
+    def test_an_unverified_congener_flags_a_conflict_but_never_moves_the_verdict(
+        self, open_world_context_
+    ):
+        """A shared observation proves both cited it, not that both fit it.
+
+        A model can invent ``prunus_fictitia``, rank it first and cite the leader's own fruit.
+        Nothing has checked that the name exists or that its morphology fits, so it may
+        raise the conflict flag but not take the species away.
+        """
+        fruit = _obs("obs-fruit", "fruit.type", "small_round_drupe")
+        proposal = CandidateSet(
+            subject_id=SUBJECT,
+            candidates=(
+                _candidate("prunus_fictitia", 1, "obs-fruit"),
+                _candidate("prunus_cerasifera", 2, "obs-fruit"),
+            ),
+        )
+        state, admitted = _state(_packet(fruit), proposal, open_world_context_.knowledge)
+
+        decision = decide_subject_base(state, open_world_context_, admitted, record=False)
+
+        assert decision.selected_taxon == "prunus_cerasifera"
+        assert decision.resolution is Resolution.SPECIES
+        assert decision.open_world_conflict is True
+
+    def test_a_lower_ranked_uncovered_alternative_does_not_cap(self, open_world_context_):
         fruit = _obs("obs-fruit", "fruit.type", "small_round_drupe")
         proposal = CandidateSet(
             subject_id=SUBJECT,
@@ -418,43 +476,43 @@ class TestDecisionRules:
                 _candidate("prunus_domestica", 2, "obs-fruit"),
             ),
         )
-        state, admitted = _state(_packet(fruit), proposal, open_world_context.knowledge)
+        state, admitted = _state(_packet(fruit), proposal, open_world_context_.knowledge)
 
-        decision = decide_subject_base(state, open_world_context, admitted, record=False)
+        decision = decide_subject_base(state, open_world_context_, admitted, record=False)
 
         assert decision.selected_taxon == "prunus_cerasifera"
         assert decision.resolution is Resolution.SPECIES
         assert [c.taxon for c in decision.open_world_candidates] == ["prunus_domestica"]
 
-    def test_a_selected_taxon_reports_its_cards_reference_status(self, open_world_context):
+    def test_a_selected_taxon_reports_its_cards_reference_status(self, open_world_context_):
         fruit = _obs("obs-fruit", "fruit.type", "small_round_drupe")
         proposal = CandidateSet(
             subject_id=SUBJECT, candidates=(_candidate("prunus_cerasifera", 1, "obs-fruit"),)
         )
-        state, admitted = _state(_packet(fruit), proposal, open_world_context.knowledge)
+        state, admitted = _state(_packet(fruit), proposal, open_world_context_.knowledge)
 
-        decision = decide_subject_base(state, open_world_context, admitted, record=False)
+        decision = decide_subject_base(state, open_world_context_, admitted, record=False)
 
         # Every shipped card is unreviewed demonstration content, and the verdict says so
         # without that changing its confidence.
         assert decision.reference_status is ReferenceStatus.LOCAL_UNREVIEWED
 
-    def test_a_covered_name_is_reported_but_is_not_missing_taxonomy(self, open_world_context):
+    def test_a_covered_name_is_reported_but_is_not_missing_taxonomy(self, open_world_context_):
         evidence = _packet(_obs("obs-nut", "nut.presence", "present"))
         proposal = CandidateSet(
             subject_id=SUBJECT,
             candidates=(_candidate("juglans", 1, "obs-nut", resolution=Resolution.GENUS),),
         )
-        state, admitted = _state(evidence, proposal, open_world_context.knowledge)
+        state, admitted = _state(evidence, proposal, open_world_context_.knowledge)
 
-        decision = decide_subject_base(state, open_world_context, admitted, record=False)
+        decision = decide_subject_base(state, open_world_context_, admitted, record=False)
 
         assert decision.status is DecisionStatus.INSUFFICIENT_EVIDENCE
         (candidate,) = decision.open_world_candidates
         assert candidate.covered_by == ("juglans_regia",)
         assert "declares only within juglans_regia" in " | ".join(decision.unresolved_questions)
 
-    def test_a_congener_that_shares_no_decisive_evidence_does_not_cap(self, open_world_context):
+    def test_a_congener_that_shares_no_decisive_evidence_does_not_cap(self, open_world_context_):
         """Rank alone, or rank on weaker evidence, never moves a validated verdict."""
         evidence = _packet(
             _obs("obs-fruit", "fruit.type", "small_round_drupe"),
@@ -467,9 +525,11 @@ class TestDecisionRules:
                 _candidate("prunus_cerasifera", 2, "obs-fruit", "obs-bark"),
             ),
         )
-        state, admitted = _state(evidence, proposal, open_world_context.knowledge)
+        state, admitted = _state(
+            evidence, proposal, open_world_context_.knowledge, verified=("prunus_domestica",)
+        )
 
-        decision = decide_subject_base(state, open_world_context, admitted, record=False)
+        decision = decide_subject_base(state, open_world_context_, admitted, record=False)
 
         assert decision.selected_taxon == "prunus_cerasifera"
         assert decision.resolution is Resolution.SPECIES
@@ -477,7 +537,7 @@ class TestDecisionRules:
         assert "Competing hypothesis" in " | ".join(decision.unresolved_questions)
 
     def test_another_genus_ranked_first_competes_but_never_moves_the_verdict(
-        self, open_world_context
+        self, open_world_context_
     ):
         """Abstaining here would give the model's ranking the authority it is denied."""
         fruit = _obs("obs-fruit", "fruit.type", "small_round_drupe")
@@ -488,9 +548,14 @@ class TestDecisionRules:
                 _candidate("prunus_cerasifera", 2, "obs-fruit"),
             ),
         )
-        state, admitted = _state(_packet(fruit), proposal, open_world_context.knowledge)
+        state, admitted = _state(
+            _packet(fruit),
+            proposal,
+            open_world_context_.knowledge,
+            verified=("zelkova_carpinifolia",),
+        )
 
-        decision = decide_subject_base(state, open_world_context, admitted, record=False)
+        decision = decide_subject_base(state, open_world_context_, admitted, record=False)
 
         assert decision.selected_taxon == "prunus_cerasifera"
         assert decision.resolution is Resolution.SPECIES
@@ -577,3 +642,33 @@ class TestCoverageGateInOpenWorld:
 
         assert not report.sufficient
         assert "too_few_resolvable_observations" in report.insufficient_reasons
+
+
+class TestGeneratorContext:
+    """The model is told what to do when no card is in play, and only in open-world mode."""
+
+    def test_closed_world_carries_no_open_world_section(self, node_context):
+        evidence = _packet(FOLIAGE, FRUIT)
+        assert open_world_context(evidence, node_context, (SUBJECT,)) == ""
+
+    def test_open_world_names_the_subjects_with_nothing_to_rank(self, open_world_context_):
+        evidence = _packet(
+            FOLIAGE,
+            FRUIT,
+            _obs("obs-cone", "cones.shape", "not_resolvable", subject_id="tree_2"),
+            _obs("obs-fruit-2", "fruit.type", "small_round_drupe", subject_id="tree_2"),
+            subjects=(SUBJECT, "tree_2"),
+        )
+
+        section = open_world_context(evidence, open_world_context_, (SUBJECT, "tree_2"))
+
+        assert section.startswith(f"## {OPEN_WORLD_SECTION}")
+        payload = json.loads(section.split("```json\n")[1].split("\n```")[0])
+        assert payload == {"enabled": True, "subjects_without_cards": [SUBJECT]}
+
+    def test_the_prompt_rule_is_keyed_on_the_section_the_code_emits(self, repo_root):
+        prompt = (repo_root / "prompts" / "nodes" / "candidate-generator.md").read_text(
+            encoding="utf-8"
+        )
+        assert f"`{OPEN_WORLD_SECTION}` section" in prompt
+        assert "`subjects_without_cards`" in prompt

@@ -56,15 +56,22 @@ get entries.
     rather than dropped or reported as missing. Admission still matches card ids only.
   - A subject held back only by the knowledge-coverage gate reaches the candidate
     generator, and a run that admits nothing goes from the generator to the final decision
-    without reviewer or arbiter calls.
+    without reviewer or arbiter calls. The generator is told which subjects have no card in
+    play and how to name a taxon no card describes (a rule in
+    `prompts/nodes/candidate-generator.md`, active only when the case context carries the
+    open-world section the code adds with the flag on). The node prompt's hash changed: a
+    deployment pinning its own prompt manifest must re-seal it (`dendro prompt-seal --write`).
   - A subject with no admitted candidate reports `knowledge_coverage_gap` when its evidence
     fell outside every card or an uncovered hypothesis rests on such evidence. Naming an
     off-card taxon on evidence the cards can represent stays `insufficient_evidence`.
   - An uncovered taxon the model ranked above the admitted leader caps the verdict at genus
-    (`open_world_outranked`) only when it is congeneric with the leader and cites the
-    observation the leader's claim rests on at its strongest tier. Any other outranking
-    hypothesis never moves the verdict: it is reported as competing and flagged with
-    `FinalDecision.open_world_conflict`.
+    (`open_world_outranked`) only when it is congeneric with the leader, cites the
+    observation the leader's claim rests on at its strongest tier, **and** is
+    `externally_verified`. A shared observation proves both hypotheses cited it, not that
+    both fit it, so an unchecked name — `juglans_fictitia` — never moves the verdict. Any
+    outranking hypothesis that does not cap is reported as competing and flagged with
+    `FinalDecision.open_world_conflict`. No authoritative source ships, so in this release
+    the cap cannot fire and every such case is flagged instead.
 - **Reference status**, a separate dimension from image-identification confidence:
   `local_reviewed`, `local_unreviewed`, `externally_verified`, `provisional`, `disputed`,
   `unavailable`. A selected taxon always reports its card's status in
@@ -75,10 +82,13 @@ get entries.
   conflicting features. `externally_verified` requires a record this system retrieved from
   an authoritative service itself (`SourceTrust.AUTHORITATIVE_RETRIEVAL`). The one source
   that ships, `DENDRO_REFERENCE_RECORDS`, reads saved records and is `operator_supplied`: it
-  can dispute a hypothesis but a match from it stays `provisional`. A source that does not
-  accept the name, contradicts an observed feature or disagrees with another makes the status
-  `disputed`. Records carry no free text, are discarded whole when invalid and never reach a
-  model prompt. No live online client ships.
+  can dispute a hypothesis but a match from it stays `provisional`. Only a documented feature
+  the photograph contradicts disputes a hypothesis, and any one source disputing outweighs
+  the others. A synonym is the same taxon under an older name: it is followed to its
+  accepted name in the same source, and both records are cited. An unresolved name stays
+  `provisional`. A feature path a record documents twice is merged, not overwritten.
+  Records carry no free text, are discarded whole when invalid and never reach a model
+  prompt. No live online client ships.
 - `dendro draft-card TAXON --references FILE` drafts a card from a saved reference record
   into `knowledge/review-queue/`, which the loader never reads. Drafts are always
   `unreviewed` and `placeholder_content: true`, and every documented feature becomes a

@@ -172,6 +172,10 @@ class TestReferenceVerificationInTheGraph:
         [
             (
                 {"name_status": "synonym", "accepted_taxon": "aesculus_turbinata"},
+                ReferenceStatus.PROVISIONAL,
+            ),
+            (
+                {"documented_features": [{"feature": "fruit.husk", "values": ["smooth_brown"]}]},
                 ReferenceStatus.DISPUTED,
             ),
             (
@@ -179,7 +183,7 @@ class TestReferenceVerificationInTheGraph:
                 ReferenceStatus.PROVISIONAL,
             ),
         ],
-        ids=["synonym", "not-found"],
+        ids=["synonym-accepted-name-absent", "contradicted", "not-found"],
     )
     def test_other_source_answers(
         self, standing_tree_case, repo_root, tmp_path, overrides, expected

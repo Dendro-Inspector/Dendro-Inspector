@@ -223,13 +223,19 @@ Two decision rules read uncovered candidates. A subject with no admitted leader 
 hypothesis rests on evidence the coverage measurement could not place; naming an off-card
 taxon on representable evidence leaves it `insufficient_evidence`. And an uncovered
 hypothesis the model ranked above the admitted leader caps the verdict at genus
-(`open_world_outranked`) only when it is congeneric and cites the observation the leader's
+(`open_world_outranked`) only when it is congeneric, cites the observation the leader's
 claim rests on at its strongest tier — the case where that evidence cannot discriminate and
-only one of the two has a card. The model's rank alone never moves a verdict: every other
-outranking hypothesis is reported as competing and flagged (`open_world_conflict`).
+only one of the two has a card — and is `externally_verified`, because a shared observation
+proves both hypotheses cited it, not that both fit it. Neither the model's rank nor an
+unchecked name ever moves a verdict: every other outranking hypothesis is reported as
+competing and flagged (`open_world_conflict`).
 
 A subject held back only by the coverage gate reaches the generator, and a run that admits
-nothing routes from the generator to the final decision without review. Drafts made from
+nothing routes from the generator to the final decision without review. The generator's
+prompt carries a rule for naming a taxon no card describes, keyed on an
+`Open-world discovery` section the code adds to the case context only when the flag is on.
+Nothing raises an open-world candidate above a reported hypothesis except an authoritative
+source; that is also the only path by which one can affect a verdict. Drafts made from
 reference records go to `knowledge/review-queue/`, which the loader never reads
 (`knowledge/drafts.py`).
 

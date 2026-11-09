@@ -84,7 +84,11 @@ from dendro_inspector.schemas.decisions import (
 )
 from dendro_inspector.schemas.evidence import EvidencePacket
 from dendro_inspector.schemas.input import DeclaredObjectType
-from dendro_inspector.schemas.reference import local_reference_status, scientific_display_name
+from dendro_inspector.schemas.reference import (
+    ReferenceStatus,
+    local_reference_status,
+    scientific_display_name,
+)
 from dendro_inspector.schemas.reviews import (
     AdmittedRecommendation,
     FindingCategory,
@@ -228,16 +232,20 @@ def open_world_contest(
 ) -> tuple[tuple[OpenWorldCandidate, ...], tuple[OpenWorldCandidate, ...]]:
     """Split uncovered hypotheses the model ranked above the leader: substituting, competing.
 
-    A model's rank on its own never changes a validated verdict. An outranking hypothesis
-    *substitutes* — caps the verdict at genus — only when two further things hold, both
-    read from data rather than from the model:
+    A model's rank on its own never changes a validated verdict, and neither does a name
+    nobody has checked. An outranking hypothesis *substitutes* — caps the verdict at genus —
+    only when three further things hold, none of them the model's say-so:
 
     * it is congeneric with the leader: the leader card's declared genus identity is the
       first word of its binomial. Species of one genus are the look-alikes the leader's
       species claim could silently stand in for;
     * it cites the same observation the leader's claim rests on at the leader's strongest
       tier. Then that evidence does not discriminate between the two, and the card cannot
-      tell, because only one of them has a card.
+      tell, because only one of them has a card;
+    * it is ``externally_verified``: an authoritative source this system queried itself
+      accepts the name and documents a feature observed here. A shared observation proves
+      both hypotheses *cited* it, not that both *fit* it — a model can invent
+      ``juglans_fictitia`` and cite the walnut's own leaf.
 
     Every other outranking hypothesis *competes*: reported as such, and flagged on the
     verdict, but without moving it. Abstaining would hand the model's ranking exactly the
@@ -275,6 +283,7 @@ def open_world_contest(
         candidate
         for candidate in outranking
         if genus is not None
+        and candidate.reference_status is ReferenceStatus.EXTERNALLY_VERIFIED
         and candidate.taxon.split("_")[0] == genus
         and decisive & _observations_behind(evidence, subject_id, candidate.supporting_evidence_ids)
     )

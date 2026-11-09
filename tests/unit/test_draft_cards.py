@@ -78,6 +78,19 @@ class TestDraft:
         # Only look-alikes that have a card can be compared against.
         assert card.common_confusions == ("juglans_regia",)
 
+    def test_a_feature_documented_twice_becomes_one_rule(self):
+        card = draft_card(
+            _record(
+                documented_features=[
+                    {"feature": "leaf.type", "values": ["compound_palmate"]},
+                    {"feature": "leaf.type", "values": ["palmately_lobed", "compound_palmate"]},
+                ]
+            ),
+            known_taxon_ids=KNOWN,
+        )
+        (rule,) = card.supporting_features
+        assert rule.values == ("compound_palmate", "palmately_lobed")
+
     @pytest.mark.parametrize(
         "record",
         [

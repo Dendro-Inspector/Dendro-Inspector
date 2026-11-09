@@ -143,6 +143,18 @@ class ReferenceRecord(Contract):
     documented_features: tuple[DocumentedFeature, ...] = ()
     lookalikes: tuple[Identifier, ...] = ()
 
+    def documented_values(self) -> dict[str, tuple[str, ...]]:
+        """Documented values per feature path, duplicate paths merged in source order.
+
+        A source may describe one organ in two places. Read through a plain dict, the
+        second entry silently replaced the first, so a feature documented as two readings
+        could disagree with an observation matching the first. Every consumer reads it here.
+        """
+        merged: dict[str, dict[str, None]] = {}
+        for item in self.documented_features:
+            merged.setdefault(item.feature, {}).update(dict.fromkeys(item.values))
+        return {feature: tuple(values) for feature, values in merged.items()}
+
     @model_validator(mode="after")
     def _accepted_names_point_at_themselves(self) -> ReferenceRecord:
         accepted = self.name_status is NameStatus.ACCEPTED

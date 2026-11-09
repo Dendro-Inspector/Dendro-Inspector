@@ -174,16 +174,71 @@ class TestStatuses:
         verified = _verify(_Source("example_flora", _record()))
         assert _bounds(verified) == _bounds(CANDIDATE)
 
-    def test_a_synonym_is_disputed_and_names_the_accepted_taxon(self):
+    def test_a_synonym_is_followed_to_its_accepted_name_with_the_history_kept(self):
+        """An older name for the same taxon is not evidence against the identification."""
+        accepted = "aesculus_turbinata"
         verified = _verify(
             _Source(
                 "example_flora",
-                _record(name_status="synonym", accepted_taxon="aesculus_turbinata"),
+                _record(name_status="synonym", accepted_taxon=accepted),
+                _record(
+                    taxon=accepted,
+                    accepted_taxon=accepted,
+                    source_url=f"https://references.example.org/taxon/{accepted}",
+                ),
+            )
+        )
+
+        assert verified.reference_status is ReferenceStatus.EXTERNALLY_VERIFIED
+        history, resolved = verified.references
+        assert (history.reason, history.accepted_taxon) == ("name_synonym", accepted)
+        assert history.outcome is ReferenceStatus.PROVISIONAL
+        assert (resolved.reason, resolved.accepted_taxon) == ("documented_feature_match", accepted)
+        assert resolved.source_url == f"https://references.example.org/taxon/{accepted}"
+
+    def test_a_synonym_whose_accepted_name_is_unknown_stays_provisional(self):
+        verified = _verify(
+            _Source("example_flora", _record(name_status="synonym", accepted_taxon="aesculus_x"))
+        )
+        assert verified.reference_status is ReferenceStatus.PROVISIONAL
+
+    def test_a_synonym_whose_accepted_name_contradicts_the_photograph_is_disputed(self):
+        accepted = "aesculus_turbinata"
+        verified = _verify(
+            _Source(
+                "example_flora",
+                _record(name_status="synonym", accepted_taxon=accepted),
+                _record(
+                    taxon=accepted,
+                    accepted_taxon=accepted,
+                    documented_features=[{"feature": "bark.texture", "values": ["smooth_grey"]}],
+                ),
             )
         )
         assert verified.reference_status is ReferenceStatus.DISPUTED
-        assert verified.references[0].accepted_taxon == "aesculus_turbinata"
-        assert verified.references[0].reason == "name_synonym"
+
+    def test_an_unresolved_name_is_unplaced_not_wrong(self):
+        verified = _verify(
+            _Source("example_flora", _record(name_status="unresolved", accepted_taxon="aesculus"))
+        )
+        assert verified.reference_status is ReferenceStatus.PROVISIONAL
+        assert verified.references[0].reason == "name_unresolved"
+
+    def test_a_feature_documented_twice_is_merged_not_overwritten(self):
+        """The first entry's reading used to be replaced by the second's."""
+        verified = _verify(
+            _Source(
+                "example_flora",
+                _record(
+                    documented_features=[
+                        {"feature": "leaf.type", "values": ["compound_palmate"]},
+                        {"feature": "leaf.type", "values": ["palmately_lobed"]},
+                    ]
+                ),
+            )
+        )
+        assert verified.reference_status is ReferenceStatus.EXTERNALLY_VERIFIED
+        assert verified.references[0].conflicting_features == ()
 
     def test_a_contradicted_documented_feature_is_disputed(self):
         verified = _verify(
@@ -231,8 +286,7 @@ class TestStatuses:
                 "example_index",
                 _record(
                     source_id="example_index",
-                    name_status="unresolved",
-                    accepted_taxon="aesculus",
+                    documented_features=[{"feature": "bark.texture", "values": ["smooth_grey"]}],
                 ),
             ),
         )
@@ -347,7 +401,8 @@ class TestSourceTrust:
         """A source can withdraw trust it cannot grant."""
         source = RecordedReferenceSource(
             self._write(
-                tmp_path, [_record(name_status="synonym", accepted_taxon="aesculus_turbinata")]
+                tmp_path,
+                [_record(documented_features=[{"feature": "bark.texture", "values": ["smooth"]}])],
             )
         )
         assert _verify(source).reference_status is ReferenceStatus.DISPUTED

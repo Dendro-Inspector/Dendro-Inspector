@@ -143,19 +143,29 @@ def adjudicate_record(
     rule as a card's self-contradiction veto — a trusted same-subject reading of a
     documented path that no documented value is compatible with, on a path no other reading
     satisfied. Silence on a documented path is not a conflict.
+
+    A name the source does not accept is not evidence against the identification. A synonym
+    is the same taxon under an older name, and an unresolved name is one the source has not
+    placed; both produce a ``provisional`` name-history citation, and
+    :func:`verify_open_world` follows a synonym to its accepted name. Only a documented
+    feature the photograph contradicts disputes a hypothesis.
+
+    A record for a name other than the candidate's — the accepted name a synonym led to —
+    carries that name in ``accepted_taxon``, so the redirection stays on the record.
     """
+    redirected = record.taxon if record.taxon != candidate.taxon else None
     if record.name_status is not NameStatus.ACCEPTED:
         return ReferenceCitation(
             source_id=record.source_id,
             source_trust=trust,
             source_url=record.source_url,
             retrieved_at=record.retrieved_at,
-            outcome=ReferenceStatus.DISPUTED,
+            outcome=ReferenceStatus.PROVISIONAL,
             reason=f"name_{record.name_status.value}",
             accepted_taxon=record.accepted_taxon,
         )
 
-    documented = {item.feature: item.values for item in record.documented_features}
+    documented = record.documented_values()
 
     def documented_reading(feature: str, value: str) -> bool:
         return any(
@@ -199,6 +209,7 @@ def adjudicate_record(
         source_trust=trust,
         source_url=record.source_url,
         retrieved_at=record.retrieved_at,
+        accepted_taxon=redirected,
         outcome=outcome,
         reason=reason,
         matched_features=tuple(matched),
@@ -224,6 +235,58 @@ def combine_citations(citations: Sequence[ReferenceCitation]) -> ReferenceStatus
     return ReferenceStatus.UNAVAILABLE
 
 
+async def _citations_from(
+    source: ReferenceSource,
+    candidate: OpenWorldCandidate,
+    evidence: EvidencePacket,
+    vocabulary: ValueVocabulary,
+) -> tuple[ReferenceCitation, ...]:
+    """Everything one source says about one candidate, following a synonym one step.
+
+    One step only: an accepted name is by definition not a synonym, so a source whose
+    accepted name is itself a synonym is inconsistent, and following it further could loop.
+    """
+
+    def failed() -> ReferenceCitation:
+        return ReferenceCitation(
+            source_id=source.source_id,
+            source_trust=source.trust,
+            outcome=ReferenceStatus.UNAVAILABLE,
+            reason="source_failed",
+        )
+
+    try:
+        records = await source.lookup(candidate.taxon)
+    except ReferenceUnavailableError:
+        return (failed(),)
+    if not records:
+        return (
+            ReferenceCitation(
+                source_id=source.source_id,
+                source_trust=source.trust,
+                outcome=ReferenceStatus.PROVISIONAL,
+                reason="not_found",
+            ),
+        )
+
+    citations: list[ReferenceCitation] = []
+    for record in records:
+        citations.append(adjudicate_record(record, candidate, evidence, vocabulary, source.trust))
+        if record.name_status is not NameStatus.SYNONYM:
+            continue
+        try:
+            accepted = await source.lookup(record.accepted_taxon)
+        except ReferenceUnavailableError:
+            citations.append(failed())
+            continue
+        citations.extend(
+            adjudicate_record(item, candidate, evidence, vocabulary, source.trust)
+            for item in accepted
+            if item.name_status is NameStatus.ACCEPTED
+        )
+    return tuple(citations)
+
+
 async def verify_open_world(
     candidates: tuple[OpenWorldCandidate, ...],
     evidence: EvidencePacket,
@@ -245,32 +308,7 @@ async def verify_open_world(
             continue
         citations: list[ReferenceCitation] = []
         for source in sources:
-            try:
-                records = await source.lookup(candidate.taxon)
-            except ReferenceUnavailableError:
-                citations.append(
-                    ReferenceCitation(
-                        source_id=source.source_id,
-                        source_trust=source.trust,
-                        outcome=ReferenceStatus.UNAVAILABLE,
-                        reason="source_failed",
-                    )
-                )
-                continue
-            if not records:
-                citations.append(
-                    ReferenceCitation(
-                        source_id=source.source_id,
-                        source_trust=source.trust,
-                        outcome=ReferenceStatus.PROVISIONAL,
-                        reason="not_found",
-                    )
-                )
-                continue
-            citations.extend(
-                adjudicate_record(record, candidate, evidence, vocabulary, source.trust)
-                for record in records
-            )
+            citations.extend(await _citations_from(source, candidate, evidence, vocabulary))
         # Re-validated rather than copied: `model_copy` skips validators, and the contract's
         # rule that a verified status needs a verifying citation is the one worth checking.
         verified.append(

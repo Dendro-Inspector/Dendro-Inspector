@@ -77,9 +77,9 @@ ResolutionBoundSource = Literal[
     "tier_ceiling",
     "reviewer_recommendation",
     "abstention",
-    # The model ranked a taxon with no card above the admitted leader. Naming the leader's
-    # species would substitute a covered look-alike for the model's own leading hypothesis;
-    # at genus it no longer does, and the outranking hypothesis is named beside the verdict.
+    # An externally verified congener with no card, ranked above the admitted leader and
+    # resting on the same decisive observation. Naming the leader's species would substitute
+    # a covered look-alike for it; at genus it no longer does. See `open_world_contest`.
     "open_world_outranked",
 ]
 ConfidenceStepSource = Literal[
