@@ -12,6 +12,10 @@ get entries.
 
 ### Changed
 
+- Batch reports distinguish unreported token usage from a measured zero, include measured
+  usage from failed cases, expose per-counter case coverage, and correctly average the two
+  middle durations for an even-sized batch.
+
 - A model reviewer's `critical` + `abstain` finding that cites no evidence no longer
   withdraws a claim on its own. It is still accepted and still critical, but it no longer
   routes straight to abstention — which, once every subject had abstained, also skipped the
