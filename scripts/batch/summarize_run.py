@@ -14,6 +14,7 @@ import json
 import sys
 from collections import Counter
 from pathlib import Path
+from statistics import median
 from typing import Any
 
 COLUMNS = (
@@ -72,9 +73,15 @@ def case_row(record: dict[str, Any]) -> dict[str, Any]:
         arbiter_used=trace.get("arbiter_used"),
         escalation_triggered=trace.get("escalation_triggered"),
         model_calls=len(calls),
-        **{key: sum(call.get(key) or 0 for call in calls) for key in TOKEN_KEYS},
+        **{key: _measured_total(calls, key) for key in TOKEN_KEYS},
     )
     return row
+
+
+def _measured_total(records: list[dict[str, Any]], key: str) -> int | None:
+    values = [record.get(key) for record in records]
+    measured = [v for v in values if isinstance(v, int) and not isinstance(v, bool) and v >= 0]
+    return sum(measured) if measured else None
 
 
 def summarize(rows: list[dict[str, Any]]) -> dict[str, Any]:
@@ -89,9 +96,13 @@ def summarize(rows: list[dict[str, Any]]) -> dict[str, Any]:
         "confidence": dict(Counter(row["confidence"] for row in done)),
         "top_taxa": dict(Counter(row["selected_taxon"] for row in done).most_common(15)),
         "arbiter_used": sum(1 for row in done if row["arbiter_used"] is True),
-        "tokens": {key: sum(int(row[key] or 0) for row in done) for key in TOKEN_KEYS},
+        # Failed cases can consume tokens too. Missing measurements remain unknown.
+        "tokens": {key: _measured_total(rows, key) for key in TOKEN_KEYS},
+        "token_measured_cases": {
+            key: sum(_measured_total([row], key) is not None for row in rows) for key in TOKEN_KEYS
+        },
         "wall_seconds": {
-            "median": walls[len(walls) // 2] if walls else None,
+            "median": median(walls) if walls else None,
             "max": walls[-1] if walls else None,
         },
     }
