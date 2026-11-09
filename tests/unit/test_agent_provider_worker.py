@@ -7,6 +7,7 @@ import threading
 import time
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
+from typing import Any
 
 import pytest
 
@@ -565,3 +566,84 @@ def test_bridge_returns_terminal_worker_failure_without_waiting(tmp_path: Path) 
     assert caught.value.status == 424
     assert "quota exhausted" in caught.value.body["error"]["message"]
     assert time.perf_counter() - started < 2
+
+
+def _anthropic_request(bridge: ModuleType, headers: dict[str, str]) -> tuple[Any, dict[str, Any]]:
+    from email.message import Message
+
+    message = Message()
+    for name, value in headers.items():
+        message[name] = value
+    handler = object.__new__(bridge.Handler)
+    handler.headers = message
+    schema = {"title": "Probe", "type": "object", "properties": {"status": {"type": "string"}}}
+    body = {
+        "model": "claude-main",
+        "max_tokens": 64,
+        "messages": [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": f"inspect\n## Required output\n{json.dumps(schema)}"}
+                ],
+            }
+        ],
+    }
+    return handler, body
+
+
+@pytest.mark.parametrize(
+    "credential",
+    ({"authorization": "Bearer bridge-local-placeholder"}, {"x-api-key": "placeholder"}),
+)
+def test_bridge_accepts_anthropic_key_as_bearer_or_header(credential: dict[str, str]) -> None:
+    bridge = _load_script("bridge")
+    handler, body = _anthropic_request(bridge, {"anthropic-version": "2023-06-01", **credential})
+
+    dialect, _, _, schema, model, wanted = handler._parse("/v1/messages", body)
+
+    assert (dialect, model, wanted) == ("anthropic", "claude-main", "Probe")
+    assert schema["title"] == "Probe"
+
+
+@pytest.mark.parametrize(
+    "credential", ({}, {"authorization": "Bearer "}, {"authorization": "Basic x"})
+)
+def test_bridge_still_rejects_anthropic_request_without_a_key(credential: dict[str, str]) -> None:
+    bridge = _load_script("bridge")
+    handler, body = _anthropic_request(bridge, {"anthropic-version": "2023-06-01", **credential})
+
+    with pytest.raises(bridge.DialectRejectionError) as caught:
+        handler._parse("/v1/messages", body)
+
+    assert caught.value.status == 401
+    assert caught.value.body["error"]["type"] == "authentication_error"
+
+
+def test_codex_failure_keeps_the_reason_from_stdout(tmp_path: Path, monkeypatch) -> None:
+    worker = _load_script("worker")
+    _pending_request(tmp_path, route="sol-all")
+    (tmp_path / "claims").mkdir()
+    job = worker.claim_next_job(
+        state_dir=tmp_path,
+        route="sol-all",
+        worker_id="codex-sol-all",
+        claim_ttl_seconds=60,
+    )
+    assert job is not None
+
+    def fake_run(command, **kwargs):
+        return SimpleNamespace(
+            returncode=1,
+            stderr="reading prompt from stdin",
+            stdout=json.dumps({"type": "error", "message": "model_not_found: gpt-0"}),
+        )
+
+    monkeypatch.setattr(worker.subprocess, "run", fake_run)
+    backend = worker.CodexBackend(executable=sys.executable, model="gpt-0", timeout_seconds=60)
+
+    with pytest.raises(worker.WorkerError) as caught:
+        backend.generate(job)
+
+    assert "model_not_found" in str(caught.value)
+    assert "reading prompt from stdin" in str(caught.value)
