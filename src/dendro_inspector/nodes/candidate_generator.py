@@ -115,6 +115,11 @@ async def run(state: GraphState, ctx: NodeContext) -> GraphState:
         final_sets.append(validation.candidate_set)
         open_world.extend(validation.open_world)
 
+    # Closed-world runs never see them: not in state, not verified, not read by any decision
+    # rule. That is the flag's whole contract — an uncovered proposal changes nothing unless
+    # open-world discovery was asked for — and an integration test holds it over the corpus.
+    if not ctx.config.graph.open_world_discovery:
+        open_world.clear()
     return state.evolve(
         proposed_candidate_sets=tuple(proposed_sets),
         candidate_sets=tuple(final_sets),

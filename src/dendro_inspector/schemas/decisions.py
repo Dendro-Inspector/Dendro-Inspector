@@ -370,10 +370,25 @@ class FinalDecision(Contract):
         ),
     )
 
+    open_world_conflict: bool = Field(
+        default=False,
+        description=(
+            "The model ranked an uncovered taxon above this verdict's taxon and it did not "
+            "cap the verdict — another genus, or no shared decisive evidence. The verdict "
+            "stands on card-validated evidence; the conflict is unresolved, not dismissed."
+        ),
+    )
+
     @model_validator(mode="after")
     def _open_world_candidates_belong_to_this_subject(self) -> FinalDecision:
         if any(candidate.subject_id != self.subject_id for candidate in self.open_world_candidates):
             msg = "open-world candidates must belong to the decision's own subject"
+            raise ValueError(msg)
+        if self.open_world_conflict and (
+            self.selected_taxon is None
+            or not any(candidate.uncovered for candidate in self.open_world_candidates)
+        ):
+            msg = "an open-world conflict needs a selected taxon and an uncovered hypothesis"
             raise ValueError(msg)
         if self.reference_status is not None and self.selected_taxon is None:
             msg = "reference_status describes a selected taxon; there is none"

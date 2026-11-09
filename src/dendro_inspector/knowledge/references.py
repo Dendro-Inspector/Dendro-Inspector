@@ -12,9 +12,13 @@ identifiers, timestamps and HTTPS URLs and no free text; a record that fails val
 discarded whole. Records are never composed into a model prompt.
 
 The only source shipped is :class:`RecordedReferenceSource`, which reads records an operator
-has already retrieved and saved. It is offline by construction. A live client for an online
-service is a separate integration with its own authorization question (``AGENTS.md`` §2), and
-plugs in through :class:`ReferenceSource` without changing the adjudication below.
+has already retrieved and saved. It is offline by construction, and its trust is
+:attr:`~dendro_inspector.schemas.reference.SourceTrust.OPERATOR_SUPPLIED`: nothing checks that
+a saved record's content came from the URL it cites, so such a record can dispute a
+hypothesis but never verify one. ``externally_verified`` is reserved for a source that
+retrieves from an authoritative service itself. That live client is a separate integration
+with its own authorization question (``AGENTS.md`` §2), and plugs in through
+:class:`ReferenceSource` without changing the adjudication below.
 """
 
 from __future__ import annotations
@@ -38,6 +42,7 @@ from dendro_inspector.schemas.reference import (
     ReferenceCitation,
     ReferenceRecord,
     ReferenceStatus,
+    SourceTrust,
 )
 from dendro_inspector.schemas.taxon import ValueVocabulary
 
@@ -53,6 +58,9 @@ class ReferenceSource(Protocol):
 
     @property
     def source_id(self) -> str: ...
+
+    @property
+    def trust(self) -> SourceTrust: ...
 
     async def lookup(self, taxon: str) -> tuple[ReferenceRecord, ...]: ...
 
@@ -78,6 +86,11 @@ class RecordedReferenceSource:
     @property
     def source_id(self) -> str:
         return self._source_id
+
+    @property
+    def trust(self) -> SourceTrust:
+        """Fixed. A file cannot vouch for its own provenance, so none can raise this."""
+        return SourceTrust.OPERATOR_SUPPLIED
 
     def _load(self) -> tuple[ReferenceRecord, ...]:
         if self._records is not None:
@@ -117,8 +130,13 @@ def adjudicate_record(
     candidate: OpenWorldCandidate,
     evidence: EvidencePacket,
     vocabulary: ValueVocabulary,
+    trust: SourceTrust,
 ) -> ReferenceCitation:
     """Compare one record with the evidence. Deterministic; reads no model output.
+
+    ``trust`` bounds the outcome in one direction only. Any source may dispute; only an
+    authoritative retrieval may verify. A match from an operator-supplied record stays
+    ``provisional``, with the matched features still recorded so the reader can see them.
 
     *Matched* features come from the candidate's own surviving support: the documented
     reading is what the hypothesis actually rests on. *Conflicting* features follow the same
@@ -129,6 +147,7 @@ def adjudicate_record(
     if record.name_status is not NameStatus.ACCEPTED:
         return ReferenceCitation(
             source_id=record.source_id,
+            source_trust=trust,
             source_url=record.source_url,
             retrieved_at=record.retrieved_at,
             outcome=ReferenceStatus.DISPUTED,
@@ -169,12 +188,15 @@ def adjudicate_record(
 
     if conflicting:
         outcome, reason = ReferenceStatus.DISPUTED, "documented_feature_conflict"
-    elif matched:
+    elif matched and trust is SourceTrust.AUTHORITATIVE_RETRIEVAL:
         outcome, reason = ReferenceStatus.EXTERNALLY_VERIFIED, "documented_feature_match"
+    elif matched:
+        outcome, reason = ReferenceStatus.PROVISIONAL, "documented_feature_match_unauthenticated"
     else:
         outcome, reason = ReferenceStatus.PROVISIONAL, "no_documented_feature_observed"
     return ReferenceCitation(
         source_id=record.source_id,
+        source_trust=trust,
         source_url=record.source_url,
         retrieved_at=record.retrieved_at,
         outcome=outcome,
@@ -213,10 +235,14 @@ async def verify_open_world(
     With no source configured the status is ``unavailable``: nobody checked, which is a
     different fact from "checked and found nothing" (``provisional``). Only
     ``reference_status`` and ``references`` change; the evidence-bounded fields are copied
-    through untouched.
+    through untouched. A covered name is passed through: local cards already describe it,
+    and its status is theirs.
     """
     verified: list[OpenWorldCandidate] = []
     for candidate in candidates:
+        if not candidate.uncovered:
+            verified.append(candidate)
+            continue
         citations: list[ReferenceCitation] = []
         for source in sources:
             try:
@@ -225,6 +251,7 @@ async def verify_open_world(
                 citations.append(
                     ReferenceCitation(
                         source_id=source.source_id,
+                        source_trust=source.trust,
                         outcome=ReferenceStatus.UNAVAILABLE,
                         reason="source_failed",
                     )
@@ -234,13 +261,15 @@ async def verify_open_world(
                 citations.append(
                     ReferenceCitation(
                         source_id=source.source_id,
+                        source_trust=source.trust,
                         outcome=ReferenceStatus.PROVISIONAL,
                         reason="not_found",
                     )
                 )
                 continue
             citations.extend(
-                adjudicate_record(record, candidate, evidence, vocabulary) for record in records
+                adjudicate_record(record, candidate, evidence, vocabulary, source.trust)
+                for record in records
             )
         # Re-validated rather than copied: `model_copy` skips validators, and the contract's
         # rule that a verified status needs a verifying citation is the one worth checking.

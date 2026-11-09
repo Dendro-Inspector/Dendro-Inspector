@@ -28,6 +28,7 @@ from typing import Annotated
 from pydantic import AwareDatetime, Field, StringConstraints, model_validator
 
 from dendro_inspector.schemas.base import Contract, FeaturePath, Identifier, ValueToken
+from dendro_inspector.schemas.taxon import ReviewState
 
 #: HTTPS only, no whitespace, no credentials-in-URL ``user@host`` form. A citation the
 #: reader cannot open over a secure channel is not a citation.
@@ -68,10 +69,51 @@ class ReferenceStatus(StrEnum):
     """No local card, and no external source could be consulted."""
 
 
-#: Statuses only a local card can carry. An open-world candidate has no card by definition.
+#: Statuses only local knowledge can carry: a card, or an identity or alias a card declares.
 LOCAL_STATUSES: frozenset[ReferenceStatus] = frozenset(
     {ReferenceStatus.LOCAL_REVIEWED, ReferenceStatus.LOCAL_UNREVIEWED}
 )
+
+_REVIEW_TO_REFERENCE: dict[ReviewState, ReferenceStatus] = {
+    ReviewState.REVIEWED: ReferenceStatus.LOCAL_REVIEWED,
+    ReviewState.UNREVIEWED: ReferenceStatus.LOCAL_UNREVIEWED,
+    ReviewState.DISPUTED: ReferenceStatus.DISPUTED,
+}
+
+#: Most conservative first, for combining several local sources of one name.
+_LOCAL_PRECEDENCE: tuple[ReferenceStatus, ...] = (
+    ReferenceStatus.DISPUTED,
+    ReferenceStatus.LOCAL_UNREVIEWED,
+    ReferenceStatus.LOCAL_REVIEWED,
+)
+
+
+def local_reference_status(review_states: tuple[ReviewState, ...]) -> ReferenceStatus:
+    """Reference status of local knowledge, from the review state its provenance records.
+
+    Several states — one name declared by several cards — combine to the most conservative:
+    a name is only as reviewed as its least-reviewed declaration.
+    """
+    statuses = {_REVIEW_TO_REFERENCE[state] for state in review_states}
+    return next(
+        (status for status in _LOCAL_PRECEDENCE if status in statuses),
+        ReferenceStatus.LOCAL_UNREVIEWED,
+    )
+
+
+class SourceTrust(StrEnum):
+    """How a reference record reached this system, which bounds what it may establish.
+
+    Only a record this system retrieved itself from an authoritative service can verify a
+    hypothesis. A saved file asserts its URLs and timestamps; nothing checks that the content
+    came from there. It may still *dispute* — a source can withdraw trust it cannot grant,
+    because the cost of the two errors is not symmetric.
+    """
+
+    OPERATOR_SUPPLIED = "operator_supplied"
+    """Records someone saved and handed over. Content as asserted by the file."""
+    AUTHORITATIVE_RETRIEVAL = "authoritative_retrieval"
+    """Retrieved by this system, at lookup time, from the authoritative service it cites."""
 
 
 class NameStatus(StrEnum):
@@ -125,6 +167,7 @@ class ReferenceCitation(Contract):
     """
 
     source_id: Identifier
+    source_trust: SourceTrust
     outcome: ReferenceStatus
     reason: ValueToken
     source_url: HttpsUrl | None = None
@@ -146,6 +189,15 @@ class ReferenceCitation(Contract):
         ):
             msg = (
                 "externally_verified requires a source URL, a retrieval time and a matched feature"
+            )
+            raise ValueError(msg)
+        if (
+            self.outcome is ReferenceStatus.EXTERNALLY_VERIFIED
+            and self.source_trust is not SourceTrust.AUTHORITATIVE_RETRIEVAL
+        ):
+            msg = (
+                "externally_verified requires a record this system retrieved from an "
+                f"authoritative service, not {self.source_trust.value!r}"
             )
             raise ValueError(msg)
         return self

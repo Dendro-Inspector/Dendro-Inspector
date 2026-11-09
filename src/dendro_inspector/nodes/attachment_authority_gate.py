@@ -394,7 +394,8 @@ async def run(state: GraphState, ctx: NodeContext) -> GraphState:
     open_world = state.open_world_candidates
     if withheld:
         evidence = _with_attachment(evidence, withheld, AttachmentStatus.UNKNOWN)
-        open_world = await rederive_open_world(state, evidence, ctx)
+        if ctx.config.graph.open_world_discovery:
+            open_world = await rederive_open_world(state, evidence, ctx)
     return state.evolve(
         evidence=evidence,
         candidate_sets=tuple(gated),

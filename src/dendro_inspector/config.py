@@ -172,8 +172,9 @@ class KnowledgeConfig(Contract):
     reference_records: Path | None = Field(
         default=None,
         description=(
-            "Local YAML of previously retrieved reference records used to verify open-world "
-            "candidates. None means no external verification: candidates report `unavailable`."
+            "Local YAML of saved reference records checked against open-world candidates. "
+            "Operator-supplied: they can dispute a candidate but never verify one. None means "
+            "nothing is checked, and candidates report `unavailable`."
         ),
     )
 

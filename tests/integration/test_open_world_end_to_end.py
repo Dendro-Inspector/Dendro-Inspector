@@ -16,7 +16,7 @@ import yaml
 from dendro_inspector.config import AppConfig, GraphConfig, KnowledgeConfig
 from dendro_inspector.runner import CaseRunResult, run_case
 from dendro_inspector.schemas.decisions import DecisionStatus
-from dendro_inspector.schemas.reference import ReferenceStatus
+from dendro_inspector.schemas.reference import ReferenceStatus, SourceTrust
 from dendro_inspector.schemas.taxon import Confidence, Resolution
 from tests.conftest import make_config
 
@@ -145,24 +145,27 @@ class TestOpenWorldDiscovery:
 
 
 class TestReferenceVerificationInTheGraph:
-    def test_a_verifying_record_changes_reference_status_and_nothing_else(
+    def test_a_saved_matching_record_is_cited_but_cannot_verify(
         self, standing_tree_case, repo_root, tmp_path
     ):
+        """A file asserts its provenance; nothing checked it. Matches stay provisional."""
         plain = _run(standing_tree_case, repo_root, open_world=True)
-        verified = _run(
-            standing_tree_case, repo_root, open_world=True, references=_records(tmp_path)
-        )
+        cited = _run(standing_tree_case, repo_root, open_world=True, references=_records(tmp_path))
 
         (before,) = plain.state.decisions[0].open_world_candidates
-        (after,) = verified.state.decisions[0].open_world_candidates
-        assert after.reference_status is ReferenceStatus.EXTERNALLY_VERIFIED
-        assert after.references[0].matched_features == ("fruit.husk",)
+        (after,) = cited.state.decisions[0].open_world_candidates
+        assert after.reference_status is ReferenceStatus.PROVISIONAL
+        (citation,) = after.references
+        assert citation.source_trust is SourceTrust.OPERATOR_SUPPLIED
+        assert citation.matched_features == ("fruit.husk",)
+        assert citation.source_url == f"https://references.example.org/taxon/{TAXON}"
+        # Nothing evidence-bounded moved, and neither did the verdict.
         assert (
             after.model_copy(update={"reference_status": before.reference_status, "references": ()})
             == before
         )
-        assert verified.state.decisions[0].status is plain.state.decisions[0].status
-        assert verified.state.decisions[0].confidence is plain.state.decisions[0].confidence
+        assert cited.state.decisions[0].status is plain.state.decisions[0].status
+        assert cited.state.decisions[0].confidence is plain.state.decisions[0].confidence
 
     @pytest.mark.parametrize(
         ("overrides", "expected"),

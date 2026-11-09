@@ -31,6 +31,7 @@ from dendro_inspector.schemas.candidates import (
     strength_rank,
 )
 from dendro_inspector.schemas.evidence import EvidencePacket, Observation, is_positive_reading
+from dendro_inspector.schemas.reference import ReferenceStatus, local_reference_status
 from dendro_inspector.schemas.taxon import (
     Confidence,
     FeatureExpectation,
@@ -155,20 +156,33 @@ def cards_in_play(
     )
 
 
+def _covered_reference_status(
+    name: str, covered_by: tuple[str, ...], knowledge: KnowledgeBase
+) -> ReferenceStatus:
+    """How reviewed the local declarations of ``name`` are, most conservative first."""
+    states = []
+    for card_id in covered_by:
+        card = knowledge.taxon(card_id)
+        identity = next((item for item in card.broader_identities if item.taxon_id == name), None)
+        provenance = identity.provenance if identity and identity.provenance else card.provenance
+        states.append(provenance.review_state)
+    return local_reference_status(tuple(states))
+
+
 def open_world_candidate(
     candidate: Candidate,
     evidence: EvidencePacket,
     subject_id: str,
-    covered_names: frozenset[str],
+    knowledge: KnowledgeBase,
 ) -> OpenWorldCandidate | None:
-    """Retain a no-card hypothesis as open-world, or return ``None`` to discard it.
+    """Retain a no-card hypothesis, or return ``None`` to discard it.
 
     Retained only when all of these hold, each of which is a reason the hypothesis is about
     *this photograph* rather than about the model's prior:
 
-    * the taxon id is shaped like a scientific name and is not a name some card already
-      answers for (a card id, broader identity or alias) — those are covered taxa proposed
-      under the wrong id, not missing taxonomy;
+    * the id is a name some card declares as a broader identity or alias (retained as
+      *covered*, with those cards' local reference status), or it is shaped like a
+      scientific name (retained as *uncovered* — missing taxonomy);
     * the model proposed a taxonomic level, not ``unknown``;
     * at least one supporting id survives as trusted, same-subject, readable evidence that
       can support identification, under the same trust projection admission uses — so an
@@ -178,12 +192,15 @@ def open_world_candidate(
     Everything retained is bounded by that surviving evidence, never by the model's own
     estimate and never by any reference source: resolution by the tier ceiling, score below
     strong, and image confidence below high and below the tier ceiling.
+
+    A covered name is kept out of admission deliberately. Resolving ``juglans`` to the
+    walnut card would widen the admission boundary to match names instead of card ids, and
+    that boundary is not widened to admit a candidate (``AGENTS.md``, key files).
     """
+    covered_by = knowledge.declared_names().get(candidate.taxon, ())
     if (
-        not _SCIENTIFIC_NAME.fullmatch(candidate.taxon)
-        or candidate.taxon in covered_names
-        or candidate.resolution is Resolution.UNKNOWN
-    ):
+        not covered_by and not _SCIENTIFIC_NAME.fullmatch(candidate.taxon)
+    ) or candidate.resolution is Resolution.UNKNOWN:
         return None
 
     surviving: list[str] = []
@@ -218,6 +235,12 @@ def open_world_candidate(
             confidence_ceiling(tier),
             _OPEN_WORLD_CONFIDENCE_CAP,
             key=confidence_rank,
+        ),
+        covered_by=covered_by,
+        reference_status=(
+            _covered_reference_status(candidate.taxon, covered_by, knowledge)
+            if covered_by
+            else ReferenceStatus.PROVISIONAL
         ),
     )
 
@@ -296,7 +319,7 @@ def validate_candidate_set_with_report(
                 (*candidate.supporting_evidence_ids, *candidate.contradicting_evidence_ids)
             )
             retained = open_world_candidate(
-                candidate, evidence, candidate_set.subject_id, knowledge.covered_names()
+                candidate, evidence, candidate_set.subject_id, knowledge
             )
             if retained is not None:
                 open_world.append(retained)

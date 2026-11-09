@@ -34,6 +34,7 @@ from dendro_inspector.schemas.reference import (
     ReferenceCitation,
     ReferenceRecord,
     ReferenceStatus,
+    SourceTrust,
 )
 from dendro_inspector.schemas.taxon import NO_VALUE_RELATIONS, Confidence, Resolution
 from tests.conftest import _attachment
@@ -99,10 +100,21 @@ def _record(**overrides: object) -> dict[str, object]:
 
 
 class _Source:
-    """An in-memory source. Records are validated exactly as a file's would be."""
+    """An in-memory source. Records are validated exactly as a file's would be.
 
-    def __init__(self, source_id: str, *records: dict[str, object], fail: bool = False) -> None:
+    Authoritative by default: it stands in for a live client retrieving from the service it
+    cites, which is the only kind of source allowed to verify.
+    """
+
+    def __init__(
+        self,
+        source_id: str,
+        *records: dict[str, object],
+        fail: bool = False,
+        trust: SourceTrust = SourceTrust.AUTHORITATIVE_RETRIEVAL,
+    ) -> None:
         self.source_id = source_id
+        self.trust = trust
         self._records = tuple(ReferenceRecord.model_validate(record) for record in records)
         self._fail = fail
 
@@ -229,7 +241,12 @@ class TestStatuses:
 
     def test_combination_order(self):
         def cite(outcome: ReferenceStatus) -> ReferenceCitation:
-            return ReferenceCitation(source_id="s", outcome=outcome, reason="r")
+            return ReferenceCitation(
+                source_id="s",
+                source_trust=SourceTrust.OPERATOR_SUPPLIED,
+                outcome=outcome,
+                reason="r",
+            )
 
         assert combine_citations(()) is ReferenceStatus.UNAVAILABLE
         assert (
@@ -274,7 +291,7 @@ class TestUntrustedRecords:
         )
         verified = _verify(source)
         assert source.rejected_records == 1
-        assert verified.reference_status is ReferenceStatus.EXTERNALLY_VERIFIED
+        assert verified.references[0].matched_features == ("fruit.husk", "leaf.type")
 
     def test_a_missing_records_file_is_a_source_failure_not_a_crash(self, tmp_path):
         verified = _verify(RecordedReferenceSource(tmp_path / "absent.yaml"))
@@ -294,6 +311,69 @@ class TestUntrustedRecords:
         with pytest.raises(ValidationError):
             ReferenceCitation(
                 source_id="s",
+                source_trust=SourceTrust.AUTHORITATIVE_RETRIEVAL,
                 outcome=ReferenceStatus.EXTERNALLY_VERIFIED,
                 reason="documented_feature_match",
+            )
+
+
+class TestSourceTrust:
+    """``externally_verified`` means retrieved from an authority, not "matched a file"."""
+
+    def _write(self, tmp_path: Path, records: list[dict[str, object]]) -> Path:
+        path = tmp_path / "references.yaml"
+        path.write_text(yaml.safe_dump({"records": records}), encoding="utf-8")
+        return path
+
+    def test_a_saved_record_that_matches_never_verifies(self, tmp_path):
+        source = RecordedReferenceSource(self._write(tmp_path, [_record()]))
+
+        verified = _verify(source)
+
+        assert source.trust is SourceTrust.OPERATOR_SUPPLIED
+        assert verified.reference_status is ReferenceStatus.PROVISIONAL
+        (citation,) = verified.references
+        assert citation.source_trust is SourceTrust.OPERATOR_SUPPLIED
+        assert citation.reason == "documented_feature_match_unauthenticated"
+        # The match is still recorded, so the reader can see what the file claimed.
+        assert citation.matched_features == ("fruit.husk", "leaf.type")
+
+    def test_the_same_record_retrieved_authoritatively_verifies(self):
+        verified = _verify(_Source("example_flora", _record()))
+        assert verified.reference_status is ReferenceStatus.EXTERNALLY_VERIFIED
+        assert verified.references[0].source_trust is SourceTrust.AUTHORITATIVE_RETRIEVAL
+
+    def test_a_saved_record_can_still_withdraw_trust(self, tmp_path):
+        """A source can withdraw trust it cannot grant."""
+        source = RecordedReferenceSource(
+            self._write(
+                tmp_path, [_record(name_status="synonym", accepted_taxon="aesculus_turbinata")]
+            )
+        )
+        assert _verify(source).reference_status is ReferenceStatus.DISPUTED
+
+    def test_an_operator_record_disputing_an_authoritative_match_wins(self):
+        verified = _verify(
+            _Source("example_flora", _record()),
+            _Source(
+                "example_notes",
+                _record(
+                    source_id="example_notes",
+                    documented_features=[{"feature": "bark.texture", "values": ["smooth_grey"]}],
+                ),
+                trust=SourceTrust.OPERATOR_SUPPLIED,
+            ),
+        )
+        assert verified.reference_status is ReferenceStatus.DISPUTED
+
+    def test_the_contract_refuses_verification_without_authority(self):
+        with pytest.raises(ValidationError):
+            ReferenceCitation(
+                source_id="s",
+                source_trust=SourceTrust.OPERATOR_SUPPLIED,
+                outcome=ReferenceStatus.EXTERNALLY_VERIFIED,
+                reason="documented_feature_match",
+                source_url="https://references.example.org/x",
+                retrieved_at=datetime(2026, 1, 15, 10, tzinfo=UTC),
+                matched_features=("leaf.type",),
             )

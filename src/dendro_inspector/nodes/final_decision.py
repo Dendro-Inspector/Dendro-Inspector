@@ -43,6 +43,7 @@ from dendro_inspector.knowledge.evidence_hierarchy import (
     confidence_band,
     confidence_ceiling,
     decisive_observations_for,
+    project_evidence,
     resolution_ceiling,
     resolve_evidence_observations,
     tier_of_feature,
@@ -83,7 +84,7 @@ from dendro_inspector.schemas.decisions import (
 )
 from dendro_inspector.schemas.evidence import EvidencePacket
 from dendro_inspector.schemas.input import DeclaredObjectType
-from dendro_inspector.schemas.reference import ReferenceStatus, scientific_display_name
+from dendro_inspector.schemas.reference import local_reference_status, scientific_display_name
 from dendro_inspector.schemas.reviews import (
     AdmittedRecommendation,
     FindingCategory,
@@ -97,7 +98,6 @@ from dendro_inspector.schemas.taxon import (
     Confidence,
     ExceptionCeiling,
     Resolution,
-    ReviewState,
     TaxonCard,
     TaxonIdentity,
     confidence_rank,
@@ -138,27 +138,39 @@ _ATTACHMENT_UNRESOLVED = (
 )
 
 
-#: Reference status of a selected identity, from the review state its provenance records.
-_REVIEW_TO_REFERENCE: dict[ReviewState, ReferenceStatus] = {
-    ReviewState.REVIEWED: ReferenceStatus.LOCAL_REVIEWED,
-    ReviewState.UNREVIEWED: ReferenceStatus.LOCAL_UNREVIEWED,
-    ReviewState.DISPUTED: ReferenceStatus.DISPUTED,
-}
-
-
 def open_world_text(candidates: tuple[OpenWorldCandidate, ...]) -> tuple[str, ...]:
-    """One reader-facing line per open-world hypothesis, ceilings and reference included.
+    """One reader-facing line per hypothesis outside the admitted set.
 
-    Each line says what the hypothesis is *not* as plainly as what it is: outside this
-    knowledge base, so not the verdict, and capped by what the photograph showed whatever
-    any reference source said.
+    Each line says what the hypothesis is *not* as plainly as what it is — not the verdict,
+    and capped by what the photograph showed whatever any reference said — and whether the
+    name is missing from this knowledge base or merely not a card id.
     """
+    lines = []
+    for candidate in sorted(candidates, key=lambda item: item.proposed_rank):
+        name = scientific_display_name(candidate.taxon)
+        where = (
+            f"Hypothesis outside this knowledge base: {name}"
+            if candidate.uncovered
+            else (
+                f"Hypothesis named {name}, which this knowledge base declares only within "
+                f"{', '.join(candidate.covered_by)}"
+            )
+        )
+        lines.append(
+            f"{where} (not identified; this evidence supports at most "
+            f"{candidate.resolution.value}, image confidence at most "
+            f"{candidate.image_confidence_ceiling.value}; reference status: "
+            f"{candidate.reference_status.value})"
+        )
+    return tuple(lines)
+
+
+def _competing_text(candidates: tuple[OpenWorldCandidate, ...]) -> tuple[str, ...]:
     return tuple(
-        f"Hypothesis outside this knowledge base: {scientific_display_name(candidate.taxon)} "
-        f"(not identified; this evidence supports at most {candidate.resolution.value}, image "
-        f"confidence at most {candidate.image_confidence_ceiling.value}; reference status: "
-        f"{candidate.reference_status.value})"
-        for candidate in sorted(candidates, key=lambda item: item.proposed_rank)
+        f"Competing hypothesis: the model ranked {scientific_display_name(candidate.taxon)} "
+        "above this verdict. No card describes it, so it could not be evaluated, and this "
+        "verdict stands on card-validated evidence alone."
+        for candidate in candidates
     )
 
 
@@ -173,7 +185,7 @@ def rests_on_uncovered_evidence(state: GraphState, candidate: OpenWorldCandidate
     """
     quality, evidence = state.quality, state.evidence
     coverage = quality.knowledge_coverage if quality is not None else None
-    if coverage is None or evidence is None:
+    if coverage is None or evidence is None or not candidate.uncovered:
         return False
     uncovered = set(coverage.potential_gap_evidence_ids)
     return any(
@@ -192,19 +204,82 @@ def _proposed_rank(state: GraphState, subject_id: str, taxon: str) -> int | None
     )
 
 
-def open_world_outranks(state: GraphState, subject_id: str, leader: Candidate) -> bool:
-    """Whether the model ranked a no-card taxon above the admitted leader.
+def _genus_of(card: TaxonCard) -> str | None:
+    identity = card.identity_at_or_broader(Resolution.GENUS)
+    return identity.taxon_id if identity and identity.resolution is Resolution.GENUS else None
 
-    Ranks are the model's own, before admission rebuilt them, because the question is what
-    the model's leading hypothesis was — and the admitted leader replacing it is exactly the
-    substitution this exists to make visible. A leader the proposal never named (it can
-    only arrive by an admitted rerank) is treated as ranked last.
-    """
-    leader_rank = _proposed_rank(state, subject_id, leader.taxon)
-    return any(
-        leader_rank is None or candidate.proposed_rank < leader_rank
-        for candidate in state.open_world_for(subject_id)
+
+def _observations_behind(
+    evidence: EvidencePacket, subject_id: str, evidence_ids: tuple[str, ...]
+) -> frozenset[str]:
+    return frozenset(
+        source.observation_id
+        for evidence_id in evidence_ids
+        for source in resolve_evidence_observations(evidence, evidence_id, subject_id)
     )
+
+
+def open_world_contest(
+    state: GraphState,
+    subject_id: str,
+    leader: Candidate,
+    card: TaxonCard | None,
+    tier: EvidenceTier,
+) -> tuple[tuple[OpenWorldCandidate, ...], tuple[OpenWorldCandidate, ...]]:
+    """Split uncovered hypotheses the model ranked above the leader: substituting, competing.
+
+    A model's rank on its own never changes a validated verdict. An outranking hypothesis
+    *substitutes* — caps the verdict at genus — only when two further things hold, both
+    read from data rather than from the model:
+
+    * it is congeneric with the leader: the leader card's declared genus identity is the
+      first word of its binomial. Species of one genus are the look-alikes the leader's
+      species claim could silently stand in for;
+    * it cites the same observation the leader's claim rests on at the leader's strongest
+      tier. Then that evidence does not discriminate between the two, and the card cannot
+      tell, because only one of them has a card.
+
+    Every other outranking hypothesis *competes*: reported as such, and flagged on the
+    verdict, but without moving it. Abstaining would hand the model's ranking exactly the
+    power it is not trusted with; keeping the leader's genus while the model led with
+    another genus is what card-validated evidence supports, stated beside the alternative.
+
+    Ranks are the model's own, before admission rebuilt them. A leader the proposal never
+    named can only arrive by an admitted rerank, and is treated as ranked last.
+    """
+    evidence = state.evidence
+    proposal = state.proposed_candidates_for(subject_id)
+    leader_rank = next(
+        (c.rank for c in (proposal.candidates if proposal else ()) if c.taxon == leader.taxon),
+        None,
+    )
+    outranking = tuple(
+        candidate
+        for candidate in state.open_world_for(subject_id)
+        if candidate.uncovered and (leader_rank is None or candidate.proposed_rank < leader_rank)
+    )
+    if not outranking or evidence is None:
+        return (), outranking
+
+    genus = _genus_of(card) if card is not None else None
+    decisive = _observations_behind(
+        evidence,
+        subject_id,
+        tuple(
+            evidence_id
+            for evidence_id in leader.supporting_evidence_ids
+            if project_evidence(evidence, evidence_id, subject_id).tier == tier
+        ),
+    )
+    substituting = tuple(
+        candidate
+        for candidate in outranking
+        if genus is not None
+        and candidate.taxon.split("_")[0] == genus
+        and decisive & _observations_behind(evidence, subject_id, candidate.supporting_evidence_ids)
+    )
+    competing = tuple(candidate for candidate in outranking if candidate not in substituting)
+    return substituting, competing
 
 
 def _syntheses(state: GraphState) -> tuple[ReviewSynthesis, ...]:
@@ -566,7 +641,8 @@ def resolve_resolution(
     ]
     if recommended is not None:
         bounds.append(ResolutionBound(source="reviewer_recommendation", value=recommended))
-    if open_world_outranks(state, subject_id, leader):
+    substituting, _ = open_world_contest(state, subject_id, leader, card, tier)
+    if substituting:
         bounds.append(ResolutionBound(source="open_world_outranked", value=Resolution.GENUS))
     if state.is_abstained(subject_id):
         abstention = state.abstention_for(subject_id)
@@ -983,6 +1059,7 @@ def _unresolved(
     evidence: EvidencePacket,
     subject_id: str,
     leader: Candidate,
+    competing: tuple[OpenWorldCandidate, ...] = (),
 ) -> tuple[str, ...]:
     questions = []
     if evidence.possible_multiple_taxa:
@@ -993,6 +1070,7 @@ def _unresolved(
     # Ahead of the decisive-feature lines: the eight-item cap drops late entries, and this
     # is the one a reader cannot reconstruct from the verdict — the model's own hypothesis
     # that the knowledge base had no card for.
+    questions.extend(_competing_text(competing))
     questions.extend(open_world_text(state.open_world_for(subject_id)))
     questions.extend(
         f"{MISSING_DECISIVE_PHRASE}: {item}" for item in leader.missing_decisive_features
@@ -1047,9 +1125,12 @@ def decide_subject_base(
             )
         )
         open_world = state.open_world_for(subject_id)
-        coverage_gap = (
-            state.quality is not None and subject_id in state.quality.coverage_gap_subject_ids
-        ) or any(rests_on_uncovered_evidence(state, candidate) for candidate in open_world)
+        # Open-world only. Closed-world, a coverage-gap subject that shares a frame with a
+        # usable one keeps the status it always had here, so the flag stays the only switch.
+        coverage_gap = ctx.config.graph.open_world_discovery and (
+            (state.quality is not None and subject_id in state.quality.coverage_gap_subject_ids)
+            or any(rests_on_uncovered_evidence(state, candidate) for candidate in open_world)
+        )
         # Missing taxonomy is not a missing photograph. A subject whose evidence fell outside
         # every card, or whose surviving no-card hypothesis rests on such evidence, stopped at
         # the reference data — and saying "insufficient evidence" would send the reader to
@@ -1131,6 +1212,7 @@ def decide_subject_base(
         )
 
     resolution = selected.resolution
+    _, competing = open_world_contest(state, subject_id, leader, card, tier)
     confidence, confidence_steps = resolve_confidence(
         state, subject_id, leader, card, evidence, tier, resolution
     )
@@ -1156,7 +1238,7 @@ def decide_subject_base(
             state, ctx, subject_id, evidence, selected, leader.taxon
         ),
         nearest_alternative=_nearest_alternative(ctx, reranked.ordered[1:], resolution, selected),
-        unresolved_questions=_unresolved(state, evidence, subject_id, leader),
+        unresolved_questions=_unresolved(state, evidence, subject_id, leader, competing),
         best_next_photo=_next_photo(state, ctx, evidence, reranked, leader, tier, confidence),
         arbiter_used=state.arbiter_used,
         user_claim_verdict=verdict,
@@ -1166,12 +1248,13 @@ def decide_subject_base(
             tier,
             decisive_reading=_reaches_the_top_band(card, evidence, subject_id, resolution),
         ),
-        reference_status=_REVIEW_TO_REFERENCE[
-            (selected.provenance or card.provenance).review_state
+        reference_status=(
+            local_reference_status(((selected.provenance or card.provenance).review_state,))
             if card is not None
-            else ReviewState.UNREVIEWED
-        ],
+            else None
+        ),
         open_world_candidates=state.open_world_for(subject_id),
+        open_world_conflict=bool(competing),
     )
 
 
