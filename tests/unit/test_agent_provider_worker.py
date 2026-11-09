@@ -7,6 +7,7 @@ import threading
 import time
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
+from typing import Any
 
 import pytest
 
@@ -567,7 +568,7 @@ def test_bridge_returns_terminal_worker_failure_without_waiting(tmp_path: Path) 
     assert time.perf_counter() - started < 2
 
 
-def _anthropic_request(bridge: ModuleType, headers: dict[str, str]) -> tuple[object, dict]:
+def _anthropic_request(bridge: ModuleType, headers: dict[str, str]) -> tuple[Any, dict[str, Any]]:
     from email.message import Message
 
     message = Message()
