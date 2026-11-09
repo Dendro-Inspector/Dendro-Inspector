@@ -40,19 +40,23 @@ and fails if any photograph failed.
 
 | Trigger | Smoke run | Default images for new runs |
 |---|---|---|
-| Pull request | yes | unchanged |
-| Push to `main` | yes | replaced |
-| Manual (Actions → Deploy to AKS → Run workflow) | `smoke_cases` input | replaced if `promote` is ticked |
+| Pull request into `main` | yes | unchanged |
+| Push to `main` (a merged pull request; `main` is protected) | yes | replaced |
+| Manual (Actions → Deploy to AKS → Run workflow, on `main`) | `smoke_cases` input | replaced if `promote` is ticked |
 
-**Maintainers only.** A first job, with no secrets, looks up the repository role of whoever
-triggered the run and, for a pull request, of its author. Unless both are admin or maintain,
-the run stops there with a notice, and the deploy job never starts. The workflow runs on
-`pull_request_target`, so it is always the base branch's copy of this file, and a pull request
-cannot change the check. The pull request's code is only uploaded to the registry as the build
-context; nothing from it runs on the runner that holds the credentials.
+Pull requests into other branches, and pushes to them, get only the checks in `ci.yml`.
 
-Every deploy runs in the `aks` environment; adding required reviewers there makes each one wait
-for approval as well. A smoke run uses the models configured on the cluster, so each one costs
+**Who deploys without asking.** A first job, with no secrets, looks up the repository role of
+whoever triggered the run and, for a pull request, of its author. When both are admin or
+maintain, the deploy runs in the `aks` environment at once. Anyone else's pull request still
+gets every check, and its deploy runs in `aks-review`, which waits until a maintainer approves
+it (Actions → the run → Review deployments). Each new push needs a new approval.
+
+The workflow runs on `pull_request_target`, so it is always `main`'s copy of this file, and a
+pull request cannot change the check. Both environments accept only runs whose workflow comes
+from `main`, so a workflow written on another branch cannot reach them. The pull request's code
+is only uploaded to the registry as the build context; nothing from it runs on the runner that
+holds the credentials. A smoke run uses the models configured on the cluster, so each one costs
 a few photographs' worth of tokens.
 
 A change to `deploy-aks.yml` itself takes effect only once it is on `main`.
@@ -62,15 +66,17 @@ and smoke run.
 
 One-time setup, by a maintainer:
 
-1. An Entra ID application with a federated credential for subject
-   `repo:<owner>/<repo>:environment:aks` (issuer `https://token.actions.githubusercontent.com`,
+1. An Entra ID application with federated credentials for subjects
+   `repo:<owner>/<repo>:environment:aks` and `…:environment:aks-review` (organisations that use
+   immutable-ID subject claims present `repo:<owner>@<id>/<repo>@<id>:environment:…`; issuer `https://token.actions.githubusercontent.com`,
    audience `api://AzureADTokenExchange`), and the **Contributor** role on the container
    registry only (`az acr build` schedules a run, which `AcrPush` does not allow). It needs no
    rights on the cluster or the function app.
 2. A function key on the control function's `register_deployment`, `get_run`, `run_logs` and
    `run_summary` functions only, so CI can deploy and read results but not start, stop or
    change anything else.
-3. A GitHub environment named `aks` holding:
+3. Two GitHub environments, `aks` and `aks-review`, each limited to deployments from `main`;
+   `aks-review` with the maintainers as required reviewers. Both hold:
 
    | Name | Kind | Value |
    |---|---|---|

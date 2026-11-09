@@ -53,8 +53,8 @@ get entries.
   smoke-tests both. A deploy workflow builds them in Azure Container Registry for maintainers'
   pull requests, pushes to `main` and manual runs, starts a smoke run on the cluster through
   its control function, and reports the result and pod logs; only `main` and manual runs make
-  the images the cluster's default. Only users with the admin or maintain role can trigger a
-  deploy. See `deploy/k8s/README.md`.
+  the images the cluster's default. A pull request into `main` from a maintainer deploys at
+  once; anyone else's waits for a maintainer's approval. See `deploy/k8s/README.md`.
 
 ### Fixed
 

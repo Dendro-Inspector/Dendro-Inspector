@@ -4,26 +4,30 @@ name: Deploy to AKS
 # control function, waits for a short smoke run on real photographs, and reports its result
 # and pod logs in the job summary.
 #
-#   pull request  images run as a smoke test; the cluster's default images do not change
-#   push to main  smoke run, then the images become the default for new runs
-#   manual        smoke run; "promote" decides whether they become the default
+#   pull request into main  images run as a smoke test; the default images do not change
+#   push to main            (a merged pull request) smoke run, then the images become the
+#                           default for new runs
+#   manual                  smoke run; "promote" decides whether they become the default
 #
-# Maintainers only. The `authorize` job lets a run deploy only when the person who triggered
-# it, and for a pull request also its author, has the admin or maintain role on this
-# repository. Everyone else's pull request gets a notice and no deploy.
+# Who deploys without asking: the `authorize` job looks up the repository role of the user who
+# triggered the run and, for a pull request, of its author. When both are admin or maintain,
+# the deploy runs in the `aks` environment straight away. Otherwise it runs in `aks-review`,
+# which waits until a maintainer approves it in the Actions tab. Both environments accept only
+# runs whose workflow comes from main, so a workflow written on another branch cannot use them.
 #
-# Why pull_request_target: it runs this file as it is on the base branch, so a pull request
-# cannot edit the check away. AGENTS.md §11 warns against pull_request_target with a checkout
-# of untrusted code; here the code is checked out only after `authorize` has confirmed a
-# maintainer, without credentials, and the runner never executes it: it is uploaded to the
-# registry, which builds it. Every step that runs on the runner comes from the base branch.
+# Why pull_request_target: it runs this file as it is on main, so a pull request cannot edit
+# the check away. AGENTS.md §11 warns against pull_request_target with a checkout of untrusted
+# code; here the code is checked out after the role check or a maintainer's approval, without
+# credentials, and the runner never executes it: it is uploaded to the registry, which builds
+# it. Every step that runs on the runner comes from main.
 #
-# Azure sign-in is OpenID Connect to an identity that can only build images, inside the `aks`
-# environment. The control function is called with a key valid for its deployment,
-# run-status, log and summary endpoints only. Setup: deploy/k8s/README.md.
+# Azure sign-in is OpenID Connect to an identity that can only build images. The control
+# function is called with a key valid for its deployment, run-status, log and summary
+# endpoints only. Setup: deploy/k8s/README.md.
 
 on:
   pull_request_target:
+    branches: [main]
     types: [opened, synchronize, reopened]
   push:
     branches: [main]
@@ -51,7 +55,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
-      allowed: ${{ steps.check.outputs.allowed }}
+      maintainer: ${{ steps.check.outputs.maintainer }}
     steps:
       - id: check
         env:
@@ -64,27 +68,27 @@ jobs:
             gh api "repos/$GITHUB_REPOSITORY/collaborators/$1/permission" \
               --jq '.user.role_name' 2>/dev/null || echo none
           }
-          allowed=true
+          maintainer=true
           for login in $ACTOR $AUTHOR; do
             r="$(role "$login")"
             echo "$login: $r"
-            case "$r" in admin|maintain) ;; *) allowed=false ;; esac
+            case "$r" in admin|maintain) ;; *) maintainer=false ;; esac
           done
-          echo "allowed=$allowed" >> "$GITHUB_OUTPUT"
-          if [ "$allowed" != true ]; then
-            echo "::notice::Deploy skipped: only maintainers can deploy to the cluster."
+          echo "maintainer=$maintainer" >> "$GITHUB_OUTPUT"
+          if [ "$maintainer" != true ]; then
+            echo "::notice::Not opened by a maintainer: the deploy waits for a maintainer's approval."
           fi
 
   deploy:
     name: Build, deploy and smoke-test
     needs: authorize
-    if: needs.authorize.outputs.allowed == 'true'
     permissions:
       contents: read
       id-token: write
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    environment: aks
+    # aks-review requires a maintainer's approval before the job starts or sees any secret.
+    environment: ${{ needs.authorize.outputs.maintainer == 'true' && 'aks' || 'aks-review' }}
     env:
       REGISTRY: ${{ vars.AKS_ACR_NAME }}
       CONTROL_URL: ${{ vars.AKS_CONTROL_URL }}

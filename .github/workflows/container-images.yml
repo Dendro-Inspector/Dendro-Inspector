@@ -1,6 +1,7 @@
 name: Container images
 
-# Builds and smoke-tests the Kubernetes images in deploy/k8s/ on every push and pull request.
+# Builds and smoke-tests the Kubernetes images in deploy/k8s/ for pull requests into main and
+# pushes to main. Other branches get only the checks in ci.yml.
 #
 # Like ci.yml, this needs no secrets and only a read-only token, so a fork's pull request is
 # checked the same way as a maintainer's. Nothing is pushed anywhere. Publishing the images is
@@ -10,6 +11,7 @@ on:
   push:
     branches: [main]
   pull_request:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
