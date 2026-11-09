@@ -39,6 +39,14 @@ get entries.
 
 ### Added
 
+- `deploy/k8s/` holds container images for running inspections as Kubernetes batch Jobs:
+  a batch image (the CLI plus `scripts/batch/`, which runs one dataset photograph or one
+  uploaded case per pod) and an agents image on top of it. Pull requests into `main` build and
+  smoke-test both. A deploy workflow builds them in Azure Container Registry, starts a smoke
+  run on the cluster through its control function, and reports the result and pod logs. A pull
+  request into `main` from a maintainer deploys at once; anyone else's waits for a maintainer's
+  approval. Only pushes to `main` and manual runs make the images the cluster's default. See
+  `deploy/k8s/README.md`.
 - **Open-world discovery** ([#10](https://github.com/Dendro-Inspector/Dendro-Inspector/issues/10)),
   behind `GraphConfig.open_world_discovery` (`DENDRO_OPEN_WORLD_DISCOVERY`), **off by
   default**. Off, nothing below takes effect: every public evaluation case produces the same
