@@ -647,3 +647,45 @@ def test_codex_failure_keeps_the_reason_from_stdout(tmp_path: Path, monkeypatch)
 
     assert "model_not_found" in str(caught.value)
     assert "reading prompt from stdin" in str(caught.value)
+
+
+def test_codex_backend_passes_enabled_features(tmp_path: Path, monkeypatch) -> None:
+    worker = _load_script("worker")
+    _pending_request(tmp_path, route="sol-all")
+    (tmp_path / "claims").mkdir()
+    job = worker.claim_next_job(
+        state_dir=tmp_path, route="sol-all", worker_id="codex-sol-all", claim_ttl_seconds=60
+    )
+    assert job is not None
+    captured: dict[str, Any] = {}
+
+    def fake_run(command, **kwargs):
+        captured["command"] = command
+        output = Path(command[command.index("--output-last-message") + 1])
+        output.write_text(json.dumps({"status": "OK"}), encoding="utf-8")
+        return SimpleNamespace(returncode=0, stderr="", stdout="")
+
+    monkeypatch.setattr(worker.subprocess, "run", fake_run)
+    backend = worker.CodexBackend(
+        executable=sys.executable,
+        model="gpt-6.1-sol",
+        timeout_seconds=60,
+        enable_features=("image_detail_original",),
+    )
+    backend.generate(job)
+
+    command = captured["command"]
+    position = command.index("--enable")
+    assert command[position + 1] == "image_detail_original"
+    assert position < command.index("--image")
+
+
+def test_describe_images_reports_size_and_missing_files(tmp_path: Path) -> None:
+    worker = _load_script("worker")
+    image = tmp_path / "a.jpg"
+    image.write_bytes(b"x" * 10)
+
+    described = worker.describe_images((image, tmp_path / "gone.jpg"))
+
+    assert "a.jpg=" in described and "10B" in described
+    assert "gone.jpg=missing" in described

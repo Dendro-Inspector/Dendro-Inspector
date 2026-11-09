@@ -218,6 +218,25 @@ def _job_from_meta(meta_path: Path, state_dir: Path, route: str) -> Job | None:
     )
 
 
+def describe_images(paths: tuple[Path, ...]) -> str:
+    """``WxH bytes`` for each image handed to the agent, so logs show what it received."""
+    parts = []
+    for path in paths:
+        try:
+            size = path.stat().st_size
+        except OSError:
+            parts.append(f"{path.name}=missing")
+            continue
+        dims = "?x?"
+        with contextlib.suppress(Exception):
+            from PIL import Image
+
+            with Image.open(path) as image:
+                dims = f"{image.width}x{image.height}"
+        parts.append(f"{path.name}={dims} {size}B")
+    return ", ".join(parts)
+
+
 def claim_next_job(
     *,
     state_dir: Path,
@@ -419,13 +438,23 @@ class OpenRouterBackend:
 
 
 class CodexBackend:
-    def __init__(self, *, executable: str, model: str, timeout_seconds: float) -> None:
+    def __init__(
+        self,
+        *,
+        executable: str,
+        model: str,
+        timeout_seconds: float,
+        enable_features: tuple[str, ...] = (),
+    ) -> None:
         resolved = shutil.which(executable) or executable
         if not Path(resolved).is_file():
             raise WorkerError(f"Codex executable not found: {executable}")
         self._executable = resolved
         self._model = model
         self._timeout = timeout_seconds
+        # e.g. image_detail_original: send attached images without Codex's own downscaling,
+        # on models that support it.
+        self._enable_features = enable_features
 
     def generate(self, job: Job) -> WorkerResult:
         output_path = job.answer_path.with_name(f".{job.cache_key}.codex-output.json")
@@ -451,6 +480,8 @@ class CodexBackend:
             "--output-last-message",
             str(output_path),
         ]
+        for feature in self._enable_features:
+            command.extend(("--enable", feature))
         for image_path in job.image_paths:
             command.extend(("--image", str(image_path)))
         command.append("-")
@@ -780,6 +811,13 @@ def main() -> int:
     parser.add_argument(
         "--rate-limit-cooldown", type=float, default=DEFAULT_RATE_LIMIT_COOLDOWN_SECONDS
     )
+    parser.add_argument(
+        "--codex-enable",
+        action="append",
+        default=[],
+        metavar="FEATURE",
+        help="Codex feature to enable (repeatable), e.g. image_detail_original.",
+    )
     parser.add_argument("--once", action="store_true")
     args = parser.parse_args()
 
@@ -807,6 +845,7 @@ def main() -> int:
             executable=args.executable,
             model=args.model,
             timeout_seconds=args.timeout,
+            enable_features=tuple(args.codex_enable),
         )
     elif args.backend == "claude":
         backend = ClaudeBackend(
@@ -852,7 +891,11 @@ def main() -> int:
             time.sleep(POLL_SECONDS)
             continue
         started = time.time()
-        print(f"[worker:{args.worker_id}] claimed req-{job.request_id:03d}", flush=True)
+        print(
+            f"[worker:{args.worker_id}] claimed req-{job.request_id:03d} "
+            f"images: {describe_images(job.image_paths) or 'none'}",
+            flush=True,
+        )
         try:
             result = backend.generate(job)
             publish(job, worker_id=args.worker_id, result=result, started=started)

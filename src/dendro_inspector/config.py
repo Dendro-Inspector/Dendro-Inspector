@@ -309,11 +309,20 @@ def load_config(overrides: AppConfig | None = None) -> AppConfig:
     reference_records = _env("DENDRO_REFERENCE_RECORDS")
     open_world = (_env("DENDRO_OPEN_WORLD_DISCOVERY", "false") or "false").strip().lower()
     every = (_env("DENDRO_ARBITER_EVERY_DECISION", "false") or "false").strip().lower()
+    graph = GraphConfig(open_world_discovery=open_world in {"1", "true", "yes", "on"})
+    # Longest edge of the photograph sent to models: a number of pixels, or "original" to send
+    # the file untouched (no upright rotation, metadata kept).
+    max_edge = (_env("DENDRO_IMAGE_MAX_EDGE_PX") or "").strip().lower()
+    if max_edge:
+        graph = GraphConfig(
+            open_world_discovery=graph.open_world_discovery,
+            image_max_edge_px=None if max_edge in {"original", "none"} else int(max_edge),
+        )
 
     return AppConfig(
         providers={Role.PRIMARY: primary, Role.REVIEWER: reviewer, Role.ARBITER: arbiter},
         escalation=EscalationPolicy(review_every_decision=every in {"1", "true", "yes", "on"}),
-        graph=GraphConfig(open_world_discovery=open_world in {"1", "true", "yes", "on"}),
+        graph=graph,
         prompts=PromptConfig(
             domain_prompt_path=Path(
                 _env("DENDRO_DOMAIN_PROMPT_PATH", str(DEFAULT_DOMAIN_PROMPT_PATH))
