@@ -22,7 +22,7 @@ node_prompts:
     - file: botanical-reviewer.md
       sha256: 5f96171e2965e54f407c7fc1fb0e65a1513dc8d767478986ad023c70814d1458
     - file: candidate-generator.md
-      sha256: 43559be571b25bd13c929146e2bbd472901679e6dccf0861ed47552d90d8ceeb
+      sha256: 00c1e5a044258ebfe000ab88bcd3c4cee5ad805c9a901acb7edea5a128b9d010
     - file: confidence-reviewer.md
       sha256: c8ab333475aeb23e3f9c5a8d966a6ea8cb851d91695bcee8dfe50adaaa6328bb
     - file: confusion-reviewer.md

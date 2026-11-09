@@ -25,6 +25,7 @@ from dendro_inspector.graph.projections import REVIEWER_NODES, build_review_proj
 from dendro_inspector.graph.routing import next_step
 from dendro_inspector.graph.state import GraphState
 from dendro_inspector.knowledge.loader import KnowledgeBase
+from dendro_inspector.knowledge.references import ReferenceSource
 from dendro_inspector.observability.events import NodeStatus, RunTrace
 from dendro_inspector.observability.logging import get_logger
 from dendro_inspector.observability.trace import TraceRecorder
@@ -48,6 +49,9 @@ class NodeContext:
     prompts: PromptLibrary
     recorder: TraceRecorder
     review_projection: ReviewProjection | None = None
+    references: tuple[ReferenceSource, ...] = ()
+    """External reference sources for open-world candidates. Empty means nobody checks,
+    which every candidate then reports as ``unavailable`` rather than as "not found"."""
 
 
 class NodeRunner(Protocol):

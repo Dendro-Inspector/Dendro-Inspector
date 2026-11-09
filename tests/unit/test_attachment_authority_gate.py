@@ -18,6 +18,8 @@ evidence in the frame.
 
 from __future__ import annotations
 
+import asyncio
+
 import pytest
 
 from dendro_inspector.graph.state import GraphState
@@ -26,7 +28,11 @@ from dendro_inspector.knowledge.evidence_authority import (
     AuthorityRiskReason,
     attachment_risk_for,
 )
-from dendro_inspector.nodes.attachment_authority_gate import check_subject
+from dendro_inspector.nodes.attachment_authority_gate import (
+    _with_attachment,
+    check_subject,
+    rederive_open_world,
+)
 from dendro_inspector.nodes.final_decision import decide_subject
 from dendro_inspector.schemas.candidates import Candidate, CandidateSet, SupportStrength
 from dendro_inspector.schemas.decisions import AuthorityCheckStatus, DecisionStatus
@@ -462,3 +468,40 @@ def test_untested_ownership_is_reported_as_not_testable_not_as_a_clean_check(
     assert check.status is AuthorityCheckStatus.NOT_TESTABLE
     assert check.risk_evidence_ids == ()
     assert check.policy_applied is False
+
+
+# --------------------------------------------------------------------------------------
+# Open-world candidates inherit the gate's narrowed evidence world (issue #10).
+# --------------------------------------------------------------------------------------
+
+
+def test_a_demoted_attachment_stops_supporting_an_open_world_candidate(
+    simple_case, node_context, knowledge
+):
+    """No card is not a licence to keep spending an attachment the gate refused."""
+    evidence = _tilia_packet(AttachmentStatus.CONFIRMED_ATTACHED)
+    proposal = CandidateSet(
+        subject_id="tree_1",
+        candidates=(
+            Candidate(
+                taxon="tilia_tomentosa",
+                resolution=Resolution.SPECIES,
+                supporting_evidence_ids=("obs-leaf",),
+                score=SupportStrength.MODERATE,
+                rank=1,
+            ),
+        ),
+    )
+    state = _state(simple_case, knowledge, evidence, proposal)
+
+    before = asyncio.run(rederive_open_world(state, evidence, node_context))
+    demoted = asyncio.run(
+        rederive_open_world(
+            state,
+            _with_attachment(evidence, frozenset({"obs-leaf"}), AttachmentStatus.UNKNOWN),
+            node_context,
+        )
+    )
+
+    assert [candidate.taxon for candidate in before] == ["tilia_tomentosa"]
+    assert demoted == ()

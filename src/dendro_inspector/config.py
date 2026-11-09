@@ -117,6 +117,16 @@ class GraphConfig(Contract):
     )
     min_observations_for_candidates: int = Field(default=2, ge=1)
     require_non_colour_evidence: bool = True
+    open_world_discovery: bool = Field(
+        default=False,
+        description=(
+            "Let a subject held back only by the knowledge-coverage gate reach the candidate "
+            "generator, so the model can propose a taxon no card describes. Off by default: "
+            "the coverage gap then exits before any further model call, as it always has. "
+            "On, the hypothesis is retained as an open-world candidate — never admitted, "
+            "never selected — and a run in which nothing was admitted skips the reviewers."
+        ),
+    )
     image_max_edge_px: int | None = Field(
         default=1568,
         ge=256,
@@ -159,6 +169,14 @@ class PromptConfig(Contract):
 class KnowledgeConfig(Contract):
     root: Path = DEFAULT_KNOWLEDGE_ROOT
     region_pack: str | None = "eastern-europe"
+    reference_records: Path | None = Field(
+        default=None,
+        description=(
+            "Local YAML of saved reference records checked against open-world candidates. "
+            "Operator-supplied: they can dispute a candidate but never verify one. None means "
+            "nothing is checked, and candidates report `unavailable`."
+        ),
+    )
 
 
 class AppConfig(Contract):
@@ -277,9 +295,12 @@ def load_config(overrides: AppConfig | None = None) -> AppConfig:
         max_structured_retries=retries,
     )
     trace_dir = _env("DENDRO_TRACE_DIR")
+    reference_records = _env("DENDRO_REFERENCE_RECORDS")
+    open_world = (_env("DENDRO_OPEN_WORLD_DISCOVERY", "false") or "false").strip().lower()
 
     return AppConfig(
         providers={Role.PRIMARY: primary, Role.REVIEWER: reviewer, Role.ARBITER: arbiter},
+        graph=GraphConfig(open_world_discovery=open_world in {"1", "true", "yes", "on"}),
         prompts=PromptConfig(
             domain_prompt_path=Path(
                 _env("DENDRO_DOMAIN_PROMPT_PATH", str(DEFAULT_DOMAIN_PROMPT_PATH))
@@ -297,6 +318,7 @@ def load_config(overrides: AppConfig | None = None) -> AppConfig:
         knowledge=KnowledgeConfig(
             root=Path(_env("DENDRO_KNOWLEDGE_ROOT", str(DEFAULT_KNOWLEDGE_ROOT)) or "knowledge"),
             region_pack=_env("DENDRO_REGION_PACK", "eastern-europe"),
+            reference_records=Path(reference_records) if reference_records else None,
         ),
         observability=ObservabilityConfig(
             log_level=_env("DENDRO_LOG_LEVEL", "INFO") or "INFO",

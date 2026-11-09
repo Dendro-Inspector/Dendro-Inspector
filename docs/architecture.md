@@ -195,6 +195,50 @@ covers every detected identity root, including subjects the quality gate found u
 each receives either a supported verdict or an explicit insufficient-evidence result and
 photo request. A model's omission cannot silently remove a subject from the answer.
 
+### Open-world candidates
+
+All of this is behind `GraphConfig.open_world_discovery`, off by default. Off, the
+candidate generator keeps no open-world candidates, nothing is verified and no rule below
+runs; `tests/integration/test_open_world_flag_isolation.py` holds that over every public case.
+
+A proposed id with no card is rejected by admission exactly as before, but it is no longer
+discarded. `open_world_candidate` in the same module retains it as an `OpenWorldCandidate`
+when at least one cited id survives the same trust projection admission uses — same subject,
+readable, attachment-trusted, not colour alone. Two kinds are kept apart: an *uncovered*
+taxon, shaped like a scientific name and declared by no card in any form, which is missing
+taxonomy; and a *covered* name that a card declares only as a broader identity or alias
+(`covered_by`), which is not. Admission is not widened to resolve covered names. Retained
+candidates sit beside the admitted world (`GraphState.open_world_candidates`), never inside
+it: reviewers do not rank them and no verdict selects them.
+
+What they carry is bounded by evidence only. Resolution is capped by the support's tier
+ceiling, the score below `strong` and the image-confidence ceiling below `high`, because no
+card means no high-confidence requirement can be checked. Reference status is a separate
+dimension (`schemas/reference.py`). `knowledge/references.py` sets it for uncovered taxa
+from any configured source, and it never moves those bounds. Only a source that retrieves
+from an authoritative service itself can verify. Saved records can dispute but not verify.
+
+Two decision rules read uncovered candidates. A subject with no admitted leader is a
+`knowledge_coverage_gap` when its evidence fell outside every card, or when an uncovered
+hypothesis rests on evidence the coverage measurement could not place; naming an off-card
+taxon on representable evidence leaves it `insufficient_evidence`. And an uncovered
+hypothesis the model ranked above the admitted leader caps the verdict at genus
+(`open_world_outranked`) only when it is congeneric, cites the observation the leader's
+claim rests on at its strongest tier — the case where that evidence cannot discriminate and
+only one of the two has a card — and is `externally_verified`, because a shared observation
+proves both hypotheses cited it, not that both fit it. Neither the model's rank nor an
+unchecked name ever moves a verdict: every other outranking hypothesis is reported as
+competing and flagged (`open_world_conflict`).
+
+A subject held back only by the coverage gate reaches the generator, and a run that admits
+nothing routes from the generator to the final decision without review. The generator's
+prompt carries a rule for naming a taxon no card describes, keyed on an
+`Open-world discovery` section the code adds to the case context only when the flag is on.
+Nothing raises an open-world candidate above a reported hypothesis except an authoritative
+source; that is also the only path by which one can affect a verdict. Drafts made from
+reference records go to `knowledge/review-queue/`, which the loader never reads
+(`knowledge/drafts.py`).
+
 ### Ordinal scores, not percentages
 
 `SupportStrength` is `weak | moderate | strong`. `Confidence` is `low | medium | high`.

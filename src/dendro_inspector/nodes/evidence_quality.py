@@ -129,6 +129,7 @@ def assess(
     require_non_colour: bool,
     vocabulary: Mapping[str, frozenset[str]] | None = None,
     cards_available: Callable[[str], bool] | None = None,
+    open_world: bool = False,
 ) -> EvidenceQualityReport:
     """Pure quality assessment over an evidence packet.
 
@@ -137,6 +138,12 @@ def assess(
     than resolved here so this function stays free of the knowledge base and testable
     without one. Omitting it disables the coverage-gap gate, which is what every caller
     that has no cards to consult should get.
+
+    ``open_world`` changes what the coverage gap *costs*, not whether it is detected. The
+    subject is still named in ``coverage_gap_subject_ids`` and the reason still recorded,
+    but a subject held back by that gate alone stays usable, so the candidate generator
+    can propose a taxon no card describes. Every other reason still holds it back: a frame
+    too weak to read is not rescued by missing knowledge.
     """
     reasons: list[str] = []
 
@@ -188,7 +195,7 @@ def assess(
         ):
             reasons.append("knowledge_coverage_gap")
             coverage_gap_subjects.append(subject_id)
-            subject_usable = False
+            subject_usable = open_world
         if len(visible) < min_observations:
             reasons.append("too_few_resolvable_observations")
             subject_usable = False
@@ -250,6 +257,7 @@ async def run(state: GraphState, ctx: NodeContext) -> GraphState:
         require_non_colour=ctx.config.graph.require_non_colour_evidence,
         vocabulary=vocabulary,
         cards_available=cards_available,
+        open_world=ctx.config.graph.open_world_discovery,
     )
     coverage = report.knowledge_coverage
     if coverage is not None:

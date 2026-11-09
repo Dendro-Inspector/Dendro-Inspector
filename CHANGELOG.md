@@ -39,6 +39,60 @@ get entries.
 
 ### Added
 
+- **Open-world discovery** ([#10](https://github.com/Dendro-Inspector/Dendro-Inspector/issues/10)),
+  behind `GraphConfig.open_world_discovery` (`DENDRO_OPEN_WORLD_DISCOVERY`), **off by
+  default**. Off, nothing below takes effect: every public evaluation case produces the same
+  verdicts, composition records, node path and reader text as before, and an integration
+  test injects an uncovered leader into every case's proposal to hold that.
+  On:
+  - A proposed taxon with no card is retained as an `OpenWorldCandidate` instead of being
+    discarded, when at least one cited observation survives as trusted, same-subject,
+    readable, non-colour evidence. It is reported on the verdict
+    (`FinalDecision.open_world_candidates`) and in the reader's limitations, and is never
+    admitted or selected. Resolution is capped by the support's evidence tier, score below
+    `strong`, image confidence below `high`.
+  - A name a card declares only as a broader identity or alias (`juglans`, `walnut`) is
+    retained as *covered* (`covered_by`, with the declaring cards' local reference status)
+    rather than dropped or reported as missing. Admission still matches card ids only.
+  - A subject held back only by the knowledge-coverage gate reaches the candidate
+    generator, and a run that admits nothing goes from the generator to the final decision
+    without reviewer or arbiter calls. The generator is told which subjects have no card in
+    play and how to name a taxon no card describes (a rule in
+    `prompts/nodes/candidate-generator.md`, active only when the case context carries the
+    open-world section the code adds with the flag on). The node prompt's hash changed: a
+    deployment pinning its own prompt manifest must re-seal it (`dendro prompt-seal --write`).
+  - A subject with no admitted candidate reports `knowledge_coverage_gap` when its evidence
+    fell outside every card or an uncovered hypothesis rests on such evidence. Naming an
+    off-card taxon on evidence the cards can represent stays `insufficient_evidence`.
+  - An uncovered taxon the model ranked above the admitted leader caps the verdict at genus
+    (`open_world_outranked`) only when it is congeneric with the leader, cites the
+    observation the leader's claim rests on at its strongest tier, **and** is
+    `externally_verified`. A shared observation proves both hypotheses cited it, not that
+    both fit it, so an unchecked name — `juglans_fictitia` — never moves the verdict. Any
+    outranking hypothesis that does not cap is reported as competing and flagged with
+    `FinalDecision.open_world_conflict`. No authoritative source ships, so in this release
+    the cap cannot fire and every such case is flagged instead.
+- **Reference status**, a separate dimension from image-identification confidence:
+  `local_reviewed`, `local_unreviewed`, `externally_verified`, `provisional`, `disputed`,
+  `unavailable`. A selected taxon always reports its card's status in
+  `FinalDecision.reference_status`; every shipped card is `local_unreviewed`. No status ever
+  moves a confidence band.
+- Reference verification for open-world candidates through a `ReferenceSource` protocol.
+  Each citation records source, trust, HTTPS URL, retrieval time and the matched and
+  conflicting features. `externally_verified` requires a record this system retrieved from
+  an authoritative service itself (`SourceTrust.AUTHORITATIVE_RETRIEVAL`). The one source
+  that ships, `DENDRO_REFERENCE_RECORDS`, reads saved records and is `operator_supplied`: it
+  can dispute a hypothesis but a match from it stays `provisional`. Only a documented feature
+  the photograph contradicts disputes a hypothesis, and any one source disputing outweighs
+  the others. A synonym is the same taxon under an older name: it is followed to its
+  accepted name in the same source, and both records are cited. An unresolved name stays
+  `provisional`. A feature path a record documents twice is merged, not overwritten.
+  Records carry no free text, are discarded whole when invalid and never reach a model
+  prompt. No live online client ships.
+- `dendro draft-card TAXON --references FILE` drafts a card from a saved reference record
+  into `knowledge/review-queue/`, which the loader never reads. Drafts are always
+  `unreviewed` and `placeholder_content: true`, and every documented feature becomes a
+  supporting rule citing its source, never a strong one.
 - `GraphConfig.deadline_seconds` bounds the wall-clock time of one inspection. Off by
   default, since each adapter already has a per-call timeout and local models can be slow.
   On expiry the node in flight is cancelled, recorded in the trace as failed with detail

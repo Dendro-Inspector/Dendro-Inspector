@@ -98,6 +98,24 @@ class KnowledgeBase:
         except KnowledgeError:
             return None
 
+    def declared_names(self) -> dict[str, tuple[str, ...]]:
+        """Names cards declare without a card of their own, mapped to the cards declaring them.
+
+        Broader identities and aliases (aliases with spaces folded to underscores). A model
+        that proposes ``juglans`` or ``walnut`` has named something a card covers under an
+        id admission does not match; the open-world channel keeps it as a *covered* name
+        rather than reporting it as missing taxonomy or dropping it. Card ids are excluded:
+        those go through admission.
+        """
+        card_ids = set(self.available_taxon_ids())
+        declared: dict[str, set[str]] = {}
+        for card in self.taxa(tuple(sorted(card_ids))):
+            names = {identity.taxon_id for identity in card.broader_identities}
+            names.update("_".join(alias.casefold().split()) for alias in card.aliases)
+            for name in names - card_ids:
+                declared.setdefault(name, set()).add(card.taxon_id)
+        return {name: tuple(sorted(cards)) for name, cards in declared.items()}
+
     def comparison(self, comparison_id: str) -> ComparisonCard:
         if comparison_id not in self._comparisons:
             self._comparisons[comparison_id] = ComparisonCard.model_validate(

@@ -7,10 +7,12 @@ from dataclasses import dataclass
 
 from dendro_inspector.knowledge.evidence_hierarchy import (
     EvidenceTier,
+    confidence_ceiling,
     is_colour_feature,
     positive_observations_for,
     project_evidence,
     project_observation,
+    resolution_ceiling,
     resolve_evidence_observations,
 )
 from dendro_inspector.knowledge.loader import KnowledgeBase
@@ -21,16 +23,36 @@ from dendro_inspector.knowledge.taxon_cards import (
 )
 from dendro_inspector.schemas.base import IDENTIFIER_PATTERN
 from dendro_inspector.schemas.candidates import (
+    STRENGTH_CONFIDENCE_CEILING,
     Candidate,
     CandidateSet,
+    OpenWorldCandidate,
     SupportStrength,
     strength_rank,
 )
-from dendro_inspector.schemas.evidence import EvidencePacket, Observation
-from dendro_inspector.schemas.taxon import FeatureExpectation, TaxonCard
+from dendro_inspector.schemas.evidence import EvidencePacket, Observation, is_positive_reading
+from dendro_inspector.schemas.reference import ReferenceStatus, local_reference_status
+from dendro_inspector.schemas.taxon import (
+    Confidence,
+    FeatureExpectation,
+    Resolution,
+    TaxonCard,
+    confidence_rank,
+    resolution_rank,
+)
 
 #: Compiled once: every discarded reference is tested against it.
 _IDENTIFIER = re.compile(IDENTIFIER_PATTERN)
+
+#: The shape of a scientific name written as an identifier: a genus, optionally followed by
+#: an epithet and at most two infraspecific parts (``platanus_x_hispanica``). Anything else
+#: — ``tree_1``, ``oak-like``, a value token — is not a taxon a reference could answer for.
+_SCIENTIFIC_NAME = re.compile(r"^[a-z]{2,}(?:_[a-z]+){0,3}$")
+
+#: No card means no high-confidence requirement can be checked. The final decision applies
+#: the same cap to a card whose requirement is unmet (``requirement_cap``).
+_OPEN_WORLD_CONFIDENCE_CAP = Confidence.MEDIUM
+_OPEN_WORLD_STRENGTH_CAP = SupportStrength.MODERATE
 
 
 @dataclass(frozen=True, slots=True)
@@ -50,6 +72,12 @@ class CandidateValidationResult:
     """
     demoted_scores: tuple[tuple[str, SupportStrength, SupportStrength], ...] = ()
     """Taxon, the strength the model proposed, and the strength its evidence earned."""
+    open_world: tuple[OpenWorldCandidate, ...] = ()
+    """The subset of ``rejected_taxa`` that had no card but did have trusted evidence.
+
+    Still rejected — admission is unchanged — but retained instead of discarded, so a taxon
+    missing from the knowledge base is reported as missing taxonomy rather than vanishing.
+    """
 
 
 def candidate_ranking_signature(candidate_set: CandidateSet) -> tuple[tuple[object, ...], ...]:
@@ -128,6 +156,95 @@ def cards_in_play(
     )
 
 
+def _covered_reference_status(
+    name: str, covered_by: tuple[str, ...], knowledge: KnowledgeBase
+) -> ReferenceStatus:
+    """How reviewed the local declarations of ``name`` are, most conservative first."""
+    states = []
+    for card_id in covered_by:
+        card = knowledge.taxon(card_id)
+        identity = next((item for item in card.broader_identities if item.taxon_id == name), None)
+        provenance = identity.provenance if identity and identity.provenance else card.provenance
+        states.append(provenance.review_state)
+    return local_reference_status(tuple(states))
+
+
+def open_world_candidate(
+    candidate: Candidate,
+    evidence: EvidencePacket,
+    subject_id: str,
+    knowledge: KnowledgeBase,
+) -> OpenWorldCandidate | None:
+    """Retain a no-card hypothesis, or return ``None`` to discard it.
+
+    Retained only when all of these hold, each of which is a reason the hypothesis is about
+    *this photograph* rather than about the model's prior:
+
+    * the id is a name some card declares as a broader identity or alias (retained as
+      *covered*, with those cards' local reference status), or it is shaped like a
+      scientific name (retained as *uncovered* — missing taxonomy);
+    * the model proposed a taxonomic level, not ``unknown``;
+    * at least one supporting id survives as trusted, same-subject, readable evidence that
+      can support identification, under the same trust projection admission uses — so an
+      unattached fallen fruit or another subject's leaf carries nothing here either;
+    * the surviving support is not colour alone.
+
+    Everything retained is bounded by that surviving evidence, never by the model's own
+    estimate and never by any reference source: resolution by the tier ceiling, score below
+    strong, and image confidence below high and below the tier ceiling.
+
+    A covered name is kept out of admission deliberately. Resolving ``juglans`` to the
+    walnut card would widen the admission boundary to match names instead of card ids, and
+    that boundary is not widened to admit a candidate (``AGENTS.md``, key files).
+    """
+    covered_by = knowledge.declared_names().get(candidate.taxon, ())
+    if (
+        not covered_by and not _SCIENTIFIC_NAME.fullmatch(candidate.taxon)
+    ) or candidate.resolution is Resolution.UNKNOWN:
+        return None
+
+    surviving: list[str] = []
+    tiers: list[EvidenceTier] = []
+    for evidence_id in _deduplicate(candidate.supporting_evidence_ids):
+        projection = project_evidence(evidence, evidence_id, subject_id)
+        if (
+            projection.supports_identification
+            and projection.source_observations
+            and all(is_positive_reading(source.value) for source in projection.source_observations)
+        ):
+            surviving.append(evidence_id)
+            tiers.append(projection.tier)
+    if not surviving or _support_is_colour_only(tuple(surviving), evidence, subject_id):
+        return None
+
+    tier = max(tiers)
+    resolution = min(candidate.resolution, resolution_ceiling(tier), key=resolution_rank)
+    score = min(candidate.score, _OPEN_WORLD_STRENGTH_CAP, key=strength_rank)
+    return OpenWorldCandidate(
+        subject_id=subject_id,
+        taxon=candidate.taxon,
+        proposed_rank=candidate.rank,
+        proposed_resolution=candidate.resolution,
+        resolution=resolution,
+        proposed_score=candidate.score,
+        score=score,
+        supporting_evidence_ids=tuple(surviving),
+        evidence_tier=int(tier),
+        image_confidence_ceiling=min(
+            STRENGTH_CONFIDENCE_CEILING[score],
+            confidence_ceiling(tier),
+            _OPEN_WORLD_CONFIDENCE_CAP,
+            key=confidence_rank,
+        ),
+        covered_by=covered_by,
+        reference_status=(
+            _covered_reference_status(candidate.taxon, covered_by, knowledge)
+            if covered_by
+            else ReferenceStatus.PROVISIONAL
+        ),
+    )
+
+
 def _support_is_colour_only(
     support_ids: tuple[str, ...],
     evidence: EvidencePacket,
@@ -192,6 +309,7 @@ def validate_candidate_set_with_report(
     rejected: list[str] = []
     dropped: list[str] = []
     demoted: list[tuple[str, SupportStrength, SupportStrength]] = []
+    open_world: list[OpenWorldCandidate] = []
 
     for candidate in candidate_set.ordered:
         card = knowledge.try_taxon(candidate.taxon)
@@ -200,6 +318,11 @@ def validate_candidate_set_with_report(
             dropped.extend(
                 (*candidate.supporting_evidence_ids, *candidate.contradicting_evidence_ids)
             )
+            retained = open_world_candidate(
+                candidate, evidence, candidate_set.subject_id, knowledge
+            )
+            if retained is not None:
+                open_world.append(retained)
             continue
 
         support_expectations = (*card.strong_positive_features, *card.supporting_features)
@@ -256,6 +379,7 @@ def validate_candidate_set_with_report(
             reference for reference in discarded if not _IDENTIFIER.fullmatch(reference)
         ),
         demoted_scores=tuple(demoted),
+        open_world=tuple(open_world),
     )
 
 

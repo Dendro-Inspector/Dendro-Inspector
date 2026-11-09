@@ -13,8 +13,9 @@ from typing import Literal
 from pydantic import Field, model_validator
 
 from dendro_inspector.schemas.base import Contract, Identifier, ShortText, ValueToken
-from dendro_inspector.schemas.candidates import SupportStrength
+from dendro_inspector.schemas.candidates import OpenWorldCandidate, SupportStrength
 from dendro_inspector.schemas.evidence import AttachmentStatus
+from dendro_inspector.schemas.reference import LOCAL_STATUSES, ReferenceStatus
 from dendro_inspector.schemas.taxon import Confidence, Resolution
 
 
@@ -76,6 +77,10 @@ ResolutionBoundSource = Literal[
     "tier_ceiling",
     "reviewer_recommendation",
     "abstention",
+    # An externally verified congener with no card, ranked above the admitted leader and
+    # resting on the same decisive observation. Naming the leader's species would substitute
+    # a covered look-alike for it; at genus it no longer does. See `open_world_contest`.
+    "open_world_outranked",
 ]
 ConfidenceStepSource = Literal[
     "seed",
@@ -348,6 +353,56 @@ class FinalDecision(Contract):
             "to make is the one that would follow if that evidence were proven attached."
         ),
     )
+    reference_status: ReferenceStatus | None = Field(
+        default=None,
+        description=(
+            "Reference status of the selected taxon's local card — reviewed, unreviewed or "
+            "disputed. A separate dimension from `confidence`: it says whether the reference "
+            "data has been checked, not whether the photograph shows the taxon."
+        ),
+    )
+    open_world_candidates: tuple[OpenWorldCandidate, ...] = Field(
+        default=(),
+        description=(
+            "Hypotheses for taxa this knowledge base has no card for, retained with their "
+            "surviving evidence, evidence-bounded ceilings and reference status. Never the "
+            "selected taxon."
+        ),
+    )
+
+    open_world_conflict: bool = Field(
+        default=False,
+        description=(
+            "The model ranked an uncovered taxon above this verdict's taxon and it did not "
+            "cap the verdict — another genus, or no shared decisive evidence. The verdict "
+            "stands on card-validated evidence; the conflict is unresolved, not dismissed."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def _open_world_candidates_belong_to_this_subject(self) -> FinalDecision:
+        if any(candidate.subject_id != self.subject_id for candidate in self.open_world_candidates):
+            msg = "open-world candidates must belong to the decision's own subject"
+            raise ValueError(msg)
+        if self.open_world_conflict and (
+            self.selected_taxon is None
+            or not any(candidate.uncovered for candidate in self.open_world_candidates)
+        ):
+            msg = "an open-world conflict needs a selected taxon and an uncovered hypothesis"
+            raise ValueError(msg)
+        if self.reference_status is not None and self.selected_taxon is None:
+            msg = "reference_status describes a selected taxon; there is none"
+            raise ValueError(msg)
+        if self.reference_status is not None and not (
+            self.reference_status in LOCAL_STATUSES
+            or self.reference_status is ReferenceStatus.DISPUTED
+        ):
+            msg = (
+                "a selected taxon always has a local card, so its reference status is local "
+                f"or disputed, not {self.reference_status.value!r}"
+            )
+            raise ValueError(msg)
+        return self
 
     @model_validator(mode="after")
     def _taxon_identity_matches_resolution(self) -> FinalDecision:
