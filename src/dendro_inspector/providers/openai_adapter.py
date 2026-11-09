@@ -25,6 +25,16 @@ from dendro_inspector.providers.base import (
 
 DEFAULT_MODEL = "gpt-5.6"
 
+# Request tagging (`metadata`) is an OpenAI-platform feature. Azure OpenAI / Microsoft
+# Foundry reject it with a 400 unless `store` is enabled, so it is sent only to OpenAI.
+OPENAI_PLATFORM_HOST = "api.openai.com"
+
+
+def _accepts_metadata(client: Any) -> bool:
+    """Whether the endpoint behind ``client`` accepts the chat-completions ``metadata``."""
+    host = getattr(getattr(client, "base_url", None), "host", None)
+    return host == OPENAI_PLATFORM_HOST
+
 
 class OpenAIProvider:
     """Structured-output adapter for OpenAI-compatible multimodal chat models."""
@@ -82,10 +92,10 @@ class OpenAIProvider:
         content: list[dict[str, Any]] = [{"type": "text", "text": prompt}]
         content.extend(self._image_part(image) for image in images)
 
-        response = await client.chat.completions.create(
-            model=self.model,
-            messages=[{"role": "user", "content": content}],
-            response_format={
+        request: dict[str, Any] = {
+            "model": self.model,
+            "messages": [{"role": "user", "content": content}],
+            "response_format": {
                 "type": "json_schema",
                 "json_schema": {
                     "name": response_model.__name__,
@@ -93,8 +103,10 @@ class OpenAIProvider:
                     "strict": False,
                 },
             },
-            metadata={"node": str(metadata.get("node", "")), "logical_role": role},
-        )
+        }
+        if _accepts_metadata(client):
+            request["metadata"] = {"node": str(metadata.get("node", "")), "logical_role": role}
+        response = await client.chat.completions.create(**request)
         sink = usage_sink_of(metadata)
         reported = getattr(response, "usage", None)
         if sink is not None and reported is not None:
