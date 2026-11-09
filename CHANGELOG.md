@@ -39,6 +39,14 @@ get entries.
 
 ### Added
 
+- `deploy/k8s/` holds container images for running inspections as Kubernetes batch Jobs:
+  a batch image (the CLI plus `scripts/batch/`, which runs one dataset photograph or one
+  uploaded case per pod) and an agents image on top of it. Pull requests into `main` build and
+  smoke-test both. A deploy workflow builds them in Azure Container Registry, starts a smoke
+  run on the cluster through its control function, and reports the result and pod logs. A pull
+  request into `main` from a maintainer deploys at once; anyone else's waits for a maintainer's
+  approval. Only pushes to `main` and manual runs make the images the cluster's default. See
+  `deploy/k8s/README.md`.
 - **Open-world discovery** ([#10](https://github.com/Dendro-Inspector/Dendro-Inspector/issues/10)),
   behind `GraphConfig.open_world_discovery` (`DENDRO_OPEN_WORLD_DISCOVERY`), **off by
   default**. Off, nothing below takes effect: every public evaluation case produces the same
@@ -103,6 +111,11 @@ get entries.
   ceiling plus one byte is ever read.
 
 ### Fixed
+
+- The OpenAI adapter works against Azure OpenAI and Microsoft Foundry endpoints. It sent
+  the chat-completions `metadata` field (node and role tags) to every endpoint, and those
+  services reject it with HTTP 400 unless `store` is enabled. It is now sent only to
+  `api.openai.com`.
 
 - With the `images` extra, a transmitted image no longer carries embedded metadata. A
   photograph already within `image_max_edge_px` was sent as the original file, EXIF (GPS

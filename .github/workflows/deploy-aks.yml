@@ -1,0 +1,210 @@
+name: Deploy to AKS
+
+# Builds the deploy/k8s/ images in Azure Container Registry, registers them with the cluster's
+# control function, waits for a short smoke run on real photographs, and reports its result
+# and pod logs in the job summary.
+#
+#   pull request into main  images run as a smoke test; the default images do not change
+#   push to main            (a merged pull request) smoke run, then the images become the
+#                           default for new runs
+#   manual                  smoke run; "promote" decides whether they become the default
+#
+# Who deploys without asking: the `authorize` job looks up the repository role of the user who
+# triggered the run and, for a pull request, of its author. When both are admin or maintain,
+# the deploy runs in the `aks` environment straight away. Otherwise it runs in `aks-review`,
+# which waits until a maintainer approves it in the Actions tab. Both environments accept only
+# runs whose workflow comes from main, so a workflow written on another branch cannot use them.
+#
+# Why pull_request_target: it runs this file as it is on main, so a pull request cannot edit
+# the check away. AGENTS.md §11 warns against pull_request_target with a checkout of untrusted
+# code; here the code is checked out after the role check or a maintainer's approval, without
+# credentials, and the runner never executes it: it is uploaded to the registry, which builds
+# it. Every step that runs on the runner comes from main.
+#
+# Azure sign-in is OpenID Connect to an identity that can only build images. The control
+# function is called with a key valid for its deployment, run-status, log and summary
+# endpoints only. Setup: deploy/k8s/README.md.
+
+on:
+  pull_request_target:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      promote:
+        description: Make the images the default for new runs
+        type: boolean
+        default: false
+      smoke_cases:
+        description: Dataset photographs in the smoke run (0 to skip)
+        type: number
+        default: 3
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-aks-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request_target' }}
+
+jobs:
+  authorize:
+    name: Maintainer check
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      maintainer: ${{ steps.check.outputs.maintainer }}
+    steps:
+      - id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ACTOR: ${{ github.triggering_actor }}
+          AUTHOR: ${{ github.event.pull_request.user.login }}
+        run: |
+          set -euo pipefail
+          role() {
+            gh api "repos/$GITHUB_REPOSITORY/collaborators/$1/permission" \
+              --jq '.user.role_name' 2>/dev/null || echo none
+          }
+          maintainer=true
+          for login in $ACTOR $AUTHOR; do
+            r="$(role "$login")"
+            echo "$login: $r"
+            case "$r" in admin|maintain) ;; *) maintainer=false ;; esac
+          done
+          echo "maintainer=$maintainer" >> "$GITHUB_OUTPUT"
+          if [ "$maintainer" != true ]; then
+            echo "::notice::Not opened by a maintainer: the deploy waits for a maintainer's approval."
+          fi
+
+  deploy:
+    name: Build, deploy and smoke-test
+    needs: authorize
+    permissions:
+      contents: read
+      id-token: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    # aks-review requires a maintainer's approval before the job starts or sees any secret.
+    environment: ${{ needs.authorize.outputs.maintainer == 'true' && 'aks' || 'aks-review' }}
+    env:
+      REGISTRY: ${{ vars.AKS_ACR_NAME }}
+      CONTROL_URL: ${{ vars.AKS_CONTROL_URL }}
+      CONTROL_KEY: ${{ secrets.AKS_CONTROL_KEY }}
+      SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      SOURCE: >-
+        ${{ github.event_name == 'pull_request_target' && 'pr'
+        || github.event_name == 'push' && 'main' || 'manual' }}
+      PROMOTE: ${{ github.event_name == 'push' || inputs.promote == true }}
+      # format() keeps a manual 0 from falling through to the default.
+      SMOKE_CASES: >-
+        ${{ github.event_name == 'workflow_dispatch' && format('{0}', inputs.smoke_cases)
+        || vars.AKS_SMOKE_CASES || '3' }}
+    steps:
+      # The build context for the registry: a pull request's head commit, without credentials.
+      # Nothing from it runs here; the steps below are the base branch's.
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
+          ref: ${{ env.SHA }}
+          persist-credentials: false
+
+      - name: Check configuration
+        env:
+          AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+          AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+        run: |
+          missing=0
+          for name in AZURE_CLIENT_ID AZURE_TENANT_ID AZURE_SUBSCRIPTION_ID REGISTRY \
+                      CONTROL_URL CONTROL_KEY; do
+            if [ -z "${!name}" ]; then echo "::error::$name is not set"; missing=1; fi
+          done
+          exit "$missing"
+
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      # Tags are the commit, so a re-run of the same commit reuses the images.
+      - name: Build images
+        run: |
+          set -euo pipefail
+          tag="${SHA:0:7}"
+          server="$REGISTRY.azurecr.io"
+          echo "IMAGE=$server/dendro-inspector:$tag" >> "$GITHUB_ENV"
+          echo "AGENTS_IMAGE=$server/dendro-inspector:$tag-agents" >> "$GITHUB_ENV"
+          exists() { az acr manifest show-metadata -r "$REGISTRY" -n "dendro-inspector:$1" \
+                       -o none 2>/dev/null; }
+          if exists "$tag"; then echo "dendro-inspector:$tag exists"; else
+            az acr build -r "$REGISTRY" -t "dendro-inspector:$tag" -f deploy/k8s/Dockerfile .
+          fi
+          if exists "$tag-agents"; then echo "dendro-inspector:$tag-agents exists"; else
+            az acr build -r "$REGISTRY" -t "dendro-inspector:$tag-agents" \
+              -f deploy/k8s/agents.Dockerfile --build-arg "BASE_IMAGE=$server/dendro-inspector:$tag" .
+          fi
+
+      - name: Register deployment and start smoke run
+        env:
+          PR: ${{ github.event.pull_request.number }}
+          REF: ${{ github.head_ref || github.ref_name }}
+          WORKFLOW_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          body="$(jq -n \
+            --arg source "$SOURCE" --arg sha "$SHA" --arg image "$IMAGE" \
+            --arg agents_image "$AGENTS_IMAGE" --arg repo "$GITHUB_REPOSITORY" \
+            --arg ref "$REF" --arg actor "$GITHUB_ACTOR" --arg workflow_url "$WORKFLOW_URL" \
+            --arg pr "$PR" --argjson smoke "$SMOKE_CASES" --argjson promote "$PROMOTE" \
+            '{source:$source, sha:$sha, image:$image, agents_image:$agents_image, repo:$repo,
+              ref:$ref, actor:$actor, workflow_url:$workflow_url, smoke_cases:$smoke,
+              promote:$promote} + (if $pr == "" then {} else {pr:($pr|tonumber)} end)')"
+          curl -sS --fail-with-body -X POST "$CONTROL_URL/api/deployments" \
+            -H "x-functions-key: $CONTROL_KEY" -H "Content-Type: application/json" \
+            -d "$body" -o deployment.json
+          jq . deployment.json
+          echo "RUN_ID=$(jq -r '.run_id // empty' deployment.json)" >> "$GITHUB_ENV"
+
+      - name: Wait for smoke run
+        if: env.RUN_ID != ''
+        run: |
+          set -euo pipefail
+          for _ in $(seq 1 120); do
+            curl -sS --fail-with-body "$CONTROL_URL/api/runs/$RUN_ID" \
+              -H "x-functions-key: $CONTROL_KEY" -o run.json
+            state="$(jq -r .state run.json)"
+            echo "$(date -u +%T) $state: $(jq -r '"\(.succeeded) ok, \(.failed) failed of \(.total)"' run.json)"
+            case "$state" in complete|failed) break ;; esac
+            sleep 15
+          done
+
+      - name: Report smoke run
+        if: always() && env.RUN_ID != ''
+        run: |
+          set -uo pipefail
+          get() { curl -sS --fail-with-body "$CONTROL_URL/api/runs/$RUN_ID/$1" \
+                    -H "x-functions-key: $CONTROL_KEY"; }
+          get "summary?rows=1" > summary.json || echo '{}' > summary.json
+          get "logs?lines=60" > logs.json || echo '[]' > logs.json
+          {
+            echo "### Smoke run \`$RUN_ID\` on \`${IMAGE##*:}\`"
+            echo
+            jq -r '"State **\(.state)**: \(.succeeded) succeeded, \(.failed) failed of \(.total)."' run.json
+            echo
+            echo "| Case | Taxon | Status | Resolution | Confidence | Seconds |"
+            echo "|---|---|---|---|---|---|"
+            jq -r '.rows[]? | [.case_id, (if .exit_code == 0 then .selected_taxon else "error" end),
+                     .status, .resolution, .confidence, .wall_seconds]
+                   | map(. // "" | tostring) | "| " + join(" | ") + " |"' summary.json
+            echo
+            echo "<details><summary>Pod logs</summary>"
+            echo
+            jq -r '.[] | "**\(.pod)** (\(.phase))\n```\n\(.logs | to_entries | map("[\(.key)]\n\(.value)") | join("\n"))\n```"' logs.json
+            echo "</details>"
+          } >> "$GITHUB_STEP_SUMMARY"
+          jq -e '.state == "complete" and .failed == 0' run.json > /dev/null \
+            || { echo "::error::smoke run $RUN_ID did not complete cleanly"; exit 1; }
