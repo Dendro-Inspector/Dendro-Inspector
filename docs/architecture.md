@@ -221,7 +221,8 @@ covered look-alike is never substituted for the model's own leading answer witho
 
 With `GraphConfig.open_world_discovery` on, a subject held back only by the coverage gate
 reaches the generator, and a run that admits nothing routes from the generator to the final
-decision without review.
+decision without review. Drafts made from verified records go to `knowledge/review-queue/`,
+which the loader never reads (`knowledge/drafts.py`).
 
 ### Ordinal scores, not percentages
 

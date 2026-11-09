@@ -76,6 +76,10 @@ get entries.
   observed feature, or disagrees with another source makes the status `disputed`. Records
   carry no free text, a record that fails validation is discarded whole, and records never
   reach a model prompt. No live online client ships.
+- `dendro draft-card TAXON --references FILE` drafts a card from a saved reference record
+  into `knowledge/review-queue/`, which the loader never reads. Drafts are always
+  `unreviewed` and `placeholder_content: true`, and every documented feature becomes a
+  supporting rule citing its source, never a strong one.
 - `GraphConfig.deadline_seconds` bounds the wall-clock time of one inspection. Off by
   default, since each adapter already has a per-call timeout and local models can be slow.
   On expiry the node in flight is cancelled, recorded in the trace as failed with detail

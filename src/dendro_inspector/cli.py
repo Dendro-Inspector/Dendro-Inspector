@@ -24,6 +24,12 @@ from dendro_inspector.config import (
 from dendro_inspector.evaluation.reporting import render_json, render_text
 from dendro_inspector.evaluation.runner import run_suite
 from dendro_inspector.graph.definition import render_mermaid
+from dendro_inspector.knowledge.drafts import DraftCardError, draft_card, write_draft
+from dendro_inspector.knowledge.loader import KnowledgeBase
+from dendro_inspector.knowledge.references import (
+    RecordedReferenceSource,
+    ReferenceUnavailableError,
+)
 from dendro_inspector.observability.logging import configure_logging
 from dendro_inspector.observability.trace import write_trace
 from dendro_inspector.prompts.library import DomainPromptMissingError, PromptPolicyError
@@ -328,6 +334,47 @@ def prompt_seal(
         f"with policy {metadata.policy_revision}."
     )
     typer.echo(SEMANTIC_NOTICE)
+
+
+@app.command(name="draft-card")
+def draft_card_command(
+    taxon: Annotated[str, typer.Argument(help="Taxon id to draft, e.g. aesculus_hippocastanum.")],
+    references: Annotated[
+        Path, typer.Option("--references", help="YAML file of saved reference records.")
+    ],
+    source: Annotated[
+        str | None,
+        typer.Option("--source", help="Which record's source_id to draft from, if several."),
+    ] = None,
+) -> None:
+    """Draft an unreviewed card for a taxon into knowledge/review-queue/.
+
+    The draft is never loaded and never marked reviewed; see knowledge/drafts.py.
+    """
+    config = load_config()
+    knowledge = KnowledgeBase(config.knowledge)
+    try:
+        records = asyncio.run(RecordedReferenceSource(references).lookup(taxon))
+    except ReferenceUnavailableError as exc:
+        typer.secho(str(exc), fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=3) from exc
+    chosen = [record for record in records if source is None or record.source_id == source]
+    if not chosen:
+        typer.secho(
+            f"no reference record for {taxon!r} in {references}", fg=typer.colors.RED, err=True
+        )
+        raise typer.Exit(code=1)
+    try:
+        card = draft_card(chosen[0], known_taxon_ids=frozenset(knowledge.available_taxon_ids()))
+        target = write_draft(card, knowledge.root)
+    except DraftCardError as exc:
+        typer.secho(str(exc), fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
+    typer.secho(
+        f"wrote {target} from {chosen[0].source_id} ({chosen[0].source_url})",
+        fg=typer.colors.GREEN,
+        err=True,
+    )
 
 
 if __name__ == "__main__":  # pragma: no cover
