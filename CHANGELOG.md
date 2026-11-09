@@ -39,6 +39,11 @@ get entries.
 
 ### Added
 
+- `DENDRO_IMAGE_MAX_EDGE_PX` sets `GraphConfig.image_max_edge_px` from the environment: a
+  pixel bound, or `original` to send files untouched. Unset keeps the 1568 px default.
+- The agent worker logs the pixel size and byte count of every image it hands to an agent,
+  and `--codex-enable FEATURE` passes `--enable FEATURE` to Codex (for example
+  `image_detail_original`, which skips Codex's own downscaling on models that support it).
 - `EscalationPolicy.review_every_decision` (environment `DENDRO_ARBITER_EVERY_DECISION`)
   calls the arbiter on every case that reaches the escalation gate, including when every
   subject abstained. The arbiter still only proposes findings that must pass admissibility;

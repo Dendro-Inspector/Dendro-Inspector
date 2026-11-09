@@ -460,3 +460,16 @@ def test_every_decision_switch_reads_the_environment(monkeypatch, value, expecte
     else:
         monkeypatch.setenv("DENDRO_ARBITER_EVERY_DECISION", value)
     assert load_config().escalation.review_every_decision is expected
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"), [(None, 1568), ("8192", 8192), ("original", None), ("none", None)]
+)
+def test_image_max_edge_reads_the_environment(monkeypatch, value, expected):
+    from dendro_inspector.config import load_config
+
+    if value is None:
+        monkeypatch.delenv("DENDRO_IMAGE_MAX_EDGE_PX", raising=False)
+    else:
+        monkeypatch.setenv("DENDRO_IMAGE_MAX_EDGE_PX", value)
+    assert load_config().graph.image_max_edge_px == expected
