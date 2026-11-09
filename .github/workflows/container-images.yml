@@ -1,0 +1,55 @@
+name: Container images
+
+# Builds and smoke-tests the Kubernetes images in deploy/k8s/ on every push and pull request.
+#
+# Like ci.yml, this needs no secrets and only a read-only token, so a fork's pull request is
+# checked the same way as a maintainer's. Nothing is pushed anywhere. Publishing the images is
+# deploy-aks.yml, which only a maintainer can start.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: images-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build and smoke-test images
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build batch image
+        run: docker build -f deploy/k8s/Dockerfile -t dendro-inspector:ci .
+
+      # The public evaluation suite runs the whole graph against the fake provider, from the
+      # image's own /app, so it proves the CLI finds its prompts, knowledge and fixtures.
+      - name: Smoke-test batch image
+        run: |
+          set -euo pipefail
+          docker run --rm dendro-inspector:ci --help
+          docker run --rm dendro-inspector:ci prompt-info
+          docker run --rm --read-only --tmpfs /tmp dendro-inspector:ci eval --suite public
+          docker run --rm --entrypoint python dendro-inspector:ci -c \
+            "import openai, anthropic, PIL; from dendro_inspector.providers import openai_adapter"
+          docker run --rm --entrypoint python dendro-inspector:ci -m py_compile \
+            /app/scripts/batch/run_dataset_case.py /app/scripts/batch/run_upload_case.py \
+            /app/scripts/batch/summarize_run.py
+
+      - name: Build agents image
+        run: >-
+          docker build -f deploy/k8s/agents.Dockerfile
+          --build-arg BASE_IMAGE=dendro-inspector:ci -t dendro-inspector:ci-agents .
+
+      - name: Smoke-test agents image
+        run: |
+          set -euo pipefail
+          docker run --rm --entrypoint sh dendro-inspector:ci-agents -c \
+            "claude --version && codex --version && test -f /app/scripts/agent-provider/bridge.py"

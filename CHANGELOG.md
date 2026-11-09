@@ -47,6 +47,13 @@ get entries.
 - An image file larger than `MAX_IMAGE_FILE_BYTES` (32 MiB) is refused with
   `ImageTooLargeError` before it is read, with or without the `images` extra. At most the
   ceiling plus one byte is ever read.
+- `deploy/k8s/` holds container images for running inspections as Kubernetes batch Jobs:
+  a batch image (the CLI plus `scripts/batch/`, which runs one dataset photograph or one
+  uploaded case per pod) and an agents image on top of it. Every pull request builds and
+  smoke-tests both. A deploy workflow builds them in Azure Container Registry for same-repository
+  pull requests, pushes to `main` and manual runs, starts a smoke run on the cluster through
+  its control function, and reports the result and pod logs; only `main` and manual runs make
+  the images the cluster's default. See `deploy/k8s/README.md`.
 
 ### Fixed
 
