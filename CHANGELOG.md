@@ -39,6 +39,11 @@ get entries.
 
 ### Added
 
+- `EscalationPolicy.review_every_decision` (environment `DENDRO_ARBITER_EVERY_DECISION`)
+  calls the arbiter on every case that reaches the escalation gate, including when every
+  subject abstained. The arbiter still only proposes findings that must pass admissibility;
+  the final decision remains deterministic code. Off by default, so the public evaluation
+  suite's escalation metrics are unchanged; it costs one arbiter call per inspection.
 - `deploy/k8s/` holds container images for running inspections as Kubernetes batch Jobs:
   a batch image (the CLI plus `scripts/batch/`, which runs one dataset photograph or one
   uploaded case per pod) and an agents image on top of it. Pull requests into `main` build and

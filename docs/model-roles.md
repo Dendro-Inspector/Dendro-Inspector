@@ -261,12 +261,14 @@ escalation precision and recall.
 | `bark_colour_dependence` | no | The single most common overweighted feature |
 | `bark_only_input` | no | Structurally the weakest input class |
 | `forced_by_configuration` | yes | Explicit operator override |
+| `review_every_decision` | yes | Operator switch `review_every_decision` (env `DENDRO_ARBITER_EVERY_DECISION`): the arbiter reviews every provisional verdict that reaches this gate, and the `already_abstaining` suppressor no longer applies. The arbiter still only proposes findings; admissibility and the final decision stay in code. Off by default, so evaluation keeps measuring escalation precision. Temporary: to be narrowed to targeted triggers. |
 
 ### Suppressors
 
 **Blocking** — overrides hard triggers when enabled:
 
-* `already_abstaining` — every subject is abstained. Partial abstention leaves unaffected
+* `already_abstaining` — every subject is abstained (not applied while
+  `review_every_decision` is on). Partial abstention leaves unaffected
   subjects eligible for arbitration. Only a grounded finding abstains before this gate; an
   uncited model `critical` + `abstain` leaves its subjects eligible, so this suppressor cannot
   be reached on a model's word alone. See

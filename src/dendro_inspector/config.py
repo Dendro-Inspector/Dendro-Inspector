@@ -87,6 +87,17 @@ class EscalationPolicy(Contract):
     on_bark_only_input: bool = True
     on_instruction_like_content: bool = True
     forced_by_eval_case: bool = False
+    # TODO(arbiter-every-decision): narrow this. Reviewing every decision is a temporary
+    # operator choice; replace it with targeted triggers (case-wide abstention, a capped
+    # claim, a close second candidate), measured by escalation precision and recall, then
+    # remove the switch.
+    review_every_decision: bool = Field(
+        default=False,
+        description=(
+            "Call the arbiter on every case that reaches the escalation gate, including when "
+            "every subject abstained. The arbiter still only proposes findings; code decides."
+        ),
+    )
 
     # Blocking suppressor — wins even over hard triggers when every subject abstains.
     suppress_when_abstaining: bool = True
@@ -297,9 +308,11 @@ def load_config(overrides: AppConfig | None = None) -> AppConfig:
     trace_dir = _env("DENDRO_TRACE_DIR")
     reference_records = _env("DENDRO_REFERENCE_RECORDS")
     open_world = (_env("DENDRO_OPEN_WORLD_DISCOVERY", "false") or "false").strip().lower()
+    every = (_env("DENDRO_ARBITER_EVERY_DECISION", "false") or "false").strip().lower()
 
     return AppConfig(
         providers={Role.PRIMARY: primary, Role.REVIEWER: reviewer, Role.ARBITER: arbiter},
+        escalation=EscalationPolicy(review_every_decision=every in {"1", "true", "yes", "on"}),
         graph=GraphConfig(open_world_discovery=open_world in {"1", "true", "yes", "on"}),
         prompts=PromptConfig(
             domain_prompt_path=Path(
