@@ -13,8 +13,9 @@ from typing import Literal
 from pydantic import Field, model_validator
 
 from dendro_inspector.schemas.base import Contract, Identifier, ShortText, ValueToken
-from dendro_inspector.schemas.candidates import SupportStrength
+from dendro_inspector.schemas.candidates import OpenWorldCandidate, SupportStrength
 from dendro_inspector.schemas.evidence import AttachmentStatus
+from dendro_inspector.schemas.reference import LOCAL_STATUSES, ReferenceStatus
 from dendro_inspector.schemas.taxon import Confidence, Resolution
 
 
@@ -76,6 +77,10 @@ ResolutionBoundSource = Literal[
     "tier_ceiling",
     "reviewer_recommendation",
     "abstention",
+    # The model ranked a taxon with no card above the admitted leader. Naming the leader's
+    # species would substitute a covered look-alike for the model's own leading hypothesis;
+    # at genus it no longer does, and the outranking hypothesis is named beside the verdict.
+    "open_world_outranked",
 ]
 ConfidenceStepSource = Literal[
     "seed",
@@ -348,6 +353,41 @@ class FinalDecision(Contract):
             "to make is the one that would follow if that evidence were proven attached."
         ),
     )
+    reference_status: ReferenceStatus | None = Field(
+        default=None,
+        description=(
+            "Reference status of the selected taxon's local card — reviewed, unreviewed or "
+            "disputed. A separate dimension from `confidence`: it says whether the reference "
+            "data has been checked, not whether the photograph shows the taxon."
+        ),
+    )
+    open_world_candidates: tuple[OpenWorldCandidate, ...] = Field(
+        default=(),
+        description=(
+            "Hypotheses for taxa this knowledge base has no card for, retained with their "
+            "surviving evidence, evidence-bounded ceilings and reference status. Never the "
+            "selected taxon."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def _open_world_candidates_belong_to_this_subject(self) -> FinalDecision:
+        if any(candidate.subject_id != self.subject_id for candidate in self.open_world_candidates):
+            msg = "open-world candidates must belong to the decision's own subject"
+            raise ValueError(msg)
+        if self.reference_status is not None and self.selected_taxon is None:
+            msg = "reference_status describes a selected taxon; there is none"
+            raise ValueError(msg)
+        if self.reference_status is not None and not (
+            self.reference_status in LOCAL_STATUSES
+            or self.reference_status is ReferenceStatus.DISPUTED
+        ):
+            msg = (
+                "a selected taxon always has a local card, so its reference status is local "
+                f"or disputed, not {self.reference_status.value!r}"
+            )
+            raise ValueError(msg)
+        return self
 
     @model_validator(mode="after")
     def _taxon_identity_matches_resolution(self) -> FinalDecision:

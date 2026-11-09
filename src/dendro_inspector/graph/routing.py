@@ -42,6 +42,24 @@ def route_internal_gate(state: GraphState, config: GraphConfig) -> NodeName:
     return NodeName.ESCALATION_GATE
 
 
+def route_candidate_generator(state: GraphState, config: GraphConfig) -> NodeName:
+    """Skip review when open-world discovery admitted nothing anywhere.
+
+    Only in open-world mode. There the generator can run for a subject no card covers, so
+    an empty admitted world is an expected outcome rather than a rare one, and sending it
+    on would spend three reviewer calls — and possibly an arbiter — reviewing nothing. The
+    final decision engine composes terminal verdicts for empty candidate sets already.
+
+    With the flag off this branch is never taken, so closed-world runs keep their topology
+    exactly.
+    """
+    if config.open_world_discovery and not any(
+        candidate_set.candidates for candidate_set in state.candidate_sets
+    ):
+        return NodeName.FINAL_DECISION
+    return NodeName.ATTACHMENT_AUTHORITY_GATE
+
+
 def next_step(current: NodeName, state: GraphState, config: GraphConfig) -> NodeName:
     """Return the next step after ``current`` has run."""
     match current:
@@ -66,7 +84,7 @@ def next_step(current: NodeName, state: GraphState, config: GraphConfig) -> Node
             return NodeName.RESPONSE_COMPOSER
 
         case NodeName.CANDIDATE_GENERATOR:
-            return NodeName.ATTACHMENT_AUTHORITY_GATE
+            return route_candidate_generator(state, config)
 
         case NodeName.ATTACHMENT_AUTHORITY_GATE:
             return NodeName.BOTANICAL_REVIEWER

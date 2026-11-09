@@ -13,7 +13,7 @@ from typing import Any, Self
 from pydantic import Field
 
 from dendro_inspector.schemas.base import Contract, FeaturePath, Identifier, ShortText, ValueToken
-from dendro_inspector.schemas.candidates import CandidateSet
+from dendro_inspector.schemas.candidates import CandidateSet, OpenWorldCandidate
 from dendro_inspector.schemas.decisions import AuthorityCheckTrace, CaseResponse, FinalDecision
 from dendro_inspector.schemas.evidence import EvidencePacket, KnowledgeCoverage
 from dendro_inspector.schemas.input import CaseInput
@@ -76,10 +76,11 @@ class EvidenceQualityReport(Contract):
     coverage_gap_subject_ids: tuple[Identifier, ...] = Field(
         default=(),
         description=(
-            "Subjects held back because no card could be opened and part of their evidence "
-            "was outside the card vocabulary. The graph stops before the candidate "
+            "Subjects for which no card could be opened and part of their evidence was "
+            "outside the card vocabulary. Closed-world, the graph stops before the candidate "
             "generator for these: a model asked to rank an empty card set cannot return "
-            "anything the admission boundary would keep."
+            "anything the admission boundary would keep. With open-world discovery they "
+            "continue, and anything proposed for them is retained as open-world only."
         ),
     )
     knowledge_coverage: KnowledgeCoverage | None = Field(
@@ -131,6 +132,15 @@ class GraphState(Contract):
         description=(
             "The candidate world the rest of the graph is allowed to reason about. The "
             "attachment authority gate narrows it before any reviewer sees it."
+        ),
+    )
+    open_world_candidates: tuple[OpenWorldCandidate, ...] = Field(
+        default=(),
+        description=(
+            "Proposed taxa with no local card, retained beside the admitted world rather "
+            "than inside it. Reviewers never rank them and no verdict selects them; the "
+            "final decision reports them and lets them bound what an admitted look-alike "
+            "may claim."
         ),
     )
     authority_checks: tuple[AuthorityCheckTrace, ...] = Field(
@@ -192,6 +202,13 @@ class GraphState(Contract):
             if check.subject_id == subject_id:
                 return check
         return None
+
+    def open_world_for(self, subject_id: str) -> tuple[OpenWorldCandidate, ...]:
+        return tuple(
+            candidate
+            for candidate in self.open_world_candidates
+            if candidate.subject_id == subject_id
+        )
 
     def proposed_candidates_for(self, subject_id: str) -> CandidateSet | None:
         for candidate_set in self.proposed_candidate_sets:

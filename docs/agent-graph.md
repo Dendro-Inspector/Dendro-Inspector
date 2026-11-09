@@ -44,6 +44,7 @@ flowchart TD
     PHOTO_PLANNER --> RESPONSE_COMPOSER
     EVIDENCE_QUALITY -->|usable| CANDIDATE_GENERATOR
     CANDIDATE_GENERATOR --> ATTACHMENT_AUTHORITY_GATE
+    CANDIDATE_GENERATOR -->|open world: nothing admitted| FINAL_DECISION
     ATTACHMENT_AUTHORITY_GATE --> BOTANICAL_REVIEWER
     ATTACHMENT_AUTHORITY_GATE --> CONFUSION_REVIEWER
     ATTACHMENT_AUTHORITY_GATE --> CONFIDENCE_REVIEWER
@@ -78,7 +79,7 @@ node with side effects.
 | `evidence_extractor` | primary | Enumerate identity scopes/components and normalize components to their roots | `EvidencePacket` |
 | `evidence_quality` | no | Decide whether any claim is possible | `EvidenceQualityReport` |
 | `photo_planner` | no | Convert "not enough" into a specific photo request | `FinalDecision[]` |
-| `candidate_generator` | primary | Propose rankings; admit only known, same-subject, card-matched support | `CandidateSet[]` |
+| `candidate_generator` | primary | Propose rankings; admit only known, same-subject, card-matched support; retain evidence-backed no-card taxa as open-world | `CandidateSet[]`, `OpenWorldCandidate[]` |
 | `botanical_reviewer` | reviewer | Botany; card-declared contradictions | `ReviewResult` |
 | `confusion_reviewer` | reviewer | Look-alikes, colour dependence, region assumptions | `ReviewResult` |
 | `confidence_reviewer` | reviewer | Calibration, earned resolution, invalid negatives | `ReviewResult` |
@@ -101,7 +102,9 @@ arbiter. The arbiter projection reads the stored tuple rather than recomputing i
 trace compares it with the eventual decisions field by field.
 
 The candidate and rerank boundaries are deliberately inside deterministic nodes. Candidate
-proposals lose unknown taxa, foreign evidence and card-unmatched support before entering state.
+proposals lose unknown taxa, foreign evidence and card-unmatched support before entering state;
+an unknown taxon with trusted support is kept beside the admitted set as an open-world
+candidate, which no reviewer ranks and no verdict selects.
 Review synthesis stores only exact accepted finding/ranking pairs in `admitted_reranks`, and
 final decision derives confidence, evidence tier, resolution and identity from admitted
 candidate-specific support. The graph topology did not need a new node to enforce these rules.
@@ -112,6 +115,8 @@ candidate-specific support. The graph topology did not need a new node to enforc
 | --- | --- | --- |
 | `evidence_quality` | `quality.sufficient` | `candidate_generator` |
 | | otherwise | `photo_planner` |
+| `candidate_generator` | `open_world_discovery` and no subject has an admitted candidate | `final_decision` |
+| | otherwise | `attachment_authority_gate` |
 | `internal_gate` | `synthesis.unresolvable` | `abstain` |
 | | `retry_required` and `retries < budget` | `correction_worker` |
 | | `retry_required` and budget spent | `abstain` |

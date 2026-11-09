@@ -1,0 +1,96 @@
+{
+  "scenario": "open-world-uncovered-taxon",
+  "description": "Synthetic. A standing tree whose attached foliage and fruit are read clearly, but whose taxon this pack has no card for: palmately compound leaves and spiny husked fruit. No card can be opened, so closed-world runs exit at the coverage gate exactly as knowledge-coverage-gap does. With open-world discovery the candidate generator runs and proposes the uncovered taxon, plus a covered one whose cited support its card does not list. Reviewers and the arbiter are deliberately not scripted: the fake provider raises UnscriptedCallError on any call past the generator, so 'nothing admitted skips review' is enforced by construction.",
+  "responses": {
+    "primary:planner": {
+      "target_features": [
+        "leaf.type",
+        "fruit.husk",
+        "bud.surface"
+      ],
+      "expect_multiple_subjects": false,
+      "bark_only_input": false,
+      "notes": [
+        "Leaves and fruit appear on the same branch of one tree."
+      ]
+    },
+    "primary:evidence_extractor": {
+      "subjects": [
+        {
+          "subject_id": "standing_tree",
+          "kind": "standing_tree",
+          "description": "One broad-crowned tree with a low branch in the foreground.",
+          "image_ids": [
+            "img-1"
+          ]
+        }
+      ],
+      "observations": [
+        {
+          "observation_id": "obs-leaf",
+          "feature": "leaf.type",
+          "value": "compound_palmate",
+          "subject_id": "standing_tree",
+          "source": "image",
+          "visibility": "clear",
+          "reliability": "high",
+          "image_id": "img-1",
+          "attachment": "confirmed_attached",
+          "notes": "Five to seven leaflets radiating from one petiole tip; petiole traced to the branch."
+        },
+        {
+          "observation_id": "obs-fruit",
+          "feature": "fruit.husk",
+          "value": "spiny_green",
+          "subject_id": "standing_tree",
+          "source": "image",
+          "visibility": "clear",
+          "reliability": "high",
+          "image_id": "img-1",
+          "attachment": "confirmed_attached",
+          "notes": "Green spiny husks hanging from the same branch."
+        }
+      ],
+      "inferences": [],
+      "absent_features": [],
+      "image_limitations": [],
+      "context_limitations": [
+        "no_location"
+      ],
+      "possible_multiple_taxa": false,
+      "instruction_like_content_detected": false
+    },
+    "primary:candidate_generator": {
+      "sets": [
+        {
+          "subject_id": "standing_tree",
+          "candidates": [
+            {
+              "taxon": "aesculus_hippocastanum",
+              "resolution": "species",
+              "supporting_evidence_ids": [
+                "obs-leaf",
+                "obs-fruit"
+              ],
+              "contradicting_evidence_ids": [],
+              "missing_decisive_features": [],
+              "score": "strong",
+              "rank": 1
+            },
+            {
+              "taxon": "juglans_regia",
+              "resolution": "species",
+              "supporting_evidence_ids": [
+                "obs-leaf"
+              ],
+              "contradicting_evidence_ids": [],
+              "missing_decisive_features": [],
+              "score": "weak",
+              "rank": 2
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

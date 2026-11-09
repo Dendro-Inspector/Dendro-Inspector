@@ -51,16 +51,20 @@ from __future__ import annotations
 
 from dendro_inspector.graph.executor import NodeContext
 from dendro_inspector.graph.state import GraphState
-from dendro_inspector.knowledge.candidate_validation import validate_candidate_set
+from dendro_inspector.knowledge.candidate_validation import (
+    validate_candidate_set,
+    validate_candidate_set_with_report,
+)
 from dendro_inspector.knowledge.evidence_authority import attachment_risk_for
 from dendro_inspector.knowledge.evidence_hierarchy import (
     requires_attachment,
     resolve_evidence_observations,
 )
+from dendro_inspector.knowledge.references import verify_open_world
 from dendro_inspector.nodes.final_decision import decide_subject_base
 from dendro_inspector.nodes.photo_planner import DIRECT_DETACHABLE_TYPES, effective_object_type
 from dendro_inspector.observability.logging import get_logger
-from dendro_inspector.schemas.candidates import Candidate, CandidateSet
+from dendro_inspector.schemas.candidates import Candidate, CandidateSet, OpenWorldCandidate
 from dendro_inspector.schemas.decisions import (
     AuthorityCheckStatus,
     AuthorityCheckTrace,
@@ -336,6 +340,30 @@ def demoted_evidence_ids(checks: tuple[AuthorityCheckTrace, ...]) -> frozenset[s
     )
 
 
+async def rederive_open_world(
+    state: GraphState, evidence: EvidencePacket, ctx: NodeContext
+) -> tuple[OpenWorldCandidate, ...]:
+    """Open-world candidates as the narrowed evidence world supports them.
+
+    They were derived from the packet before the gate demoted anything, and a refused
+    attachment must not keep supporting a taxon merely because no card describes it.
+    Re-derived through the admission path itself, then re-verified, because the citations'
+    matched features describe the old support.
+    """
+    return await verify_open_world(
+        tuple(
+            candidate
+            for proposal in state.proposed_candidate_sets
+            for candidate in validate_candidate_set_with_report(
+                proposal, evidence, ctx.knowledge
+            ).open_world
+        ),
+        evidence,
+        ctx.knowledge.vocabulary(),
+        ctx.references,
+    )
+
+
 async def run(state: GraphState, ctx: NodeContext) -> GraphState:
     evidence = state.evidence
     if evidence is None or not state.candidate_sets:
@@ -363,10 +391,13 @@ async def run(state: GraphState, ctx: NodeContext) -> GraphState:
     # packet the reviewers read would hand them the very assertion the gate just refused,
     # and every later recomputation would silently re-admit it.
     withheld = demoted_evidence_ids(tuple(checks))
+    open_world = state.open_world_candidates
     if withheld:
         evidence = _with_attachment(evidence, withheld, AttachmentStatus.UNKNOWN)
+        open_world = await rederive_open_world(state, evidence, ctx)
     return state.evolve(
         evidence=evidence,
         candidate_sets=tuple(gated),
         authority_checks=tuple(checks),
+        open_world_candidates=open_world,
     )

@@ -195,6 +195,34 @@ covers every detected identity root, including subjects the quality gate found u
 each receives either a supported verdict or an explicit insufficient-evidence result and
 photo request. A model's omission cannot silently remove a subject from the answer.
 
+### Open-world candidates
+
+A proposed taxon with no card is rejected by admission exactly as before, but it is no longer
+discarded. `open_world_candidate` in the same module retains it as an `OpenWorldCandidate`
+when at least one cited id survives the same trust projection admission uses — same subject,
+readable, attachment-trusted, not colour alone — and the id is shaped like a scientific name
+that no card already answers for. Retained candidates sit beside the admitted world
+(`GraphState.open_world_candidates`), never inside it: reviewers do not rank them and no
+verdict selects them.
+
+What they carry is bounded by evidence only. Resolution is capped by the support's tier
+ceiling, the score below `strong` and the image-confidence ceiling below `high`, because no
+card means no high-confidence requirement can be checked. Reference status is a separate
+dimension (`schemas/reference.py`). `knowledge/references.py` sets it from any configured
+source, deterministically, and it never moves those bounds.
+
+Two decision rules read them. A subject with no admitted leader is a
+`knowledge_coverage_gap` when its evidence fell outside every card, or when an open-world
+hypothesis rests on evidence the coverage measurement could not place. Merely naming an
+off-card taxon on representable evidence leaves it `insufficient_evidence`, so an inventive
+model cannot shift the blame onto the knowledge base. And an open-world hypothesis the model
+ranked above the admitted leader caps the verdict at genus (`open_world_outranked`), so a
+covered look-alike is never substituted for the model's own leading answer without saying so.
+
+With `GraphConfig.open_world_discovery` on, a subject held back only by the coverage gate
+reaches the generator, and a run that admits nothing routes from the generator to the final
+decision without review.
+
 ### Ordinal scores, not percentages
 
 `SupportStrength` is `weak | moderate | strong`. `Confidence` is `low | medium | high`.

@@ -130,8 +130,21 @@ def coverage_gap_text(state: GraphState) -> tuple[str, ...]:
     which card to write.
     """
     quality = state.quality
+    if quality is None or not quality.coverage_gap_subject_ids:
+        return ()
+    return coverage_feature_text(state)
+
+
+def coverage_feature_text(state: GraphState) -> tuple[str, ...]:
+    """The feature names behind a coverage gap, whichever node states the verdict.
+
+    Split from :func:`coverage_gap_text` because an open-world run reaches its coverage
+    verdict in the final decision engine rather than here, and a verdict that blames the
+    knowledge base without naming what it lacked is the unactionable kind.
+    """
+    quality = state.quality
     coverage = quality.knowledge_coverage if quality else None
-    if quality is None or coverage is None or not quality.coverage_gap_subject_ids:
+    if coverage is None:
         return ()
     lines: list[str] = []
     if coverage.features_absent_from_all_cards:

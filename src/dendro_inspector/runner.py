@@ -14,6 +14,7 @@ from dendro_inspector.config import AppConfig, Role, load_config
 from dendro_inspector.graph.executor import NodeContext, run_graph
 from dendro_inspector.graph.state import GraphState
 from dendro_inspector.knowledge.loader import KnowledgeBase
+from dendro_inspector.knowledge.references import RecordedReferenceSource, ReferenceSource
 from dendro_inspector.nodes import build_registry
 from dendro_inspector.observability.events import RunTrace
 from dendro_inspector.observability.trace import TraceRecorder
@@ -53,12 +54,20 @@ def build_context(
         provider = providers.get(role)
         recorder.set_provider(role.value, provider.adapter_name, provider.model)
 
+    records = resolved_config.knowledge.reference_records
+    references: tuple[ReferenceSource, ...] = (
+        (RecordedReferenceSource(records if records.is_absolute() else base / records),)
+        if records is not None
+        else ()
+    )
+
     return NodeContext(
         config=resolved_config,
         providers=providers,
         knowledge=KnowledgeBase(resolved_config.knowledge, root=base),
         prompts=prompts,
         recorder=recorder,
+        references=references,
     )
 
 

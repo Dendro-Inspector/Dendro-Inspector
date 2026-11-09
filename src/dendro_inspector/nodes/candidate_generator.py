@@ -3,6 +3,10 @@
 The model proposes ranked hypotheses; the shared deterministic admission boundary then
 keeps only known taxa with exact, same-subject, trusted card support. It also derives missing
 decisive features from the cards rather than the model's recollection of what it would need.
+
+A proposed taxon with no card but with trusted evidence is retained beside the admitted set
+as an open-world candidate, and checked against any configured reference source. It is never
+admitted; see :class:`~dendro_inspector.schemas.candidates.OpenWorldCandidate`.
 """
 
 from __future__ import annotations
@@ -14,6 +18,7 @@ from dendro_inspector.knowledge.candidate_validation import (
     cards_in_play,
     validate_candidate_set_with_report,
 )
+from dendro_inspector.knowledge.references import verify_open_world
 from dendro_inspector.nodes._support import (
     case_context,
     case_image_inputs,
@@ -27,7 +32,11 @@ from dendro_inspector.providers.base import (
     OUTPUT_SUBJECT_IDS,
     request_structured,
 )
-from dendro_inspector.schemas.candidates import CandidateProposal, CandidateSet
+from dendro_inspector.schemas.candidates import (
+    CandidateProposal,
+    CandidateSet,
+    OpenWorldCandidate,
+)
 
 NODE = "candidate_generator"
 
@@ -77,6 +86,7 @@ async def run(state: GraphState, ctx: NodeContext) -> GraphState:
     usable = set(quality.usable_subject_ids)
     proposed_sets: list[CandidateSet] = []
     final_sets: list[CandidateSet] = []
+    open_world: list[OpenWorldCandidate] = []
     by_subject = {candidate_set.subject_id: candidate_set for candidate_set in proposal.sets}
     for subject in evidence.subjects:
         if subject.subject_id not in usable:
@@ -95,6 +105,7 @@ async def run(state: GraphState, ctx: NodeContext) -> GraphState:
                     "dropped_evidence_ids": list(validation.dropped_evidence_ids),
                     "malformed_evidence_ids": list(validation.malformed_evidence_ids),
                     "rejected_taxa": list(validation.rejected_taxa),
+                    "open_world_taxa": [candidate.taxon for candidate in validation.open_world],
                     "demoted_scores": [
                         [taxon, proposed.value, effective.value]
                         for taxon, proposed, effective in validation.demoted_scores
@@ -102,8 +113,12 @@ async def run(state: GraphState, ctx: NodeContext) -> GraphState:
                 },
             )
         final_sets.append(validation.candidate_set)
+        open_world.extend(validation.open_world)
 
     return state.evolve(
         proposed_candidate_sets=tuple(proposed_sets),
         candidate_sets=tuple(final_sets),
+        open_world_candidates=await verify_open_world(
+            tuple(open_world), evidence, ctx.knowledge.vocabulary(), ctx.references
+        ),
     )

@@ -98,6 +98,21 @@ class KnowledgeBase:
         except KnowledgeError:
             return None
 
+    def covered_names(self) -> frozenset[str]:
+        """Every name this knowledge base already answers for, as identifier-shaped tokens.
+
+        Card ids, the broader identities cards declare, and card aliases with spaces folded
+        to underscores. A model that proposes ``juglans`` or ``walnut`` has named something
+        a card covers — under the wrong id, not outside the knowledge base — so the
+        open-world channel must not report it as missing taxonomy.
+        """
+        names: set[str] = set()
+        for card in self.taxa(self.available_taxon_ids()):
+            names.add(card.taxon_id)
+            names.update(identity.taxon_id for identity in card.broader_identities)
+            names.update("_".join(alias.casefold().split()) for alias in card.aliases)
+        return frozenset(names)
+
     def comparison(self, comparison_id: str) -> ComparisonCard:
         if comparison_id not in self._comparisons:
             self._comparisons[comparison_id] = ComparisonCard.model_validate(

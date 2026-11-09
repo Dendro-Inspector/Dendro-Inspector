@@ -12,6 +12,18 @@ get entries.
 
 ### Changed
 
+- **No silent substitution of a covered look-alike.** When the model ranks a taxon with no
+  card above the admitted leader, the verdict is capped at genus (resolution bound
+  `open_world_outranked`) and the uncovered hypothesis is named. A model leading with
+  *Prunus domestica* while only *Prunus cerasifera* has a card now returns *Prunus*, not
+  *P. cerasifera*.
+- A subject with no admitted candidate now reports `knowledge_coverage_gap` instead of
+  `insufficient_evidence` when its evidence fell outside every card, or when its surviving
+  open-world hypothesis rests on such evidence. This also applies to a coverage-gap subject
+  that shares a frame with a usable one, which previously read `insufficient_evidence` from
+  the final decision while the photo planner path read `knowledge_coverage_gap`. Naming an
+  off-card taxon on evidence the cards *can* represent does not change the status.
+
 - A model reviewer's `critical` + `abstain` finding that cites no evidence no longer
   withdraws a claim on its own. It is still accepted and still critical, but it no longer
   routes straight to abstention — which, once every subject had abstained, also skipped the
@@ -39,6 +51,31 @@ get entries.
 
 ### Added
 
+- **Open-world candidates** ([#10](https://github.com/Dendro-Inspector/Dendro-Inspector/issues/10)).
+  A proposed taxon with no local card is no longer silently discarded at admission. When at
+  least one of its cited observations survives as trusted, same-subject, readable,
+  non-colour evidence, it is retained as an `OpenWorldCandidate` and reported on the
+  verdict (`FinalDecision.open_world_candidates`) and in the reader's limitations. It is
+  never admitted and never becomes the selected taxon. Its resolution is capped by the
+  support's evidence tier, its score below `strong`, and its image-confidence ceiling below
+  `high`. Names a card already answers for (card ids, broader identities, aliases) are not
+  reported as missing.
+- `GraphConfig.open_world_discovery` (`DENDRO_OPEN_WORLD_DISCOVERY`), off by default. When on,
+  a subject held back only by the knowledge-coverage gate reaches the candidate generator,
+  and a run in which nothing was admitted goes from the generator straight to the final
+  decision, without reviewer or arbiter calls. Off, the graph behaves exactly as before.
+- **Reference status**, a separate dimension from image-identification confidence:
+  `local_reviewed`, `local_unreviewed`, `externally_verified`, `provisional`, `disputed`,
+  `unavailable`. A selected taxon reports its card's status in
+  `FinalDecision.reference_status`; every shipped card is `local_unreviewed`. No status
+  change ever moves a confidence band.
+- External reference verification for open-world candidates through a `ReferenceSource`
+  protocol, with one offline implementation reading saved records from
+  `DENDRO_REFERENCE_RECORDS`. Each citation records source, HTTPS URL, retrieval time and the
+  matched and conflicting features. A source that does not accept the name, contradicts an
+  observed feature, or disagrees with another source makes the status `disputed`. Records
+  carry no free text, a record that fails validation is discarded whole, and records never
+  reach a model prompt. No live online client ships.
 - `GraphConfig.deadline_seconds` bounds the wall-clock time of one inspection. Off by
   default, since each adapter already has a per-call timeout and local models can be slow.
   On expiry the node in flight is cancelled, recorded in the trace as failed with detail
