@@ -250,6 +250,68 @@ def to_strict_openai_schema(schema: Mapping[str, Any]) -> dict[str, Any]:
     return translated
 
 
+#: Keywords the Anthropic structured-output dialect does not accept. Each is re-imposed by
+#: Pydantic validation of the response, as for every other dialect in this module.
+_ANTHROPIC_DROPPED = frozenset(
+    {
+        "default",
+        "pattern",
+        "minimum",
+        "maximum",
+        "exclusiveMinimum",
+        "exclusiveMaximum",
+        "multipleOf",
+        "minLength",
+        "maxLength",
+        "minItems",
+        "maxItems",
+        "uniqueItems",
+    }
+)
+
+
+def to_anthropic_schema(schema: Mapping[str, Any]) -> dict[str, Any] | None:
+    """Pydantic JSON Schema -> Anthropic ``output_config.format`` ``json_schema``.
+
+    The dialect keeps ``$ref``/``$defs``, ``anyOf``, ``enum`` and ``const``, but every object
+    must be closed (``additionalProperties: false``) and numeric, string-length and array-size
+    constraints are not accepted. Those are dropped here and re-checked by Pydantic.
+
+    Returns ``None`` when the schema cannot be expressed at all — an open mapping
+    (``dict[str, X]``) has ``additionalProperties`` set to a schema, which the dialect rejects.
+    The caller then falls back to asking for JSON in the prompt, which is how the bridge
+    adapter has always worked.
+    """
+    expressible = True
+
+    def walk(node: Any) -> Any:
+        nonlocal expressible
+        if isinstance(node, list):
+            return [walk(item) for item in node]
+        if not isinstance(node, dict):
+            return node
+        out: dict[str, Any] = {}
+        for key, value in node.items():
+            if key in _ANTHROPIC_DROPPED:
+                continue
+            if key in {"properties", "$defs"} and isinstance(value, dict):
+                out[key] = {name: walk(sub) for name, sub in value.items()}
+            else:
+                out[key] = walk(value)
+        if out.get("type") == "object" or "properties" in out:
+            extra = out.get("additionalProperties", False)
+            if extra not in (False, None) and not (extra is True and "properties" in out):
+                expressible = False
+            out["additionalProperties"] = False
+        return out
+
+    translated = walk(dict(schema))
+    if not isinstance(translated, dict):  # pragma: no cover - the root stays a mapping
+        msg = "schema root is not an object"
+        raise SchemaTranslationError(msg)
+    return translated if expressible else None
+
+
 def _collapse_nullable(node: dict[str, Any]) -> dict[str, Any]:
     """``anyOf: [X, {"type": "null"}]`` is Pydantic for optional; Gemini spells it ``nullable``."""
     options = node.get("anyOf")

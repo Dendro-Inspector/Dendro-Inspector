@@ -10,6 +10,18 @@ get entries.
 
 ## [Unreleased]
 
+### Added
+
+- A direct Claude API adapter, `anthropic-sdk` (`DENDRO_<ROLE>_PROVIDER=anthropic-sdk`),
+  alongside the existing `anthropic` adapter, which is unchanged and still serves the
+  agent-provider bridge. It uses native structured output, an explicit effort level
+  (`ANTHROPIC_EFFORT`, default `high`) and server-side refusal fallback
+  (`ANTHROPIC_FALLBACKS=off` disables it), and defaults to `claude-opus-5-5`. Its key is
+  `ANTHROPIC_SDK_API_KEY`, falling back to `ANTHROPIC_API_KEY` outside agent-provider bridge
+  pods (whose `ANTHROPIC_API_KEY` is a placeholder). On AKS the deploy workflow publishes the
+  `ANTHROPIC_API_KEY` repository secret to the cluster. Refusals and truncated output fail
+  the call as structured-output errors that name the cause.
+
 ### Changed
 
 - Firewood material groups with visible, subject-scoped `context.material = split_firewood`

@@ -216,7 +216,12 @@ DENDRO_ARBITER_PROVIDER=openai      # independently challenge escalated results
 
 `.env` is read at startup; anything already exported in the environment wins over it.
 
-Any role can use `openai`, `anthropic`, `gemini`, `nvidia`, `openrouter` or `ollama`.
+Any role can use `openai`, `anthropic`, `anthropic-sdk`, `gemini`, `nvidia`, `openrouter` or
+`ollama`. `anthropic-sdk` calls the Claude API directly (default model `claude-opus-5-5`)
+with native structured output, an explicit effort level (`ANTHROPIC_EFFORT`, default `high`)
+and server-side refusal fallback (`ANTHROPIC_FALLBACKS=off` to disable). Its key is
+`ANTHROPIC_SDK_API_KEY`, or `ANTHROPIC_API_KEY` when no bridge is configured. `anthropic` sends
+only what the agent-provider bridge understands, and is what bridge routes keep using.
 Every selected model must accept images. Hosted adapters read their own credential variable;
 OpenAI and Anthropic use optional SDK extras, Gemini and the OpenAI-compatible
 NVIDIA/OpenRouter adapters use direct HTTPS, and Ollama needs no key. Provider-specific

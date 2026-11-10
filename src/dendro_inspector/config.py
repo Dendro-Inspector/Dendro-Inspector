@@ -34,6 +34,7 @@ class Adapter(StrEnum):
     FAKE = "fake"
     OPENAI = "openai"
     ANTHROPIC = "anthropic"
+    ANTHROPIC_SDK = "anthropic-sdk"
     OLLAMA = "ollama"
     GEMINI = "gemini"
     NVIDIA = "nvidia"
@@ -46,6 +47,7 @@ class Adapter(StrEnum):
 DEFAULT_KEY_ENV: dict[Adapter, str] = {
     Adapter.OPENAI: "OPENAI_API_KEY",
     Adapter.ANTHROPIC: "ANTHROPIC_API_KEY",
+    Adapter.ANTHROPIC_SDK: "ANTHROPIC_SDK_API_KEY",
     Adapter.GEMINI: "GEMINI_API_KEY",
     Adapter.NVIDIA: "NVIDIA_API_KEY",
     Adapter.OPENROUTER: "OPENROUTER_API_KEY",
