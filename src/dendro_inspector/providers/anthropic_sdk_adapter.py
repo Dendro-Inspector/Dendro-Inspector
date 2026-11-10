@@ -204,7 +204,7 @@ class AnthropicSDKProvider:
             request["fallbacks"] = "default"
         return request
 
-    
+    @staticmethod
     async def _send(client: Any, request: dict[str, Any]) -> Any:
         if "betas" in request:
             return await client.beta.messages.create(**request)
