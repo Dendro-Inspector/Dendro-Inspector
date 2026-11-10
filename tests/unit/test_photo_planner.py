@@ -2,14 +2,19 @@
 
 from __future__ import annotations
 
+import asyncio
+
+import pytest
+
 from dendro_inspector.graph.state import GraphState
-from dendro_inspector.nodes.photo_planner import choose_request
+from dendro_inspector.nodes.photo_planner import choose_request, run
 from dendro_inspector.schemas.evidence import (
     EvidencePacket,
     Observation,
     ObservationSource,
     Subject,
     SubjectKind,
+    Visibility,
 )
 from dendro_inspector.schemas.input import DeclaredObjectType
 
@@ -118,3 +123,94 @@ def test_inferred_photo_type_is_scoped_to_each_subject(simple_case, node_context
     assert tree.target == "foliage_close_up_and_whole_crown"
     assert tree.subject_id == "tree"
     assert ambiguous.target != firewood.target
+
+
+@pytest.mark.parametrize("visibility", [Visibility.CLEAR, Visibility.PARTIAL])
+def test_visible_firewood_group_requests_one_labelled_piece(simple_case, node_context, visibility):
+    case = simple_case.model_copy(update={"declared_object_type": DeclaredObjectType.UNKNOWN})
+    state = GraphState(
+        case=case,
+        evidence=EvidencePacket(
+            subjects=(
+                Subject(subject_id="pile", kind=SubjectKind.MATERIAL_GROUP),
+                Subject(subject_id="tree", kind=SubjectKind.STANDING_TREE),
+            ),
+            observations=(
+                Observation(
+                    observation_id="material",
+                    feature="context.material",
+                    value="split_firewood",
+                    subject_id="pile",
+                    visibility=visibility,
+                    source=ObservationSource.IMAGE,
+                    image_id="img-1",
+                ),
+            ),
+        ),
+    )
+    request = choose_request(state, node_context, "pile")
+    assert request.target == "prepared_end_grain_and_bark_circumference"
+    assert request.subject_id == "pile"
+    assert "same piece" in request.reason
+    terminal = asyncio.run(run(state, node_context))
+    assert terminal.decisions[0].best_next_photo == request
+    assert terminal.decisions[0].selected_taxon is None
+    assert choose_request(state, node_context, "tree").target == "foliage_close_up_and_whole_crown"
+    assert choose_request(state, node_context).target == "foliage_close_up_with_scale"
+
+
+def test_material_group_does_not_borrow_another_subjects_material(simple_case, node_context):
+    case = simple_case.model_copy(update={"declared_object_type": DeclaredObjectType.UNKNOWN})
+    state = GraphState(
+        case=case,
+        evidence=EvidencePacket(
+            subjects=(
+                Subject(subject_id="pile", kind=SubjectKind.MATERIAL_GROUP),
+                Subject(subject_id="piece", kind=SubjectKind.SPLIT_WOOD),
+            ),
+            observations=(
+                Observation(
+                    observation_id="material",
+                    feature="context.material",
+                    value="split_firewood",
+                    subject_id="piece",
+                    source=ObservationSource.IMAGE,
+                    image_id="img-1",
+                ),
+            ),
+        ),
+    )
+    assert choose_request(state, node_context, "pile").target == "foliage_close_up_with_scale"
+
+
+@pytest.mark.parametrize(
+    ("source", "visibility", "material"),
+    [
+        (ObservationSource.IMAGE, Visibility.NOT_VISIBLE, "split_firewood"),
+        (ObservationSource.IMAGE, Visibility.OBSCURED, "split_firewood"),
+        (ObservationSource.USER, Visibility.CLEAR, "split_firewood"),
+        (ObservationSource.IMAGE, Visibility.CLEAR, "leaves"),
+    ],
+)
+def test_material_group_requires_visible_firewood_evidence(
+    simple_case, node_context, source, visibility, material
+):
+    case = simple_case.model_copy(update={"declared_object_type": DeclaredObjectType.UNKNOWN})
+    state = GraphState(
+        case=case,
+        evidence=EvidencePacket(
+            subjects=(Subject(subject_id="pile", kind=SubjectKind.MATERIAL_GROUP),),
+            observations=(
+                Observation(
+                    observation_id="material",
+                    feature="context.material",
+                    value=material,
+                    subject_id="pile",
+                    source=source,
+                    visibility=visibility,
+                    image_id="img-1" if source is ObservationSource.IMAGE else None,
+                ),
+            ),
+        ),
+    )
+    assert choose_request(state, node_context, "pile").target == "foliage_close_up_with_scale"

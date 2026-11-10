@@ -21,7 +21,12 @@ from dendro_inspector.schemas.decisions import (
     PhotoRequest,
     UserClaimVerdict,
 )
-from dendro_inspector.schemas.evidence import Observation, SubjectKind
+from dendro_inspector.schemas.evidence import (
+    Observation,
+    ObservationSource,
+    SubjectKind,
+    Visibility,
+)
 from dendro_inspector.schemas.input import DeclaredObjectType
 
 NODE = "photo_planner"
@@ -193,6 +198,20 @@ def effective_object_type(
         for subject in subjects
         if subject.kind in _SUBJECT_KIND_TO_OBJECT_TYPE
     }
+    # A material group is not necessarily firewood. Use only a visible material
+    # observation belonging to this group, never a neighbouring piece's evidence.
+    if any(
+        subject.kind is SubjectKind.MATERIAL_GROUP
+        and any(
+            observation.feature == "context.material"
+            and observation.value == "split_firewood"
+            and observation.source is ObservationSource.IMAGE
+            and observation.visibility in {Visibility.CLEAR, Visibility.PARTIAL}
+            for observation in evidence.observations_for(subject.subject_id)
+        )
+        for subject in subjects
+    ):
+        inferred.add(DeclaredObjectType.SPLIT_FIREWOOD)
     return inferred.pop() if len(inferred) == 1 else declared
 
 

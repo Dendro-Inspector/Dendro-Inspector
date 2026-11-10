@@ -1,7 +1,10 @@
-"""Summarize a batch run written by run_dataset_case.py.
+"""Summarize dataset or upload run records, including projected API exports.
 
 Reads <run_dir>/cases/*.json and writes <run_dir>/summary.json and <run_dir>/cases.csv:
 one row per case (verdict, confidence, arbiter use, tokens, time) plus run totals.
+Legacy verdict fields describe the first subject; subject_summary counts every subject
+in successful cases. Each CSV row also carries subject_decisions as a JSON array.
+Projected API records have no trace, so usage and model-call counts remain unknown.
 Standard library only.
 
 Usage: python scripts/batch/summarize_run.py <run_dir>
@@ -35,7 +38,9 @@ COLUMNS = (
     "cached_input_tokens",
     "output_tokens",
     "error",
+    "subject_decisions",
 )
+DECISION_COLUMNS = ("subject_id", "selected_taxon", "status", "resolution", "confidence")
 TOKEN_KEYS = ("input_tokens", "cached_input_tokens", "output_tokens")
 
 
@@ -52,13 +57,17 @@ def case_row(record: dict[str, Any]) -> dict[str, Any]:
         exit_code=record.get("exit_code", ""),
         wall_seconds=record.get("wall_seconds", ""),
     )
-    result = record.get("result")
-    if not result:
-        row["error"] = _last_line(record.get("error"))
+    row["error"] = _last_line(record.get("error"))
+    row["subject_decisions"] = []
+    result = record.get("result") or {}
+    response = result.get("response")
+    if response is None:
+        response = record.get("response")
+    if response is None:
         return row
-    decisions = result["response"].get("decisions") or []
+    decisions = response.get("decisions") or []
     first = decisions[0] if decisions else {}
-    trace = result["trace"]
+    trace = result.get("trace") or {}
     calls = [
         call for event in trace.get("events", []) for call in event.get("provider_calls") or []
     ]
@@ -72,7 +81,10 @@ def case_row(record: dict[str, Any]) -> dict[str, Any]:
         final_confidence=trace.get("final_confidence") or "",
         arbiter_used=trace.get("arbiter_used"),
         escalation_triggered=trace.get("escalation_triggered"),
-        model_calls=len(calls),
+        model_calls=len(calls) if "events" in trace else None,
+        subject_decisions=[
+            {key: decision.get(key) for key in DECISION_COLUMNS} for decision in decisions
+        ],
         **{key: _measured_total(calls, key) for key in TOKEN_KEYS},
     )
     return row
@@ -87,6 +99,7 @@ def _measured_total(records: list[dict[str, Any]], key: str) -> int | None:
 def summarize(rows: list[dict[str, Any]]) -> dict[str, Any]:
     done = [row for row in rows if row["exit_code"] == 0]
     walls = sorted(float(row["wall_seconds"]) for row in done if row["wall_seconds"] != "")
+    decisions = [decision for row in done for decision in row.get("subject_decisions", [])]
     return {
         "cases": len(rows),
         "succeeded": len(done),
@@ -96,6 +109,17 @@ def summarize(rows: list[dict[str, Any]]) -> dict[str, Any]:
         "confidence": dict(Counter(row["confidence"] for row in done)),
         "top_taxa": dict(Counter(row["selected_taxon"] for row in done).most_common(15)),
         "arbiter_used": sum(1 for row in done if row["arbiter_used"] is True),
+        # Legacy fields above describe the first subject of each successful case.
+        # Keep all subject outcomes separately; usage and durations remain per case.
+        "subject_summary": {
+            "subjects": len(decisions),
+            "status": dict(Counter(d.get("status") or "" for d in decisions)),
+            "resolution": dict(Counter(d.get("resolution") or "" for d in decisions)),
+            "confidence": dict(Counter(d.get("confidence") or "" for d in decisions)),
+            "top_taxa": dict(
+                Counter(d.get("selected_taxon") or "" for d in decisions).most_common(15)
+            ),
+        },
         # Failed cases can consume tokens too. Missing measurements remain unknown.
         "tokens": {key: _measured_total(rows, key) for key in TOKEN_KEYS},
         "token_measured_cases": {
@@ -117,11 +141,17 @@ def main(run_dir: Path) -> dict[str, Any]:
     with (run_dir / "cases.csv").open("w", encoding="utf-8", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=COLUMNS)
         writer.writeheader()
-        writer.writerows(rows)
+        writer.writerows(
+            {**row, "subject_decisions": json.dumps(row["subject_decisions"], ensure_ascii=False)}
+            for row in rows
+        )
     summary = summarize(rows)
     if records:
         summary["run_id"] = records[0].get("run_id")
-        summary["dataset"] = {key: records[0]["dataset"][key] for key in ("repo", "revision")}
+        dataset = records[0].get("dataset")
+        summary["dataset"] = (
+            {key: dataset.get(key) for key in ("repo", "revision")} if dataset else None
+        )
         summary["models"] = records[0].get("models")
     (run_dir / "summary.json").write_text(
         json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8"
