@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from typing import Literal
 
 from dendro_inspector.knowledge.evidence_hierarchy import (
     EvidenceTier,
@@ -56,12 +57,31 @@ _OPEN_WORLD_STRENGTH_CAP = SupportStrength.MODERATE
 
 
 @dataclass(frozen=True, slots=True)
+class DroppedSupportDetail:
+    """A reason for rejecting one proposed support ID; never changes admission."""
+
+    taxon: str
+    evidence_id: str
+    reason: Literal[
+        "unresolved_or_foreign_reference",
+        "untrusted_evidence",
+        "feature_not_declared",
+        "value_not_declared",
+    ]
+    feature: str | None = None
+    value: str | None = None
+    expected_values: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
 class CandidateValidationResult:
     """Validated ranking plus deterministic diagnostics for observability."""
 
     candidate_set: CandidateSet
     rejected_taxa: tuple[str, ...]
     dropped_evidence_ids: tuple[str, ...]
+    dropped_support_details: tuple[DroppedSupportDetail, ...] = ()
+    """Candidate-specific reasons, preserving the model's raw feature/value."""
     malformed_evidence_ids: tuple[str, ...] = ()
     """The subset of ``dropped_evidence_ids`` that is not even shaped like an identifier.
 
@@ -258,14 +278,50 @@ def _support_is_colour_only(
     return bool(sources) and all(is_colour_feature(source.feature) for source in sources)
 
 
+def _dropped_support_detail(
+    taxon: str,
+    evidence_id: str,
+    evidence: EvidencePacket,
+    subject_id: str,
+    expectations: tuple[FeatureExpectation, ...],
+) -> DroppedSupportDetail:
+    projection = project_evidence(evidence, evidence_id, subject_id)
+    if not projection.source_observations:
+        return DroppedSupportDetail(taxon, evidence_id, "unresolved_or_foreign_reference")
+    if not projection.supports_identification:
+        return DroppedSupportDetail(taxon, evidence_id, "untrusted_evidence")
+    for source in projection.source_observations:
+        allowed = tuple(
+            sorted(
+                {
+                    value
+                    for expectation in expectations
+                    if expectation.feature == source.feature
+                    for value in expectation.values
+                }
+            )
+        )
+        if not allowed:
+            return DroppedSupportDetail(
+                taxon, evidence_id, "feature_not_declared", source.feature, source.value
+            )
+        if source.value not in allowed:
+            return DroppedSupportDetail(
+                taxon, evidence_id, "value_not_declared", source.feature, source.value, allowed
+            )
+    # These are precisely the failure conditions of _validated_support_ids.
+    raise AssertionError("dropped support has no failed admission condition")
+
+
 def _validated_support_ids(
     candidate: Candidate,
     evidence: EvidencePacket,
     subject_id: str,
     expectations: tuple[FeatureExpectation, ...],
-) -> tuple[tuple[str, ...], tuple[str, ...]]:
+) -> tuple[tuple[str, ...], tuple[str, ...], tuple[DroppedSupportDetail, ...]]:
     kept: list[str] = []
     dropped: list[str] = []
+    details: list[DroppedSupportDetail] = []
     for evidence_id in _deduplicate(candidate.supporting_evidence_ids):
         projection = project_evidence(evidence, evidence_id, subject_id)
         if projection.supports_identification and all(
@@ -274,7 +330,12 @@ def _validated_support_ids(
             kept.append(evidence_id)
         else:
             dropped.append(evidence_id)
-    return tuple(kept), tuple(dropped)
+            details.append(
+                _dropped_support_detail(
+                    candidate.taxon, evidence_id, evidence, subject_id, expectations
+                )
+            )
+    return tuple(kept), tuple(dropped), tuple(details)
 
 
 def _validated_contradiction_ids(
@@ -308,6 +369,7 @@ def validate_candidate_set_with_report(
     survivors: list[Candidate] = []
     rejected: list[str] = []
     dropped: list[str] = []
+    dropped_support_details: list[DroppedSupportDetail] = []
     demoted: list[tuple[str, SupportStrength, SupportStrength]] = []
     open_world: list[OpenWorldCandidate] = []
 
@@ -326,12 +388,13 @@ def validate_candidate_set_with_report(
             continue
 
         support_expectations = (*card.strong_positive_features, *card.supporting_features)
-        supporting, dropped_supporting = _validated_support_ids(
+        supporting, dropped_supporting, support_details = _validated_support_ids(
             candidate,
             evidence,
             candidate_set.subject_id,
             support_expectations,
         )
+        dropped_support_details.extend(support_details)
         contradicting, dropped_contradicting = _validated_contradiction_ids(
             candidate,
             evidence,
@@ -375,6 +438,7 @@ def validate_candidate_set_with_report(
         candidate_set=validated,
         rejected_taxa=_deduplicate(tuple(rejected)),
         dropped_evidence_ids=discarded,
+        dropped_support_details=tuple(dropped_support_details),
         malformed_evidence_ids=tuple(
             reference for reference in discarded if not _IDENTIFIER.fullmatch(reference)
         ),

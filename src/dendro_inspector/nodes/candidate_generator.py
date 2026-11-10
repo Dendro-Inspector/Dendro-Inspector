@@ -12,6 +12,7 @@ admitted; see :class:`~dendro_inspector.schemas.candidates.OpenWorldCandidate`.
 from __future__ import annotations
 
 import json
+from dataclasses import asdict
 
 from dendro_inspector.config import Role
 from dendro_inspector.graph.executor import NodeContext
@@ -136,6 +137,9 @@ async def run(state: GraphState, ctx: NodeContext) -> GraphState:
                     "case_id": state.case.case_id,
                     "subject_id": candidate_set.subject_id,
                     "dropped_evidence_ids": list(validation.dropped_evidence_ids),
+                    "dropped_support_details": [
+                        asdict(detail) for detail in validation.dropped_support_details
+                    ],
                     "malformed_evidence_ids": list(validation.malformed_evidence_ids),
                     "rejected_taxa": list(validation.rejected_taxa),
                     "open_world_taxa": [candidate.taxon for candidate in validation.open_world],
