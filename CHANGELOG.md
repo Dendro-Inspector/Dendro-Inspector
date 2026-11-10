@@ -10,6 +10,17 @@ get entries.
 
 ## [Unreleased]
 
+### Added
+
+- Open-world hypotheses are now told to the reader. With `DENDRO_OPEN_WORLD_DISCOVERY`
+  on, a taxon the model proposes with trusted support but no knowledge card was kept only
+  on the structured decision. The answer now adds "Outside this knowledge base: <taxon>
+  (<level>) is also consistent with N trusted observation(s) ..." (Ukrainian: "Поза цим
+  довідником ..."), says it was not checked by any feature rule and did not shape the
+  verdict, notes when the model ranked it above the verdict's taxon or an external
+  reference recognises the name, and points at `dendro draft-card`. `StructuredFinalResult`
+  gains `open_world_candidates` (taxon ids). Verdicts are unchanged.
+
 ### Fixed
 
 - High confidence can no longer rest on a single supporting feature. A new deterministic

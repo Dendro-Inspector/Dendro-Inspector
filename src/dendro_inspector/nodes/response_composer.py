@@ -31,6 +31,7 @@ from dendro_inspector.schemas.decisions import (
     UserClaimVerdict,
 )
 from dendro_inspector.schemas.evidence import ScaleQuality
+from dendro_inspector.schemas.reference import ReferenceStatus
 from dendro_inspector.schemas.reviews import FindingCategory
 from dendro_inspector.schemas.taxon import Confidence, Resolution
 
@@ -285,6 +286,7 @@ def build_result(
         nearest_alternative=decision.nearest_alternative,
         limitations=_limitations(decision, state, locale),
         best_next_photo=decision.best_next_photo,
+        open_world_candidates=tuple(c.taxon for c in decision.open_world_candidates),
     )
 
 
@@ -301,6 +303,53 @@ def _supporting_evidence(
         f"{observation.feature} = {observation.value}"
         for observation in state.evidence.visible_observations_for(decision.subject_id)
     )[:8]
+
+
+#: At most this many open-world hypotheses are spelled out per subject.
+_MAX_OPEN_WORLD_LINES = 2
+
+_OPEN_WORLD_TEXT: dict[str, dict[str, str]] = {
+    "en": {
+        "line": (
+            "Outside this knowledge base: {taxon} ({resolution}) is also consistent with "
+            "{count} trusted observation(s) here ({evidence}). It is a model hypothesis with "
+            "no card, so no feature rule checked it and it did not shape this verdict"
+            "{reference}. `dendro draft-card {taxon}` drafts a card for review."
+        ),
+        "ranked_above": " The model ranked it above the verdict's taxon.",
+        "verified": "; an external reference recognises the name",
+    },
+    "uk": {
+        "line": (
+            "Поза цим довідником: {taxon} ({resolution}) також узгоджується з {count} "
+            "надійними спостереженнями тут ({evidence}). Це гіпотеза моделі без картки: "
+            "жодне правило ознак її не перевіряло, і на вердикт вона не вплинула"
+            "{reference}. `dendro draft-card {taxon}` готує картку на перевірку."
+        ),
+        "ranked_above": " Модель поставила її вище за таксон вердикту.",
+        "verified": "; зовнішнє джерело визнає цю назву",
+    },
+}
+
+
+def _open_world_lines(decision: FinalDecision, locale: str) -> list[str]:
+    """One reader-facing line per retained open-world hypothesis, most plausible first."""
+    text = _OPEN_WORLD_TEXT.get(locale, _OPEN_WORLD_TEXT["en"])
+    ranked = sorted(decision.open_world_candidates, key=lambda c: c.proposed_rank)
+    lines: list[str] = []
+    for candidate in ranked[:_MAX_OPEN_WORLD_LINES]:
+        verified = candidate.reference_status is ReferenceStatus.EXTERNALLY_VERIFIED
+        line = text["line"].format(
+            taxon=candidate.taxon,
+            resolution=candidate.resolution.value,
+            count=len(candidate.supporting_evidence_ids),
+            evidence=", ".join(candidate.supporting_evidence_ids[:4]),
+            reference=text["verified"] if verified else "",
+        )
+        if decision.open_world_conflict and not lines:
+            line += text["ranked_above"]
+        lines.append(line)
+    return lines
 
 
 def _limitations(
@@ -327,6 +376,10 @@ def _limitations(
         and decision.status is not DecisionStatus.KNOWLEDGE_COVERAGE_GAP
     ):
         items.append(render_reason_code("knowledge_coverage_gap", locale))
+    # Also ahead of the reviewer prose, for the same reason: with open-world discovery on,
+    # a trusted hypothesis outside the cards is kept on the decision, and this is the only
+    # place a reader learns the model saw something the knowledge base cannot name.
+    items.extend(_open_world_lines(decision, locale))
     items.extend(decision.unresolved_questions)
     if state is None or state.evidence is None:
         return tuple(items)
