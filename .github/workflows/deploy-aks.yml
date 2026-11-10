@@ -141,7 +141,7 @@ jobs:
           exists() { az acr manifest show-metadata -r "$REGISTRY" -n "dendro-inspector:$1" \
                        -o none 2>/dev/null; }
           if exists "$tag"; then echo "dendro-inspector:$tag exists"; else
-            az acr build -r "$REGISTRY" -t "dendro-inspector:$tag" -f deploy/k8s/Dockerfile .
+            az acr build -r "$REGISTRY" -t "dendro-inspector:$tag" -f deploy/k8s/Dockerfile               --build-arg "DENDRO_CODE_COMMIT_SHA=$SHA" .
           fi
           if exists "$tag-agents"; then echo "dendro-inspector:$tag-agents exists"; else
             az acr build -r "$REGISTRY" -t "dendro-inspector:$tag-agents" \

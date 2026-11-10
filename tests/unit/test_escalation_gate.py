@@ -314,10 +314,19 @@ def test_strong_leader_with_silent_reviewers_escalates(node_context):
         image_id="img-1",
         attachment=AttachmentStatus.CONFIRMED_ATTACHED,
     )
+    # A second, independent feature: one feature alone caps at medium (corroboration_cap).
+    bark = Observation(
+        observation_id="obs-2",
+        feature="bark.texture",
+        value="scaly_plates",
+        subject_id="log_1",
+        source=ObservationSource.IMAGE,
+        image_id="img-1",
+    )
     state = _state(
         evidence=EvidencePacket(
             subjects=(Subject(subject_id="log_1"),),
-            observations=(observation,),
+            observations=(observation, bark),
         ),
         candidate_sets=(
             CandidateSet(
@@ -328,7 +337,7 @@ def test_strong_leader_with_silent_reviewers_escalates(node_context):
                         resolution=Resolution.GENUS,
                         rank=1,
                         score=SupportStrength.STRONG,
-                        supporting_evidence_ids=("obs-1",),
+                        supporting_evidence_ids=("obs-1", "obs-2"),
                     ),
                 ),
             ),
@@ -398,10 +407,19 @@ def test_run_stores_the_verdict_it_used_for_escalation(node_context):
         image_id="img-1",
         attachment=AttachmentStatus.CONFIRMED_ATTACHED,
     )
+    # A second, independent feature: one feature alone caps at medium (corroboration_cap).
+    bark = Observation(
+        observation_id="obs-2",
+        feature="bark.texture",
+        value="scaly_plates",
+        subject_id="log_1",
+        source=ObservationSource.IMAGE,
+        image_id="img-1",
+    )
     state = _state(
         evidence=EvidencePacket(
             subjects=(Subject(subject_id="log_1"),),
-            observations=(observation,),
+            observations=(observation, bark),
         ),
         provisional_decisions=(),
         candidate_sets=(
@@ -413,7 +431,7 @@ def test_run_stores_the_verdict_it_used_for_escalation(node_context):
                         resolution=Resolution.GENUS,
                         rank=1,
                         score=SupportStrength.STRONG,
-                        supporting_evidence_ids=("obs-1",),
+                        supporting_evidence_ids=("obs-1", "obs-2"),
                     ),
                 ),
             ),

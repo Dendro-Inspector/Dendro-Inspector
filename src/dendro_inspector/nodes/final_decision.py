@@ -82,7 +82,7 @@ from dendro_inspector.schemas.decisions import (
     ResolutionBoundSource,
     UserClaimVerdict,
 )
-from dendro_inspector.schemas.evidence import EvidencePacket
+from dendro_inspector.schemas.evidence import EvidencePacket, is_positive_reading
 from dendro_inspector.schemas.input import DeclaredObjectType
 from dendro_inspector.schemas.reference import (
     ReferenceStatus,
@@ -747,6 +747,35 @@ def _reaches_the_top_band(
     return hit is not None and hit.exception.ceiling is ExceptionCeiling.VERY_HIGH
 
 
+#: Distinct, reliably read supporting features a high-confidence claim needs (section 6).
+MIN_INDEPENDENT_FEATURES_FOR_HIGH = 2
+
+
+def independent_support_features(
+    leader: Candidate, evidence: EvidencePacket, subject_id: str
+) -> frozenset[str]:
+    """The distinct features behind a candidate's admitted support, counted once each.
+
+    Independence is by feature, not by observation or by inference: the same feature read
+    twice, or an inference restating the observations it rests on, is one piece of evidence
+    described more than once. Only readings reliable enough to settle a decisive requirement
+    count, and a "could not read it" value counts as nothing.
+    """
+    inferences = {inference.inference_id: inference for inference in evidence.inferences}
+    cited: set[str] = set()
+    for evidence_id in leader.supporting_evidence_ids:
+        inference = inferences.get(evidence_id)
+        if inference is not None:
+            cited.update(inference.derived_from)
+        else:
+            cited.add(evidence_id)
+    return frozenset(
+        observation.feature
+        for observation in decisive_observations_for(evidence, subject_id)
+        if observation.observation_id in cited and is_positive_reading(observation.value)
+    )
+
+
 #: Prefix of the unresolved question that explains a withheld top band.
 TOP_BAND_WITHHELD_PHRASE = "95-100 withheld"
 
@@ -870,6 +899,21 @@ def resolve_confidence(
         if short:
             confidence = Confidence.MEDIUM
         step("requirement_cap", before, confidence, applied=short)
+
+    # One feature does not make a high-confidence identification, however clearly it was
+    # read: section 6 puts 85-94 at "leaves and bark visible" and "only part of the features"
+    # at 70-84, and FAILURE 5 is a single lobed leaf taken for a genus. Before this step the
+    # only thing between one admitted `leaf.shape` and `identified / high` was a reviewer
+    # recommending otherwise (golden-060). The two declared exceptions keep their reach: a
+    # fruit, seed, cone or acorn closes the question on its own, and a card-declared
+    # diagnostic reading says so in the card.
+    if confidence is Confidence.HIGH and exception is None and tier < EvidenceTier.FRUIT_SEED:
+        independent = independent_support_features(leader, evidence, subject_id)
+        short = len(independent) < MIN_INDEPENDENT_FEATURES_FOR_HIGH
+        before = confidence
+        if short:
+            confidence = Confidence.MEDIUM
+        step("corroboration_cap", before, confidence, applied=short)
 
     recommended = _lowest_recommendation(state, subject_id)
     if recommended is not None:

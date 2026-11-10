@@ -12,6 +12,27 @@ get entries.
 
 ### Fixed
 
+- High confidence can no longer rest on a single supporting feature. A new deterministic
+  `corroboration_cap` confidence step caps a claim at medium unless its admitted support spans
+  at least two independent, reliably read features (domain prompt section 6: 85-94 is
+  "leaves and bark visible"). The same feature read twice, or an inference restating its
+  observations, counts once. Fruit, seed, cone or acorn evidence and card-declared diagnostic
+  readings keep their reach. In the post-deploy batch, golden-060's sapling reached `high`
+  on one `leaf.shape` reading and was held back only by a reviewer's recommendation.
+- Constraints the Anthropic structured-output dialect drops (`maxLength`, `maxItems`, numeric
+  bounds) are restated in the field description. The Sonnet regression gate retried a
+  reviewer in all nine cases on finding summaries over the 400-character limit the model
+  was never shown.
+- Traces from container images record the commit they were built from
+  (`DENDRO_CODE_COMMIT_SHA`, stamped by the AKS deploy) instead of `code_commit_sha: null`.
+- `AuthorityCheckTrace.outcome_stage` (`pre_review`) states that `actual_outcome` and
+  `counterfactual_outcome` are computed at the attachment gate, before review and
+  arbitration, so they are not read as the final decision.
+- The needle-ownership photo request says what it asks: whether the needle-bearing shoot in
+  frame connects to this subject (it is raised for trunks beside a separate conifer branch).
+
+### Fixed
+
 - A card-declared 95-100 confidence exception now uses the 85-94 band while an admitted
   look-alike from that card's `common_confusions` remains unresolved, even below the nearest
   alternative. Trusted, subject-scoped evidence must rule the look-alike out before the top

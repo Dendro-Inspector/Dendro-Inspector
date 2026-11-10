@@ -11,7 +11,9 @@ RUN python -m venv /opt/venv \
  && /opt/venv/bin/pip install ".[openai,anthropic,images]"
 
 FROM python:3.12-slim
-ENV PATH=/opt/venv/bin:$PATH \
+# The commit this image was built from, for the run trace (no .git inside the image).
+ARG DENDRO_CODE_COMMIT_SHA=""
+ENV DENDRO_CODE_COMMIT_SHA=${DENDRO_CODE_COMMIT_SHA}     PATH=/opt/venv/bin:$PATH \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     DENDRO_TRACE_DIR=/tmp/traces
