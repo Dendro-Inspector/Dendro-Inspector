@@ -218,13 +218,13 @@ class TestSchemaRejection:
     def test_a_schema_the_api_refuses_falls_back_to_the_prompt(self, provider, monkeypatch):
         """A 400 on the schema must not fail every call for that contract."""
 
-        class FakeBadRequest(Exception):
+        class FakeBadRequestError(Exception):
             pass
 
         from dendro_inspector.providers import anthropic_sdk_adapter
 
         monkeypatch.setattr(
-            anthropic_sdk_adapter, "_sdk_errors", lambda: ((), (), (FakeBadRequest,))
+            anthropic_sdk_adapter, "_sdk_errors", lambda: ((), (), (FakeBadRequestError,))
         )
         good = _response(json.dumps({"taxon": "pinus", "confidence": 70}))
         calls: list[dict[str, Any]] = []
@@ -232,7 +232,7 @@ class TestSchemaRejection:
         async def create(**kwargs: Any) -> Any:
             calls.append(kwargs)
             if "format" in kwargs["output_config"]:
-                raise FakeBadRequest("schema too complex")
+                raise FakeBadRequestError("schema too complex")
             return good
 
         messages = SimpleNamespace(create=create)
