@@ -63,6 +63,21 @@ def load_manifest(inputs: Path) -> dict[str, Any]:
     return manifest
 
 
+def _failure_record(stdout: str) -> dict[str, Any] | None:
+    """The CLI's JSON failure report (error + partial trace), when it printed one.
+
+    A failed case used to keep only a stderr tail, which held the end of a traceback and
+    none of the per-call validation errors that explained it.
+    """
+    try:
+        payload = json.loads(stdout)
+    except ValueError:
+        return None
+    if isinstance(payload, dict) and "error" in payload and "trace" in payload:
+        return payload
+    return None
+
+
 def run(env: dict[str, str]) -> int:
     run_id = env["RUN_ID"]
     if not SAFE_ID.match(run_id):
@@ -107,6 +122,9 @@ def run(env: dict[str, str]) -> int:
         record["result"] = json.loads(completed.stdout)
     else:
         record["error"] = completed.stderr[-4000:]
+        failure = _failure_record(completed.stdout)
+        if failure is not None:
+            record["failure"] = failure
     write_atomic(target, record)
     print(
         f"{case_id}: {len(manifest['photos'])} photos, exit {completed.returncode} "

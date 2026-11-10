@@ -27,8 +27,10 @@ from dendro_inspector.knowledge.evidence_hierarchy import (
     unattached_observations,
 )
 from dendro_inspector.knowledge.regional_packs import region_assumption_risk
+from dendro_inspector.knowledge.taxon_cards import confidence_exception_for
 from dendro_inspector.nodes._support import merge_findings, review_call
-from dendro_inspector.schemas.evidence import AttachmentStatus
+from dendro_inspector.schemas.candidates import CandidateSet
+from dendro_inspector.schemas.evidence import AttachmentStatus, EvidencePacket
 from dendro_inspector.schemas.reviews import (
     FindingCategory,
     FindingOrigin,
@@ -38,6 +40,7 @@ from dendro_inspector.schemas.reviews import (
     ReviewFinding,
     Severity,
 )
+from dendro_inspector.schemas.taxon import Resolution
 
 NODE = "confusion_reviewer"
 
@@ -140,11 +143,19 @@ def unattached_evidence_findings(state: GraphState) -> tuple[ReviewFinding, ...]
     return tuple(findings)
 
 
-def bark_only_findings(state: GraphState) -> tuple[ReviewFinding, ...]:
-    """FAILURE 2 and FAILURE 8 — bark alone decides nothing.
+def bark_only_findings(
+    state: GraphState, ctx: NodeContext | None = None
+) -> tuple[ReviewFinding, ...]:
+    """FAILURE 2 and FAILURE 8 — bark alone decides nothing, unless a card says otherwise.
 
     Rough bark is shared by old poplar, robinia, alder, maple, ash, walnut and old apple.
     The claim is capped by the evidence hierarchy; this records why.
+
+    The one exception is a reading the leading candidate's card declares diagnostic (white
+    papery birch bark, domain prompt sections 6 and 14), which the final decision lets past
+    the bark ceiling. Saying "bark cannot confirm one" next to that verdict was a
+    contradiction in the delivered answer, so the finding then states the actual limit:
+    the exception's own resolution, and what a narrower claim would need.
     """
     evidence = state.evidence
     if evidence is None or not state.candidate_sets:
@@ -155,23 +166,61 @@ def bark_only_findings(state: GraphState) -> tuple[ReviewFinding, ...]:
         subject_id = candidate_set.subject_id
         if not bark_only(evidence, subject_id):
             continue
+        diagnostic = _diagnostic_bark_exception(candidate_set, evidence, ctx)
+        if diagnostic is not None:
+            taxon, reading, limit = diagnostic
+            severity, impact = Severity.MINOR, Impact.NO_MATERIAL_CHANGE
+            summary = (
+                f"Only bark is resolvable. The {taxon} card declares {reading} diagnostic up "
+                f"to {limit} level, so the claim may rest on it there; anything narrower "
+                "needs attached foliage, fruit or twigs."
+            )
+        else:
+            severity, impact = Severity.MAJOR, Impact.CONFIDENCE_CHANGE
+            summary = (
+                "Nothing above bark level is resolvable. Bark texture is shared across "
+                "many old broadleaves and varies with age, damage and site; it supports "
+                "a candidate but cannot confirm one."
+            )
         findings.append(
             ReviewFinding(
                 origin=FindingOrigin.DETERMINISTIC,
                 finding_id=f"auto-bark-only-{subject_id}",
                 category=FindingCategory.UNSUPPORTED_CLAIM,
-                severity=Severity.MAJOR,
-                summary=(
-                    "Nothing above bark level is resolvable. Bark texture is shared across "
-                    "many old broadleaves and varies with age, damage and site; it supports "
-                    "a candidate but cannot confirm one."
-                ),
+                severity=severity,
+                summary=summary,
                 subject_id=subject_id,
                 required_action=RequiredAction.REQUEST_ADDITIONAL_PHOTO,
-                impact=Impact.CONFIDENCE_CHANGE,
+                impact=impact,
             )
         )
     return tuple(findings)
+
+
+def _diagnostic_bark_exception(
+    candidate_set: CandidateSet, evidence: EvidencePacket, ctx: NodeContext | None
+) -> tuple[str, str, str] | None:
+    """(taxon, "feature = value", resolution) when the leader's card exception is earned.
+
+    Asks the same pure function the final decision uses, so this text and the confidence it
+    describes cannot disagree about whether the exception applies.
+    """
+    if ctx is None or not candidate_set.candidates:
+        return None
+    leader = min(candidate_set.candidates, key=lambda candidate: candidate.rank)
+    card = ctx.knowledge.try_taxon(leader.taxon)
+    if card is None:
+        return None
+    # FAMILY is the broadest claim, so this asks "is the exception earned at all"; the
+    # exception's own max_resolution is what the text then reports.
+    hit = confidence_exception_for(card, evidence, candidate_set.subject_id, Resolution.FAMILY)
+    if hit is None:
+        return None
+    reading = ", ".join(
+        f"{expectation.feature} = {' | '.join(expectation.values)}"
+        for expectation in hit.exception.requires
+    )
+    return leader.taxon, reading, hit.exception.max_resolution.value
 
 
 def look_alike_findings(state: GraphState, ctx: NodeContext) -> tuple[ReviewFinding, ...]:
@@ -264,7 +313,7 @@ async def run(state: GraphState, ctx: NodeContext) -> GraphState:
         result,
         colour_findings(state)
         + unattached_evidence_findings(state)
-        + bark_only_findings(state)
+        + bark_only_findings(state, ctx)
         + look_alike_findings(state, ctx)
         + region_findings(state, ctx),
     )

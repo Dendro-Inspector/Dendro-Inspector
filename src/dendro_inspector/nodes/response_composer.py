@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from dendro_inspector.graph.executor import NodeContext
 from dendro_inspector.graph.state import GraphState
-from dendro_inspector.knowledge.evidence_hierarchy import EvidenceTier
+from dendro_inspector.knowledge.evidence_hierarchy import BAND_DECISIVE, EvidenceTier
 from dendro_inspector.nodes._support import locale_of
 from dendro_inspector.schemas.decisions import (
     NO_CLAIM_STATUSES,
@@ -237,6 +237,13 @@ def decide_tone(state: GraphState) -> tuple[ToneMode, bool]:
     if hard:
         return ToneMode.HARD, True
 
+    # The cautious voice opens with "I would not claim 95+ here", so it may not be used when
+    # any subject in the answer sits in the 95-100 band. Bark tier alone used to force it,
+    # and a card-declared diagnostic bark reading (white papery birch, prompt sections 6 and
+    # 14) is bark tier in that band: the answer then said 95-100 and "not 95+" in the same
+    # breath. Every other bark-tier or low-confidence answer still reads cautious.
+    if any(d.confidence_band == BAND_DECISIVE for d in decisions):
+        return ToneMode.MEASURED, False
     cautious = any(
         d.confidence is Confidence.LOW or d.evidence_tier <= int(EvidenceTier.BARK)
         for d in decisions

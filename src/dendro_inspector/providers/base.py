@@ -303,6 +303,127 @@ _REPAIR_INSTRUCTION = (
     "Validation error:\n"
 )
 
+_REPAIR_RULES: dict[str, str] = {
+    "missing": "this required field is missing",
+    "extra_forbidden": "this field is not in the schema; remove it",
+    "string_type": "must be a string",
+    "int_type": "must be an integer",
+    "bool_type": "must be true or false",
+    "json_invalid": "the response was not valid JSON",
+}
+
+#: Pydantic error types that mean "the shape is wrong" rather than "the content broke a
+#: rule about evidence". Both are retried; the distinction is reported so a reader can
+#: tell a formatting slip from a model contradicting the evidence contract.
+_FORMAT_ERROR_TYPES = frozenset(
+    {
+        "string_pattern_mismatch",
+        "string_too_long",
+        "string_too_short",
+        "enum",
+        "literal_error",
+        "missing",
+        "extra_forbidden",
+        "string_type",
+        "int_type",
+        "bool_type",
+        "json_invalid",
+        "too_long",
+        "too_short",
+    }
+)
+
+#: At most this many errors are spelled out to the model; the rest are counted.
+_MAX_REPAIR_ITEMS = 20
+#: At most this many error codes are kept on one call record, over all its attempts.
+_MAX_RECORDED_ERRORS = 40
+
+
+def _validation_error_in(exc: BaseException | None) -> ValidationError | None:
+    """The Pydantic error behind an adapter's wrapper, if there is one."""
+    seen: set[int] = set()
+    while exc is not None and id(exc) not in seen:
+        if isinstance(exc, ValidationError):
+            return exc
+        seen.add(id(exc))
+        exc = exc.__cause__ or exc.__context__
+    return None
+
+
+def _pattern_rule(pattern: object) -> str:
+    from dendro_inspector.schemas.base import (
+        FEATURE_PATH_PATTERN,
+        FEATURE_PATH_RULE,
+        IDENTIFIER_PATTERN,
+        VALUE_TOKEN_PATTERN,
+        VALUE_TOKEN_RULE,
+    )
+
+    if pattern == VALUE_TOKEN_PATTERN:
+        return VALUE_TOKEN_RULE
+    if pattern == FEATURE_PATH_PATTERN:
+        return FEATURE_PATH_RULE
+    if pattern == IDENTIFIER_PATTERN:
+        return "A lowercase identifier: letters, digits, `_` or `-`, e.g. `obs-1`, `img-1`."
+    return f"must match the pattern `{pattern}`"
+
+
+def _format_only(codes: tuple[str, ...]) -> bool:
+    """Whether every validation error in one attempt was a formatting error."""
+    return bool(codes) and all(
+        not code.startswith("unparseable:") and code.rsplit(":", 1)[-1] in _FORMAT_ERROR_TYPES
+        for code in codes
+    )
+
+
+def repair_feedback(exc: BaseException) -> tuple[str, tuple[str, ...]]:
+    """Targeted repair text for the model, and stable codes for the call record.
+
+    The raw Pydantic message names a regex, and a model that wrote a sentence where a token
+    belongs mostly writes the sentence again (golden-003, 046 and 048 each failed twice
+    this way). Naming the field, the value it sent, the rule in words and an example is
+    what a second attempt can act on. Nothing here edits the response: the model repairs
+    its own output, and anything it cannot fill honestly it is told to leave out.
+    """
+    error = _validation_error_in(exc)
+    if error is None:
+        text = str(exc)[:2000]
+        return text, (f"unparseable:{type(exc).__name__}",)
+
+    lines: list[str] = []
+    codes: list[str] = []
+    details = error.errors(include_url=False)
+    for detail in details[:_MAX_REPAIR_ITEMS]:
+        location = ".".join(str(part) for part in detail["loc"]) or "<root>"
+        kind = detail["type"]
+        context = detail.get("ctx") or {}
+        received = detail.get("input")
+        shown = repr(received)[:100] if isinstance(received, str | int | float | bool) else ""
+        if kind == "string_pattern_mismatch":
+            rule = _pattern_rule(context.get("pattern"))
+        elif kind in ("enum", "literal_error"):
+            rule = f"allowed values: {context.get('expected', detail['msg'])}"
+        elif kind == "string_too_long":
+            rule = f"at most {context.get('max_length', '?')} characters"
+        else:
+            rule = _REPAIR_RULES.get(kind, str(detail["msg"]))
+        category = "format" if kind in _FORMAT_ERROR_TYPES else "semantic"
+        got = f" got {shown};" if shown else ""
+        lines.append(f"- `{location}` [{category}]{got} {rule}")
+        codes.append(f"{location}:{kind}")
+    if len(details) > _MAX_REPAIR_ITEMS:
+        lines.append(f"- … and {len(details) - _MAX_REPAIR_ITEMS} more of the same kinds.")
+
+    text = (
+        f"{len(details)} field(s) failed validation:\n"
+        + "\n".join(lines)
+        + "\n\nFix only these fields and keep every other field as you returned it. "
+        "Token fields take one lowercase token, never a sentence. If a value cannot be "
+        "stated honestly as a token, leave the field out or the list empty — do not "
+        "invent an observation, a value or an id to satisfy the schema."
+    )
+    return text, tuple(codes)
+
 
 async def request_structured(
     *,
@@ -318,7 +439,13 @@ async def request_structured(
     cache_prefix_chars: int = 0,
     validate_response: Callable[[ResponseT], None] | None = None,
 ) -> ResponseT:
-    """Call a provider for structured output, repairing malformed output at most once.
+    """Call a provider for structured output, repairing malformed output.
+
+    ``max_retries`` repairs are allowed, plus at most one more when every remaining error
+    is a *formatting* error (a sentence in a token field, a missing required key). That
+    attempt is one call with targeted feedback; failing here instead costs the whole case
+    again — golden-003 ran three full case attempts that each died on the same token.
+    Semantic errors, refusals and truncation get no extra attempt.
 
     The retry budget here is separate from the graph's retry budget: this one fixes
     *protocol* failures, the graph's fixes *scientific* ones. Exhausting this one raises
@@ -337,10 +464,14 @@ async def request_structured(
     }
     attempt_prompt = prompt
     validation_failures = 0
+    validation_errors: list[str] = []
     started = time.perf_counter()
     last_error: Exception | None = None
+    allowed = max_retries + 1
+    extended = False
 
-    for attempt in range(max_retries + 1):
+    attempt = 0
+    while attempt < allowed:
         try:
             result = await provider.generate_structured(
                 role=role,
@@ -354,7 +485,13 @@ async def request_structured(
         except (ValidationError, StructuredOutputError) as exc:
             validation_failures += 1
             last_error = exc
-            attempt_prompt = prompt + _REPAIR_INSTRUCTION + str(exc)[:2000]
+            feedback, codes = repair_feedback(exc)
+            validation_errors.extend(f"attempt-{attempt + 1}:{code}" for code in codes)
+            attempt_prompt = prompt + _REPAIR_INSTRUCTION + feedback
+            attempt += 1
+            if attempt == allowed and max_retries > 0 and not extended and _format_only(codes):
+                allowed += 1
+                extended = True
             continue
 
         if recorder is not None:
@@ -373,6 +510,7 @@ async def request_structured(
                     output_tokens=usage.output_tokens,
                     reasoning_output_tokens=usage.reasoning_output_tokens,
                     reported_cost_usd=usage.reported_cost_usd,
+                    validation_errors=tuple(validation_errors[:_MAX_RECORDED_ERRORS]),
                 )
             )
         return result
@@ -385,7 +523,7 @@ async def request_structured(
                 model=provider.model,
                 node=node,
                 response_model=response_model.__name__,
-                attempts=max_retries + 1,
+                attempts=attempt,
                 validation_failures=validation_failures,
                 duration_ms=(time.perf_counter() - started) * 1000.0,
                 input_tokens=usage.input_tokens,
@@ -393,10 +531,11 @@ async def request_structured(
                 output_tokens=usage.output_tokens,
                 reasoning_output_tokens=usage.reasoning_output_tokens,
                 reported_cost_usd=usage.reported_cost_usd,
+                validation_errors=tuple(validation_errors[:_MAX_RECORDED_ERRORS]),
             )
         )
     msg = (
         f"{provider.adapter_name} returned unusable structured output for node {node!r} "
-        f"after {max_retries + 1} attempt(s): {last_error}"
+        f"after {attempt} attempt(s): {last_error}"
     )
     raise StructuredOutputError(msg) from last_error

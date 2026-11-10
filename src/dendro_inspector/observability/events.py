@@ -49,6 +49,14 @@ class ProviderCallRecord(Contract):
     response_model: str = Field(max_length=120)
     attempts: int = Field(default=1, ge=1)
     validation_failures: int = Field(default=0, ge=0)
+    validation_errors: tuple[str, ...] = Field(
+        default=(),
+        max_length=40,
+        description=(
+            "`attempt-N:<field path>:<error type>` for every validation failure this call "
+            "repaired or died on. Field paths and error kinds only, never response bodies."
+        ),
+    )
     duration_ms: float | None = Field(default=None, ge=0)
     #: Provider-reported accounting, summed over every attempt this call made, because
     #: `duration_ms` spans them all. `None` means the provider reported nothing, which is a
@@ -124,6 +132,66 @@ class PromptMetadata(Contract):
     compatibility_status: PromptCompatibilityStatus = PromptCompatibilityStatus.UNVALIDATED
 
 
+#: Bounds on the evidence ledger, so a pathological extraction cannot bloat a case record.
+MAX_LEDGER_OBSERVATIONS = 400
+MAX_LEDGER_SUBJECTS = 32
+
+
+class ObservationRecord(Contract):
+    """One observation as the decision rules saw it. Tokens only: no notes, no image bytes."""
+
+    observation_id: str = Field(max_length=120)
+    subject_id: str = Field(max_length=120)
+    feature: str = Field(max_length=120)
+    value: str = Field(max_length=120)
+    source: str = Field(max_length=40)
+    image_id: str | None = Field(default=None, max_length=120)
+    visibility: str = Field(max_length=40)
+    reliability: str = Field(max_length=40)
+    attachment: str | None = Field(default=None, max_length=40)
+    trust: str = Field(
+        max_length=40,
+        description="Whether this reading may support an identification (EvidenceTrust).",
+    )
+    tier: int = Field(ge=0, le=10, description="Effective evidence tier after trust.")
+
+
+class CandidateSupportRecord(Contract):
+    """One candidate after validation, with the support it kept."""
+
+    taxon: str = Field(max_length=120)
+    resolution: Resolution
+    score: str = Field(max_length=40)
+    rank: int = Field(ge=1)
+    supporting_evidence_ids: tuple[str, ...] = ()
+    contradicting_evidence_ids: tuple[str, ...] = ()
+
+
+class DroppedSupportRecord(Contract):
+    """One proposed support id that validation refused, and why (PR #18's details)."""
+
+    taxon: str = Field(max_length=120)
+    evidence_id: str = Field(max_length=120)
+    reason: str = Field(max_length=60)
+    feature: str | None = Field(default=None, max_length=120)
+    value: str | None = Field(default=None, max_length=120)
+    expected_values: tuple[str, ...] = ()
+
+
+class CandidateValidationRecord(Contract):
+    """What deterministic validation admitted and rejected for one subject's candidates."""
+
+    subject_id: str = Field(max_length=120)
+    proposed_taxa: tuple[str, ...] = ()
+    admitted: tuple[CandidateSupportRecord, ...] = ()
+    dropped_support: tuple[DroppedSupportRecord, ...] = ()
+    rejected_taxa: tuple[str, ...] = ()
+    demoted_scores: tuple[str, ...] = Field(
+        default=(), description="`taxon:proposed->effective` support strength changes."
+    )
+    malformed_evidence_ids: tuple[str, ...] = ()
+
+
 class RunTrace(Contract):
     """The inspectable record of one graph run."""
 
@@ -158,6 +226,22 @@ class RunTrace(Contract):
             "only when something is wrong cannot be a denominator. Without it a failed case "
             "cannot be attributed between a model that did not see and cards that could not "
             "accept what it saw."
+        ),
+    )
+    evidence_observations: tuple[ObservationRecord, ...] = Field(
+        default=(),
+        max_length=MAX_LEDGER_OBSERVATIONS,
+        description=(
+            "The final evidence packet's observations: which subject each was attributed "
+            "to, how it was read, and whether it was trusted to support an identification."
+        ),
+    )
+    candidate_validations: tuple[CandidateValidationRecord, ...] = Field(
+        default=(),
+        max_length=MAX_LEDGER_SUBJECTS,
+        description=(
+            "Per subject, the support validation admitted and the support it refused, with "
+            "a machine-readable reason for each refusal."
         ),
     )
     retries: int = Field(default=0, ge=0)

@@ -117,4 +117,5 @@ async def run(state: GraphState, ctx: NodeContext) -> GraphState:
 
     packet = reconcile_packet(state, generated.to_evidence_packet())
     ctx.recorder.record_component_projections(packet)
+    ctx.recorder.record_evidence(packet)
     return state.evolve(evidence=packet)

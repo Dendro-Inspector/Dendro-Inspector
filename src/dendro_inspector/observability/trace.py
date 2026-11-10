@@ -15,9 +15,15 @@ from typing import TYPE_CHECKING
 
 from dendro_inspector.observability.events import (
     GRAPH_VERSION,
+    MAX_LEDGER_OBSERVATIONS,
+    MAX_LEDGER_SUBJECTS,
+    CandidateSupportRecord,
+    CandidateValidationRecord,
     ComponentProjection,
+    DroppedSupportRecord,
     NodeEvent,
     NodeStatus,
+    ObservationRecord,
     PromptMetadata,
     ProviderCallRecord,
     ReviewerProjectionRecord,
@@ -30,6 +36,8 @@ from dendro_inspector.schemas.review_context import ReviewProjection
 from dendro_inspector.schemas.taxon import Confidence, Resolution
 
 if TYPE_CHECKING:
+    from dendro_inspector.knowledge.candidate_validation import CandidateValidationResult
+    from dendro_inspector.schemas.candidates import CandidateSet
     from dendro_inspector.schemas.decisions import (
         AuthorityCheckTrace,
         DecisionDerivation,
@@ -68,6 +76,8 @@ class TraceRecorder:
         self._decision_derivations: dict[str, DecisionDerivation] = {}
         self._prompt: PromptMetadata | None = None
         self._knowledge_coverage: KnowledgeCoverage | None = None
+        self._evidence_observations: tuple[ObservationRecord, ...] = ()
+        self._candidate_validations: dict[str, CandidateValidationRecord] = {}
         self._retries = 0
         self._escalation_triggered = False
         self._user_claim_negated = False
@@ -108,6 +118,77 @@ class TraceRecorder:
                 observation_ids=tuple(observation_ids),
             )
             for (identity_id, component_id), observation_ids in grouped.items()
+        )
+
+    def record_evidence(self, evidence: EvidencePacket) -> None:
+        """Keep the evidence ledger: attribution, reading and trust per observation.
+
+        The latest packet wins, since a correction round re-extracts. Tokens only — notes,
+        regions and image bytes stay out — and bounded, so one runaway extraction cannot
+        turn a case record into a megabyte.
+        """
+        from dendro_inspector.knowledge.evidence_hierarchy import (
+            effective_tier,
+            observation_trust,
+        )
+
+        self._evidence_observations = tuple(
+            ObservationRecord(
+                observation_id=observation.observation_id,
+                subject_id=observation.subject_id,
+                feature=observation.feature,
+                value=observation.value,
+                source=observation.source.value,
+                image_id=observation.image_id,
+                visibility=observation.visibility.value,
+                reliability=observation.reliability.value,
+                attachment=observation.attachment.value if observation.attachment else None,
+                trust=observation_trust(observation).name.lower(),
+                tier=int(effective_tier(observation)),
+            )
+            for observation in evidence.observations[:MAX_LEDGER_OBSERVATIONS]
+        )
+
+    def record_candidate_validation(
+        self, proposed: CandidateSet, validation: CandidateValidationResult
+    ) -> None:
+        """Keep what validation admitted and refused for one subject, with reasons."""
+        if (
+            proposed.subject_id not in self._candidate_validations
+            and len(self._candidate_validations) >= MAX_LEDGER_SUBJECTS
+        ):
+            return
+        self._candidate_validations[proposed.subject_id] = CandidateValidationRecord(
+            subject_id=proposed.subject_id,
+            proposed_taxa=tuple(candidate.taxon for candidate in proposed.candidates),
+            admitted=tuple(
+                CandidateSupportRecord(
+                    taxon=candidate.taxon,
+                    resolution=candidate.resolution,
+                    score=candidate.score.value,
+                    rank=candidate.rank,
+                    supporting_evidence_ids=candidate.supporting_evidence_ids,
+                    contradicting_evidence_ids=candidate.contradicting_evidence_ids,
+                )
+                for candidate in validation.candidate_set.candidates
+            ),
+            dropped_support=tuple(
+                DroppedSupportRecord(
+                    taxon=detail.taxon,
+                    evidence_id=detail.evidence_id,
+                    reason=detail.reason,
+                    feature=detail.feature,
+                    value=detail.value,
+                    expected_values=detail.expected_values,
+                )
+                for detail in validation.dropped_support_details
+            ),
+            rejected_taxa=validation.rejected_taxa,
+            demoted_scores=tuple(
+                f"{taxon}:{proposed_strength.value}->{effective.value}"
+                for taxon, proposed_strength, effective in validation.demoted_scores
+            ),
+            malformed_evidence_ids=validation.malformed_evidence_ids,
         )
 
     def record_review_projection(self, node: str, projection: ReviewProjection) -> None:
@@ -248,6 +329,8 @@ class TraceRecorder:
             providers=dict(self._providers),
             events=tuple(self._events),
             component_projections=self._component_projections,
+            evidence_observations=self._evidence_observations,
+            candidate_validations=tuple(self._candidate_validations.values()),
             knowledge_coverage=self._knowledge_coverage,
             retries=self._retries,
             graph_retry_count=self._retries,

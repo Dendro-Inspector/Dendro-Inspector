@@ -130,6 +130,7 @@ async def run(state: GraphState, ctx: NodeContext) -> GraphState:
         )
         proposed_sets.append(candidate_set)
         validation = validate_candidate_set_with_report(candidate_set, evidence, ctx.knowledge)
+        ctx.recorder.record_candidate_validation(candidate_set, validation)
         if validation.dropped_evidence_ids or validation.rejected_taxa or validation.demoted_scores:
             logger.warning(
                 "candidate_validation_filtered",

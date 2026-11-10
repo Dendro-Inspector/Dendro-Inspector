@@ -14,7 +14,9 @@ Per candidate:
   **highest defensible** level, not the most specific one you can imagine.
 - `supporting_evidence_ids` / `contradicting_evidence_ids` — ids from *this subject's*
   evidence only.
-- `missing_decisive_features` — tokens for what would settle it.
+- `missing_decisive_features` — the features that would settle it, as feature paths or card
+  requirement tokens (`leaf.underside`, `bark.peeling`). The feature only, never the
+  photograph to take (`bark.peeling macro` is invalid).
 - `score` — `weak` | `moderate` | `strong`. Ordinal support strength, not a probability.
 - `rank` — 1-based, dense, unique within the subject.
 
