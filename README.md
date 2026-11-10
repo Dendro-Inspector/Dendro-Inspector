@@ -265,7 +265,16 @@ export DENDRO_PROMPT_MANIFEST_PATH=/path/to/your/versions.yaml
 ```
 
 The external manifest is an explicit compatibility attestation, not a mechanical proof that
-two natural-language prompts mean the same thing. A missing file, path mismatch, hash mismatch
+two natural-language prompts mean the same thing.
+
+The default domain prompt is `prompts/domain/system-prompt.en.md`, an English translation of
+the Ukrainian original that keeps it line for line, with every evidence token byte-identical.
+The original stays in the repository as the authoritative specification; to run with it:
+
+```bash
+export DENDRO_DOMAIN_PROMPT_PATH=prompts/domain/system-prompt.md
+export DENDRO_PROMPT_MANIFEST_PATH=prompts/versions.uk.yaml
+``` A missing file, path mismatch, hash mismatch
 or incompatible policy revision is a loud `PromptPolicyError`, never a silent default. Prompt
 and manifest hashes appear in every execution trace, tying an answer to the exact admitted
 bundle.

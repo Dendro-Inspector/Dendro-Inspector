@@ -10,8 +10,8 @@ schema_version: "1"
 policy_revision: "0.9.0"
 
 domain_prompt:
-  path: prompts/domain/system-prompt.md
-  sha256: d1abfc373b6a7c715528b80e655085bd83a5ed13c7e1571aa6ed72a1a83edf47
+  path: prompts/domain/system-prompt.en.md
+  sha256: 41d0fe858b341762fd96a9b9d16b86178422abec950539f0b22a2c222d0f1764
 
 node_prompts:
   root: prompts/nodes

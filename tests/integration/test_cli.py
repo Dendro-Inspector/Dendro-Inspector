@@ -10,6 +10,7 @@ import pytest
 from typer.testing import CliRunner
 
 from dendro_inspector.cli import app
+from dendro_inspector.config import DEFAULT_DOMAIN_PROMPT_PATH
 from dendro_inspector.prompts.seal import SEMANTIC_NOTICE
 
 runner = CliRunner()
@@ -226,7 +227,7 @@ class TestPromptSealCommand:
     def test_dry_run_prints_old_to_new_and_writes_nothing(self, deployment):
         manifest = deployment / "prompts" / "versions.yaml"
         before = manifest.read_bytes()
-        prompt = deployment / "prompts" / "domain" / "system-prompt.md"
+        prompt = deployment / DEFAULT_DOMAIN_PROMPT_PATH
         # Derived, not pinned: the assertion is about the old -> new transition, and a
         # literal here turns every future domain-prompt edit into an unrelated failure.
         old_hash = hashlib.sha256(prompt.read_bytes()).hexdigest()
@@ -241,7 +242,7 @@ class TestPromptSealCommand:
         assert manifest.read_bytes() == before
 
     def test_dry_run_says_it_attests_bytes_not_semantics(self, deployment):
-        prompt = deployment / "prompts" / "domain" / "system-prompt.md"
+        prompt = deployment / DEFAULT_DOMAIN_PROMPT_PATH
         prompt.write_bytes(prompt.read_bytes() + b"\nowner edit\n")
 
         result = runner.invoke(app, ["prompt-seal"])
@@ -249,7 +250,7 @@ class TestPromptSealCommand:
         assert SEMANTIC_NOTICE in result.stdout
 
     def test_write_re_seals_and_revalidates_the_bundle(self, deployment):
-        prompt = deployment / "prompts" / "domain" / "system-prompt.md"
+        prompt = deployment / DEFAULT_DOMAIN_PROMPT_PATH
         prompt.write_bytes(prompt.read_bytes() + b"\nowner edit\n")
         new_hash = hashlib.sha256(prompt.read_bytes()).hexdigest()
 

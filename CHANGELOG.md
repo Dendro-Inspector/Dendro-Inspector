@@ -12,6 +12,17 @@ get entries.
 
 ### Changed
 
+- The active domain prompt is now English: `prompts/domain/system-prompt.en.md`, a line-for-line
+  translation of the Ukrainian original, sealed by `prompts/versions.yaml`. Every evidence token
+  is byte-identical to the original, and the prompt still sets Ukrainian as the default answer
+  language. The Ukrainian original `prompts/domain/system-prompt.md` is kept unchanged as the
+  authoritative specification and can be selected with
+  `DENDRO_DOMAIN_PROMPT_PATH=prompts/domain/system-prompt.md` and
+  `DENDRO_PROMPT_MANIFEST_PATH=prompts/versions.uk.yaml`. The domain prompt hash in execution
+  traces changes accordingly.
+
+### Changed
+
 - Batch reports distinguish unreported token usage from a measured zero, include measured
   usage from failed cases, expose per-counter case coverage, and correctly average the two
   middle durations for an even-sized batch.

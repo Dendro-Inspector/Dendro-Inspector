@@ -16,7 +16,12 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
-from dendro_inspector.config import AppConfig, PromptConfig, load_config
+from dendro_inspector.config import (
+    DEFAULT_DOMAIN_PROMPT_PATH,
+    AppConfig,
+    PromptConfig,
+    load_config,
+)
 from dendro_inspector.prompts.library import (
     DETERMINISTIC_POLICY_REVISION,
     PLACEHOLDER_MARKER,
@@ -137,7 +142,7 @@ class TestMetadata:
         assert metadata.version == "user-managed"
         assert len(metadata.sha256) == 64
         assert metadata.bytes > 0
-        assert metadata.path.endswith("system-prompt.md")
+        assert metadata.path.endswith("system-prompt.en.md")
         assert metadata.manifest_schema_version == "1"
         assert metadata.policy_revision == DETERMINISTIC_POLICY_REVISION
         assert metadata.node_prompt_revision == "0.3.0"
@@ -176,7 +181,7 @@ class TestPromptPolicyManifest:
 
     def test_domain_prompt_tampering_fails_closed(self, repo_root, tmp_path):
         _copy_prompt_tree(repo_root, tmp_path)
-        path = tmp_path / "prompts" / "domain" / "system-prompt.md"
+        path = tmp_path / DEFAULT_DOMAIN_PROMPT_PATH
         path.write_bytes(path.read_bytes() + b"\ntampered\n")
 
         with pytest.raises(PromptPolicyError, match="Domain prompt hash mismatch"):
@@ -286,7 +291,7 @@ class TestPromptPolicyManifest:
         _copy_prompt_tree(repo_root, tmp_path)
         library = PromptLibrary(PromptConfig(), root=tmp_path)
         original = library.validate_policy().domain.text
-        path = tmp_path / "prompts" / "domain" / "system-prompt.md"
+        path = tmp_path / DEFAULT_DOMAIN_PROMPT_PATH
         path.write_text("tampered after validation", encoding="utf-8")
 
         composed = library.compose("planner")
@@ -301,7 +306,7 @@ class TestPromptPolicyManifest:
     def test_re_sealing_is_the_documented_way_back_from_a_hash_mismatch(self, repo_root, tmp_path):
         """C1: replacing the domain prompt at its own default path must be recoverable."""
         _copy_prompt_tree(repo_root, tmp_path)
-        path = tmp_path / "prompts" / "domain" / "system-prompt.md"
+        path = tmp_path / DEFAULT_DOMAIN_PROMPT_PATH
         path.write_bytes(path.read_bytes() + b"\nowner edit\n")
         with pytest.raises(PromptPolicyError, match="Domain prompt hash mismatch"):
             PromptLibrary(PromptConfig(), root=tmp_path).validate_policy()
@@ -314,7 +319,7 @@ class TestPromptPolicyManifest:
         self, repo_root, tmp_path, monkeypatch
     ):
         _copy_prompt_tree(repo_root, tmp_path)
-        path = tmp_path / "prompts" / "domain" / "system-prompt.md"
+        path = tmp_path / DEFAULT_DOMAIN_PROMPT_PATH
         path.write_bytes(path.read_bytes() + b"\ntampered\n")
         provider_construction: list[bool] = []
 
@@ -346,7 +351,7 @@ class TestPromptSeal:
         _copy_prompt_tree(repo_root, tmp_path)
         manifest_path = tmp_path / "prompts" / "versions.yaml"
         before = manifest_path.read_bytes()
-        prompt = tmp_path / "prompts" / "domain" / "system-prompt.md"
+        prompt = tmp_path / DEFAULT_DOMAIN_PROMPT_PATH
         # Derived, not pinned: this test is about the old -> new transition, so hard-coding
         # the shipped prompt's hash here only makes every future prompt edit fail twice.
         original = hashlib.sha256(prompt.read_bytes()).hexdigest()
@@ -362,7 +367,7 @@ class TestPromptSeal:
 
     def test_writing_reseals_the_bundle_and_is_idempotent(self, repo_root, tmp_path):
         _copy_prompt_tree(repo_root, tmp_path)
-        prompt = tmp_path / "prompts" / "domain" / "system-prompt.md"
+        prompt = tmp_path / DEFAULT_DOMAIN_PROMPT_PATH
         prompt.write_bytes(prompt.read_bytes() + b"\nowner edit\n")
 
         metadata = apply_seal(
@@ -375,7 +380,7 @@ class TestPromptSeal:
 
     def test_re_sealing_never_rewrites_schema_version_or_policy_revision(self, repo_root, tmp_path):
         _copy_prompt_tree(repo_root, tmp_path)
-        prompt = tmp_path / "prompts" / "domain" / "system-prompt.md"
+        prompt = tmp_path / DEFAULT_DOMAIN_PROMPT_PATH
         prompt.write_bytes(prompt.read_bytes() + b"\nowner edit\n")
 
         apply_seal(plan_seal(PromptConfig(), root=tmp_path), PromptConfig(), root=tmp_path)
@@ -600,3 +605,37 @@ def test_section_14_annotations_are_additive_only(repo_root: Path):
             continue
         assert line.startswith("    → "), f"annotation was merged into prose: {line!r}"
         assert line.strip().startswith("→"), f"annotation not on its own line: {line!r}"
+
+
+class TestEnglishTranslation:
+    """The active domain prompt is the owner-authorised English port of the original.
+
+    ``system-prompt.md`` (Ukrainian) is kept unchanged as the authoritative specification
+    that knowledge cards are derived from, and can still be selected with its own manifest.
+    The evidence tokens the English prompt names must be the original's, line for line, so
+    the two files cannot drift on what the knowledge cards are derived from.
+    """
+
+    UK_PROMPT = Path("prompts/domain/system-prompt.md")
+    UK_MANIFEST = Path("prompts/versions.uk.yaml")
+
+    def test_english_is_the_default_prompt(self, repo_root):
+        metadata = PromptLibrary(PromptConfig(), root=repo_root).metadata()
+        assert metadata.path.endswith("system-prompt.en.md")
+        assert metadata.compatibility_status.value == "compatible"
+
+    def test_ukrainian_original_still_validates_with_its_own_manifest(self, repo_root):
+        config = PromptConfig(domain_prompt_path=self.UK_PROMPT, manifest_path=self.UK_MANIFEST)
+        metadata = PromptLibrary(config, root=repo_root).metadata()
+        assert metadata.path.endswith("system-prompt.md")
+        assert metadata.compatibility_status.value == "compatible"
+
+    def test_evidence_tokens_match_the_original_line_for_line(self, repo_root):
+        def tokens(path: Path) -> list[tuple[int, str]]:
+            lines = path.read_text(encoding="utf-8").splitlines()
+            return [(n, line) for n, line in enumerate(lines) if line.lstrip().startswith("→")]
+
+        original = tokens(repo_root / self.UK_PROMPT)
+        english = tokens(repo_root / DEFAULT_DOMAIN_PROMPT_PATH)
+        assert original
+        assert english == original
