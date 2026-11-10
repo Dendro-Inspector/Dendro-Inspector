@@ -1166,3 +1166,162 @@ def test_a_bark_only_candidate_without_the_exception_keeps_the_restraint(
     assert "cannot confirm one" in finding.summary
     assert finding.severity is Severity.MAJOR
     assert decision.confidence_band != "95–100/100"
+
+
+# --- Section 6 "no serious alternatives": white poplar left standing -----------------------
+#
+# Five of the eight archived birch decisions at 95-100 named populus as their nearest
+# alternative with nothing recorded against it. The Betula card declares populus_alba its
+# common confusion and FAILURE 1 names it outright, so a top band beside it overstated what
+# the evidence had settled. The claim keeps its confidence; only the 95-100 band is withheld.
+
+
+def _birch_with_alternative(simple_case, knowledge, alternative: str, evidence=None):
+    evidence = evidence or _bark_only_packet()
+    # Both readings can describe different heights of one trunk. The poplar
+    # hypothesis needs its own admitted support, not the birch-only pattern.
+    poplar_bark = Observation(
+        observation_id="obs-4",
+        feature="bark.pattern",
+        value="pale_upper_dark_rough_base",
+        subject_id="main_trunk",
+        source=ObservationSource.IMAGE,
+        image_id="img-1",
+        reliability=Reliability.HIGH,
+    )
+    evidence = evidence.model_copy(update={"observations": (*evidence.observations, poplar_bark)})
+    proposed = CandidateSet(
+        subject_id="main_trunk",
+        candidates=(
+            Candidate(
+                taxon="betula",
+                resolution=Resolution.GENUS,
+                supporting_evidence_ids=("obs-1", "obs-2", "obs-3"),
+                score=SupportStrength.MODERATE,
+                rank=1,
+            ),
+            Candidate(
+                taxon=alternative,
+                resolution=Resolution.GENUS,
+                supporting_evidence_ids=("obs-4",) if alternative == "populus_alba" else ("obs-3",),
+                score=SupportStrength.WEAK,
+                rank=2,
+            ),
+        ),
+    )
+    validated = validate_candidate_set(proposed, evidence, knowledge)
+    assert {candidate.taxon for candidate in validated.candidates} == {"betula", alternative}
+    state = GraphState(case=simple_case, evidence=evidence, candidate_sets=(validated,))
+    return state, validated
+
+
+def test_a_declared_look_alike_left_standing_withholds_the_top_band(
+    simple_case, node_context, knowledge
+):
+    from dendro_inspector.nodes.final_decision import TOP_BAND_WITHHELD_PHRASE
+
+    state, validated = _birch_with_alternative(simple_case, knowledge, "populus_alba")
+    decision = decide_subject(state, node_context, validated)
+
+    assert decision.selected_taxon == "betula"
+    assert decision.confidence is Confidence.HIGH
+    assert decision.nearest_alternative == "populus"
+    assert decision.confidence_band == "85–94/100"
+    assert any(q.startswith(TOP_BAND_WITHHELD_PHRASE) for q in decision.unresolved_questions)
+
+
+def test_a_look_alike_the_evidence_rules_out_does_not_withhold_it(
+    simple_case, node_context, knowledge
+):
+    packet = _bark_only_packet()
+    opposite = Observation(
+        observation_id="obs-9",
+        feature="leaf.arrangement",
+        value="opposite",
+        subject_id="main_trunk",
+        source=ObservationSource.IMAGE,
+        image_id="img-1",
+        visibility=Visibility.CLEAR,
+        reliability=Reliability.HIGH,
+        attachment=AttachmentStatus.CONFIRMED_ATTACHED,
+    )
+    packet = packet.model_copy(update={"observations": (*packet.observations, opposite)})
+    state, validated = _birch_with_alternative(simple_case, knowledge, "populus_alba", packet)
+    decision = decide_subject(state, node_context, validated)
+
+    assert decision.selected_taxon == "betula"
+    assert decision.confidence_band == "95–100/100"
+
+
+def test_an_alternative_the_card_does_not_declare_leaves_the_band_alone(
+    simple_case, node_context, knowledge
+):
+    state, validated = _birch_with_alternative(simple_case, knowledge, "prunus")
+    decision = decide_subject(state, node_context, validated)
+
+    assert decision.selected_taxon == "betula"
+    assert decision.confidence_band == "95–100/100"
+
+
+@pytest.mark.parametrize(
+    ("reliability", "attachment", "source"),
+    [
+        (Reliability.LOW, AttachmentStatus.CONFIRMED_ATTACHED, ObservationSource.IMAGE),
+        (Reliability.HIGH, AttachmentStatus.UNKNOWN, ObservationSource.IMAGE),
+        (Reliability.HIGH, AttachmentStatus.CONFIRMED_ATTACHED, ObservationSource.USER),
+    ],
+)
+def test_untrusted_contradiction_cannot_restore_the_top_band(
+    simple_case, node_context, knowledge, reliability, attachment, source
+):
+    packet = _bark_only_packet()
+    opposite = Observation(
+        observation_id="obs-9",
+        feature="leaf.arrangement",
+        value="opposite",
+        subject_id="main_trunk",
+        source=source,
+        image_id="img-1" if source is ObservationSource.IMAGE else None,
+        reliability=reliability,
+        attachment=attachment,
+    )
+    packet = packet.model_copy(update={"observations": (*packet.observations, opposite)})
+    state, validated = _birch_with_alternative(simple_case, knowledge, "populus_alba", packet)
+    decision = decide_subject(state, node_context, validated)
+    assert decision.selected_taxon == "betula"
+    assert decision.confidence is Confidence.HIGH
+    assert decision.confidence_band == "85–94/100"
+
+
+def test_lower_ranked_declared_confusion_still_withholds_the_top_band(
+    simple_case, node_context, knowledge
+):
+    state, validated = _birch_with_alternative(simple_case, knowledge, "populus_alba")
+    prunus = Candidate(
+        taxon="prunus",
+        resolution=Resolution.GENUS,
+        supporting_evidence_ids=("obs-3",),
+        score=SupportStrength.WEAK,
+        rank=2,
+    )
+    candidates = validated.model_copy(
+        update={
+            "candidates": (
+                validated.ordered[0],
+                prunus,
+                validated.ordered[1].model_copy(update={"rank": 3}),
+            )
+        }
+    )
+    candidates = validate_candidate_set(candidates, state.evidence, knowledge)
+    assert len(candidates.candidates) == 3
+    decision = decide_subject(state.evolve(candidate_sets=(candidates,)), node_context, candidates)
+    assert decision.nearest_alternative == "prunus"
+    assert decision.confidence_band == "85–94/100"
+
+
+def test_birch_without_an_admitted_look_alike_keeps_the_top_band(
+    simple_case, node_context, knowledge
+):
+    state, validated = _betula_state(simple_case, _bark_only_packet(), knowledge)
+    assert decide_subject(state, node_context, validated).confidence_band == "95–100/100"

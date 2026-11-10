@@ -12,6 +12,13 @@ get entries.
 
 ### Fixed
 
+- A card-declared 95-100 confidence exception now uses the 85-94 band while an admitted
+  look-alike from that card's `common_confusions` remains unresolved, even below the nearest
+  alternative. Trusted, subject-scoped evidence must rule the look-alike out before the top
+  band returns; weak readings and uncertain attachment cannot do so. This implements the
+  domain prompt's section 6 requirement for no serious alternatives and its white-poplar
+  check for birch-like bark. The selected taxon and confidence category stay the same.
+
 - A white-papery-bark birch identified at 95-100/100 through the card-declared confidence
   exception is no longer delivered with two sentences denying it. The cautious voice ("I would
   not claim 95+ here") was chosen for every bark-tier answer, and the bark-only finding said

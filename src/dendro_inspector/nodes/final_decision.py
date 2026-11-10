@@ -747,6 +747,56 @@ def _reaches_the_top_band(
     return hit is not None and hit.exception.ceiling is ExceptionCeiling.VERY_HIGH
 
 
+#: Prefix of the unresolved question that explains a withheld top band.
+TOP_BAND_WITHHELD_PHRASE = "95-100 withheld"
+
+
+def _declared_confusion_left_standing(
+    ctx: NodeContext,
+    card: TaxonCard | None,
+    contenders: tuple[Candidate, ...],
+    evidence: EvidencePacket,
+    subject_id: str,
+    resolution: Resolution,
+) -> str | None:
+    """A card-declared look-alike that survives among this subject's alternatives.
+
+    Section 6 reserves 95-100 for "no serious alternatives", and FAILURE 1 names the one a
+    birch-like bark must be checked against: white poplar. A card that declares a common
+    confusion has said which alternative is serious. When that taxon is still a supported
+    alternative at the claimed level and trusted evidence has not ruled it out, the
+    confusion was never resolved, and the top band would claim it was. The claim keeps its
+    confidence; only the 95-100 rendering is withheld. Returns the alternative's id, or
+    ``None`` when the band may stand.
+    """
+    if card is None:
+        return None
+    alternatives = {
+        identity.taxon_id
+        for contender in contenders
+        if (identity := resolve_identity(ctx.knowledge.try_taxon(contender.taxon), resolution))
+        is not None
+        and identity.resolution is resolution
+    }
+    decisive_evidence = evidence.model_copy(
+        update={"observations": decisive_observations_for(evidence, subject_id)}
+    )
+    for confusion in card.common_confusions:
+        confusion_card = ctx.knowledge.try_taxon(confusion)
+        if confusion_card is None:
+            continue
+        identity = confusion_card.identity_at_or_broader(resolution)
+        if identity is None or identity.taxon_id not in alternatives:
+            continue
+        match = match_card(confusion_card, decisive_evidence, subject_id)
+        # Context can suggest a contradiction; only trusted evidence may dismiss
+        # an alternative and thereby restore the most confident display band.
+        if match.has_contradiction or match.contradicts_own_card:
+            continue
+        return identity.taxon_id
+    return None
+
+
 def resolve_confidence(
     state: GraphState,
     subject_id: str,
@@ -1227,6 +1277,24 @@ def decide_subject_base(
     )
     keep(derivation.model_copy(update={"confidence_steps": confidence_steps}))
     verdict = rule_on_user_claim(state, ctx, subject_id, reranked, evidence, selected.taxon_id)
+    alternative = _nearest_alternative(ctx, reranked.ordered[1:], resolution, selected)
+    unresolved = _unresolved(state, evidence, subject_id, leader, competing)
+    top_band = _reaches_the_top_band(card, evidence, subject_id, resolution)
+    standing = (
+        _declared_confusion_left_standing(
+            ctx, card, reranked.ordered[1:], evidence, subject_id, resolution
+        )
+        if top_band and confidence is Confidence.HIGH
+        else None
+    )
+    if standing is not None:
+        top_band = False
+        unresolved = (
+            *unresolved,
+            f"{TOP_BAND_WITHHELD_PHRASE}: {standing} is this card's declared look-alike and "
+            "trusted evidence has not ruled it out (section 6 reserves 95-100 for no serious "
+            "alternatives). Photograph the features that separate these candidates.",
+        )
     return FinalDecision(
         subject_id=subject_id,
         selected_taxon=selected.taxon_id,
@@ -1246,17 +1314,13 @@ def decide_subject_base(
         strongest_contradiction=_contradiction_summary(
             state, ctx, subject_id, evidence, selected, leader.taxon
         ),
-        nearest_alternative=_nearest_alternative(ctx, reranked.ordered[1:], resolution, selected),
-        unresolved_questions=_unresolved(state, evidence, subject_id, leader, competing),
+        nearest_alternative=alternative,
+        unresolved_questions=unresolved,
         best_next_photo=_next_photo(state, ctx, evidence, reranked, leader, tier, confidence),
         arbiter_used=state.arbiter_used,
         user_claim_verdict=verdict,
         evidence_tier=int(tier),
-        confidence_band=confidence_band(
-            confidence,
-            tier,
-            decisive_reading=_reaches_the_top_band(card, evidence, subject_id, resolution),
-        ),
+        confidence_band=confidence_band(confidence, tier, decisive_reading=top_band),
         reference_status=(
             local_reference_status(((selected.provenance or card.provenance).review_state,))
             if card is not None
