@@ -41,6 +41,13 @@ def build_provider(
                 model=config.model,
                 api_key_env=config.api_key_env or "ANTHROPIC_API_KEY",
             )
+        case Adapter.ANTHROPIC_SDK:
+            from dendro_inspector.providers.anthropic_sdk_adapter import AnthropicSDKProvider
+
+            return AnthropicSDKProvider(
+                model=config.model,
+                api_key_env=config.api_key_env or "ANTHROPIC_SDK_API_KEY",
+            )
         case Adapter.OLLAMA:
             from dendro_inspector.providers.ollama_adapter import OllamaProvider
 
