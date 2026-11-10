@@ -211,7 +211,10 @@ class Observation(Contract):
     source: ObservationSource
     visibility: Visibility = Visibility.CLEAR
     reliability: Reliability = Reliability.MEDIUM
-    image_id: Identifier | None = None
+    image_id: Identifier | None = Field(
+        default=None,
+        description="Required when `source` is `image`: the id of the photograph it was read from.",
+    )
     region: str | None = Field(default=None, max_length=120)
     attachment: AttachmentStatus | None = Field(
         default=None,
@@ -306,10 +309,26 @@ class ImageLimitation(Contract):
     """A property of the photograph that caps what can be concluded from it."""
 
     image_id: Identifier
-    lighting: ValueToken | None = None
-    white_balance: ValueToken | None = None
+    lighting: ValueToken | None = Field(
+        default=None,
+        description=(
+            "One token for the light, e.g. `even_daylight`, `overcast_flat`, `even_shade`, "
+            "`dappled`, `backlit`, `late_afternoon_warm`. Not a sentence: describe effects "
+            "in `notes`."
+        ),
+    )
+    white_balance: ValueToken | None = Field(
+        default=None,
+        description=(
+            "One token for colour rendering, e.g. `neutral`, `uncorrected`, `warm_cast`, "
+            "`cool_cast`, `green_cast`. Not a sentence: what it does to colour readings "
+            "goes in `notes`."
+        ),
+    )
     scale: ScaleQuality = ScaleQuality.ABSENT
-    notes: ShortText | None = None
+    notes: ShortText | None = Field(
+        default=None, description="Free text for anything the tokens above cannot say."
+    )
 
 
 #: Values that report a failure to read a feature rather than a reading of it. An extractor
@@ -388,7 +407,14 @@ class EvidencePacket(Contract):
         description="Features judged genuinely absent — NOT merely unresolvable in the frame.",
     )
     image_limitations: tuple[ImageLimitation, ...] = ()
-    context_limitations: tuple[ValueToken, ...] = ()
+    context_limitations: tuple[ValueToken, ...] = Field(
+        default=(),
+        description=(
+            "Tokens, one per limitation, e.g. `location_unknown`, `season_unknown`, "
+            "`crown_not_visible`, `no_scale_reference`, `foliage_not_traceable_to_subject`, "
+            "`no_fruit_or_seed_visible`. Never sentences."
+        ),
+    )
     possible_multiple_taxa: bool = False
     instruction_like_content_detected: bool = False
 

@@ -48,7 +48,12 @@ from dendro_inspector.schemas.candidates import (
     CandidateSet,
     SupportStrength,
 )
-from dendro_inspector.schemas.decisions import DecisionStatus, FinalDecision, ResponseFormat
+from dendro_inspector.schemas.decisions import (
+    DecisionStatus,
+    FinalDecision,
+    ResponseFormat,
+    ToneMode,
+)
 from dendro_inspector.schemas.evidence import (
     AttachmentStatus,
     EvidencePacket,
@@ -64,7 +69,13 @@ from dendro_inspector.schemas.evidence import (
     Visibility,
 )
 from dendro_inspector.schemas.input import DeclaredObjectType
-from dendro_inspector.schemas.reviews import Reviewer, ReviewResult, ReviewStatus, ReviewSynthesis
+from dendro_inspector.schemas.reviews import (
+    Reviewer,
+    ReviewResult,
+    ReviewStatus,
+    ReviewSynthesis,
+    Severity,
+)
 from dendro_inspector.schemas.taxon import Confidence, Resolution
 
 
@@ -1077,3 +1088,81 @@ def test_the_case_a_birch_answer_is_no_longer_pinned_at_the_floor(
     ]
     assert decision.best_next_photo is not None
     assert decision.best_next_photo.target == "leaf_upper_macro"
+
+
+# --- Golden-100 Sonnet 5.5 run, 2026-11-10: birch at 95-100 delivered as "not 95+" -------------
+#
+# Eight decisions over six photographs (golden-001, 007, 018, 019, 022, 031) were Betula at
+# genus, 95-100/100, evidence tier 3, lifted by the card-declared white-papery-bark exception.
+# Every one was policy-compliant and every one was delivered with two sentences denying it:
+# the cautious opener ("I would not claim 95+ here") and the bark-only finding ("supports a
+# candidate but cannot confirm one"). Both were deterministic text that ignored the exception.
+
+
+def _delivered_birch_answer(simple_case, node_context, knowledge):
+    """Decision, composer and tone layer over the archived birch shape. No reviewer calls."""
+    import dendro_inspector.nodes.response_composer as response_composer
+    import dendro_inspector.nodes.tone_layer as tone_layer
+
+    evidence = _bark_only_packet()
+    state, validated = _betula_state(simple_case, evidence, knowledge)
+    decision = decide_subject(state, node_context, validated)
+    state = state.evolve(decisions=(decision,))
+    state = asyncio.run(response_composer.run(state, node_context))
+    state = asyncio.run(tone_layer.run(state, node_context))
+    assert state.final_response is not None
+    return decision, state.final_response
+
+
+def _bark_only_finding(simple_case, node_context, knowledge, evidence):
+    import dendro_inspector.nodes.confusion_reviewer as confusion_reviewer
+
+    state, validated = _betula_state(simple_case, evidence, knowledge)
+    [finding] = confusion_reviewer.bark_only_findings(state, node_context)
+    return finding, decide_subject(state, node_context, validated)
+
+
+def test_a_diagnostic_birch_is_not_voiced_as_declining_its_own_band(
+    simple_case, node_context, knowledge
+):
+    decision, response = _delivered_birch_answer(simple_case, node_context, knowledge)
+
+    assert decision.confidence is Confidence.HIGH
+    assert decision.confidence_band == "95–100/100"
+    assert "not claim 95+" not in response.human_readable
+    assert response.tone_mode is not ToneMode.CAUTIOUS
+    assert response.consistency_issues == ()
+
+
+def test_the_bark_only_finding_states_the_exception_instead_of_denying_it(
+    simple_case, node_context, knowledge
+):
+    finding, decision = _bark_only_finding(
+        simple_case, node_context, knowledge, _bark_only_packet()
+    )
+
+    assert decision.confidence_band == "95–100/100"
+    assert "cannot confirm one" not in finding.summary
+    assert "bark.pattern = white_papery_with_black_marks" in finding.summary
+    assert "genus" in finding.summary
+    assert finding.severity is Severity.MINOR
+
+
+def test_a_bark_only_candidate_without_the_exception_keeps_the_restraint(
+    simple_case, node_context, knowledge
+):
+    """The exception narrows the text only where it narrows the confidence."""
+    evidence = _bark_only_packet()
+    uncertain = tuple(
+        observation.model_copy(update={"reliability": Reliability.LOW})
+        if observation.feature == "bark.pattern"
+        else observation
+        for observation in evidence.observations
+    )
+    evidence = evidence.model_copy(update={"observations": uncertain})
+
+    finding, decision = _bark_only_finding(simple_case, node_context, knowledge, evidence)
+
+    assert "cannot confirm one" in finding.summary
+    assert finding.severity is Severity.MAJOR
+    assert decision.confidence_band != "95–100/100"

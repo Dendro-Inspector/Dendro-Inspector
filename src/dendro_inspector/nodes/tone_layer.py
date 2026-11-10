@@ -25,6 +25,7 @@ from __future__ import annotations
 
 from dendro_inspector.graph.executor import NodeContext
 from dendro_inspector.graph.state import GraphState
+from dendro_inspector.nodes.consistency import explanation_conflicts
 from dendro_inspector.prompts.library import PersonalityProfile
 from dendro_inspector.schemas.decisions import (
     NO_CLAIM_STATUSES,
@@ -63,7 +64,10 @@ def apply_tone(response: CaseResponse, profile: PersonalityProfile) -> CaseRespo
 
     toned = response.model_copy(update={"human_readable": "\n\n".join(parts), "tone_applied": True})
     assert_tone_preserved_decision(response, toned)
-    return toned
+    # Recorded, not raised: a contradiction found here is a defect upstream, and the answer
+    # that exposes it is worth more delivered with its codes than dropped.
+    issues = explanation_conflicts(toned, delivered_mode=mode)
+    return toned.model_copy(update={"consistency_issues": issues}) if issues else toned
 
 
 async def run(state: GraphState, ctx: NodeContext) -> GraphState:

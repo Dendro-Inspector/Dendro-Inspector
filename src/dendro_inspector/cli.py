@@ -24,6 +24,7 @@ from dendro_inspector.config import (
 from dendro_inspector.evaluation.reporting import render_json, render_text
 from dendro_inspector.evaluation.runner import run_suite
 from dendro_inspector.graph.definition import render_mermaid
+from dendro_inspector.graph.executor import partial_trace_of
 from dendro_inspector.knowledge.drafts import DraftCardError, draft_card, write_draft
 from dendro_inspector.knowledge.loader import KnowledgeBase
 from dendro_inspector.knowledge.references import (
@@ -180,6 +181,18 @@ def inspect(
     except (DomainPromptMissingError, PromptPolicyError) as exc:
         typer.secho(str(exc), fg=typer.colors.RED, err=True)
         raise typer.Exit(code=3) from exc
+    except Exception as exc:
+        # No answer, but in JSON mode the caller still gets the run's record so far: the
+        # nodes that ran and the validation errors that ended it. Stderr and the exit code
+        # are unchanged, so nothing that reads them sees a different failure.
+        partial = partial_trace_of(exc)
+        if as_json and partial is not None:
+            failure = {
+                "error": {"type": type(exc).__name__, "message": str(exc)[:4000]},
+                "trace": partial.model_dump(mode="json"),
+            }
+            typer.echo(json.dumps(failure, indent=2, ensure_ascii=False))
+        raise
 
     response = result.response
     if response is None:

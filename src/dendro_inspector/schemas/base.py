@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from pydantic import BaseModel, ConfigDict, StringConstraints
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
 # ``bark.flake_geometry``, ``needles.fascicles`` — a namespaced, machine-comparable feature.
 FEATURE_PATH_PATTERN = r"^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$"
@@ -27,8 +27,30 @@ VALUE_TOKEN_PATTERN = r"^[a-z0-9][a-z0-9_.\-]*$"
 # ``obs_1``, ``foreground_log_1``, ``pinus`` — a stable identifier.
 IDENTIFIER_PATTERN = r"^[a-z0-9][a-z0-9_\-]*$"
 
-FeaturePath = Annotated[str, StringConstraints(pattern=FEATURE_PATH_PATTERN, max_length=120)]
-ValueToken = Annotated[str, StringConstraints(pattern=VALUE_TOKEN_PATTERN, max_length=120)]
+#: The format rule is also stated as a description, because a description reaches every
+#: provider's schema while ``pattern`` does not: some structured-output dialects drop regex
+#: constraints, and a model that never sees the rule writes the sentence it was thinking.
+#: Pydantic still enforces the pattern on the response either way.
+FEATURE_PATH_RULE = (
+    "A dotted lowercase feature path, e.g. `bark.peeling`, `leaf.underside`. Letters, "
+    "digits and `_` in each part; no spaces, no sentences."
+)
+VALUE_TOKEN_RULE = (
+    "One lowercase machine token: letters, digits, `_`, `.` or `-`, starting with a letter "
+    "or digit, e.g. `location_unknown`, `thin_layers`, `5-7`. Never a phrase or a sentence: "
+    "join words with `_`, and put any description in a free-text `notes` field instead."
+)
+
+FeaturePath = Annotated[
+    str,
+    StringConstraints(pattern=FEATURE_PATH_PATTERN, max_length=120),
+    Field(description=FEATURE_PATH_RULE),
+]
+ValueToken = Annotated[
+    str,
+    StringConstraints(pattern=VALUE_TOKEN_PATTERN, max_length=120),
+    Field(description=VALUE_TOKEN_RULE),
+]
 Identifier = Annotated[str, StringConstraints(pattern=IDENTIFIER_PATTERN, max_length=120)]
 
 #: A model-authored *pointer* at evidence, deliberately not an :data:`Identifier`.

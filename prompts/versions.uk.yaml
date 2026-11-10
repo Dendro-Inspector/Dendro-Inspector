@@ -22,13 +22,13 @@ node_prompts:
     - file: botanical-reviewer.md
       sha256: 5f96171e2965e54f407c7fc1fb0e65a1513dc8d767478986ad023c70814d1458
     - file: candidate-generator.md
-      sha256: 00c1e5a044258ebfe000ab88bcd3c4cee5ad805c9a901acb7edea5a128b9d010
+      sha256: 8f23e7f6c32ab728a40c39af019153707f5c83f85340eda525e2f4c54cbb8ce3
     - file: confidence-reviewer.md
       sha256: c8ab333475aeb23e3f9c5a8d966a6ea8cb851d91695bcee8dfe50adaaa6328bb
     - file: confusion-reviewer.md
       sha256: da8c4d9d44e724f05822ee36b9719d1d42c3a5db3dff1f035a59de884096d026
     - file: evidence-extractor.md
-      sha256: b711b0221544716c158824e7cd443b892d808c08de7834a25f9ed03e102a6131
+      sha256: b3bc06394e466f640930549f6b934c9b4500ed730c749c0398aae302d0c38b5d
     - file: planner.md
       sha256: c019496ccbd4d81124de4a5ad55d264d6e5ed294cab87f66f4b7f5fa84e9cf50
     - file: response-composer.md

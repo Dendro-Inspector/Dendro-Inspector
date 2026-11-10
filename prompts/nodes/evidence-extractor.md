@@ -64,8 +64,14 @@ Use these families — the system's evidence hierarchy is keyed on them:
 
 ### Limitations
 
-- `image_limitations`: per image, `lighting`, `white_balance`, and `scale` as
-  `exact` | `approximate` | `absent`.
+- `image_limitations`: per image. `lighting` and `white_balance` are each **one lowercase
+  token**, e.g. `overcast_flat`, `dappled`, `backlit`; `neutral`, `uncorrected`,
+  `green_cast`. `scale` is `exact` | `approximate` | `absent`. What the light does to a
+  reading ("green cast, so bark colour is unreliable") goes in that image's `notes`, never
+  in a token field.
+- `context_limitations`: tokens, one per limitation, e.g. `location_unknown`,
+  `season_unknown`, `crown_not_visible`, `foliage_not_traceable_to_subject`. Never
+  sentences.
 - `absent_features`: only features you judge **genuinely absent**.
 - `possible_multiple_taxa`: true when independent identity roots may mix species. Components
   or different bark zones of one continuous tree do not make this true.

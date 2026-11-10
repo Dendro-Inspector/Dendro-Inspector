@@ -141,14 +141,22 @@ async def run_graph(
     deadline = ctx.config.graph.deadline_seconds
     scope = asyncio.timeout(deadline)
     try:
-        async with scope:
-            state = await _walk(case, ctx, registry)
-    except TimeoutError as exc:
-        # Only the run's own deadline becomes a graph failure; a node's TimeoutError is its own.
-        if not scope.expired():
-            raise
-        msg = f"inspection exceeded deadline_seconds={deadline}; no partial answer is returned"
-        raise GraphExecutionError(msg) from exc
+        try:
+            async with scope:
+                state = await _walk(case, ctx, registry)
+        except TimeoutError as exc:
+            # Only the run's own deadline becomes a graph failure; a node's TimeoutError is
+            # its own.
+            if not scope.expired():
+                raise
+            msg = f"inspection exceeded deadline_seconds={deadline}; no partial answer is returned"
+            raise GraphExecutionError(msg) from exc
+    except Exception as exc:
+        # No answer is returned, but the record of how far the run got is: which nodes ran,
+        # what each call cost and which fields failed validation. Without it a failed case
+        # leaves only a stderr tail, and the cause has to be re-derived from a traceback.
+        _attach_partial_trace(exc, ctx)
+        raise
 
     decision = state.decisions[0] if state.decisions else None
     trace = ctx.recorder.build(
@@ -172,6 +180,26 @@ async def run_graph(
         },
     )
     return GraphRunResult(state=state, trace=trace)
+
+
+#: Where a failed run's partial trace rides on the exception it raised.
+_PARTIAL_TRACE_ATTR = "dendro_partial_trace"
+
+
+def partial_trace_of(exc: BaseException) -> RunTrace | None:
+    """The trace a failed run had recorded when it failed, if one was attached."""
+    trace = getattr(exc, _PARTIAL_TRACE_ATTR, None)
+    return trace if isinstance(trace, RunTrace) else None
+
+
+def _attach_partial_trace(exc: BaseException, ctx: NodeContext) -> None:
+    if partial_trace_of(exc) is not None:
+        return
+    try:
+        trace = ctx.recorder.build(concurrent_nodes=tuple(node.value for node in REVIEW_FANOUT))
+        setattr(exc, _PARTIAL_TRACE_ATTR, trace)
+    except Exception:
+        get_logger("graph").exception("partial_trace_failed")
 
 
 async def _walk(

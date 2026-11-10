@@ -10,6 +10,44 @@ get entries.
 
 ## [Unreleased]
 
+### Fixed
+
+- A white-papery-bark birch identified at 95-100/100 through the card-declared confidence
+  exception is no longer delivered with two sentences denying it. The cautious voice ("I would
+  not claim 95+ here") was chosen for every bark-tier answer, and the bark-only finding said
+  bark "supports a candidate but cannot confirm one" even when the exception had lifted the
+  ceiling. All eight high-confidence decisions in the Golden-100 Sonnet 5.5 run carried both.
+  The voice now follows the band, and the finding states the exception and its resolution
+  limit instead. Bark-only answers without the exception are unchanged.
+- Structured-output failures where a model wrote prose into token fields (`lighting`,
+  `white_balance`, `context_limitations`, `missing_decisive_features`; golden-003, 046, 048).
+  The token rule now travels as a schema description, which survives structured-output
+  dialects that drop `pattern`; those fields document example tokens; the extractor and
+  candidate prompts say where prose belongs; and the repair retry names each failing field,
+  the value it got, the rule in words and whether the error is formatting or semantic. The
+  token pattern itself is unchanged: the archived prose is still rejected.
+- A structured-output call whose remaining errors are all formatting errors gets one extra
+  targeted repair attempt (three instead of two by default). Exhausting the call fails the
+  whole case, and the job then re-runs all of it: golden-003 spent three full case attempts
+  dying on the same token. Semantic errors, refusals and truncation keep the configured budget.
+
+### Added
+
+- `CaseResponse.consistency_issues`: machine-readable codes for every way the rendered
+  answer disagrees with its own decisions (mismatched resolution, confidence or band, a
+  verdict missing its band, a restraint voice framing a 95-100 claim). Empty on a consistent
+  answer; checked on every run by the tone layer.
+- Evidence provenance in the run trace: `evidence_observations` (subject, reading, trust and
+  tier per observation; tokens only) and `candidate_validations` (support admitted per
+  candidate, and refused support with its machine-readable reason, previously only a log
+  line). Provider call records keep `validation_errors` (field path and error type per
+  failed attempt).
+- A failed run in `dendro inspect --json` prints `{"error", "trace"}` with the partial trace,
+  and batch case records keep it as `failure`; a failed case used to keep a stderr tail only.
+- `scripts/eval/audit_archive.py`: offline audit of archived run results (completion and
+  failure classes, answer/decision contradictions, high-confidence policy flags,
+  resolution/abstention distributions, latency, tokens, estimated cost). No model calls.
+
 ### Added
 
 - A direct Claude API adapter, `anthropic-sdk` (`DENDRO_<ROLE>_PROVIDER=anthropic-sdk`),

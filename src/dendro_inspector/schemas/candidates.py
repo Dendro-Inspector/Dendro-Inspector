@@ -53,7 +53,14 @@ class Candidate(Contract):
     resolution: Resolution
     supporting_evidence_ids: tuple[EvidenceRef, ...] = ()
     contradicting_evidence_ids: tuple[EvidenceRef, ...] = ()
-    missing_decisive_features: tuple[ValueToken, ...] = ()
+    missing_decisive_features: tuple[ValueToken, ...] = Field(
+        default=(),
+        description=(
+            "Features that would settle the candidate, as feature paths or card requirement "
+            "tokens, e.g. `leaf.underside`, `bark.peeling`, `acorn.presence`. Name the "
+            "feature only — the photograph to take goes elsewhere, never `bark.peeling macro`."
+        ),
+    )
     score: SupportStrength = SupportStrength.WEAK
     rank: int = Field(ge=1, le=99)
 

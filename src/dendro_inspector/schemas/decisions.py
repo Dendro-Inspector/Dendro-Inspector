@@ -512,6 +512,14 @@ class CaseResponse(Contract):
         ),
     )
     locale: str = Field(default="en", max_length=8)
+    consistency_issues: tuple[str, ...] = Field(
+        default=(),
+        max_length=64,
+        description=(
+            "Machine-readable codes for every way the rendered answer disagrees with its own "
+            "decisions (see nodes.consistency). Empty on a consistent answer."
+        ),
+    )
 
 
 def assert_tone_preserved_decision(
