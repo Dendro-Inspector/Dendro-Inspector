@@ -12,6 +12,14 @@ get entries.
 
 ### Changed
 
+- Firewood material groups with visible, subject-scoped `context.material = split_firewood`
+  now request end grain and bark from one labelled piece instead of foliage. The photo
+  planner follows the existing wood-photo policy; taxonomic thresholds are unchanged.
+- Batch summaries expose all successful subject outcomes in `subject_summary` and preserve
+  per-subject decisions in CSV rows. Legacy first-subject fields remain available. Upload
+  reports no longer require dataset metadata, and projected API exports retain their
+  decisions while unreported usage stays unknown.
+
 - Answers are now in English by default. The `inspect` CLI's `--lang` defaults to `en`, a case
   without a locale is composed in English, and the English domain prompt now states English as
   the default answer language (re-sealed in `prompts/versions.yaml`). Pass `--lang uk` (or
