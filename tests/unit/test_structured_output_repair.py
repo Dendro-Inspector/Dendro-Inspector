@@ -264,3 +264,17 @@ def test_a_semantic_failure_gets_no_extra_attempt():
         _request(provider, recorder)
     [call] = recorder.provider_calls
     assert call.attempts == 2
+
+
+def test_a_dropped_length_limit_is_restated_for_the_model():
+    """The Sonnet gate retried a reviewer in all nine cases: summaries over 400 characters.
+
+    `maxLength` is dropped by the dialect, so the model never saw the limit it was failing.
+    """
+    from dendro_inspector.schemas.reviews import ReviewResult
+
+    schema = to_anthropic_schema(ReviewResult.model_json_schema())
+    assert schema is not None
+    summary = schema["$defs"]["ReviewFinding"]["properties"]["summary"]
+    assert "maxLength" not in summary
+    assert "at most 400 characters" in summary["description"]

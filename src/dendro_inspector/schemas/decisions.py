@@ -90,6 +90,9 @@ ConfidenceStepSource = Literal[
     # trace which card rule lifted it and on what evidence.
     "diagnostic_exception",
     "requirement_cap",
+    # High confidence needs two independent supporting features (domain prompt section 6:
+    # 85-94 is "leaves and bark visible"); a single feature, however clear, caps at medium.
+    "corroboration_cap",
     "reviewer_recommendation",
     "model_finding",
     "deterministic_finding",
@@ -226,13 +229,28 @@ class AuthorityCheckTrace(Contract):
             "outcome."
         ),
     )
+    outcome_stage: Literal["pre_review"] = Field(
+        default="pre_review",
+        description=(
+            "When `actual_outcome` and `counterfactual_outcome` were computed: at the "
+            "attachment gate, before reviewers and the arbiter. Compare them with each other, "
+            "not with the final decision."
+        ),
+    )
     actual_outcome: AuthorityOutcome | None = Field(
         default=None,
-        description="Outcome under evidence exactly as extracted, before the gate acted.",
+        description=(
+            "Outcome under evidence exactly as extracted, before the gate acted. Computed at "
+            "the attachment gate, before review and arbitration (see `outcome_stage`): a "
+            "provisional projection, which the final decision may legitimately differ from."
+        ),
     )
     counterfactual_outcome: AuthorityOutcome | None = Field(
         default=None,
-        description="Outcome under the attachment world the gate did NOT hand to the graph.",
+        description=(
+            "Outcome under the attachment world the gate did NOT hand to the graph, at the "
+            "same pre-review stage as `actual_outcome`."
+        ),
     )
     counterfactual_attachment: AttachmentStatus | None = Field(
         default=None,

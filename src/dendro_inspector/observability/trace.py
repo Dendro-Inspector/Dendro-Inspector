@@ -7,6 +7,7 @@ A recorder accumulates events during a run and freezes them into an immutable
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import time
 from datetime import UTC, datetime
@@ -389,6 +390,10 @@ def _critical_path_ms(events: tuple[NodeEvent, ...], concurrent: frozenset[str])
     return total + round_max if in_round else total
 
 
+#: Build-time stamp of the commit an image was built from, read when git is unavailable.
+CODE_COMMIT_ENV = "DENDRO_CODE_COMMIT_SHA"
+
+
 def _discover_code_revision(root: Path) -> tuple[str | None, bool | None]:
     """Return the repository commit and dirty state without making Git a runtime dependency.
 
@@ -412,13 +417,18 @@ def _discover_code_revision(root: Path) -> tuple[str | None, bool | None]:
         except (OSError, subprocess.SubprocessError):
             return None
 
+    def valid(candidate: str) -> bool:
+        return 40 <= len(candidate) <= 64 and all(c in "0123456789abcdef" for c in candidate)
+
     revision = git("rev-parse", "--verify", "HEAD")
     if revision is None or revision.returncode != 0:
-        return None, None
+        # A container image has no .git. The build stamps the commit it was built from
+        # (DENDRO_CODE_COMMIT_SHA); whether that tree was clean is not known here, so
+        # `dirty` stays unknown rather than being claimed.
+        stamped = os.environ.get(CODE_COMMIT_ENV, "").strip().lower()
+        return (stamped, None) if valid(stamped) else (None, None)
     commit_sha = revision.stdout.strip().lower()
-    if not (40 <= len(commit_sha) <= 64) or any(
-        character not in "0123456789abcdef" for character in commit_sha
-    ):
+    if not valid(commit_sha):
         return None, None
 
     status = git("status", "--porcelain=v1", "--untracked-files=normal")

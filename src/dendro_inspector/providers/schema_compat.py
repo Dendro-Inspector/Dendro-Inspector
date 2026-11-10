@@ -270,6 +270,34 @@ _ANTHROPIC_DROPPED = frozenset(
 )
 
 
+_RESTATEMENTS: tuple[tuple[str, str], ...] = (
+    ("maxLength", "at most {} characters"),
+    ("minLength", "at least {} characters"),
+    ("maxItems", "at most {} items"),
+    ("minItems", "at least {} items"),
+    ("maximum", "at most {}"),
+    ("minimum", "at least {}"),
+    ("exclusiveMaximum", "less than {}"),
+    ("exclusiveMinimum", "greater than {}"),
+    ("multipleOf", "a multiple of {}"),
+)
+
+
+def _restate_dropped(node: Mapping[str, Any]) -> str:
+    """The constraints this dialect drops from ``node``, as a sentence the model can read.
+
+    A dropped constraint is still enforced by Pydantic on the response, so a model that
+    never sees it fails validation and pays a repair round trip. The Golden-100 Sonnet gate
+    retried a reviewer in every one of nine cases because finding summaries exceeded a
+    400-character limit the model was never shown. ``pattern`` is restated by the token
+    types' own descriptions, which say the rule in words rather than as a regex.
+    """
+    parts = [template.format(node[key]) for key, template in _RESTATEMENTS if key in node]
+    if node.get("uniqueItems"):
+        parts.append("items must be unique")
+    return f"Limit: {'; '.join(parts)}." if parts else ""
+
+
 def to_anthropic_schema(schema: Mapping[str, Any]) -> dict[str, Any] | None:
     """Pydantic JSON Schema -> Anthropic ``output_config.format`` ``json_schema``.
 
@@ -298,6 +326,10 @@ def to_anthropic_schema(schema: Mapping[str, Any]) -> dict[str, Any] | None:
                 out[key] = {name: walk(sub) for name, sub in value.items()}
             else:
                 out[key] = walk(value)
+        restated = _restate_dropped(node)
+        if restated:
+            existing = out.get("description")
+            out["description"] = f"{existing} {restated}" if existing else restated
         if out.get("type") == "object" or "properties" in out:
             extra = out.get("additionalProperties", False)
             if extra not in (False, None) and not (extra is True and "properties" in out):

@@ -89,7 +89,8 @@ _ATTACHMENT_PHOTOS: dict[str, tuple[str, str]] = {
     ),
     "needles": (
         "needle_shoot_attachment_photo",
-        "Show the needles on a shoot continuously connected to this subject.",
+        "Show whether the needle-bearing shoot in frame connects to this subject — the "
+        "needles may belong to a separate tree or branch.",
     ),
     "fruit": (
         "fruit_attachment_photo",
