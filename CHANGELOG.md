@@ -12,10 +12,14 @@ get entries.
 
 ### Changed
 
+- Answers are now in English by default. The `inspect` CLI's `--lang` defaults to `en`, a case
+  without a locale is composed in English, and the English domain prompt now states English as
+  the default answer language (re-sealed in `prompts/versions.yaml`). Pass `--lang uk` (or
+  `lang=uk` on an upload) for Ukrainian answers.
+
 - The active domain prompt is now English: `prompts/domain/system-prompt.en.md`, a line-for-line
   translation of the Ukrainian original, sealed by `prompts/versions.yaml`. Every evidence token
-  is byte-identical to the original, and the prompt still sets Ukrainian as the default answer
-  language. The Ukrainian original `prompts/domain/system-prompt.md` is kept unchanged as the
+  is byte-identical to the original. The Ukrainian original `prompts/domain/system-prompt.md` is kept unchanged as the
   authoritative specification and can be selected with
   `DENDRO_DOMAIN_PROMPT_PATH=prompts/domain/system-prompt.md` and
   `DENDRO_PROMPT_MANIFEST_PATH=prompts/versions.uk.yaml`. The domain prompt hash in execution

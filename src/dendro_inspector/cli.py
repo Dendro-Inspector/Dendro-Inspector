@@ -116,8 +116,8 @@ def inspect(
         ),
     ] = False,
     lang: Annotated[
-        str, typer.Option("--lang", help="Output language: uk (default) or en.")
-    ] = "uk",
+        str, typer.Option("--lang", help="Output language: en (default) or uk.")
+    ] = "en",
     location: Annotated[
         str | None, typer.Option("--location", help='e.g. "Kyiv Oblast, Ukraine".')
     ] = None,

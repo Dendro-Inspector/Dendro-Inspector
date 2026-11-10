@@ -171,8 +171,8 @@ dendro eval --suite public                         # run the twenty-four public 
 pytest                                             # full test suite, offline
 ```
 
-Answers are in Ukrainian by default, as the domain prompt specifies. Add `--lang en` for
-English. You can state your own version and it will be ruled on rather than ignored:
+Answers are in English by default, as the domain prompt specifies. Add `--lang uk` for
+Ukrainian. You can state your own version and it will be ruled on rather than ignored:
 
 ```bash
 dendro inspect --image examples/trunk.jpg --claim "дуб" --field-context

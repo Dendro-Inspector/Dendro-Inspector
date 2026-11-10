@@ -70,7 +70,7 @@ class TestHappyPath:
         response = result.response
         assert response is not None
         assert response.tone_applied
-        assert "Оцінка" in response.human_readable
+        assert "Assessment" in response.human_readable
         assert response.results[0].taxonomic_resolution is Resolution.GENUS
 
 

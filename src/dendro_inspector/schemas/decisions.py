@@ -511,7 +511,7 @@ class CaseResponse(Contract):
             "strong evidence — and is forbidden outright after the system's own mistake."
         ),
     )
-    locale: str = Field(default="uk", max_length=8)
+    locale: str = Field(default="en", max_length=8)
 
 
 def assert_tone_preserved_decision(

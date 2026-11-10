@@ -34,7 +34,7 @@ UNTRUSTED_HEADER = (
 
 
 SUPPORTED_LOCALES: frozenset[str] = frozenset({"uk", "en"})
-DEFAULT_LOCALE = "uk"
+DEFAULT_LOCALE = "en"
 
 
 def locale_of_case(case: CaseInput) -> str:
@@ -44,7 +44,7 @@ def locale_of_case(case: CaseInput) -> str:
 
 
 def locale_of(state: GraphState) -> str:
-    """Output locale for this case. Ukrainian by default, per the domain prompt."""
+    """Output locale for this case. English by default, per the domain prompt."""
     return locale_of_case(state.case)
 
 

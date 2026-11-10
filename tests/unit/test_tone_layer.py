@@ -37,7 +37,11 @@ def apply_tone(response, profile=PUBLIC_PROFILE):
     return _apply_tone(response, profile)
 
 
-def _response() -> CaseResponse:
+def _response(locale: str | None = "uk") -> CaseResponse:
+    """Ukrainian unless told otherwise, so the wording assertions below test real text.
+
+    ``locale=None`` leaves the field unset, which is how the default language is checked.
+    """
     decision = FinalDecision(
         subject_id="log_1",
         selected_taxon="pinus",
@@ -54,12 +58,13 @@ def _response() -> CaseResponse:
         confidence=Confidence.MEDIUM,
         nearest_alternative="picea",
     )
-    return CaseResponse(
+    response = CaseResponse(
         case_id="c1",
         results=(result,),
         decisions=(decision,),
         human_readable="**1. Verdict.** Probable: Pinus at genus level.",
     )
+    return response if locale is None else response.model_copy(update={"locale": locale})
 
 
 class TestPreservation:
@@ -111,13 +116,12 @@ class TestGuardrail:
 
 
 class TestFraming:
-    def test_ukrainian_is_the_default_output_language(self):
-        """Section 4 of the domain prompt: `Мова відповіді за замовчуванням: українська`."""
-        assert "Оцінка" in apply_tone(_response()).human_readable
+    def test_english_is_the_default_output_language(self):
+        """The active domain prompt: `Default response language: English.`"""
+        assert "Assessment" in apply_tone(_response(locale=None)).human_readable
 
-    def test_english_is_available(self):
-        english = _response().model_copy(update={"locale": "en"})
-        assert "Assessment" in apply_tone(english).human_readable
+    def test_ukrainian_is_available(self):
+        assert "Оцінка" in apply_tone(_response(locale="uk")).human_readable
 
     def test_insufficient_evidence_is_always_delivered_cautiously(self):
         """Whatever mode was computed, a weak photograph is never delivered in hard voice."""

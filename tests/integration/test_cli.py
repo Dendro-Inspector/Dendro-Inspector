@@ -103,9 +103,9 @@ class TestInspectCommand:
             ],
         )
         assert result.exit_code == 0
-        # Ukrainian is the default output language, per the domain prompt.
+        # English is the default output language, per the domain prompt.
         assert "Pinus" in result.stdout
-        assert "Оцінка" in result.stdout
+        assert "Assessment" in result.stdout
 
     def test_json_mode_emits_response_and_trace(self):
         result = runner.invoke(
