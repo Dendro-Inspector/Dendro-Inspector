@@ -486,6 +486,13 @@ class StructuredFinalResult(Contract):
     nearest_alternative: Identifier | None = None
     limitations: tuple[ShortText, ...] = ()
     best_next_photo: PhotoRequest | None = None
+    open_world_candidates: tuple[Identifier, ...] = Field(
+        default=(),
+        description=(
+            "Taxa the model proposed that no knowledge card describes, retained because their "
+            "support was trusted (open-world discovery). Never the verdict; see `limitations`."
+        ),
+    )
 
 
 class ToneMode(StrEnum):

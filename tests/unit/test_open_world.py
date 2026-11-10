@@ -25,6 +25,7 @@ from dendro_inspector.knowledge.taxon_cards import card_value_vocabulary
 from dendro_inspector.nodes.candidate_generator import OPEN_WORLD_SECTION, open_world_context
 from dendro_inspector.nodes.evidence_quality import assess
 from dendro_inspector.nodes.final_decision import decide_subject_base
+from dendro_inspector.nodes.response_composer import build_result
 from dendro_inspector.schemas.candidates import (
     Candidate,
     CandidateSet,
@@ -672,3 +673,63 @@ class TestGeneratorContext:
         )
         assert f"`{OPEN_WORLD_SECTION}` section" in prompt
         assert "`subjects_without_cards`" in prompt
+
+
+class TestTheReaderIsTold:
+    """A retained hypothesis used to live only on the structured decision.
+
+    With open-world discovery on, the model may see a tree the cards cannot name. The answer
+    a person reads now says so — what it is, what it rests on, that it shaped nothing — and
+    the structured result lists it, so a run can be audited for missing taxonomy.
+    """
+
+    def _decision(self, open_world_context_):
+        fruit = _obs("obs-fruit", "fruit.type", "small_round_drupe")
+        proposal = CandidateSet(
+            subject_id=SUBJECT,
+            candidates=(
+                _candidate("prunus_fictitia", 1, "obs-fruit"),
+                _candidate("prunus_cerasifera", 2, "obs-fruit"),
+            ),
+        )
+        state, admitted = _state(_packet(fruit), proposal, open_world_context_.knowledge)
+        return state, decide_subject_base(state, open_world_context_, admitted, record=False)
+
+    def test_the_hypothesis_is_named_with_its_evidence_and_its_limits(self, open_world_context_):
+        state, decision = self._decision(open_world_context_)
+
+        result = build_result(decision, "en", state)
+
+        assert result.open_world_candidates == ("prunus_fictitia",)
+        [line] = [item for item in result.limitations if item.startswith("Outside this")]
+        assert "prunus_fictitia" in line
+        assert "obs-fruit" in line
+        assert "did not shape this verdict" in line
+        assert "dendro draft-card prunus_fictitia" in line
+        assert "ranked it above the verdict's taxon" in line
+        assert result.taxonomic_resolution is Resolution.SPECIES  # the verdict is unchanged
+
+    def test_the_ukrainian_answer_says_the_same(self, open_world_context_):
+        state, decision = self._decision(open_world_context_)
+
+        result = build_result(decision, "uk", state)
+
+        assert any(item.startswith("Поза цим довідником") for item in result.limitations)
+
+    def test_closed_world_answers_carry_no_such_line(self, node_context):
+        fruit = _obs("obs-fruit", "fruit.type", "small_round_drupe")
+        proposal = CandidateSet(
+            subject_id=SUBJECT,
+            candidates=(
+                _candidate("prunus_fictitia", 1, "obs-fruit"),
+                _candidate("prunus_cerasifera", 2, "obs-fruit"),
+            ),
+        )
+        state, admitted = _state(_packet(fruit), proposal, node_context.knowledge)
+        state = state.evolve(open_world_candidates=())
+        decision = decide_subject_base(state, node_context, admitted, record=False)
+
+        result = build_result(decision, "en", state)
+
+        assert result.open_world_candidates == ()
+        assert not any(item.startswith("Outside this") for item in result.limitations)
