@@ -43,6 +43,14 @@ get entries.
 
 ### Added
 
+- The `candidate_validation_filtered` warning and `CandidateValidationResult` now carry
+  `dropped_support_details`: for each supporting evidence id a known taxon's card does not
+  admit, the taxon, the id, and why — an unresolved or foreign reference, untrusted evidence, a feature path the
+  card does not declare, or a value the card does not declare for that feature. A value
+  mismatch reports the model's original feature and value beside the card's expected values,
+  so a vocabulary near-miss is visible instead of only the bare id in `dropped_evidence_ids`.
+  Diagnostics only: admission, ranks, scores and every decision are unchanged, and no value
+  is mapped onto a card's vocabulary.
 - `DENDRO_IMAGE_MAX_EDGE_PX` sets `GraphConfig.image_max_edge_px` from the environment: a
   pixel bound, or `original` to send files untouched. Unset keeps the 1568 px default.
 - The agent worker logs the pixel size and byte count of every image it hands to an agent,

@@ -6,6 +6,7 @@ import pytest
 from pydantic import ValidationError
 
 from dendro_inspector.knowledge.candidate_validation import (
+    DroppedSupportDetail,
     candidate_support_tier,
     cards_in_play,
     validate_candidate_set,
@@ -174,6 +175,56 @@ def test_empty_or_unrelated_support_removes_a_candidate(knowledge):
 
     assert result.candidate_set.candidates == ()
     assert result.dropped_evidence_ids == ("o1",)
+
+
+def test_unmatched_support_value_is_explained_without_promoting_it(knowledge):
+    evidence = _packet(
+        _obs("obs-1", "trunk.form", "fluted_muscular"),
+        _obs("obs-2", "bark.texture", "longitudinally_cracked_with_smooth_areas"),
+        _obs("obs-4", "trunk.base", "flared_with_exposed_roots"),
+    )
+    candidate_set = CandidateSet(
+        subject_id="log_1",
+        candidates=(_candidate("carpinus", 1, "obs-1", "obs-2", "obs-4"),),
+    )
+
+    result = validate_candidate_set_with_report(candidate_set, evidence, knowledge)
+
+    assert result.candidate_set.leader is not None
+    assert result.candidate_set.leader.supporting_evidence_ids == ("obs-1",)
+    assert result.dropped_evidence_ids == ("obs-2", "obs-4")
+    assert result.dropped_support_details == (
+        DroppedSupportDetail(
+            taxon="carpinus",
+            evidence_id="obs-2",
+            reason="value_not_declared",
+            feature="bark.texture",
+            value="longitudinally_cracked_with_smooth_areas",
+            expected_values=("smooth_grey_slightly_cracked",),
+        ),
+        DroppedSupportDetail(
+            taxon="carpinus",
+            evidence_id="obs-4",
+            reason="feature_not_declared",
+            feature="trunk.base",
+            value="flared_with_exposed_roots",
+        ),
+    )
+    assert candidate_support_tier(result.candidate_set.leader, evidence, "log_1") == (
+        EvidenceTier.SILHOUETTE
+    )
+
+
+def test_dropped_support_distinguishes_unknown_id_from_mismatched_value(knowledge):
+    evidence = _packet(_obs("obs-1", "trunk.form", "fluted_muscular"))
+    candidate_set = CandidateSet(
+        subject_id="log_1",
+        candidates=(_candidate("carpinus", 1, "obs-1", "missing-99"),),
+    )
+    result = validate_candidate_set_with_report(candidate_set, evidence, knowledge)
+    assert result.dropped_support_details == (
+        DroppedSupportDetail("carpinus", "missing-99", "unresolved_or_foreign_reference"),
+    )
 
 
 def test_matching_inference_support_is_admitted(knowledge):
