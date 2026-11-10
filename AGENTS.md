@@ -403,7 +403,8 @@ calibrated uncertainty, evaluation and CI. **It is never forced to return a spec
 | `prompts/versions.yaml` | The prompt/policy compatibility manifest | Only via `dendro prompt-seal --write` |
 | `knowledge/taxa/*.yaml` | Taxon cards; `supported_resolution` caps claims | Adding a taxon (no code change) |
 | `evals/public/*.yaml`, `evals/fixtures/*.json` | Deterministic evaluation | Adding a case |
-| `prompts/domain/system-prompt.md` | **User artifact and primary knowledge source.** Never translate, shorten or reformat | Only the owner replaces it |
+| `prompts/domain/system-prompt.md` | **User artifact and primary knowledge source** (Ukrainian original). Never translate, shorten or reformat. Still the authoritative specification that knowledge cards and derivations are checked against; selectable at runtime with `prompts/versions.uk.yaml` | Only the owner replaces it |
+| `prompts/domain/system-prompt.en.md` | **Active default domain prompt**: the owner-authorised English port of the original, sealed by `prompts/versions.yaml`. Evidence tokens are identical to the original, line for line (contract-tested) | When the original changes, update the matching lines, then `dendro prompt-seal --write` |
 
 ### Commands
 

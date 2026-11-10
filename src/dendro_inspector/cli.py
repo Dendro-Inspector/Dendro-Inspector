@@ -201,7 +201,7 @@ def inspect(
     if result.trace.domain_prompt and result.trace.domain_prompt.is_placeholder:
         typer.secho(
             "Warning: running with the PLACEHOLDER domain prompt. "
-            "Put your own prompt in prompts/domain/system-prompt.md.",
+            "Put your own prompt in prompts/domain/system-prompt.en.md.",
             fg=typer.colors.YELLOW,
             err=True,
         )

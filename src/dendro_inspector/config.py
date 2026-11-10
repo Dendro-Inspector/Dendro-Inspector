@@ -15,7 +15,7 @@ from pydantic import Field
 
 from dendro_inspector.schemas.base import Contract
 
-DEFAULT_DOMAIN_PROMPT_PATH = Path("prompts/domain/system-prompt.md")
+DEFAULT_DOMAIN_PROMPT_PATH = Path("prompts/domain/system-prompt.en.md")
 DEFAULT_PROMPT_MANIFEST_PATH = Path("prompts/versions.yaml")
 DEFAULT_KNOWLEDGE_ROOT = Path("knowledge")
 DEFAULT_NODE_PROMPT_ROOT = Path("prompts/nodes")
