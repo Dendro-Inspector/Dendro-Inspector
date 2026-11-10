@@ -35,7 +35,7 @@ from dendro_inspector.schemas.decisions import (
 
 NODE = "tone_layer"
 
-FALLBACK_LOCALE = "uk"
+FALLBACK_LOCALE = "en"
 
 
 def _insufficient(response: CaseResponse) -> bool:

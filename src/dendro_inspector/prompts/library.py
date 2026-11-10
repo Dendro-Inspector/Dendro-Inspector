@@ -456,7 +456,7 @@ class PromptLibrary:
             parts.append(f"## Response register\n\n{register}")
         return parts
 
-    def cacheable_prefix_chars(self, locale: str = "uk") -> int:
+    def cacheable_prefix_chars(self, locale: str = "en") -> int:
         """Length of the leading run of :meth:`compose` output shared by every node.
 
         The domain prompt is the outermost frame of all seven calls in a case, so it is
@@ -469,7 +469,7 @@ class PromptLibrary:
         head = self._stable_head(locale)
         return len(PROMPT_SEPARATOR.join(head)) + len(PROMPT_SEPARATOR)
 
-    def compose(self, node_name: str, *, context: str = "", locale: str = "uk") -> str:
+    def compose(self, node_name: str, *, context: str = "", locale: str = "en") -> str:
         """Compose only from the prompt bytes admitted by a compatible manifest.
 
         Order is deliberate and stable: the domain prompt is the outermost frame, the

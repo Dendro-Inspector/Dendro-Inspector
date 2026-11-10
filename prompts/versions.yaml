@@ -11,7 +11,7 @@ policy_revision: "0.9.0"
 
 domain_prompt:
   path: prompts/domain/system-prompt.en.md
-  sha256: 41d0fe858b341762fd96a9b9d16b86178422abec950539f0b22a2c222d0f1764
+  sha256: e63d0c9e29244107f1a627b164c2744c6ed0672ac7171bde28f2201e1e99ac3a
 
 node_prompts:
   root: prompts/nodes

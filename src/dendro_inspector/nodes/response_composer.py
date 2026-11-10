@@ -36,7 +36,7 @@ from dendro_inspector.schemas.taxon import Confidence, Resolution
 
 NODE = "response_composer"
 
-DEFAULT_LOCALE = "uk"
+DEFAULT_LOCALE = "en"
 
 _STATUS_PHRASE: dict[str, dict[DecisionStatus, str]] = {
     "uk": {
