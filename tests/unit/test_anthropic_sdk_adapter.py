@@ -67,7 +67,9 @@ def _response(text: str, *, stop: str = "end_turn", category: str | None = None)
     )
 
 
-def _run(provider: AnthropicSDKProvider, model: type[BaseModel] = Verdict, **metadata: Any) -> Any:
+def _run(
+    provider: AnthropicSDKProvider, model: type[BaseModel] = Verdict, /, **metadata: Any
+) -> Any:
     return asyncio.run(
         provider.generate_structured(
             role="primary",
