@@ -10,7 +10,36 @@ get entries.
 
 ## [Unreleased]
 
+### Changed
+
+- **A taxon is named only on evidence its card calls diagnostic.** A candidate supported
+  only by features its card lists as *supporting* (for example plated bark, which pine shares
+  with spruce, fir and sycamore) is still kept and reported, but the answer is "insufficient
+  evidence". The answer says why, which genera remain consistent, and which photograph would
+  separate them. On replayed runs this removed every wrong genus (7 to 0 over 13 labelled
+  photographs) at the cost of one correct answer that had rested on shared bark.
+  `DENDRO_REQUIRE_DISCRIMINATING_SUPPORT=false` restores the old policy for comparison.
+  Eight public cases changed expected resolution deliberately; new baseline
+  `public-v0.10.0`.
+- Several readings of one organ (three descriptions of one bark) now count as one piece of
+  evidence, not several.
+- The colour warning names the organ that was read for colour instead of always saying
+  "bark or wood".
+
+### Added
+
+- `dendro coverage-audit`: an offline report for stored run records. It gives each
+  observation's coverage status, each proposal's admission outcome with its exact reason,
+  and, with `--replay`, today's deterministic verdict for the recorded evidence. No provider
+  is called.
+- Pine knowledge from cited sources: the two-zone Scots pine trunk (supporting), plus
+  contradictions separating pine, spruce and fir from each other's diagnostic needles and
+  cones. See `docs/reviews/EVIDENCE-COVERAGE-2026-11-11.md`.
+
 ### Fixed
+
+- `unresolved`, `not_resolved`, `unreadable`, `not_seen` and `none_seen` are now treated as
+  failed readings, not as readings that disagree with a card.
 
 - A value that says a feature could not be read (`numerous_not_countable`,
   `not_determinable`, any `..._not_<x>able`) no longer counts as a reading that
