@@ -12,6 +12,17 @@ get entries.
 
 ### Changed
 
+- **Every taxon card is reviewed.** The remaining 24 cards record an AI-assisted botanical
+  review dated 2026-11-11 and are no longer placeholders. New diagnostic readings name a
+  taxon: beechnuts in a spiny husk and long pointed buds (Fagus), the three-lobed nutlet
+  bract (Carpinus), the bracted nutlet (Tilia), hanging thin-scaled cones (Picea),
+  long-stalked cherries (Prunus avium), the splitting husk and thin wrinkled nut (Juglans
+  regia), the round coarsely toothed leaf (Populus tremula) and the flattened petiole
+  (Populus). Traits shared with other trees now only support: horizontal lenticels for
+  wild cherry, a generic nut for common walnut, rounded or heart-shaped leaves for poplar,
+  the flattened petiole for aspen. Cards that had no contradictions gain them, for example
+  pear fruit against apple, palmate leaves against oak, and black walnut's ridged nut
+  against common walnut. No public evaluation decision changed.
 - **Robinia and Fraxinus are reviewed local knowledge.** Both cards, their feature rules
   and broader identities record an AI-assisted botanical and implementation review dated
   2026-11-11, using general botanical knowledge and source descriptions already recorded
