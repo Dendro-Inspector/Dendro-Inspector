@@ -12,15 +12,28 @@ get entries.
 
 ### Changed
 
-- **Ash needs more than a pinnate leaf.** A pinnate leaf alone (shared with Robinia and
-  walnut) now only supports Fraxinus; opposite leaves, a single-winged paddle samara or
-  black velvety buds name it. Simple or palmate leaves, paired samaras and entire mucronate
-  leaflets now rule ash out. Rules cite Virginia Tech Dendrology and USU TreeBrowser.
-- **Robinia is decided by pods and paired spines, not bark.** A flat oblong pod or paired
-  spines at the leaf nodes are now the strong evidence; the rope-like bark only supports.
-  Opposite leaves, simple or twice-pinnate leaves, toothed leaflets and branched trunk thorns
-  now rule Robinia out. "locust" alone no longer names Robinia, since it also means honey
-  locust. Rules cite Flora of New Zealand, VicFlora and Go Botany.
+- **Robinia and Fraxinus are reviewed local knowledge.** Both cards, their feature rules
+  and broader identities record an AI-assisted botanical and implementation review dated
+  2026-11-11, using general botanical knowledge and source descriptions already recorded
+  in the files. Their provenance confidence is medium and `placeholder_content` is false.
+  Answers using these cards no longer carry the placeholder warning solely on their
+  account. Review metadata does not increase identification confidence.
+- **Ash needs discriminating evidence.** The single-winged paddle samara and seven or more
+  finely serrate leaflets are the Fraxinus card's strong features, so a male tree (no
+  samaras) is still named from an attached leaf. Opposite pinnate leaves alone also fit
+  Acer negundo, whose few coarse or lobed leaflets now rule ash out; black buds describe
+  F. excelsior rather than every ash. Both remain supporting.
+  Brown buds no longer veto otherwise supported ash. Rules retain the recorded Virginia
+  Tech Dendrology and USU TreeBrowser provenance.
+- **Robinia pod detail is explicit.** A flat, oblong, smooth pod read as 3-8 cm has its own
+  diagnostic token; generic flat pods remain supporting. Paired stipular spines remain
+  strong matches but keep the existing silhouette ceiling when used alone. Generic thorns
+  no longer veto the card, while incompatible branched-thorn readings still do. Flowers
+  are deferred until an evidence tier and attachment contract are defined. The card retains
+  its recorded flora provenance.
+- **Common names are matched as whole phrases first.** "Black locust" names Robinia,
+  "black walnut" names Juglans nigra, and negation applies to the whole name. Fragments such
+  as "black" no longer match unrelated longer aliases; "locust" alone remains unrecognised.
 - **Tree names are English and Latin only.** Answers name a taxon as "Robinia pseudoacacia
   (black locust)" or "Pinaceae (pine family)" instead of the Ukrainian common name. A user's
   own version is recognised by its English common name or Latin name ("oak", "Quercus");

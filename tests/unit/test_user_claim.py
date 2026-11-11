@@ -281,6 +281,26 @@ class TestClaimResolution:
     @pytest.mark.parametrize(
         ("claim", "expected"),
         [
+            ("black locust", {"robinia_pseudoacacia"}),
+            ("BLACK LOCUST", {"robinia_pseudoacacia"}),
+            ("black walnut", {"juglans_nigra"}),
+            ("white poplar", {"populus_alba"}),
+            ("Robinia pseudoacacia", {"robinia_pseudoacacia"}),
+            ("black locust or ash", {"robinia_pseudoacacia", "fraxinus"}),
+            ("not black locust, rather ash", {"fraxinus"}),
+            ("not black walnut", set()),
+            ("not black walnut or black locust", {"robinia_pseudoacacia"}),
+            ("locust", set()),
+            ("honey locust", set()),
+            ("black", set()),
+        ],
+    )
+    def test_named_phrases_do_not_match_unrelated_word_fragments(self, knowledge, claim, expected):
+        assert set(resolve_user_claim(claim, knowledge)) == expected
+
+    @pytest.mark.parametrize(
+        ("claim", "expected"),
+        [
             ("Oak", ("quercus",)),
             ("oak", ("quercus",)),
             ("Quercus robur", ("quercus",)),

@@ -498,7 +498,7 @@ class TestDecisionRules:
 
         decision = decide_subject_base(state, open_world_context_, admitted, record=False)
 
-        # Every shipped card is unreviewed demonstration content, and the verdict says so
+        # This card is unreviewed demonstration content, and the verdict says so
         # without that changing its confidence.
         assert decision.reference_status is ReferenceStatus.LOCAL_UNREVIEWED
 

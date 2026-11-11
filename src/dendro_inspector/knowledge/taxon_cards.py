@@ -140,10 +140,17 @@ def self_contradiction_hits(
     smooth with age is still beech bark. Those readings lack the detail the card names, or
     add detail beyond it; neither denies it. Only declared relations count, so a value
     nobody has related to the card's own is still disagreement.
+
+    A value explicitly accepted as supporting on the same path is compatible too. It does
+    not earn a strong hit, and does not excuse a different, incompatible observation on
+    that path: generic thorns cannot conceal a reading of branched trunk thorns.
     """
     declared: dict[str, set[str]] = {}
     for expectation in card.strong_positive_features:
         declared.setdefault(expectation.feature, set()).update(expectation.values)
+    supporting: dict[str, set[str]] = {}
+    for expectation in card.supporting_features:
+        supporting.setdefault(expectation.feature, set()).update(expectation.values)
     vocabulary = card.value_vocabulary
     satisfied = {
         observation.feature
@@ -157,6 +164,7 @@ def self_contradiction_hits(
         if observation.feature in declared
         and observation.feature not in satisfied
         and is_positive_reading(observation.value)
+        and observation.value not in supporting.get(observation.feature, ())
         and not any(
             vocabulary.compatible(observation.feature, observation.value, value)
             for value in declared[observation.feature]

@@ -1,6 +1,6 @@
-# Rules carry their own literature provenance where they have one; the rest derive from
-# section 14 of the domain prompt. Not yet reviewed by a dendrologist. See
-# docs/dataset-policy.md.
+# General botanical knowledge reviewed against the source descriptions recorded here
+# and the implementation, using no new external retrieval. Rule-specific sources override
+# the domain-prompt origin. AI-assisted review scope: docs/dataset-policy.md.
 #
 # Look-alike with no card: Acer negundo (box elder) also has opposite pinnate leaves, but
 # with 3-5(7) coarsely toothed or lobed leaflets and paired samaras. The Acer card does not
@@ -15,6 +15,10 @@ broader_identities:
     provenance:
       source: "Standard botanical taxonomy; the domain prompt names no family"
       source_type: inferred
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Codex (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-11
 aliases:
   - ash
   - fraxinus
@@ -22,18 +26,6 @@ supported_resolution:
   - genus
 
 strong_positive_features:
-  # Opposite is strong only because the contradictions below rule out the simple, palmate
-  # maple leaf that is opposite too; together they read as "opposite pinnate".
-  - feature: leaf.arrangement
-    values:
-      - opposite
-    provenance:
-      source: >-
-        Utah State University TreeBrowser, European ash (https://extension.usu.edu/treebrowser/catalog/ash-european): "Opposite; once pinnately compound; 10" to 12" long; 7 to 11 leaflets". Accessed 2026-11-11.
-      source_type: literature
-      region: Eastern Europe
-      confidence: medium
-      review_state: unreviewed
   - feature: samara.shape
     values:
       - single_wing_paddle
@@ -43,9 +35,43 @@ strong_positive_features:
       source_type: literature
       region: Eastern Europe
       confidence: medium
-      review_state: unreviewed
+      review_state: reviewed
+      reviewed_by: "Codex (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-11
+  # The leaf character that separates ash from box elder, so a male ash (no samaras) can
+  # still be named from an attached leaf. Opposite and pinnate alone stay supporting.
+  - feature: leaflet.shape
+    values:
+      - ovate_lanceolate_serrate
+    note: >-
+      Seven or more narrowly ovate to lanceolate leaflets with fine, regular teeth. Few
+      (3-5) coarsely toothed or lobed leaflets are box elder: record coarse_serrate_or_lobed.
+    provenance:
+      source: >-
+        Virginia Tech Dendrology (https://dendro.cnre.vt.edu/dendrology/syllabus/factsheet.cfm?ID=969): "9 to 11 narrowly ovate, finely serrated leaflets"; USU TreeBrowser (https://extension.usu.edu/treebrowser/catalog/ash-european): "7 to 11 leaflets", "margins serrate". Accessed 2026-11-11.
+      source_type: literature
+      region: Eastern Europe
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-11
+
+supporting_features:
+  # Compatible with ash, not diagnostic: Acer negundo also has opposite pinnate leaves.
+  - feature: leaf.arrangement
+    values:
+      - opposite
+    provenance:
+      source: >-
+        Utah State University TreeBrowser, European ash (https://extension.usu.edu/treebrowser/catalog/ash-european): "Opposite; once pinnately compound; 10" to 12" long; 7 to 11 leaflets". Accessed 2026-11-11.
+      source_type: literature
+      region: Eastern Europe
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Codex (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-11
   # Black buds are Fraxinus excelsior's; F. pennsylvanica's are brown, so their absence
-  # says nothing against ash.
+  # says nothing against ash. Colour retains the policy's bark-equivalent ceiling.
   - feature: bud.colour
     values:
       - black_velvety
@@ -55,23 +81,13 @@ strong_positive_features:
       source_type: literature
       region: Eastern Europe
       confidence: medium
-      review_state: unreviewed
-
-supporting_features:
+      review_state: reviewed
+      reviewed_by: "Codex (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-11
   # Robinia and walnut share the pinnate leaf; it supports ash, it does not decide it.
   - feature: leaf.type
     values:
       - compound_pinnate
-  - feature: leaflet.shape
-    values:
-      - ovate_lanceolate_serrate
-    provenance:
-      source: >-
-        Virginia Tech Dendrology (https://dendro.cnre.vt.edu/dendrology/syllabus/factsheet.cfm?ID=969): "9 to 11 narrowly ovate, finely serrated leaflets"; USU TreeBrowser: "margins serrate". Accessed 2026-11-11.
-      source_type: literature
-      region: Eastern Europe
-      confidence: medium
-      review_state: unreviewed
   - feature: bark.pattern
     values:
       - diamond_fissures
@@ -80,8 +96,10 @@ supporting_features:
         Virginia Tech Dendrology (https://dendro.cnre.vt.edu/dendrology/syllabus/factsheet.cfm?ID=969): "Initially smooth light gray brown, later become ridged and furrowed forming a tight diamond shaped pattern." Accessed 2026-11-11.
       source_type: literature
       region: Eastern Europe
-      confidence: low
-      review_state: unreviewed
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Codex (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-11
   - feature: pores.arrangement
     values:
       - ring_porous
@@ -103,6 +121,19 @@ contradictions:
   - feature: samara.presence
     values:
       - paired
+  # Box elder (Acer negundo): opposite pinnate as well, but few coarse or lobed leaflets.
+  - feature: leaflet.shape
+    values:
+      - coarse_serrate_or_lobed
+    provenance:
+      source: >-
+        Virginia Tech Dendrology, boxelder (https://dendro.cnre.vt.edu/dendrology/syllabus/factsheet.cfm?ID=3): "3 to 5 leaflets (sometimes 7)"; "margin coarsely serrate or somewhat lobed". Accessed 2026-11-11.
+      source_type: literature
+      region: Eastern Europe
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-11
   # Robinia's entire, mucronate leaflet; ash leaflets are serrate.
   - feature: leaflet.shape
     values:
@@ -113,7 +144,9 @@ contradictions:
       source_type: literature
       region: Eastern Europe
       confidence: medium
-      review_state: unreviewed
+      review_state: reviewed
+      reviewed_by: "Codex (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-11
 
 common_confusions:
   - juglans_nigra
@@ -122,7 +155,7 @@ common_confusions:
   - robinia_pseudoacacia
 
 required_for_high_confidence:
-  - leaf_or_samara_or_bud
+  - samara.shape_or_leaflet.shape_and_leaf.arrangement
 
 follow_up_evidence:
   - leaf_attachment_photo
@@ -137,9 +170,9 @@ provenance:
   region: Eastern Europe
   life_stage: any
   season: any
-  confidence: low
-  review_state: unreviewed
-  reviewed_by: null
-  last_reviewed: null
+  confidence: medium
+  review_state: reviewed
+  reviewed_by: "Codex (AI-assisted botanical and implementation review)"
+  last_reviewed: 2026-11-11
 
-placeholder_content: true
+placeholder_content: false

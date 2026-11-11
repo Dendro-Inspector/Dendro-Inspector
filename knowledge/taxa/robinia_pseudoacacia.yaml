@@ -1,6 +1,6 @@
-# Rules carry their own literature provenance where they have one; the rest derive from
-# section 14 of the domain prompt. Not yet reviewed by a dendrologist. See
-# docs/dataset-policy.md.
+# General botanical knowledge reviewed against the source descriptions recorded here
+# and the implementation, using no new external retrieval. Rule-specific sources override
+# the domain-prompt origin. AI-assisted review scope: docs/dataset-policy.md.
 #
 # Look-alikes in Eastern European plantings that have no card yet, so they cannot be named
 # as confusions: Gleditsia triacanthos (branched trunk thorns, pinnate and bipinnate
@@ -17,14 +17,23 @@ broader_identities:
     provenance:
       source: "Domain prompt section 14 (BASE SPECIES)"
       source_type: domain_prompt
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Codex (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-11
   - resolution: family
     taxon_id: fabaceae
     display_name: Fabaceae (legume family)
     provenance:
       source: "Standard botanical taxonomy; the domain prompt names no family"
       source_type: inferred
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Codex (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-11
 # "locust" alone is not an alias: it also names honey locust (Gleditsia).
 aliases:
+  - black locust
   - robinia
   - false acacia
   - robinia pseudoacacia
@@ -32,18 +41,23 @@ supported_resolution:
   - species
 
 strong_positive_features:
-  # Any legume pod narrows to Fabaceae; the flat, oblong, smooth pod of a few centimetres is
-  # what separates Robinia from Gleditsia's long twisted pods and Styphnolobium's beaded ones.
+  # This combined reading requires all four details, including a resolved length. The
+  # generic shape below remains supporting when size or surface cannot be read.
   - feature: pod.shape
     values:
-      - flat_oblong_legume
+      - flat_oblong_smooth_3_to_8_cm
+    note: >-
+      Record only a flat, oblong, smooth pod whose length is resolved as 3-8 cm against
+      a scale. Without a resolved length or surface, use flat_oblong_legume instead.
     provenance:
       source: >-
         VicFlora, Robinia pseudoacacia (https://vicflora.rbg.vic.gov.au/flora/taxon/f219cee9-4fe3-4883-893e-f612a529339f): "Pod 3–8 cm long, 10–15 mm wide, pendulous, glabrous"; Flora of New Zealand (https://nzflora.info/factsheet/Taxon/Robinia-pseudoacacia.html): "Pod glabrous, irregularly oblong, 2–8-seeded, 35–80 mm long". Accessed 2026-11-11.
       source_type: literature
       region: Eastern Europe
       confidence: medium
-      review_state: unreviewed
+      review_state: reviewed
+      reviewed_by: "Codex (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-11
   # Spines in pairs at the leaf nodes (modified stipules), not branched thorns on the trunk.
   - feature: branch.thorns
     values:
@@ -54,9 +68,26 @@ strong_positive_features:
       source_type: literature
       region: Eastern Europe
       confidence: medium
-      review_state: unreviewed
+      review_state: reviewed
+      reviewed_by: "Codex (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-11
 
 supporting_features:
+  - feature: pod.shape
+    values:
+      - flat_oblong_legume
+    note: Shape without the resolved size and surface does not distinguish this species.
+    provenance:
+      source: >-
+        The pod morphology recorded from VicFlora, Robinia pseudoacacia, and Flora of New
+        Zealand, Robinia pseudoacacia, in the detailed pod rule above; size and surface
+        remain unresolved in this reading.
+      source_type: literature
+      region: Eastern Europe
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Codex (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-11
   - feature: pod.presence
     values:
       - present
@@ -82,17 +113,12 @@ supporting_features:
       source_type: literature
       region: Eastern Europe
       confidence: medium
-      review_state: unreviewed
-  - feature: flower.inflorescence
-    values:
-      - pendulous_white_racemes
-    provenance:
-      source: >-
-        Flora of New Zealand (https://nzflora.info/factsheet/Taxon/Robinia-pseudoacacia.html): "Raceme with numerous fls"; "Corolla white with the base of standard greenish or yellowish"; VicFlora: "Flowers many, fragrant". Accessed 2026-11-11.
-      source_type: literature
-      region: Eastern Europe
-      confidence: medium
-      review_state: unreviewed
+      review_state: reviewed
+      reviewed_by: "Codex (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-11
+  # Deferred: Flora of New Zealand describes white corollas in racemes, and VicFlora
+  # describes many fragrant flowers (sources above). Flowers currently have no evidence
+  # tier or attachment contract, so no executable flower rule or requirement is declared.
   # Supporting, not strong: old ash and black walnut bark also forms deep interlacing ridges,
   # and one patch of bark never decides a taxon.
   - feature: bark.texture
@@ -103,8 +129,10 @@ supporting_features:
         Go Botany, Robinia pseudoacacia (https://gobotany.nativeplanttrust.org/species/robinia/pseudoacacia): "The ropy brown bark and red spines that line the new shoots also distinguish this locust from its relatives." Accessed 2026-11-11.
       source_type: literature
       region: Eastern Europe
-      confidence: low
-      review_state: unreviewed
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Codex (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-11
   - feature: heartwood.tone
     values:
       - greenish_gold
@@ -124,7 +152,9 @@ contradictions:
       source_type: literature
       region: Eastern Europe
       confidence: medium
-      review_state: unreviewed
+      review_state: reviewed
+      reviewed_by: "Codex (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-11
   # Toothed leaflets (black walnut's own token) contradict Robinia's entire margins.
   - feature: leaflet.shape
     values:
@@ -135,7 +165,9 @@ contradictions:
       source_type: literature
       region: Eastern Europe
       confidence: medium
-      review_state: unreviewed
+      review_state: reviewed
+      reviewed_by: "Codex (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-11
   # Gleditsia's branched thorns grow from the trunk and branches, not in pairs at the nodes.
   - feature: branch.thorns
     values:
@@ -145,8 +177,10 @@ contradictions:
         Flora of New Zealand (https://nzflora.info/factsheet/Taxon/Robinia-pseudoacacia.html): Robinia's spines are "stipular spines up to c. 1 cm long", so large branched thorns on the trunk belong to another taxon. Accessed 2026-11-11.
       source_type: inferred
       region: Eastern Europe
-      confidence: low
-      review_state: unreviewed
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Codex (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-11
 
 common_confusions:
   - fraxinus
@@ -155,7 +189,7 @@ common_confusions:
   - morus
 
 required_for_high_confidence:
-  - pod_or_leaf_or_flower
+  - pod_or_leaf
 
 follow_up_evidence:
   - leaf_attachment_photo
@@ -169,9 +203,9 @@ provenance:
   region: Eastern Europe
   life_stage: any
   season: any
-  confidence: low
-  review_state: unreviewed
-  reviewed_by: null
-  last_reviewed: null
+  confidence: medium
+  review_state: reviewed
+  reviewed_by: "Codex (AI-assisted botanical and implementation review)"
+  last_reviewed: 2026-11-11
 
-placeholder_content: true
+placeholder_content: false

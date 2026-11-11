@@ -472,8 +472,9 @@ partial, the file records which parts it covers.
 
 ### Known limitations
 
-- Knowledge is **demonstration content**: 26 taxa, no dendrologist review. 24 have feature
-  rules from the domain prompt's §14; `larix` and `abies` are not in the prompt at all.
+- Knowledge has mixed review status, recorded per card. Robinia and Fraxinus have an
+  AI-assisted review; no independent dendrologist review is recorded. Feature rules cite
+  the domain prompt's §14 or their own sources; `larix` and `abies` are not in the prompt.
 - Node prompts ask for `bark.flake_geometry`, which no taxon card declares — evidence for it
   is recorded and then admits nothing. Unresolved: see
   `docs/reviews/CORRECTNESS-BOUNDARY-2026-07-26.md`.
@@ -616,12 +617,11 @@ overfitting, whatever else it is called. Send it back.
 
 ### Separation of concerns
 
-- **Golden material never informs card authoring.** The 26 shipped cards' *feature rules*
-  derive from the domain prompt's section 14 and nothing else, which is what makes the first
-  benchmark run a genuine measurement rather than a self-assessment. Provenance is recorded
-  per card, per feature rule and per declared identity, because not everything on a card
-  comes from that one source: family placements are standard taxonomy the prompt never
-  states, and `larix` and `abies` are not in the prompt at all. Each says so where it sits.
+- **Golden material never informs card authoring.** Feature rules derive from the domain
+  prompt's section 14 or separately attributed botanical knowledge, independently of golden
+  cases. Provenance is recorded per card, per feature rule and per declared identity: family
+  placements are standard taxonomy the prompt never states, and `larix` and `abies` are not
+  in the prompt at all. Each says so where it sits.
 - **Public fixtures and golden cases stay apart.** `evals/fixtures/` scripts provider
   responses to exercise the machinery; `evals/golden/` measures botanical correctness.
   Fixture wording must never be copied from a golden case, and no card may contain a value

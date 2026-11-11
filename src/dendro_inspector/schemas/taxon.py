@@ -143,7 +143,13 @@ class Provenance(Contract):
     region: str | None = Field(default=None, max_length=120)
     life_stage: LifeStage = LifeStage.ANY
     season: Applicability = Applicability.ANY
-    confidence: Confidence = Confidence.LOW
+    confidence: Confidence = Field(
+        default=Confidence.LOW,
+        description=(
+            "Confidence in the attributed knowledge, not diagnostic strength or confidence "
+            "that a photograph shows this taxon. Does not change decision ceilings."
+        ),
+    )
     review_state: ReviewState = ReviewState.UNREVIEWED
     reviewed_by: str | None = Field(default=None, max_length=120)
     last_reviewed: date | None = None
@@ -457,8 +463,8 @@ class TaxonCard(Contract):
     placeholder_content: bool = Field(
         default=True,
         description=(
-            "True while the card carries demonstration-grade content that has not been "
-            "reviewed by a dendrologist. See docs/dataset-policy.md."
+            "True while the card is a draft or demonstration. Promotion records the "
+            "reviewer, date and scope of review. See docs/dataset-policy.md."
         ),
     )
 
