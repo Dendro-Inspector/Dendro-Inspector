@@ -1,18 +1,21 @@
-# PLACEHOLDER demonstration content — feature rules derived from section 14 of the
-# domain prompt, not reviewed by a dendrologist. Any rule or identity carrying its own
-# provenance block names a different source. See docs/dataset-policy.md.
+# General botanical knowledge reviewed against the domain prompt, the sources recorded
+# here and the implementation. Rule-specific sources override the domain-prompt origin.
+# AI-assisted review scope: docs/dataset-policy.md.
 taxon_id: populus
-display_name: Populus (тополя)
+display_name: Populus (poplar)
 native_resolution: genus
 broader_identities:
   - resolution: family
     taxon_id: salicaceae
-    display_name: Salicaceae (вербові)
+    display_name: Salicaceae (willow family)
     provenance:
       source: "Standard botanical taxonomy; the domain prompt names no family"
       source_type: inferred
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-11
 aliases:
-  - тополя
   - poplar
   - populus
 supported_resolution:
@@ -22,8 +25,19 @@ strong_positive_features:
   - feature: leaf.shape
     values:
       - triangular
-      - rounded
-      - cordate
+  - feature: leaf.petiole
+    values:
+      - long_flattened
+    note: >-
+      A long, laterally flattened petiole (aspen, black poplar) is a poplar character.
+    provenance:
+      source: "General botanical knowledge (AI-assisted review, 2026-11-11)"
+      source_type: inferred
+      region: Eastern Europe
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-11
 
 supporting_features:
   - feature: trunk.form
@@ -35,8 +49,56 @@ supporting_features:
   - feature: context.site
     values:
       - urban_park
+  - feature: leaf.shape
+    values:
+      - rounded
+      - cordate
+      - rounded_or_triangular_lobed
+    note: >-
+      Rounded and heart-shaped leaves are shared with alder and lime.
+    provenance:
+      source: "General botanical knowledge (AI-assisted review, 2026-11-11)"
+      source_type: inferred
+      region: Eastern Europe
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-11
 
-contradictions: []
+contradictions:
+  - feature: leaf.arrangement
+    values:
+      - opposite
+    provenance:
+      source: "General botanical knowledge (AI-assisted review, 2026-11-11)"
+      source_type: inferred
+      region: Eastern Europe
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-11
+  - feature: leaf.type
+    values:
+      - compound_pinnate
+    provenance:
+      source: "General botanical knowledge (AI-assisted review, 2026-11-11)"
+      source_type: inferred
+      region: Eastern Europe
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-11
+  - feature: fruit.type
+    values:
+      - nutlet_with_bract
+    provenance:
+      source: "General botanical knowledge (AI-assisted review, 2026-11-11)"
+      source_type: inferred
+      region: Eastern Europe
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-11
 
 common_confusions:
   - alnus
@@ -54,14 +116,14 @@ follow_up_evidence:
   - crown_photo
 
 provenance:
-  source: "Domain prompt section 14 (БАЗОВІ ПОРОДИ)"
+  source: "Domain prompt section 14 (BASE SPECIES)"
   source_type: domain_prompt
   region: Eastern Europe
   life_stage: any
   season: any
-  confidence: low
-  review_state: unreviewed
-  reviewed_by: null
-  last_reviewed: null
+  confidence: medium
+  review_state: reviewed
+  reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+  last_reviewed: 2026-11-11
 
-placeholder_content: true
+placeholder_content: false

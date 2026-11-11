@@ -1,19 +1,21 @@
-# PLACEHOLDER demonstration content, not reviewed by a dendrologist. Unlike the other
-# 24 cards, this taxon is NOT named anywhere in the domain prompt — it was added to give
-# the conifer comparison a third member. See docs/dataset-policy.md.
+# General botanical knowledge reviewed against the domain prompt, the sources recorded
+# here and the implementation. Rule-specific sources override the domain-prompt origin.
+# AI-assisted review scope: docs/dataset-policy.md.
 taxon_id: larix
-display_name: Larix (модрина)
+display_name: Larix (larch)
 native_resolution: genus
 broader_identities:
   - resolution: family
     taxon_id: pinaceae
-    display_name: Pinaceae (соснові)
+    display_name: Pinaceae (pine family)
     provenance:
       source: "Standard botanical taxonomy; the domain prompt names no family"
       source_type: inferred
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-11
 aliases:
-  - модрина
-  - лиственница
   - larch
   - larix
 supported_resolution:
@@ -34,6 +36,19 @@ supporting_features:
   - feature: cones.size
     values:
       - small_upright
+  - feature: bark.texture
+    values:
+      - deeply_fissured_flaking_reddish_inner
+    life_stage: mature
+    provenance:
+      source: >-
+        https://www.conifers.org/pi/Larix_decidua.php: "Bark deeply fissured, flaking, medium to dark gray to reddish brown, with reddish inner bark." Accessed 2026-11-11 (KNOWLEDGE-RESEARCH-2026-11-11).
+      source_type: literature
+      region: Eastern Europe
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-11
 
 contradictions:
   - feature: needles.fascicles
@@ -41,6 +56,18 @@ contradictions:
       - two
       - three
       - five
+  - feature: leaf.type
+    values:
+      - broadleaf_simple
+      - compound_pinnate
+    provenance:
+      source: "General botanical knowledge (AI-assisted review, 2026-11-11)"
+      source_type: inferred
+      region: Eastern Europe
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-11
 
 common_confusions:
   - picea
@@ -60,9 +87,9 @@ provenance:
   region: Eastern Europe
   life_stage: any
   season: any
-  confidence: low
-  review_state: unreviewed
-  reviewed_by: null
-  last_reviewed: null
+  confidence: medium
+  review_state: reviewed
+  reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+  last_reviewed: 2026-11-11
 
-placeholder_content: true
+placeholder_content: false

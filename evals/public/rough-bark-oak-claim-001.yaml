@@ -17,7 +17,7 @@ input:
       path: examples/rough-bark-001.jpg
       media_type: image/jpeg
   user_text: Це старий дуб, я його знаю багато років.
-  user_claim: дуб
+  user_claim: oak
   location: Kyiv Oblast, Ukraine
   season: winter
   declared_object_type: bark

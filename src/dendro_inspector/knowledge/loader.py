@@ -19,6 +19,7 @@ from dendro_inspector.schemas.taxon import (
     ComparisonCard,
     RegionalPack,
     TaxonCard,
+    ValueSets,
     ValueVocabulary,
 )
 
@@ -53,6 +54,7 @@ class KnowledgeBase:
         self._comparisons: dict[str, ComparisonCard] = {}
         self._region: RegionalPack | None = None
         self._vocabulary: ValueVocabulary | None = None
+        self._value_sets: ValueSets | None = None
 
     @property
     def root(self) -> Path:
@@ -73,6 +75,15 @@ class KnowledgeBase:
                 else NO_VALUE_RELATIONS
             )
         return self._vocabulary
+
+    def value_sets(self) -> ValueSets | None:
+        """Closed value lists from ``value_sets.yaml``; ``None`` when the file is absent."""
+        if self._value_sets is None:
+            path = self._root / "value_sets.yaml"
+            if not path.is_file():
+                return None
+            self._value_sets = ValueSets.model_validate(_read_yaml(path))
+        return self._value_sets
 
     def taxon(self, taxon_id: str) -> TaxonCard:
         """Load exactly one card, with the shared value vocabulary composed onto it."""

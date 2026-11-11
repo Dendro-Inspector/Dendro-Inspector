@@ -56,7 +56,7 @@ class ReferenceStatus(StrEnum):
     LOCAL_REVIEWED = "local_reviewed"
     """A local card whose provenance records a named reviewer."""
     LOCAL_UNREVIEWED = "local_unreviewed"
-    """A local card that nobody has reviewed — every shipped card today."""
+    """A local card whose provenance does not record a completed review."""
     EXTERNALLY_VERIFIED = "externally_verified"
     """No local card; an external source accepts the name and documents a feature observed
     here, with no documented feature contradicted."""

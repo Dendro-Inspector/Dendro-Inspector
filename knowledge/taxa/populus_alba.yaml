@@ -1,25 +1,31 @@
-# PLACEHOLDER demonstration content — feature rules derived from section 14 of the
-# domain prompt, not reviewed by a dendrologist. Any rule or identity carrying its own
-# provenance block names a different source. See docs/dataset-policy.md.
+# General botanical knowledge reviewed against the domain prompt, the sources recorded
+# here and the implementation. Rule-specific sources override the domain-prompt origin.
+# AI-assisted review scope: docs/dataset-policy.md.
 taxon_id: populus_alba
-display_name: Populus alba (тополя біла)
+display_name: Populus alba (white poplar)
 native_resolution: species
 broader_identities:
   - resolution: genus
     taxon_id: populus
-    display_name: Populus (тополя)
+    display_name: Populus (poplar)
     provenance:
-      source: "Domain prompt section 14 (БАЗОВІ ПОРОДИ)"
+      source: "Domain prompt section 14 (BASE SPECIES)"
       source_type: domain_prompt
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-11
   - resolution: family
     taxon_id: salicaceae
-    display_name: Salicaceae (вербові)
+    display_name: Salicaceae (willow family)
     provenance:
       source: "Standard botanical taxonomy; the domain prompt names no family"
       source_type: inferred
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-11
 aliases:
-  - тополя біла
-  - біла тополя
   - white poplar
   - populus alba
 supported_resolution:
@@ -45,6 +51,17 @@ contradictions:
   - feature: leaf.arrangement
     values:
       - opposite
+  - feature: leaf.type
+    values:
+      - compound_pinnate
+    provenance:
+      source: "General botanical knowledge (AI-assisted review, 2026-11-11)"
+      source_type: inferred
+      region: Eastern Europe
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-11
 
 common_confusions:
   - acer
@@ -62,14 +79,14 @@ follow_up_evidence:
   - bark_macro_mid_trunk
 
 provenance:
-  source: "Domain prompt section 14 (БАЗОВІ ПОРОДИ)"
+  source: "Domain prompt section 14 (BASE SPECIES)"
   source_type: domain_prompt
   region: Eastern Europe
   life_stage: any
   season: any
-  confidence: low
-  review_state: unreviewed
-  reviewed_by: null
-  last_reviewed: null
+  confidence: medium
+  review_state: reviewed
+  reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+  last_reviewed: 2026-11-11
 
-placeholder_content: true
+placeholder_content: false

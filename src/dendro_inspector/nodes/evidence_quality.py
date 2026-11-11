@@ -18,6 +18,7 @@ from dendro_inspector.graph.state import EvidenceQualityReport, GraphState
 from dendro_inspector.knowledge.candidate_validation import cards_in_play
 from dendro_inspector.knowledge.comparison_cards import (
     INSUFFICIENT_ALONE,
+    NON_DIAGNOSTIC_CONTEXT,
     relies_only_on_insufficient_features,
 )
 from dendro_inspector.knowledge.evidence_hierarchy import (
@@ -47,8 +48,9 @@ def classify_vocabulary_diagnostics(
 ) -> tuple[tuple[Observation, ...], tuple[Observation, ...]]:
     """Split unmatchable evidence into known-weak signals and possible card gaps.
 
-    This is diagnostic classification only. It does not admit or reject evidence. Colour
-    and the project's explicit insufficient-alone features are weak by existing policy;
+    This is diagnostic classification only. It does not admit or reject evidence. Colour,
+    the explicit insufficient-alone features and non-diagnostic context (moss, lichen,
+    trunk age) are weak by existing policy;
     every other trusted, resolvable unmatchable observation remains a possible knowledge
     coverage gap until a card author reviews it.
     """
@@ -57,7 +59,9 @@ def classify_vocabulary_diagnostics(
     for observation in observations:
         target = (
             weak
-            if observation.feature in INSUFFICIENT_ALONE or is_colour_feature(observation.feature)
+            if observation.feature in INSUFFICIENT_ALONE
+            or observation.feature in NON_DIAGNOSTIC_CONTEXT
+            or is_colour_feature(observation.feature)
             else possible_gaps
         )
         target.append(observation)

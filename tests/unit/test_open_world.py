@@ -200,7 +200,7 @@ class TestRetention:
         assert retained.taxon == taxon
         assert retained.covered_by == covering
         assert not retained.uncovered
-        assert retained.reference_status is ReferenceStatus.LOCAL_UNREVIEWED
+        assert retained.reference_status is ReferenceStatus.LOCAL_REVIEWED
 
     @pytest.mark.parametrize("taxon", ["tree_1", "oak-like", "x"])
     def test_ids_not_shaped_like_a_scientific_name_are_discarded(self, knowledge, taxon):
@@ -498,9 +498,9 @@ class TestDecisionRules:
 
         decision = decide_subject_base(state, open_world_context_, admitted, record=False)
 
-        # Every shipped card is unreviewed demonstration content, and the verdict says so
-        # without that changing its confidence.
-        assert decision.reference_status is ReferenceStatus.LOCAL_UNREVIEWED
+        # The card records a review, and the verdict says so without that changing
+        # its confidence.
+        assert decision.reference_status is ReferenceStatus.LOCAL_REVIEWED
 
     def test_a_covered_name_is_reported_but_is_not_missing_taxonomy(self, open_world_context_):
         evidence = _packet(_obs("obs-nut", "nut.presence", "present"))

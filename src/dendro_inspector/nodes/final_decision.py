@@ -474,10 +474,7 @@ def _match_weight(word: str, names: tuple[tuple[str, bool], ...]) -> int:
     best = 0
     for name, loose in names:
         if word == name or (
-            loose
-            and len(name) >= _SUBSTRING_MIN
-            and len(word) >= _SUBSTRING_MIN
-            and (name in word or word in name)
+            loose and len(name) >= _SUBSTRING_MIN and len(word) >= _SUBSTRING_MIN and name in word
         ):
             best = max(best, len(name))
     return best
@@ -490,15 +487,53 @@ def resolve_user_claim(claim: str, knowledge: KnowledgeBase) -> tuple[str, ...]:
     right if either is the answer; resolving it to whichever card the catalogue happens to
     list first makes the verdict an accident of iteration order.
     """
+    # Prefer whole declared names before considering individual words. Splitting "black
+    # locust" first made "black" name black walnut and blackthorn. A negation consumes the
+    # whole matched name too, so "not black walnut" does not assert "walnut".
+    names: dict[str, tuple[tuple[str, bool], ...]] = {}
+    phrases: dict[tuple[str, ...], list[str]] = {}
+    for taxon_id in knowledge.available_taxon_ids():
+        card = knowledge.try_taxon(taxon_id)
+        if card is None:
+            continue
+        names[taxon_id] = _card_names(taxon_id, card)
+        for name in (taxon_id.replace("_", " "), card.display_name, *card.aliases):
+            declared_phrase = _claim_words(name)
+            if len(declared_phrase) > 1:
+                phrases.setdefault(declared_phrase, []).append(taxon_id)
+
+    words = _claim_words(claim)
+    lengths = sorted({len(phrase) for phrase in phrases}, reverse=True)
     weights: dict[str, int] = {}
-    for word in _asserted_words(claim):
-        for taxon_id in knowledge.available_taxon_ids():
-            card = knowledge.try_taxon(taxon_id)
-            if card is None:
-                continue
-            weight = _match_weight(word, _card_names(taxon_id, card))
-            if weight > weights.get(taxon_id, 0):
-                weights[taxon_id] = weight
+    index = 0
+    denied = False
+    while index < len(words):
+        word = words[index]
+        if word in _NEGATIONS:
+            denied = True
+            index += 1
+            continue
+        phrase = next(
+            (
+                words[index : index + size]
+                for size in lengths
+                if words[index : index + size] in phrases
+            ),
+            None,
+        )
+        if phrase is not None:
+            if not denied:
+                for taxon_id in phrases[phrase]:
+                    weights[taxon_id] = max(weights.get(taxon_id, 0), len("".join(phrase)))
+            index += len(phrase)
+        else:
+            if not denied:
+                for taxon_id, forms in names.items():
+                    weight = _match_weight(word, forms)
+                    if weight > weights.get(taxon_id, 0):
+                        weights[taxon_id] = weight
+            index += 1
+        denied = False
     return tuple(sorted(weights, key=lambda taxon_id: (-weights[taxon_id], taxon_id)))
 
 

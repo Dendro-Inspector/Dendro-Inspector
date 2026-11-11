@@ -1,18 +1,21 @@
-# PLACEHOLDER demonstration content — feature rules derived from section 14 of the
-# domain prompt, not reviewed by a dendrologist. Any rule or identity carrying its own
-# provenance block names a different source. See docs/dataset-policy.md.
+# General botanical knowledge reviewed against the domain prompt, the sources recorded
+# here and the implementation. Rule-specific sources override the domain-prompt origin.
+# AI-assisted review scope: docs/dataset-policy.md.
 taxon_id: tilia
-display_name: Tilia (липа)
+display_name: Tilia (lime, linden)
 native_resolution: genus
 broader_identities:
   - resolution: family
     taxon_id: malvaceae
-    display_name: Malvaceae (мальвові)
+    display_name: Malvaceae (mallow family)
     provenance:
       source: "Standard botanical taxonomy; the domain prompt names no family"
       source_type: inferred
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-11
 aliases:
-  - липа
   - lime
   - linden
   - tilia
@@ -23,6 +26,19 @@ strong_positive_features:
   - feature: leaf.shape
     values:
       - cordate_serrate
+  - feature: fruit.type
+    values:
+      - nutlet_with_bract
+    note: >-
+      Round nutlets hanging from a long, tongue-shaped papery bract.
+    provenance:
+      source: "General botanical knowledge (AI-assisted review, 2026-11-11)"
+      source_type: inferred
+      region: Eastern Europe
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-11
 
 supporting_features:
   - feature: crown.shape
@@ -31,11 +47,43 @@ supporting_features:
   - feature: bark.texture
     values:
       - grey_brown_fissured
-  - feature: fruit.type
+  - feature: trunk.burls
     values:
-      - nutlet_with_bract
+      - basal_burls_and_sprouts
+    life_stage: mature
+    provenance:
+      source: >-
+        https://dendro.cnre.vt.edu/dendrology/syllabus/factsheet.cfm?ID=89: "Numerous burls and sprouts often found around the base of the tree." Accessed 2026-11-11 (KNOWLEDGE-RESEARCH-2026-11-11).
+      source_type: literature
+      region: Eastern Europe
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-11
 
-contradictions: []
+contradictions:
+  - feature: leaf.arrangement
+    values:
+      - opposite
+    provenance:
+      source: "General botanical knowledge (AI-assisted review, 2026-11-11)"
+      source_type: inferred
+      region: Eastern Europe
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-11
+  - feature: leaf.type
+    values:
+      - compound_pinnate
+    provenance:
+      source: "General botanical knowledge (AI-assisted review, 2026-11-11)"
+      source_type: inferred
+      region: Eastern Europe
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-11
 
 common_confusions:
   - populus
@@ -49,14 +97,14 @@ follow_up_evidence:
   - leaf_attachment_photo
 
 provenance:
-  source: "Domain prompt section 14 (БАЗОВІ ПОРОДИ)"
+  source: "Domain prompt section 14 (BASE SPECIES)"
   source_type: domain_prompt
   region: Eastern Europe
   life_stage: any
   season: any
-  confidence: low
-  review_state: unreviewed
-  reviewed_by: null
-  last_reviewed: null
+  confidence: medium
+  review_state: reviewed
+  reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+  last_reviewed: 2026-11-11
 
-placeholder_content: true
+placeholder_content: false

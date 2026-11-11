@@ -1,51 +1,153 @@
-# PLACEHOLDER demonstration content — feature rules derived from section 14 of the
-# domain prompt, not reviewed by a dendrologist. Any rule or identity carrying its own
-# provenance block names a different source. See docs/dataset-policy.md.
+# General botanical knowledge reviewed against the domain prompt, the sources recorded
+# here and the implementation. Rule-specific sources override the domain-prompt origin.
+# AI-assisted review scope: docs/dataset-policy.md.
 taxon_id: juglans_regia
-display_name: Juglans regia (горіх волоський)
+display_name: Juglans regia (common walnut)
 native_resolution: species
 broader_identities:
   - resolution: genus
     taxon_id: juglans
-    display_name: Juglans (горіх)
+    display_name: Juglans (walnut)
     provenance:
-      source: "Domain prompt section 14 (БАЗОВІ ПОРОДИ)"
+      source: "Domain prompt section 14 (BASE SPECIES)"
       source_type: domain_prompt
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-11
   - resolution: family
     taxon_id: juglandaceae
-    display_name: Juglandaceae (горіхові)
+    display_name: Juglandaceae (walnut family)
     provenance:
       source: "Standard botanical taxonomy; the domain prompt names no family"
       source_type: inferred
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-11
 aliases:
-  - горіх
-  - волоський горіх
-  - грецький горіх
   - walnut
   - juglans
+  - juglans regia
 supported_resolution:
   - species
 
 strong_positive_features:
-  - feature: nut.presence
-    values:
-      - present
   - feature: leaf.type
     values:
       - compound_pinnate_large_leaflets
+  - feature: fruit.husk
+    values:
+      - green_splitting_husk
+    note: >-
+      Green husk that splits open on the tree to release the nut.
+    provenance:
+      source: "General botanical knowledge (AI-assisted review, 2026-11-11)"
+      source_type: inferred
+      region: Eastern Europe
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-11
+  - feature: nut.shell_surface
+    values:
+      - shallowly_wrinkled_thin
+    note: >-
+      Thin, shallowly wrinkled shell that cracks by hand.
+    provenance:
+      source: "General botanical knowledge (AI-assisted review, 2026-11-11)"
+      source_type: inferred
+      region: Eastern Europe
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-11
 
 supporting_features:
   - feature: bark.texture
     values:
       - grey_furrowed_old
+    life_stage: old
   - feature: crown.shape
     values:
       - spreading_garden
   - feature: heartwood.tone
     values:
       - darker_core
+  - feature: nut.presence
+    values:
+      - present
+    note: >-
+      A nut alone also fits hazel, beech and black walnut.
+    provenance:
+      source: "General botanical knowledge (AI-assisted review, 2026-11-11)"
+      source_type: inferred
+      region: Eastern Europe
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-11
+  - feature: bark.texture
+    values:
+      - smooth_olive_brown
+    life_stage: young
+    provenance:
+      source: >-
+        https://en.wikipedia.org/wiki/Juglans_regia: "The bark is smooth, olive-brown when young and silvery-grey on older branches" Accessed 2026-11-11 (KNOWLEDGE-RESEARCH-2026-11-11).
+      source_type: literature
+      region: Eastern Europe
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-11
 
-contradictions: []
+contradictions:
+  - feature: leaf.arrangement
+    values:
+      - opposite
+    provenance:
+      source: "General botanical knowledge (AI-assisted review, 2026-11-11)"
+      source_type: inferred
+      region: Eastern Europe
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-11
+  - feature: leaflet.shape
+    values:
+      - lanceolate_finely_serrate_acuminate
+    note: >-
+      Many narrow, finely serrate leaflets are black walnut; common walnut has 5-9 large entire leaflets.
+    provenance:
+      source: "General botanical knowledge (AI-assisted review, 2026-11-11)"
+      source_type: inferred
+      region: Eastern Europe
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-11
+  - feature: nut.shell_surface
+    values:
+      - deeply_corrugated_ridged
+    provenance:
+      source: "General botanical knowledge (AI-assisted review, 2026-11-11)"
+      source_type: inferred
+      region: Eastern Europe
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-11
+  - feature: fruit.husk
+    values:
+      - indehiscent_green_globose
+    provenance:
+      source: "General botanical knowledge (AI-assisted review, 2026-11-11)"
+      source_type: inferred
+      region: Eastern Europe
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-11
 
 common_confusions:
   - fraxinus
@@ -62,14 +164,14 @@ follow_up_evidence:
   - prepared_end_grain_macro
 
 provenance:
-  source: "Domain prompt section 14 (БАЗОВІ ПОРОДИ)"
+  source: "Domain prompt section 14 (BASE SPECIES)"
   source_type: domain_prompt
   region: Eastern Europe
   life_stage: any
   season: any
-  confidence: low
-  review_state: unreviewed
-  reviewed_by: null
-  last_reviewed: null
+  confidence: medium
+  review_state: reviewed
+  reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+  last_reviewed: 2026-11-11
 
-placeholder_content: true
+placeholder_content: false

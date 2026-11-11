@@ -143,7 +143,13 @@ class Provenance(Contract):
     region: str | None = Field(default=None, max_length=120)
     life_stage: LifeStage = LifeStage.ANY
     season: Applicability = Applicability.ANY
-    confidence: Confidence = Confidence.LOW
+    confidence: Confidence = Field(
+        default=Confidence.LOW,
+        description=(
+            "Confidence in the attributed knowledge, not diagnostic strength or confidence "
+            "that a photograph shows this taxon. Does not change decision ceilings."
+        ),
+    )
     review_state: ReviewState = ReviewState.UNREVIEWED
     reviewed_by: str | None = Field(default=None, max_length=120)
     last_reviewed: date | None = None
@@ -164,6 +170,13 @@ class FeatureExpectation(Contract):
 
     feature: FeaturePath
     values: tuple[ValueToken, ...] = Field(min_length=1)
+    life_stage: LifeStage = Field(
+        default=LifeStage.ANY,
+        description=(
+            "The tree age this reading describes. Bark changes with age, so a rule tied to "
+            "one stage only vetoes or contradicts when the observed trunk stage matches it."
+        ),
+    )
     note: ShortText | None = None
     provenance: Provenance | None = Field(
         default=None,
@@ -296,6 +309,31 @@ class ValueVocabulary(Contract):
             or declared in self._with_broader_readings(feature, observed)
             or observed in self._with_broader_readings(feature, declared)
         )
+
+
+class ValueSets(Contract):
+    """Closed value lists for feature paths where free wording made evidence unusable.
+
+    Card matching is exact, so every new phrasing of the same bark is a coverage gap. On
+    the paths listed here the extractor is given the full list, with one plain description
+    per value, and cards may only use listed values. Paths not listed stay open.
+    """
+
+    value_sets: dict[FeaturePath, dict[ValueToken, ShortText]]
+    provenance: Provenance
+
+    @model_validator(mode="after")
+    def _every_set_has_values(self) -> ValueSets:
+        for feature, values in self.value_sets.items():
+            if not values:
+                msg = f"{feature}: a closed value set needs at least one value"
+                raise ValueError(msg)
+        return self
+
+    def allowed(self, feature: str) -> frozenset[str] | None:
+        """The closed list for ``feature``, or ``None`` when the path is open."""
+        values = self.value_sets.get(feature)
+        return frozenset(values) if values is not None else None
 
 
 #: A vocabulary declaring no relations: every distinct value disagrees with every other.
@@ -457,8 +495,8 @@ class TaxonCard(Contract):
     placeholder_content: bool = Field(
         default=True,
         description=(
-            "True while the card carries demonstration-grade content that has not been "
-            "reviewed by a dendrologist. See docs/dataset-policy.md."
+            "True while the card is a draft or demonstration. Promotion records the "
+            "reviewer, date and scope of review. See docs/dataset-policy.md."
         ),
     )
 

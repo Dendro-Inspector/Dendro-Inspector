@@ -323,9 +323,9 @@ class TestStructuredAndRenderedIdentity:
 
         assert decision.resolution is Resolution.GENUS
         assert decision.selected_taxon == "acer"
-        assert decision.selected_taxon_display_name == "Acer (клен)"
+        assert decision.selected_taxon_display_name == "Acer (maple)"
         assert "Acer saccharinum" not in build_result(decision, "en").verdict
-        assert "Acer (клен) (genus)" in build_result(decision, "en").verdict
+        assert "Acer (maple) (genus)" in build_result(decision, "en").verdict
 
     def test_genus_hypothesis_broadened_by_silhouette_renders_only_family(
         self, simple_case, node_context
@@ -347,9 +347,9 @@ class TestStructuredAndRenderedIdentity:
         result = build_result(decision, "en")
         assert decision.resolution is Resolution.FAMILY
         assert decision.selected_taxon == "pinaceae"
-        assert decision.selected_taxon_display_name == "Pinaceae (соснові)"
-        assert "Pinus (сосна)" not in result.verdict
-        assert "Pinaceae (соснові) (family)" in result.verdict
+        assert decision.selected_taxon_display_name == "Pinaceae (pine family)"
+        assert "Pinus (pine)" not in result.verdict
+        assert "Pinaceae (pine family) (family)" in result.verdict
 
     def test_alternatives_collapsing_to_same_family_are_omitted(self, simple_case, node_context):
         observation = _observation("support", "trunk.form", "straight_long")

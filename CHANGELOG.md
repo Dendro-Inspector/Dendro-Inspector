@@ -10,8 +10,69 @@ get entries.
 
 ## [Unreleased]
 
+### Added
+
+- **Closed bark and trunk vocabulary.** The extractor now chooses bark texture, pattern,
+  surface marks, peeling, trunk form, burls and trunk age from fixed lists with plain
+  descriptions (`knowledge/value_sets.yaml`), so the same bark is described with the same
+  word that the cards match. Cards may only use listed values on those paths.
+- **Age-specific card rules.** A rule can say it describes young, mature or old bark. Such a
+  rule only counts against a taxon when the trunk was read at that age, so old furrowed bark
+  no longer argues against a card whose diagnostic bark is young and smooth.
+- **Eight sourced bark and trunk rules:** larch flaking bark with reddish inner bark, the
+  dark rugged base of old birch, red oak's shiny-striped ridges, young walnut's smooth
+  olive-brown bark, the orange tint in Robinia's furrows, lime's basal burls and sprouts,
+  Norway maple's criss-crossing grooves and silver maple's shaggy strips. Each cites a quote
+  checked against its page. They support a taxon; none names one on its own.
+
 ### Changed
 
+- **Moss, lichen and trunk age are not knowledge gaps.** `bark.epiphytes` and
+  `trunk.life_stage` are reported as context instead of inflating the coverage-gap count.
+
+- **Every taxon card is reviewed.** The remaining 24 cards record an AI-assisted botanical
+  review dated 2026-11-11 and are no longer placeholders. New diagnostic readings name a
+  taxon: beechnuts in a spiny husk and long pointed buds (Fagus), the three-lobed nutlet
+  bract (Carpinus), the bracted nutlet (Tilia), hanging thin-scaled cones (Picea),
+  long-stalked cherries (Prunus avium), the splitting husk and thin wrinkled nut (Juglans
+  regia), the round coarsely toothed leaf (Populus tremula) and the flattened petiole
+  (Populus). Traits shared with other trees now only support: horizontal lenticels for
+  wild cherry, a generic nut for common walnut, rounded or heart-shaped leaves for poplar,
+  the flattened petiole for aspen. Cards that had no contradictions gain them, for example
+  pear fruit against apple, palmate leaves against oak, and black walnut's ridged nut
+  against common walnut. No public evaluation decision changed.
+- **Robinia and Fraxinus are reviewed local knowledge.** Both cards, their feature rules
+  and broader identities record an AI-assisted botanical and implementation review dated
+  2026-11-11, using general botanical knowledge and source descriptions already recorded
+  in the files. Their provenance confidence is medium and `placeholder_content` is false.
+  Answers using these cards no longer carry the placeholder warning solely on their
+  account. Review metadata does not increase identification confidence.
+- **Maple covers box elder and rules out plane tree.** Acer is reviewed: a palmate leaf or
+  paired samara still names it, and box elder's few coarse or lobed leaflets now do too.
+  Alternate leaves and bristly fruit balls (London plane) mark a maple answer as conflicting,
+  as do ash's single-winged samara and finely serrate or entire pinnate leaflets. Rules cite
+  Virginia Tech Dendrology and USU TreeBrowser.
+- **Ash needs discriminating evidence.** The single-winged paddle samara and seven or more
+  finely serrate leaflets are the Fraxinus card's strong features, so a male tree (no
+  samaras) is still named from an attached leaf. Opposite pinnate leaves alone also fit
+  Acer negundo, whose few coarse or lobed leaflets now rule ash out; black buds describe
+  F. excelsior rather than every ash. Both remain supporting.
+  Brown buds no longer veto otherwise supported ash. Rules retain the recorded Virginia
+  Tech Dendrology and USU TreeBrowser provenance.
+- **Robinia pod detail is explicit.** A flat, oblong, smooth pod read as 3-8 cm has its own
+  diagnostic token; generic flat pods remain supporting. Paired stipular spines remain
+  strong matches but keep the existing silhouette ceiling when used alone. Generic thorns
+  no longer veto the card, while incompatible branched-thorn readings still do. Flowers
+  are deferred until an evidence tier and attachment contract are defined. The card retains
+  its recorded flora provenance.
+- **Common names are matched as whole phrases first.** "Black locust" names Robinia,
+  "black walnut" names Juglans nigra, and negation applies to the whole name. Fragments such
+  as "black" no longer match unrelated longer aliases; "locust" alone remains unrecognised.
+- **Tree names are English and Latin only.** Answers name a taxon as "Robinia pseudoacacia
+  (black locust)" or "Pinaceae (pine family)" instead of the Ukrainian common name. A user's
+  own version is recognised by its English common name or Latin name ("oak", "Quercus");
+  Ukrainian names such as "дуб" are no longer matched and are ruled `possible`, the same as
+  any name without a card. No decision changed; `public-v0.10.0` display names refreshed.
 - **A taxon is named only on evidence its card calls diagnostic.** A candidate supported
   only by features its card lists as *supporting* (for example plated bark, which pine shares
   with spruce, fir and sycamore) is still kept and reported, but the answer is "insufficient

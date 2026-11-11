@@ -22,6 +22,7 @@ from dendro_inspector.schemas.taxon import (
     Provenance,
     RegionalPack,
     Resolution,
+    ReviewState,
     SourceType,
     TaxonCard,
     ValueVocabulary,
@@ -185,10 +186,26 @@ class TestKnowledgeCards:
         assert not dead, f"requirement selectors that no feature can ever match: {dead}"
 
     def test_placeholder_content_is_declared_honestly(self, repo_root):
-        """Nothing here has been dendrologist-reviewed, and every card must say so."""
+        """Promotion requires reviewed rules and identities with attributable metadata."""
         for path in _yaml_files(repo_root, "taxa"):
             card = TaxonCard.model_validate(yaml.safe_load(path.read_text(encoding="utf-8")))
-            assert card.placeholder_content is True
+            if card.placeholder_content:
+                continue
+            rules = (
+                *card.strong_positive_features,
+                *card.supporting_features,
+                *card.contradictions,
+            )
+            sources = (
+                card.provenance,
+                *(rule.provenance or card.provenance for rule in rules),
+                *(rule.provenance or card.provenance for rule in card.confidence_exceptions),
+                *(identity.provenance for identity in card.broader_identities),
+            )
+            for source in sources:
+                assert source is not None
+                assert source.review_state is ReviewState.REVIEWED, path.name
+                assert source.reviewed_by and source.last_reviewed, path.name
 
 
 class TestValueVocabulary:

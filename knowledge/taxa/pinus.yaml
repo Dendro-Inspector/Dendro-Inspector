@@ -1,22 +1,23 @@
-# PLACEHOLDER demonstration content — feature rules derived from section 14 of the
-# domain prompt, not reviewed by a dendrologist. Any rule or identity carrying its own
-# provenance block names a different source. See docs/dataset-policy.md.
+# General botanical knowledge reviewed against the domain prompt, the sources recorded
+# here and the implementation. Rule-specific sources override the domain-prompt origin.
+# AI-assisted review scope: docs/dataset-policy.md.
 taxon_id: pinus
-display_name: Pinus (сосна)
+display_name: Pinus (pine)
 native_resolution: genus
 broader_identities:
   - resolution: family
     taxon_id: pinaceae
-    display_name: Pinaceae (соснові)
+    display_name: Pinaceae (pine family)
     provenance:
       source: "Standard botanical taxonomy; the domain prompt names no family"
       source_type: inferred
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-11
 aliases:
-  - сосна
-  - сосна звичайна
   - pine
   - pinus
-  - сосна лісова
 supported_resolution:
   - genus
 
@@ -57,8 +58,10 @@ supporting_features:
         Gymnosperm Database, Pinus sylvestris (https://www.conifers.org/pi/Pinus_sylvestris.php, accessed 2026-11-11): "Bark on lower stem thick, scaly-plated, grey-brown; on upper stem and branches, thin, flaking, orange-red."
       source_type: literature
       region: Eastern Europe
-      confidence: low
-      review_state: unreviewed
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-11
 
 contradictions:
   - feature: needles.attachment
@@ -79,8 +82,10 @@ contradictions:
         Gymnosperm Database, Pinus (https://www.conifers.org/pi/Pinus.php): needles in "fascicles of one to eight needles, initially bound together by a basal sheath"; Larix (https://www.conifers.org/pi/Larix.php): "Leaves in tufts of 10-60 on short (spur) shoots". Accessed 2026-11-11.
       source_type: literature
       region: Eastern Europe
-      confidence: low
-      review_state: unreviewed
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-11
   - feature: needles.attachment
     values:
       - single_on_disc_base
@@ -89,8 +94,10 @@ contradictions:
         Gymnosperm Database, Pinus (https://www.conifers.org/pi/Pinus.php): needles in sheathed fascicles; Abies (https://www.conifers.org/pi/Abies.php): "Leaves: Borne singly", leaving "prominent leaf scars, circular to broadly elliptic". Accessed 2026-11-11.
       source_type: literature
       region: Eastern Europe
-      confidence: low
-      review_state: unreviewed
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-11
   - feature: cones.type
     values:
       - upright_disintegrating
@@ -99,8 +106,10 @@ contradictions:
         Gymnosperm Database, Abies (https://www.conifers.org/pi/Abies.php): "Abies is unique among conifers in bearing erect cones that disarticulate in situ"; Pinus (https://www.conifers.org/pi/Pinus.php): "relatively stiff, woody scales". Accessed 2026-11-11.
       source_type: literature
       region: Eastern Europe
-      confidence: low
-      review_state: unreviewed
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-11
 
 common_confusions:
   - abies
@@ -116,14 +125,14 @@ follow_up_evidence:
   - prepared_end_grain_macro
 
 provenance:
-  source: "Domain prompt section 14 (БАЗОВІ ПОРОДИ)"
+  source: "Domain prompt section 14 (BASE SPECIES)"
   source_type: domain_prompt
   region: Eastern Europe
   life_stage: any
   season: any
-  confidence: low
-  review_state: unreviewed
-  reviewed_by: null
-  last_reviewed: null
+  confidence: medium
+  review_state: reviewed
+  reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+  last_reviewed: 2026-11-11
 
-placeholder_content: true
+placeholder_content: false

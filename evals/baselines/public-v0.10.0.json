@@ -25,7 +25,7 @@
   "cases": {
     "abstention-visible-001": {
       "selected_taxon": "pinaceae",
-      "selected_taxon_display_name": "Pinaceae (соснові)",
+      "selected_taxon_display_name": "Pinaceae (pine family)",
       "resolution": "family",
       "confidence": "low",
       "evidence_tier": 6,
@@ -35,7 +35,7 @@
     },
     "apple-with-fruit-001": {
       "selected_taxon": "malus",
-      "selected_taxon_display_name": "Malus (яблуня)",
+      "selected_taxon_display_name": "Malus (apple)",
       "resolution": "genus",
       "confidence": "high",
       "evidence_tier": 7,
@@ -45,7 +45,7 @@
     },
     "arbiter-ranking-001": {
       "selected_taxon": "picea",
-      "selected_taxon_display_name": "Picea (ялина, смерека)",
+      "selected_taxon_display_name": "Picea (spruce)",
       "resolution": "genus",
       "confidence": "low",
       "evidence_tier": 6,
@@ -57,7 +57,7 @@
     },
     "broadened-species-identity-001": {
       "selected_taxon": "acer",
-      "selected_taxon_display_name": "Acer (клен)",
+      "selected_taxon_display_name": "Acer (maple)",
       "resolution": "genus",
       "confidence": "low",
       "evidence_tier": 6,
@@ -87,7 +87,7 @@
     },
     "conifer-log-001": {
       "selected_taxon": "pinus",
-      "selected_taxon_display_name": "Pinus (сосна)",
+      "selected_taxon_display_name": "Pinus (pine)",
       "resolution": "genus",
       "confidence": "medium",
       "evidence_tier": 6,
@@ -107,7 +107,7 @@
     },
     "disjunctive-user-claim-001": {
       "selected_taxon": "pinus",
-      "selected_taxon_display_name": "Pinus (сосна)",
+      "selected_taxon_display_name": "Pinus (pine)",
       "resolution": "genus",
       "confidence": "medium",
       "evidence_tier": 6,
@@ -137,7 +137,7 @@
     },
     "light-trunk-birch-001": {
       "selected_taxon": "betula",
-      "selected_taxon_display_name": "Betula (береза)",
+      "selected_taxon_display_name": "Betula (birch)",
       "resolution": "genus",
       "confidence": "low",
       "evidence_tier": 3,
@@ -157,7 +157,7 @@
     },
     "mixed-taxa-001": {
       "selected_taxon": "pinus",
-      "selected_taxon_display_name": "Pinus (сосна)",
+      "selected_taxon_display_name": "Pinus (pine)",
       "resolution": "genus",
       "confidence": "medium",
       "evidence_tier": 6,
@@ -167,7 +167,7 @@
     },
     "near-miss-vocabulary-001": {
       "selected_taxon": "pinus",
-      "selected_taxon_display_name": "Pinus (сосна)",
+      "selected_taxon_display_name": "Pinus (pine)",
       "resolution": "genus",
       "confidence": "medium",
       "evidence_tier": 6,
@@ -177,7 +177,7 @@
     },
     "partial-visibility-cap-001": {
       "selected_taxon": "pinus",
-      "selected_taxon_display_name": "Pinus (сосна)",
+      "selected_taxon_display_name": "Pinus (pine)",
       "resolution": "genus",
       "confidence": "low",
       "evidence_tier": 3,
@@ -207,7 +207,7 @@
     },
     "silent-reviewers-high-confidence-001": {
       "selected_taxon": "pinus",
-      "selected_taxon_display_name": "Pinus (сосна)",
+      "selected_taxon_display_name": "Pinus (pine)",
       "resolution": "genus",
       "confidence": "high",
       "evidence_tier": 6,
@@ -237,7 +237,7 @@
     },
     "unattached-contradiction-claim-001": {
       "selected_taxon": "pinus",
-      "selected_taxon_display_name": "Pinus (сосна)",
+      "selected_taxon_display_name": "Pinus (pine)",
       "resolution": "genus",
       "confidence": "medium",
       "evidence_tier": 7,

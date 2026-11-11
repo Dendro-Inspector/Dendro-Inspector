@@ -149,11 +149,15 @@ def test_candidate_generator_hands_both_identifier_spaces_to_the_provider(
 
 def test_extractor_vocabulary_uses_exact_card_tokens_without_taxon_names(node_context):
     context = support.evidence_value_vocabulary_context(node_context)
-    payload = _json_block(context)
+    blocks = [
+        json.loads(part.split("\n```", maxsplit=1)[0]) for part in context.split("```json\n")[1:]
+    ]
+    open_paths, closed_paths = blocks
 
-    assert isinstance(payload, dict)
-    assert "scaly_plates" in payload["bark.texture"]
-    assert "single_on_woody_peg" in payload["needles.attachment"]
+    assert "single_on_woody_peg" in open_paths["needles.attachment"]
+    # Bark texture is a closed list: it moves to the second block, with descriptions.
+    assert "bark.texture" not in open_paths
+    assert "scaly_plates" in closed_paths["bark.texture"]
     assert "pinus" not in context.lower()
     assert "picea" not in context.lower()
     assert context == support.evidence_value_vocabulary_context(node_context)

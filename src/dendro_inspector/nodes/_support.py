@@ -145,15 +145,38 @@ def evidence_value_vocabulary_context(ctx: NodeContext) -> str:
     extraction observational rather than turning it into identification.
     """
     vocabulary = card_value_vocabulary(ctx.knowledge.taxa(ctx.knowledge.available_taxon_ids()))
-    payload = {feature: sorted(values) for feature, values in sorted(vocabulary.items())}
+    value_sets = ctx.knowledge.value_sets()
+    closed = value_sets.value_sets if value_sets is not None else {}
+    payload = {
+        feature: sorted(values)
+        for feature, values in sorted(vocabulary.items())
+        if feature not in closed
+    }
     body = json.dumps(payload, indent=2, ensure_ascii=False)
-    return (
+    text = (
         "## Canonical evidence value vocabulary (project data)\n\n"
         "When a listed value accurately describes visible evidence, use that exact token. "
         "Do not force a listed value when none fits: an honest out-of-vocabulary observation "
         "is preferable, but it cannot support exact knowledge-card matching. These tokens "
         "are not an identification, and taxon names are deliberately omitted.\n\n"
         f"```json\n{body}\n```"
+    )
+    if not closed:
+        return text
+    closed_body = json.dumps(
+        {feature: dict(sorted(values.items())) for feature, values in sorted(closed.items())},
+        indent=2,
+        ensure_ascii=False,
+    )
+    return (
+        f"{text}\n\n"
+        "## Closed bark and trunk vocabulary (project data)\n\n"
+        "For these feature paths, choose the single listed value whose description best fits "
+        "what is visible, or report the feature as unreadable. Do not invent new values here; "
+        "a near-synonym is a different token and cannot be matched. Record bark at each "
+        "height that looks different (for example the base and the upper trunk) as separate "
+        "observations. Record `trunk.life_stage` whenever trunk size or bark makes it clear.\n\n"
+        f"```json\n{closed_body}\n```"
     )
 
 

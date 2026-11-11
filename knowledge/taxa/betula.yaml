@@ -1,18 +1,21 @@
-# PLACEHOLDER demonstration content — feature rules derived from section 14 of the
-# domain prompt, not reviewed by a dendrologist. Any rule or identity carrying its own
-# provenance block names a different source. See docs/dataset-policy.md.
+# General botanical knowledge reviewed against the domain prompt, the sources recorded
+# here and the implementation. Rule-specific sources override the domain-prompt origin.
+# AI-assisted review scope: docs/dataset-policy.md.
 taxon_id: betula
-display_name: Betula (береза)
+display_name: Betula (birch)
 native_resolution: genus
 broader_identities:
   - resolution: family
     taxon_id: betulaceae
-    display_name: Betulaceae (березові)
+    display_name: Betulaceae (birch family)
     provenance:
       source: "Standard botanical taxonomy; the domain prompt names no family"
       source_type: inferred
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-11
 aliases:
-  - береза
   - birch
   - betula
 supported_resolution:
@@ -33,6 +36,20 @@ supporting_features:
   - feature: leaf.shape
     values:
       - small_triangular_serrate
+  - feature: bark.pattern
+    values:
+      - black_rugged_fissured_base_diamonds
+    life_stage: old
+    note: The dark base of an old birch; the upper trunk stays white.
+    provenance:
+      source: >-
+        https://en.wikipedia.org/wiki/Silver_birch: "the bark thickens, becoming irregular, dark, and rugged" Accessed 2026-11-11 (KNOWLEDGE-RESEARCH-2026-11-11).
+      source_type: literature
+      region: Eastern Europe
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-11
 
 # White papery bark with black marks is the one bark signature in this pack the domain
 # prompt itself places at the top of the scale: section 6 lists it among the 95-100
@@ -56,9 +73,48 @@ confidence_exceptions:
       source_type: domain_prompt
       region: Eastern Europe
       confidence: medium
-      review_state: unreviewed
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-11
 
-contradictions: []
+contradictions:
+  - feature: leaf.type
+    values:
+      - compound_pinnate
+    provenance:
+      source: "General botanical knowledge (AI-assisted review, 2026-11-11)"
+      source_type: inferred
+      region: Eastern Europe
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-11
+  - feature: leaf.underside
+    values:
+      - white_tomentose
+    note: >-
+      White-felted leaf undersides are white poplar, not birch.
+    provenance:
+      source: "General botanical knowledge (AI-assisted review, 2026-11-11)"
+      source_type: inferred
+      region: Eastern Europe
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-11
+  - feature: cones.type
+    values:
+      - small_woody_persistent
+    note: >-
+      Woody persistent cone-like catkins are alder; birch catkins disintegrate.
+    provenance:
+      source: "General botanical knowledge (AI-assisted review, 2026-11-11)"
+      source_type: inferred
+      region: Eastern Europe
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-11
 
 common_confusions:
   - populus_alba
@@ -72,14 +128,14 @@ follow_up_evidence:
   - twig_photo
 
 provenance:
-  source: "Domain prompt section 14 (БАЗОВІ ПОРОДИ)"
+  source: "Domain prompt section 14 (BASE SPECIES)"
   source_type: domain_prompt
   region: Eastern Europe
   life_stage: any
   season: any
-  confidence: low
-  review_state: unreviewed
-  reviewed_by: null
-  last_reviewed: null
+  confidence: medium
+  review_state: reviewed
+  reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+  last_reviewed: 2026-11-11
 
-placeholder_content: true
+placeholder_content: false

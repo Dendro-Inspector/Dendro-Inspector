@@ -2,32 +2,38 @@
 
 - **Status:** Current
 - **Owner:** Dendro Inspector maintainers
-- **Date:** 2026-08-24
-- **Last-verified:** 2026-08-24
+- **Date:** 2026-11-11
+- **Last-verified:** 2026-11-11
 
 This is a **public repository**. Everything committed is world-readable, permanently
 archived by third parties, and mirrored within minutes. Deleting a commit does not unpublish
 it.
 
-## Knowledge cards are placeholder content
+## Knowledge cards record their review status
 
-Every card under `knowledge/` carries `placeholder_content: true`, and a contract test
-enforces it.
+Draft and demonstration cards carry `placeholder_content: true`. A promoted taxon card
+carries `false`, with a named, dated review of its rules and taxonomic identities. The
+data-contract gate checks these review records instead of requiring every card to remain
+a placeholder forever.
 
-They were authored for this project as a wiring demonstration. **No dendrologist has
-reviewed them.** They are not derived from a third-party dataset, a field guide, or a
-taxonomic database. The three-genus conifer pack (Pinus, Picea, Larix) exists to exercise
-the graph, not to identify trees.
+All 27 taxon cards received an **AI-assisted botanical and implementation review** on
+2026-11-11, using general botanical knowledge, the domain prompt and the source descriptions
+recorded in their files. Their rules, contradictions, broader identities and evidence
+requirements were checked with synthetic regression cases. Their provenance confidence is
+`medium`; their placeholder flags are `false`. Rules added from general botanical
+knowledge say so in their own provenance; retrieved sources are quoted where used. This records a local review, not independent dendrologist certification or
+validation of accuracy on real photographs. Comparison and regional cards remain unreviewed.
 
 The flag is load-bearing: the response composer appends a placeholder warning to any answer
-backed by a card carrying it. Removing the flag without a real review would silently upgrade
-demonstration content into apparent authority.
+backed by a card carrying it. Removing it requires a review with an explicit scope; passing
+software tests alone does not establish botanical accuracy.
 
 ### Provenance is mandatory
 
 Every card carries a `provenance` block. **It is scoped to the card's feature rules** —
 `strong_positive_features`, `supporting_features`, `contradictions` and the thresholds
-around them — and any individual feature rule may override it:
+around them — and any individual feature rule may override it. An unreviewed draft starts
+with conservative metadata:
 
 ```yaml
 provenance:
@@ -47,6 +53,27 @@ that scales. The failure it guards against is quiet and expensive: someone adds 
 well-written, wrong feature; every test still passes, because the tests check the code and
 not the botany. With provenance, a later reviewer can list every rule nobody has ever
 verified. Without it, that list cannot be produced at all.
+
+`provenance.confidence` describes confidence in the attributed knowledge. It is not the
+feature's diagnostic strength or an image-identification confidence cap. The reviewed
+taxon descriptions warrant `medium` source confidence within this local
+review's scope. Shared features such as bark can have that source confidence while remaining
+supporting evidence. Decision confidence still comes from observed evidence, attachment,
+contradictions and the deterministic ceilings. A regression test varies source confidence
+and review metadata while asserting the same identification decision.
+
+Card strength does not override the evidence hierarchy. A paired-spine match still carries
+the branch feature's silhouette ceiling, and bud colour still carries the colour cap.
+Do not declare an executable positive feature in a family with no defined authority or
+attachment contract. The Robinia flower rule is deferred for that reason.
+
+Keep diagnostic readings distinct from compatible ones. Robinia's detailed pod token
+explicitly records flatness, oblong shape, a smooth surface and a resolved 3-8 cm length;
+the generic shape remains supporting. This is an extractor's observation, not a
+measurement independently made by code. Fraxinus's opposite leaves and black buds remain
+supporting: the former overlaps the documented Acer negundo gap, and the latter is not
+universal across the genus. These distinctions are exercised on synthetic packets in
+[`test_robinia_fraxinus_cards.py`](../tests/unit/test_robinia_fraxinus_cards.py).
 
 The contract enforces one rule: `review_state: reviewed` requires both `reviewed_by` and
 `last_reviewed`. A card cannot claim review without saying who and when.
@@ -85,14 +112,17 @@ honest only when the card's own source names it.
 
 ### Promoting a card
 
-1. have someone who actually knows the taxon review the features, contradictions and
-   high-confidence requirements;
-2. set `review_state: reviewed` with `reviewed_by` and `last_reviewed`;
+1. review the features, contradictions, taxonomic identities and high-confidence
+   requirements against the stated sources and general botanical knowledge; describe the
+   review's scope and exercise the resulting rules on synthetic cases;
+2. set `review_state: reviewed` with `reviewed_by` and `last_reviewed` on the card and its
+   explicit provenance overrides; identify AI-assisted reviews as such;
 3. set `placeholder_content: false`;
-4. update the comparison cards that mention it.
+4. check the comparison cards that mention it and update any conflicting descriptions.
 
-Do not promote a card because it "looks right". The failure mode this project is built
-around is confident content that nobody checked.
+The existing local status for this is `reviewed` / `local_reviewed`. Do not use
+`externally_verified` for a local review; that status belongs to authoritative external
+retrieval. Review does not raise identification ceilings.
 
 ### Finding the gaps a card review should fill
 
@@ -121,7 +151,27 @@ Two cautions before acting on it:
   away from spruce — and the deterministic rejection was right for a mechanical reason.
 - **Context-tier features can never support an identification** whatever the cards say, so
   they are excluded from the count. Adding `context.site` values changes nothing about
-  support; they matter only as contradictions.
+  support; they matter only as contradictions. `bark.epiphytes` (moss, lichen) and
+  `trunk.life_stage` are counted as non-diagnostic context for the same reason
+  (`NON_DIAGNOSTIC_CONTEXT` in `knowledge/comparison_cards.py`).
+
+### Closed bark and trunk vocabulary
+
+[`knowledge/value_sets.yaml`](../knowledge/value_sets.yaml) closes the value lists for
+`bark.texture`, `bark.pattern`, `bark.surface_marks`, `bark.peeling`, `trunk.form`,
+`trunk.burls` and `trunk.life_stage`. These paths produced most of the unusable evidence in
+the stored golden-100 runs. The extractor receives each list with a plain description per
+value and must choose from it or report the feature unreadable; descriptions never name a
+taxon. A card may only use a listed value on these paths, and a test enforces that. To add
+a bark reading, add it to the list first, with a description, then to the card.
+
+### Age-specific rules
+
+Bark changes with age. A rule may set `life_stage: young | mature | old`. Positive matching
+is unchanged; the stage only limits disagreement. A strong rule or contradiction tied to one
+stage vetoes or contradicts only when the extractor read that `trunk.life_stage`, so old
+furrowed bark does not count against a card whose decisive bark is young and smooth. Leave
+`life_stage` at its default `any` for a reading that holds at every age (beech bark).
 
 ## Photographs
 
@@ -149,6 +199,8 @@ is recorded as a limitation rather than crashing the run.
 
 Fixtures are hand-written, not captured from live model calls. Captured output can contain
 anything the model happened to say, including reconstructed fragments of its input.
+General botanical knowledge and recorded source descriptions can inform synthetic cases;
+golden photographs and their expected answers must not inform card authoring.
 
 ## Personal data
 
@@ -178,8 +230,8 @@ recorded in the trace. If you run this as a service:
 
 ## What the system must not be used for
 
-Nothing here is validated against real photographs at scale, and the knowledge is
-placeholder content. Do not use it to decide:
+Nothing here is validated against real photographs at scale, including the locally reviewed
+cards. Do not use it to decide:
 
 - whether a tree is structurally safe or should be felled;
 - whether timber is the species a seller claims;

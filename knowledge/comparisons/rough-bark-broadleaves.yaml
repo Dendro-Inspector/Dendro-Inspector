@@ -47,6 +47,16 @@ decisive_differences:
     favours: quercus
     note: Ring-porous with prominent rays points to Quercus on a cut face.
 
+  - feature: branch.thorns
+    photo: twig_photo
+    separates:
+      - robinia_pseudoacacia
+      - fraxinus
+      - juglans_regia
+      - quercus
+    favours: robinia_pseudoacacia
+    note: Paired spines at the leaf nodes point to Robinia; none of the others carries spines.
+
 insufficient_features:
   - bark.texture
   - bark.colour
@@ -57,6 +67,7 @@ recommended_follow_up_photos:
   - leaf_attachment_photo
   - leaf_upper_macro
   - acorn_photo
+  - twig_photo
   - prepared_end_grain_macro
 
 provenance:

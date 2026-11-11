@@ -190,6 +190,18 @@ Survivors preserve order but are renumbered densely; when none survive, the expl
 confidence and resolution, so a model cannot cite unrelated evidence to make a plausible name
 look earned.
 
+On a strong-positive feature path, a different reading may veto the card. A value the same
+card explicitly accepts as supporting is compatible, but earns no strong hit and cannot
+hide a different incompatible reading on that path. Explicit contradictions still apply.
+This keeps a generic observation such as "thorns present" from contradicting the more
+specific paired-spine reading without weakening the branched-thorn contradiction.
+
+User claims are resolved separately from candidate admission. The name resolver consumes
+the longest exact declared multiword name before matching individual words, and negation
+applies to the complete name. Thus "black locust" does not also assert "black walnut", and
+"not black walnut, rather ash" asserts only ash. A word fragment inside a longer alias is
+not enough to name that taxon.
+
 The generator creates an empty set for any usable subject the model omitted. Final decision
 covers every detected identity root, including subjects the quality gate found unusable;
 each receives either a supported verdict or an explicit insufficient-evidence result and

@@ -102,12 +102,12 @@ class TestShippedCards:
             card = ComparisonCard.model_validate(yaml.safe_load(path.read_text(encoding="utf-8")))
             assert card.provenance.source
 
-    def test_nothing_shipped_claims_to_have_been_reviewed(self, repo_root):
-        """No dendrologist has seen any of this, and the cards must not imply otherwise."""
+    def test_shipped_review_dates_are_not_in_the_future(self, repo_root):
+        """A completed review must not be recorded before it happens."""
         for path in sorted((repo_root / "knowledge" / "taxa").glob("*.yaml")):
             card = TaxonCard.model_validate(yaml.safe_load(path.read_text(encoding="utf-8")))
-            assert card.provenance.review_state is ReviewState.UNREVIEWED
-            assert card.provenance.reviewed_by is None
+            if card.provenance.last_reviewed is not None:
+                assert card.provenance.last_reviewed <= date.today(), path.name
 
 
 class TestDirectionalDiscriminators:

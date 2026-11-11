@@ -21,6 +21,12 @@ from dendro_inspector.schemas.taxon import ComparisonCard
 #: it varies with age, aspect, moisture, lighting and white balance.
 INSUFFICIENT_ALONE: frozenset[str] = frozenset({"bark.colour", "bark.color", "wood.colour"})
 
+#: Readings that describe the tree's situation rather than its taxon, so no card should
+#: ever declare them. Moss and lichen follow site and aspect, not genus; trunk age only
+#: selects which age-specific card rules apply. Counting them as knowledge gaps inflates
+#: the gap measure with things no card author could fix.
+NON_DIAGNOSTIC_CONTEXT: frozenset[str] = frozenset({"bark.epiphytes", "trunk.life_stage"})
+
 
 def insufficient_features(cards: tuple[ComparisonCard, ...]) -> frozenset[str]:
     """Union of declared insufficient features plus the built-in colour set."""
