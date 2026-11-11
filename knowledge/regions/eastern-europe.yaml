@@ -13,6 +13,7 @@ likely_taxa:
   - carpinus
   - fagus
   - fraxinus
+  - juglans_nigra  # not in the domain prompt; widely planted in parks and shelterbelts
   - juglans_regia
   - larix
   - malus

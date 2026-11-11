@@ -23,6 +23,7 @@ from dataclasses import dataclass
 from enum import IntEnum
 
 from dendro_inspector.schemas.evidence import (
+    AttachmentStatus,
     EvidencePacket,
     Observation,
     ObservationSource,
@@ -251,7 +252,8 @@ def observation_trust(observation: Observation) -> EvidenceTrust:
         return EvidenceTrust.CONTEXT_ONLY
     if observation.visibility in (Visibility.OBSCURED, Visibility.NOT_VISIBLE):
         return EvidenceTrust.CONTEXT_ONLY
-    if requires_attachment(observation.feature) and not observation.is_attached:
+    attested = observation.attachment is AttachmentStatus.USER_ATTESTED
+    if requires_attachment(observation.feature) and not observation.is_attached and not attested:
         return EvidenceTrust.CONTEXT_ONLY
 
     trust = EvidenceTrust.FULL_POSITIVE
@@ -282,6 +284,12 @@ def observation_trust(observation: Observation) -> EvidenceTrust:
         trust = min(trust, EvidenceTrust.CAPPED_POSITIVE)
 
     if is_colour_feature(observation.feature):
+        trust = min(trust, EvidenceTrust.CAPPED_POSITIVE)
+
+    # The uploader's word that a fallen part is this tree's: it counts, but the photograph
+    # itself does not show the connection, so it can neither carry high confidence nor
+    # settle a decisive requirement.
+    if attested:
         trust = min(trust, EvidenceTrust.CAPPED_POSITIVE)
 
     return trust

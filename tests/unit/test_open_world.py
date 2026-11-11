@@ -179,13 +179,16 @@ class TestRetention:
         assert _open_world(proposal, evidence, knowledge) == ()
 
     @pytest.mark.parametrize(
-        "taxon",
+        ("taxon", "covering"),
         [
-            "juglans",  # a broader identity the walnut card declares, with no card of its own
-            "walnut",  # an alias the walnut card declares
+            # a broader identity both walnut cards declare, with no card of its own
+            ("juglans", ("juglans_nigra", "juglans_regia")),
+            ("walnut", ("juglans_regia",)),  # an alias only the common walnut card declares
         ],
     )
-    def test_a_name_a_card_declares_is_retained_as_covered_not_dropped(self, knowledge, taxon):
+    def test_a_name_a_card_declares_is_retained_as_covered_not_dropped(
+        self, knowledge, taxon, covering
+    ):
         """No black hole between admission (card ids only) and missing taxonomy."""
         evidence = _packet(FOLIAGE)
         proposal = CandidateSet(subject_id=SUBJECT, candidates=(_candidate(taxon, 1, "obs-leaf"),))
@@ -195,7 +198,7 @@ class TestRetention:
         assert result.candidate_set.candidates == ()  # admission is not widened
         (retained,) = result.open_world
         assert retained.taxon == taxon
-        assert retained.covered_by == ("juglans_regia",)
+        assert retained.covered_by == covering
         assert not retained.uncovered
         assert retained.reference_status is ReferenceStatus.LOCAL_UNREVIEWED
 
@@ -223,7 +226,8 @@ class TestBoundedByEvidence:
             subject_id=SUBJECT,
             candidates=(
                 _candidate(
-                    "juglans_nigra",
+                    # A real species this pack has no card for (juglans_nigra now has one).
+                    "carya_ovata",
                     1,
                     "obs-bark",
                     resolution=Resolution.SPECIES,
@@ -510,8 +514,10 @@ class TestDecisionRules:
 
         assert decision.status is DecisionStatus.INSUFFICIENT_EVIDENCE
         (candidate,) = decision.open_world_candidates
-        assert candidate.covered_by == ("juglans_regia",)
-        assert "declares only within juglans_regia" in " | ".join(decision.unresolved_questions)
+        assert candidate.covered_by == ("juglans_nigra", "juglans_regia")
+        questions = " | ".join(decision.unresolved_questions)
+        assert "declares only within" in questions
+        assert "juglans_regia" in questions
 
     def test_a_congener_that_shares_no_decisive_evidence_does_not_cap(self, open_world_context_):
         """Rank alone, or rank on weaker evidence, never moves a validated verdict."""

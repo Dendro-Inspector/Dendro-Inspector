@@ -10,6 +10,20 @@ get entries.
 
 ## [Unreleased]
 
+### Added
+
+- A Juglans nigra (black walnut) card. A live upload of a planted walnut was answered
+  Fraxinus from its diamond-fissured bark, while the nuts and pinnate leaves had no card to
+  match. Black walnut and ash now name each other as confusions; opposite leaves
+  contradict walnut. Placeholder content, unreviewed, built from standard descriptions.
+- "All photos are of this one tree": an upload with field context and exactly one
+  standing tree credits fruit and leaves photographed off the tree (picked up beneath it)
+  to that tree as `user_attested`. Such evidence counts as capped support: it can back
+  an identification but cannot settle one or reach high confidence, and the answer says
+  which observations were counted on the uploader's word. Models cannot set this status.
+  With two trees in frame nothing is moved. The upload runner passes `field_context` from
+  the manifest as `--field-context`.
+
 ### Fixed
 
 - An open-world hypothesis whose name a card already declares (a genus of a carded species)
