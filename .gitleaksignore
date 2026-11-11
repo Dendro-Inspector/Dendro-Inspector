@@ -1,0 +1,7 @@
+# False positives: a botanical value token ("nearly_180_horizontal", a samara wing angle)
+# next to a "value_token" key matched generic-api-key. The value was renamed in a later
+# commit; these fingerprints cover the commit that introduced it.
+777ff5ac39664d7a6fa35259612dc9088d4c1493:docs/reviews/KNOWLEDGE-RESEARCH-2026-11-11.json:generic-api-key:4939
+777ff5ac39664d7a6fa35259612dc9088d4c1493:docs/reviews/KNOWLEDGE-RESEARCH-2026-11-11.json:generic-api-key:4975
+777ff5ac39664d7a6fa35259612dc9088d4c1493:docs/reviews/KNOWLEDGE-RESEARCH-2026-11-11.json:generic-api-key:5157
+777ff5ac39664d7a6fa35259612dc9088d4c1493:docs/reviews/KNOWLEDGE-RESEARCH-2026-11-11.json:generic-api-key:5400
