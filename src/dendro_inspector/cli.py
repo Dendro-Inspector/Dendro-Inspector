@@ -390,5 +390,61 @@ def draft_card_command(
     )
 
 
+@app.command(name="coverage-audit")
+def coverage_audit_command(
+    paths: Annotated[
+        list[Path], typer.Argument(help="Stored case records (*.full.json) or directories.")
+    ],
+    replay_records: Annotated[
+        bool,
+        typer.Option(
+            "--replay", help="Also replay each record's evidence through today's decision."
+        ),
+    ] = False,
+    labels: Annotated[
+        Path | None, typer.Option("--labels", help="JSON of reference genus labels by case id.")
+    ] = None,
+    require_discriminating_support: Annotated[
+        bool,
+        typer.Option(
+            "--require-discriminating-support",
+            help="Replay with GraphConfig.require_discriminating_support switched on.",
+        ),
+    ] = False,
+    json_output: Annotated[
+        Path | None, typer.Option("--json-out", help="Write the full report as JSON here.")
+    ] = None,
+) -> None:
+    """Audit stored records: coverage of every observation, admission of every proposal.
+
+    Offline and free: no provider is called. --replay uses the fake provider with neutral
+    reviewers, so it measures the deterministic layer only. See
+    src/dendro_inspector/evaluation/coverage_report.py.
+    """
+    from dendro_inspector.evaluation import coverage_report
+
+    config = load_config()
+    if require_discriminating_support:
+        config = config.model_copy(
+            update={
+                "graph": config.graph.model_copy(update={"require_discriminating_support": True})
+            }
+        )
+    knowledge = KnowledgeBase(config.knowledge)
+    reports = asyncio.run(
+        coverage_report.build_reports(
+            paths,
+            knowledge,
+            config=config,
+            root=Path.cwd(),
+            labels=coverage_report.load_labels(labels),
+            with_replay=replay_records,
+        )
+    )
+    if json_output is not None:
+        json_output.write_text(coverage_report.render_json(reports), encoding="utf-8")
+    typer.echo(coverage_report.render_text(reports))
+
+
 if __name__ == "__main__":  # pragma: no cover
     app()
