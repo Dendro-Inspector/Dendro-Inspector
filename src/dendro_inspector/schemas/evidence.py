@@ -365,6 +365,17 @@ UNREADABLE_VALUES: frozenset[str] = frozenset(
         "undeterminable",
         "not_countable",
         "uncountable",
+        # The commonest failed-read words in recorded runs (2026-11-11 coverage audit: 37 of
+        # 545 observations), none of which were recognised: a trusted "unresolved" on a
+        # card's strong path read as disagreement and could veto the card.
+        "unresolved",
+        "not_resolved",
+        "unreadable",
+        "not_seen",
+        "not_in_frame",
+        "not_visible_on_subject",
+        "none_seen",
+        "none_visible",
     }
 )
 
@@ -373,7 +384,8 @@ UNREADABLE_VALUES: frozenset[str] = frozenset(
 #: a live walnut upload, where ``leaflet.count = numerous_not_countable`` was taken as a
 #: reading that disagreed with the card's ``fifteen_to_twenty_three`` and vetoed the card.
 _UNREADABLE_SUFFIX = re.compile(
-    r"(?:^|_)(?:not_[a-z]+(?:able|ible)|unresolvable|undeterminable|uncountable|indeterminate)$"
+    r"(?:^|_)(?:not_[a-z]+(?:able|ible)|unresolvable|undeterminable|uncountable|indeterminate"
+    r"|unresolved|not_resolved|unreadable)$"
 )
 
 

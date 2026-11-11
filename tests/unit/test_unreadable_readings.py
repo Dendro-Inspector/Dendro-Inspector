@@ -31,14 +31,32 @@ TREE = "tree_1"
 
 @pytest.mark.parametrize(
     "value",
-    ["not_visible", "numerous_not_countable", "not_determinable", "leaflets_not_resolvable"],
+    [
+        "not_visible",
+        "numerous_not_countable",
+        "not_determinable",
+        "leaflets_not_resolvable",
+        "unresolved",
+        "not_resolved",
+        "young_broadleaf_unresolved",
+        "unreadable",
+        "none_seen",
+    ],
 )
 def test_failures_to_read_are_not_readings(value):
     assert not is_positive_reading(value)
 
 
 @pytest.mark.parametrize(
-    "value", ["fifteen_to_twenty_three", "notched_tip", "deeply_corrugated_ridged", "variable"]
+    "value",
+    [
+        "fifteen_to_twenty_three",
+        "notched_tip",
+        "deeply_corrugated_ridged",
+        "variable",
+        # A reading that happens to start with "not": a real negative observation.
+        "not_single_pegs",
+    ],
 )
 def test_readings_stay_readings(value):
     assert is_positive_reading(value)
