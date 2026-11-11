@@ -12,6 +12,11 @@ get entries.
 
 ### Changed
 
+- **Robinia is decided by pods and paired spines, not bark.** A flat oblong pod or paired
+  spines at the leaf nodes are now the strong evidence; the rope-like bark only supports.
+  Opposite leaves, simple or twice-pinnate leaves, toothed leaflets and branched trunk thorns
+  now rule Robinia out. "locust" alone no longer names Robinia, since it also means honey
+  locust. Rules cite Flora of New Zealand, VicFlora and Go Botany.
 - **Tree names are English and Latin only.** Answers name a taxon as "Robinia pseudoacacia
   (black locust)" or "Pinaceae (pine family)" instead of the Ukrainian common name. A user's
   own version is recognised by its English common name or Latin name ("oak", "Quercus");

@@ -69,6 +69,7 @@ contradictions:
 common_confusions:
   - juglans_regia
   - fraxinus
+  - robinia_pseudoacacia
 
 required_for_high_confidence:
   - nut_or_leaf
