@@ -1,6 +1,10 @@
-# PLACEHOLDER demonstration content — feature rules derived from section 14 of the
-# domain prompt, not reviewed by a dendrologist. Any rule or identity carrying its own
-# provenance block names a different source. See docs/dataset-policy.md.
+# Rules carry their own literature provenance where they have one; the rest derive from
+# section 14 of the domain prompt. Not yet reviewed by a dendrologist. See
+# docs/dataset-policy.md.
+#
+# Look-alike with no card: Acer negundo (box elder) also has opposite pinnate leaves, but
+# with 3-5(7) coarsely toothed or lobed leaflets and paired samaras. The Acer card does not
+# describe it yet.
 taxon_id: fraxinus
 display_name: Fraxinus (ash)
 native_resolution: genus
@@ -18,17 +22,66 @@ supported_resolution:
   - genus
 
 strong_positive_features:
-  - feature: leaf.type
-    values:
-      - compound_pinnate
+  # Opposite is strong only because the contradictions below rule out the simple, palmate
+  # maple leaf that is opposite too; together they read as "opposite pinnate".
   - feature: leaf.arrangement
     values:
       - opposite
+    provenance:
+      source: >-
+        Utah State University TreeBrowser, European ash (https://extension.usu.edu/treebrowser/catalog/ash-european): "Opposite; once pinnately compound; 10" to 12" long; 7 to 11 leaflets". Accessed 2026-11-11.
+      source_type: literature
+      region: Eastern Europe
+      confidence: medium
+      review_state: unreviewed
+  - feature: samara.shape
+    values:
+      - single_wing_paddle
+    provenance:
+      source: >-
+        Virginia Tech Dendrology, European ash (https://dendro.cnre.vt.edu/dendrology/syllabus/factsheet.cfm?ID=969): "Straight, single winged samara, 1 to 1 1/2 inches long, 1/2 inch wide, in hanging clusters". Accessed 2026-11-11.
+      source_type: literature
+      region: Eastern Europe
+      confidence: medium
+      review_state: unreviewed
+  # Black buds are Fraxinus excelsior's; F. pennsylvanica's are brown, so their absence
+  # says nothing against ash.
+  - feature: bud.colour
+    values:
+      - black_velvety
+    provenance:
+      source: >-
+        Utah State University TreeBrowser (https://extension.usu.edu/treebrowser/catalog/ash-european): "Buds black, pubescent, covered with 4-6 scales."; Virginia Tech: "buds pubescent, very dark (essentially black)". Accessed 2026-11-11.
+      source_type: literature
+      region: Eastern Europe
+      confidence: medium
+      review_state: unreviewed
 
 supporting_features:
+  # Robinia and walnut share the pinnate leaf; it supports ash, it does not decide it.
+  - feature: leaf.type
+    values:
+      - compound_pinnate
+  - feature: leaflet.shape
+    values:
+      - ovate_lanceolate_serrate
+    provenance:
+      source: >-
+        Virginia Tech Dendrology (https://dendro.cnre.vt.edu/dendrology/syllabus/factsheet.cfm?ID=969): "9 to 11 narrowly ovate, finely serrated leaflets"; USU TreeBrowser: "margins serrate". Accessed 2026-11-11.
+      source_type: literature
+      region: Eastern Europe
+      confidence: medium
+      review_state: unreviewed
   - feature: bark.pattern
     values:
       - diamond_fissures
+    provenance:
+      source: >-
+        Virginia Tech Dendrology (https://dendro.cnre.vt.edu/dendrology/syllabus/factsheet.cfm?ID=969): "Initially smooth light gray brown, later become ridged and furrowed forming a tight diamond shaped pattern." Accessed 2026-11-11.
+      source_type: literature
+      region: Eastern Europe
+      confidence: low
+      review_state: unreviewed
   - feature: pores.arrangement
     values:
       - ring_porous
@@ -40,6 +93,27 @@ contradictions:
   - feature: leaf.arrangement
     values:
       - alternate
+  # Maple: opposite as well, but a simple palmate leaf and paired samaras.
+  - feature: leaf.type
+    values:
+      - broadleaf_simple
+  - feature: leaf.shape
+    values:
+      - palmate_lobed
+  - feature: samara.presence
+    values:
+      - paired
+  # Robinia's entire, mucronate leaflet; ash leaflets are serrate.
+  - feature: leaflet.shape
+    values:
+      - oval_entire_mucronate
+    provenance:
+      source: >-
+        USU TreeBrowser (https://extension.usu.edu/treebrowser/catalog/ash-european): ash leaflet "margins serrate". Accessed 2026-11-11.
+      source_type: literature
+      region: Eastern Europe
+      confidence: medium
+      review_state: unreviewed
 
 common_confusions:
   - juglans_nigra
@@ -48,11 +122,13 @@ common_confusions:
   - robinia_pseudoacacia
 
 required_for_high_confidence:
-  - leaf_or_samara
+  - leaf_or_samara_or_bud
 
 follow_up_evidence:
   - leaf_attachment_photo
   - leaf_upper_macro
+  - samara_photo
+  - winter_twig_photo
   - prepared_end_grain_macro
 
 provenance:

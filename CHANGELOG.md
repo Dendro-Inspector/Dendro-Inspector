@@ -12,6 +12,10 @@ get entries.
 
 ### Changed
 
+- **Ash needs more than a pinnate leaf.** A pinnate leaf alone (shared with Robinia and
+  walnut) now only supports Fraxinus; opposite leaves, a single-winged paddle samara or
+  black velvety buds name it. Simple or palmate leaves, paired samaras and entire mucronate
+  leaflets now rule ash out. Rules cite Virginia Tech Dendrology and USU TreeBrowser.
 - **Robinia is decided by pods and paired spines, not bark.** A flat oblong pod or paired
   spines at the leaf nodes are now the strong evidence; the rope-like bark only supports.
   Opposite leaves, simple or twice-pinnate leaves, toothed leaflets and branched trunk thorns
