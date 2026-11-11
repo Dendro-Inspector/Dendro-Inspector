@@ -264,3 +264,38 @@ def test_an_alternate_palmate_leaf_is_not_a_maple(node_context, simple_case):
     # A sole contradicted candidate is reported as conflicting, never as a maple identification.
     decision = _decide(node_context, simple_case, "acer", packet)
     assert decision.status is DecisionStatus.CONFLICTING_EVIDENCE
+
+
+@pytest.mark.parametrize(
+    ("taxon", "reading", "named"),
+    [
+        ("fagus", ("fruit.type", "triangular_nuts_in_spiny_husk"), "fagus"),
+        ("carpinus", ("fruit.type", "nutlet_with_three_lobed_bract"), "carpinus"),
+        ("tilia", ("fruit.type", "nutlet_with_bract"), "tilia"),
+        ("picea", ("cones.type", "pendent_thin_scaled"), "picea"),
+        ("prunus_avium", ("fruit.type", "cherry_long_stalked"), "prunus_avium"),
+        # One leaf reading narrows aspen to its genus; species needs more than that.
+        ("populus_tremula", ("leaf.shape", "round_coarsely_crenate"), "populus"),
+        ("juglans_regia", ("fruit.husk", "green_splitting_husk"), "juglans_regia"),
+    ],
+)
+def test_a_reviewed_diagnostic_reading_names_the_taxon(
+    taxon, reading, named, node_context, simple_case
+):
+    decision = _decide(node_context, simple_case, taxon, _packet(reading))
+    assert decision.selected_taxon == named
+
+
+@pytest.mark.parametrize(
+    ("taxon", "reading"),
+    [
+        ("juglans_regia", ("nut.shell_surface", "deeply_corrugated_ridged")),
+        ("quercus", ("leaf.shape", "palmate_lobed")),
+        ("malus", ("fruit.type", "pear")),
+        ("pyrus", ("fruit.type", "apple")),
+        ("populus_tremula", ("leaf.underside", "white_tomentose")),
+        ("carpinus", ("leaf.shape", "oval_entire_wavy_margin")),
+    ],
+)
+def test_a_look_alikes_character_disqualifies_the_card(taxon, reading, knowledge):
+    assert match_card(knowledge.taxon(taxon), _packet(reading), SUBJECT).disqualifying_hits

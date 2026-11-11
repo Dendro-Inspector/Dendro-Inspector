@@ -28,8 +28,8 @@ calibrated uncertainty, evaluation and CI in a multimodal agent.
 
 **What it is not:** a tree identification app, a dataset, or a source of botanical truth.
 Dendrology is the *reference domain*; the engineering subject is evidence handling, review,
-calibrated uncertainty, evaluation and CI. The 25-taxon knowledge pack shipped here is
-demonstration content that no dendrologist has reviewed.
+calibrated uncertainty, evaluation and CI. The 27 taxon cards shipped here carry an AI-assisted
+botanical review; no independent dendrologist has reviewed them.
 
 **It is not a replacement for professional identification.** Do not use it to decide
 whether a tree is safe, whether timber is what a seller claims, or whether a plant is
@@ -315,8 +315,8 @@ on as the user wrote it, and every verdict's derivation is recorded in the trace
 suite defines twenty-four deterministic conformance cases, all passing with zero
 overconfidence against the frozen `public-v0.9.0` baseline. One existing case now calls the
 arbiter because its provisional verdict is high; its taxon, resolution, confidence and status
-are unchanged. The knowledge pack is 26 taxa of demonstration content that no dendrologist
-has reviewed — every card says so in its `provenance` block.
+are unchanged. The knowledge pack is 27 taxa with an AI-assisted botanical review and no independent
+dendrologist review — every card says so in its `provenance` block.
 
 What the numbers do and do not prove:
 

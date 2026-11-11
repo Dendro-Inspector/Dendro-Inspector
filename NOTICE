@@ -13,8 +13,8 @@ artifact. The placeholder shipped in this repository is covered by this License;
 replacement you provide remains yours and is not covered by it.
 
 The taxon, comparison and regional knowledge cards under knowledge/ are authored for
-this project. Sources and review status are recorded per card; some taxon cards carry
-an AI-assisted review, while others remain demonstration content. No independent
+this project. Sources and review status are recorded per card; every taxon card carries
+an AI-assisted review; comparison and regional cards remain demonstration content. No independent
 dendrologist review is recorded, and the cards are not derived from a third-party dataset.
 
 The Dendro Inspector banner at docs/assets/dendro-inspector-banner.png is project

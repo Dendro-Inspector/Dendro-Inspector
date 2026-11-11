@@ -1,6 +1,6 @@
-# PLACEHOLDER demonstration content, not reviewed by a dendrologist. Unlike the other
-# 24 cards, this taxon is NOT named anywhere in the domain prompt — it was added to give
-# the conifer comparison a third member. See docs/dataset-policy.md.
+# General botanical knowledge reviewed against the domain prompt, the sources recorded
+# here and the implementation. Rule-specific sources override the domain-prompt origin.
+# AI-assisted review scope: docs/dataset-policy.md.
 taxon_id: larix
 display_name: Larix (larch)
 native_resolution: genus
@@ -11,6 +11,10 @@ broader_identities:
     provenance:
       source: "Standard botanical taxonomy; the domain prompt names no family"
       source_type: inferred
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-11
 aliases:
   - larch
   - larix
@@ -39,6 +43,18 @@ contradictions:
       - two
       - three
       - five
+  - feature: leaf.type
+    values:
+      - broadleaf_simple
+      - compound_pinnate
+    provenance:
+      source: "General botanical knowledge (AI-assisted review, 2026-11-11)"
+      source_type: inferred
+      region: Eastern Europe
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-11
 
 common_confusions:
   - picea
@@ -58,9 +74,9 @@ provenance:
   region: Eastern Europe
   life_stage: any
   season: any
-  confidence: low
-  review_state: unreviewed
-  reviewed_by: null
-  last_reviewed: null
+  confidence: medium
+  review_state: reviewed
+  reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+  last_reviewed: 2026-11-11
 
-placeholder_content: true
+placeholder_content: false

@@ -1,9 +1,6 @@
-# PLACEHOLDER demonstration content, not reviewed by a dendrologist. Like larix and abies,
-# this taxon is NOT in the domain prompt: section 14 names only Juglans regia. It was added
-# after a live upload photographed a planted walnut whose nuts and leaflets the pack could
-# not represent (the model kept proposing `juglans` and `carya` as open-world hypotheses).
-# Feature rules come from standard botanical descriptions of Juglans nigra, not from that
-# upload's tokens; see each rule's provenance and docs/dataset-policy.md.
+# General botanical knowledge reviewed against the domain prompt, the sources recorded
+# here and the implementation. Rule-specific sources override the domain-prompt origin.
+# AI-assisted review scope: docs/dataset-policy.md.
 taxon_id: juglans_nigra
 display_name: Juglans nigra (black walnut)
 native_resolution: species
@@ -14,12 +11,20 @@ broader_identities:
     provenance:
       source: "Domain prompt section 14 (BASE SPECIES)"
       source_type: domain_prompt
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-11
   - resolution: family
     taxon_id: juglandaceae
     display_name: Juglandaceae (walnut family)
     provenance:
       source: "Standard botanical taxonomy; the domain prompt names no family"
       source_type: inferred
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-11
 aliases:
   - black walnut
   - eastern black walnut
@@ -65,6 +70,39 @@ contradictions:
   - feature: leaf.arrangement
     values:
       - opposite
+  - feature: nut.shell_surface
+    values:
+      - shallowly_wrinkled_thin
+    provenance:
+      source: "General botanical knowledge (AI-assisted review, 2026-11-11)"
+      source_type: inferred
+      region: Eastern Europe
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-11
+  - feature: fruit.husk
+    values:
+      - green_splitting_husk
+    provenance:
+      source: "General botanical knowledge (AI-assisted review, 2026-11-11)"
+      source_type: inferred
+      region: Eastern Europe
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-11
+  - feature: leaflet.shape
+    values:
+      - oval_entire_mucronate
+    provenance:
+      source: "General botanical knowledge (AI-assisted review, 2026-11-11)"
+      source_type: inferred
+      region: Eastern Europe
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-11
 
 common_confusions:
   - juglans_regia
@@ -89,9 +127,9 @@ provenance:
   region: Eastern Europe
   life_stage: any
   season: any
-  confidence: low
-  review_state: unreviewed
-  reviewed_by: null
-  last_reviewed: null
+  confidence: medium
+  review_state: reviewed
+  reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+  last_reviewed: 2026-11-11
 
-placeholder_content: true
+placeholder_content: false

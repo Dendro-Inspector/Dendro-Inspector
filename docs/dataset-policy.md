@@ -16,13 +16,13 @@ carries `false`, with a named, dated review of its rules and taxonomic identitie
 data-contract gate checks these review records instead of requiring every card to remain
 a placeholder forever.
 
-Robinia, Fraxinus and Acer received an **AI-assisted botanical and implementation review** on
+All 27 taxon cards received an **AI-assisted botanical and implementation review** on
 2026-11-11, using general botanical knowledge, the domain prompt and the source descriptions
 recorded in their files. Their rules, contradictions, broader identities and evidence
 requirements were checked with synthetic regression cases. Their provenance confidence is
-`medium`; their placeholder flags are `false`. Acer's rule sources (Virginia Tech, USU TreeBrowser) were retrieved
-for its review. This records a local review, not independent dendrologist certification or
-validation of accuracy on real photographs. Other cards retain their own recorded status.
+`medium`; their placeholder flags are `false`. Rules added from general botanical
+knowledge say so in their own provenance; retrieved sources are quoted where used. This records a local review, not independent dendrologist certification or
+validation of accuracy on real photographs. Comparison and regional cards remain unreviewed.
 
 The flag is load-bearing: the response composer appends a placeholder warning to any answer
 backed by a card carrying it. Removing it requires a review with an explicit scope; passing
@@ -56,7 +56,7 @@ verified. Without it, that list cannot be produced at all.
 
 `provenance.confidence` describes confidence in the attributed knowledge. It is not the
 feature's diagnostic strength or an image-identification confidence cap. The reviewed
-Robinia, Fraxinus and Acer descriptions warrant `medium` source confidence within this local
+taxon descriptions warrant `medium` source confidence within this local
 review's scope. Shared features such as bark can have that source confidence while remaining
 supporting evidence. Decision confidence still comes from observed evidence, attachment,
 contradictions and the deterministic ceilings. A regression test varies source confidence

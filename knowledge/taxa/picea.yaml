@@ -1,6 +1,6 @@
-# PLACEHOLDER demonstration content — feature rules derived from section 14 of the
-# domain prompt, not reviewed by a dendrologist. Any rule or identity carrying its own
-# provenance block names a different source. See docs/dataset-policy.md.
+# General botanical knowledge reviewed against the domain prompt, the sources recorded
+# here and the implementation. Rule-specific sources override the domain-prompt origin.
+# AI-assisted review scope: docs/dataset-policy.md.
 taxon_id: picea
 display_name: Picea (spruce)
 native_resolution: genus
@@ -11,6 +11,10 @@ broader_identities:
     provenance:
       source: "Standard botanical taxonomy; the domain prompt names no family"
       source_type: inferred
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-11
 aliases:
   - spruce
   - picea
@@ -21,6 +25,19 @@ strong_positive_features:
   - feature: needles.attachment
     values:
       - single_on_woody_peg
+  - feature: cones.type
+    values:
+      - pendent_thin_scaled
+    note: >-
+      Hanging cones with thin, flexible scales, shed whole; fir cones stand upright and pine cones have woody umbos.
+    provenance:
+      source: "General botanical knowledge (AI-assisted review, 2026-11-11)"
+      source_type: inferred
+      region: Eastern Europe
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-11
 
 supporting_features:
   - feature: crown.shape
@@ -51,8 +68,10 @@ contradictions:
         Gymnosperm Database, Picea (https://www.conifers.org/pi/Picea.php): leaves "sessile on peglike base (called a sterigma)"; Abies (https://www.conifers.org/pi/Abies.php): leaf scars "circular to broadly elliptic, flush with twig surface". Accessed 2026-11-11.
       source_type: literature
       region: Eastern Europe
-      confidence: low
-      review_state: unreviewed
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-11
   - feature: cones.type
     values:
       - upright_disintegrating
@@ -61,8 +80,10 @@ contradictions:
         Gymnosperm Database, Picea (https://www.conifers.org/pi/Picea.php): seed cones "pendent, ovoid to cylindric"; Abies (https://www.conifers.org/pi/Abies.php): cones "erect ... dehiscent (falling apart on maturity)". Accessed 2026-11-11.
       source_type: literature
       region: Eastern Europe
-      confidence: low
-      review_state: unreviewed
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-11
   - feature: needles.arrangement
     values:
       - clustered_on_short_shoots
@@ -71,8 +92,22 @@ contradictions:
         Gymnosperm Database, Picea (https://www.conifers.org/pi/Picea.php): "Leaves borne singly, spreading radially from twigs"; Larix (https://www.conifers.org/pi/Larix.php): "Leaves in tufts of 10-60 on short (spur) shoots". Accessed 2026-11-11.
       source_type: literature
       region: Eastern Europe
-      confidence: low
-      review_state: unreviewed
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-11
+  - feature: leaf.type
+    values:
+      - broadleaf_simple
+      - compound_pinnate
+    provenance:
+      source: "General botanical knowledge (AI-assisted review, 2026-11-11)"
+      source_type: inferred
+      region: Eastern Europe
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-11
 
 common_confusions:
   - abies
@@ -93,9 +128,9 @@ provenance:
   region: Eastern Europe
   life_stage: any
   season: any
-  confidence: low
-  review_state: unreviewed
-  reviewed_by: null
-  last_reviewed: null
+  confidence: medium
+  review_state: reviewed
+  reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+  last_reviewed: 2026-11-11
 
-placeholder_content: true
+placeholder_content: false

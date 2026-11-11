@@ -472,8 +472,8 @@ partial, the file records which parts it covers.
 
 ### Known limitations
 
-- Knowledge has mixed review status, recorded per card. Robinia, Fraxinus and Acer
-  have an AI-assisted review; no independent dendrologist review is recorded. Feature rules cite
+- All 27 taxon cards have an AI-assisted review, recorded per card; comparison and
+  regional cards do not. No independent dendrologist review is recorded. Feature rules cite
   the domain prompt's §14 or their own sources; `larix` and `abies` are not in the prompt.
 - Node prompts ask for `bark.flake_geometry`, which no taxon card declares — evidence for it
   is recorded and then admits nothing. Unresolved: see
