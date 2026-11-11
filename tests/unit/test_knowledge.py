@@ -88,10 +88,19 @@ class TestLoading:
         assert "picea" in card.common_confusions
 
     def test_cards_carry_aliases_a_user_might_actually_type(self, knowledge):
-        """A user's own version arrives in their language, not in Latin."""
-        assert "сосна" in knowledge.taxon("pinus").aliases
-        assert "дуб" in knowledge.taxon("quercus").aliases
-        assert "акація" in knowledge.taxon("robinia_pseudoacacia").aliases
+        """A user's own version arrives as an English common name, not only in Latin."""
+        assert "pine" in knowledge.taxon("pinus").aliases
+        assert "oak" in knowledge.taxon("quercus").aliases
+        assert "false acacia" in knowledge.taxon("robinia_pseudoacacia").aliases
+
+    def test_card_names_are_english_or_latin_only(self, knowledge):
+        """Cards carry English common names and Latin names, never Cyrillic."""
+        for taxon_id in knowledge.available_taxon_ids():
+            card = knowledge.taxon(taxon_id)
+            names = [card.display_name, *card.aliases]
+            names += [identity.display_name for identity in card.broader_identities]
+            for name in names:
+                assert not any("Ѐ" <= ch <= "ӿ" for ch in name), (taxon_id, name)
 
     def test_loading_is_lazy_and_per_taxon(self, knowledge):
         """The whole catalogue must not be pulled in for every request.

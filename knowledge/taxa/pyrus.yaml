@@ -2,17 +2,16 @@
 # domain prompt, not reviewed by a dendrologist. Any rule or identity carrying its own
 # provenance block names a different source. See docs/dataset-policy.md.
 taxon_id: pyrus
-display_name: Pyrus (груша)
+display_name: Pyrus (pear)
 native_resolution: genus
 broader_identities:
   - resolution: family
     taxon_id: rosaceae
-    display_name: Rosaceae (розові)
+    display_name: Rosaceae (rose family)
     provenance:
       source: "Standard botanical taxonomy; the domain prompt names no family"
       source_type: inferred
 aliases:
-  - груша
   - pear
   - pyrus
 supported_resolution:
@@ -49,7 +48,7 @@ follow_up_evidence:
   - bark_macro_mid_trunk
 
 provenance:
-  source: "Domain prompt section 14 (БАЗОВІ ПОРОДИ)"
+  source: "Domain prompt section 14 (BASE SPECIES)"
   source_type: domain_prompt
   region: Eastern Europe
   life_stage: any

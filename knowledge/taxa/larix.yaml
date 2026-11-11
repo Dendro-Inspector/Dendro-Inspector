@@ -2,18 +2,16 @@
 # 24 cards, this taxon is NOT named anywhere in the domain prompt — it was added to give
 # the conifer comparison a third member. See docs/dataset-policy.md.
 taxon_id: larix
-display_name: Larix (модрина)
+display_name: Larix (larch)
 native_resolution: genus
 broader_identities:
   - resolution: family
     taxon_id: pinaceae
-    display_name: Pinaceae (соснові)
+    display_name: Pinaceae (pine family)
     provenance:
       source: "Standard botanical taxonomy; the domain prompt names no family"
       source_type: inferred
 aliases:
-  - модрина
-  - лиственница
   - larch
   - larix
 supported_resolution:

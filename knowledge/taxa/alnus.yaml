@@ -2,17 +2,16 @@
 # domain prompt, not reviewed by a dendrologist. Any rule or identity carrying its own
 # provenance block names a different source. See docs/dataset-policy.md.
 taxon_id: alnus
-display_name: Alnus (вільха)
+display_name: Alnus (alder)
 native_resolution: genus
 broader_identities:
   - resolution: family
     taxon_id: betulaceae
-    display_name: Betulaceae (березові)
+    display_name: Betulaceae (birch family)
     provenance:
       source: "Standard botanical taxonomy; the domain prompt names no family"
       source_type: inferred
 aliases:
-  - вільха
   - alder
   - alnus
 supported_resolution:
@@ -49,7 +48,7 @@ follow_up_evidence:
   - site_photo
 
 provenance:
-  source: "Domain prompt section 14 (БАЗОВІ ПОРОДИ)"
+  source: "Domain prompt section 14 (BASE SPECIES)"
   source_type: domain_prompt
   region: Eastern Europe
   life_stage: any

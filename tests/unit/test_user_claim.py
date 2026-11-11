@@ -90,7 +90,7 @@ class TestVerdicts:
     def test_a_matching_claim_is_accepted(self, node_context):
         """Section 9: "Так, [порода] приймається."."""
         verdict = rule_on_user_claim(
-            _state(user_claim="сосна"),
+            _state(user_claim="pine"),
             node_context,
             "log_1",
             _candidates("pinus"),
@@ -99,8 +99,8 @@ class TestVerdicts:
         )
         assert verdict is UserClaimVerdict.ACCEPTED
 
-    def test_the_claim_is_matched_in_the_users_own_language(self, node_context):
-        for claim in ("дуб", "oak", "Quercus"):
+    def test_the_claim_is_matched_by_english_or_latin_name(self, node_context):
+        for claim in ("oak", "Oak", "Quercus"):
             verdict = rule_on_user_claim(
                 _state(user_claim=claim),
                 node_context,
@@ -113,7 +113,7 @@ class TestVerdicts:
 
     def test_a_claim_still_in_the_running_is_possible(self, node_context):
         verdict = rule_on_user_claim(
-            _state(user_claim="ялина"),
+            _state(user_claim="spruce"),
             node_context,
             "log_1",
             _candidates("pinus", "picea"),
@@ -136,7 +136,7 @@ class TestVerdicts:
     def test_contradicted_evidence_above_bark_can_reject(self, node_context):
         """Fascicled needles genuinely disqualify Picea, and foliage is above bark level."""
         verdict = rule_on_user_claim(
-            _state(user_claim="ялина"),
+            _state(user_claim="spruce"),
             node_context,
             "log_1",
             _candidates("pinus"),
@@ -150,7 +150,7 @@ class TestRestraint:
     def test_bark_only_evidence_can_never_reject_a_version(self, node_context):
         """FAILURE 3 — one patch of bark does not get to overrule the person who was there."""
         verdict = rule_on_user_claim(
-            _state(user_claim="дуб"),
+            _state(user_claim="oak"),
             node_context,
             "log_1",
             _candidates("fraxinus"),
@@ -166,7 +166,7 @@ class TestRestraint:
     def test_field_context_blocks_rejection_even_with_contrary_foliage(self, node_context):
         """The user can see the crown, the fruit and the stump. The camera cannot."""
         verdict = rule_on_user_claim(
-            _state(user_claim="ялина", user_has_field_context=True),
+            _state(user_claim="spruce", user_has_field_context=True),
             node_context,
             "log_1",
             _candidates("pinus"),
@@ -178,7 +178,7 @@ class TestRestraint:
     def test_without_field_context_the_same_evidence_does_reject(self, node_context):
         """The contrast that proves the restraint clause is doing the work."""
         verdict = rule_on_user_claim(
-            _state(user_claim="ялина"),
+            _state(user_claim="spruce"),
             node_context,
             "log_1",
             _candidates("pinus"),
@@ -199,7 +199,7 @@ class TestNotEvaluable:
     def test_a_photograph_that_carries_no_verdict_carries_no_ruling_either(
         self, simple_case, run_scenario
     ):
-        case = simple_case.model_copy(update={"user_claim": "дуб"})
+        case = simple_case.model_copy(update={"user_claim": "oak"})
         result = run_scenario(case, "primary-insufficient")
         assert result.state.decisions[0].user_claim_verdict is UserClaimVerdict.NOT_EVALUABLE
 
@@ -235,7 +235,7 @@ class TestPhaseZeroClaimGates:
             attachment=AttachmentStatus.UNKNOWN,
         )
         verdict = rule_on_user_claim(
-            _state(user_claim="ялина"),
+            _state(user_claim="spruce"),
             node_context,
             "log_1",
             _candidates("pinus"),
@@ -248,7 +248,7 @@ class TestPhaseZeroClaimGates:
     def test_a_hedged_claim_is_accepted_when_either_member_is_selected(self, node_context):
         """A user who hedges is not to be punished for it."""
         verdict = rule_on_user_claim(
-            _state(user_claim="дуб або ясен"),
+            _state(user_claim="oak or ash"),
             node_context,
             "log_1",
             _candidates("quercus"),
@@ -260,7 +260,7 @@ class TestPhaseZeroClaimGates:
 
     def test_a_negated_claim_does_not_name_the_taxon_it_denies(self, node_context):
         verdict = rule_on_user_claim(
-            _state(user_claim="не дуб"),
+            _state(user_claim="not oak"),
             node_context,
             "log_1",
             _candidates("quercus"),
@@ -281,12 +281,12 @@ class TestClaimResolution:
     @pytest.mark.parametrize(
         ("claim", "expected"),
         [
-            ("дуб", ("quercus",)),
+            ("Oak", ("quercus",)),
             ("oak", ("quercus",)),
             ("Quercus robur", ("quercus",)),
-            ("дуб або ясен", ("fraxinus", "quercus")),
-            ("ясен або дуб", ("fraxinus", "quercus")),
-            ("не дуб", ()),
+            ("oak or ash", ("fraxinus", "quercus")),
+            ("ash or oak", ("fraxinus", "quercus")),
+            ("no oak", ()),
             ("not oak", ()),
             ("a", ()),
             ("", ()),
@@ -296,13 +296,13 @@ class TestClaimResolution:
         assert set(resolve_user_claim(claim, knowledge)) == set(expected)
 
     def test_a_negation_removes_only_the_word_it_denies(self, knowledge):
-        """ "не дуб, скоріше ясен" is still a claim about ash."""
-        assert resolve_user_claim("не дуб, скоріше ясен", knowledge) == ("fraxinus",)
+        """ "not oak, rather ash" is still a claim about ash."""
+        assert resolve_user_claim("not oak, rather ash", knowledge) == ("fraxinus",)
 
     def test_the_longest_matching_name_orders_the_result(self, knowledge):
         """Order is by how much of the card the user actually named, not by catalogue
         position, so a disjunction reads back in the order a person would rank it."""
-        resolved = resolve_user_claim("quercus ясен", knowledge)
+        resolved = resolve_user_claim("quercus ash", knowledge)
 
         assert resolved == ("quercus", "fraxinus")
 
@@ -310,7 +310,7 @@ class TestClaimResolution:
         """The other member losing is not the user being wrong."""
         for selected in ("quercus", "fraxinus"):
             verdict = rule_on_user_claim(
-                _state(user_claim="дуб або ясен"),
+                _state(user_claim="oak or ash"),
                 node_context,
                 "log_1",
                 _candidates(selected),
@@ -324,7 +324,7 @@ class TestClaimResolution:
         """The denied taxon must not be read as the version to rule on: that would turn
         "it is not an oak" into a rejected oak claim, which the user never made."""
         verdict = rule_on_user_claim(
-            _state(user_claim="не дуб"),
+            _state(user_claim="not oak"),
             node_context,
             "log_1",
             _candidates("quercus"),

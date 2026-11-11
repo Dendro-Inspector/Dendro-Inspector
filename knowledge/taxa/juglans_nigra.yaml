@@ -5,26 +5,25 @@
 # Feature rules come from standard botanical descriptions of Juglans nigra, not from that
 # upload's tokens; see each rule's provenance and docs/dataset-policy.md.
 taxon_id: juglans_nigra
-display_name: Juglans nigra (горіх чорний)
+display_name: Juglans nigra (black walnut)
 native_resolution: species
 broader_identities:
   - resolution: genus
     taxon_id: juglans
-    display_name: Juglans (горіх)
+    display_name: Juglans (walnut)
     provenance:
-      source: "Domain prompt section 14 (БАЗОВІ ПОРОДИ)"
+      source: "Domain prompt section 14 (BASE SPECIES)"
       source_type: domain_prompt
   - resolution: family
     taxon_id: juglandaceae
-    display_name: Juglandaceae (горіхові)
+    display_name: Juglandaceae (walnut family)
     provenance:
       source: "Standard botanical taxonomy; the domain prompt names no family"
       source_type: inferred
 aliases:
-  - горіх чорний
-  - чорний горіх
   - black walnut
   - eastern black walnut
+  - juglans nigra
 supported_resolution:
   - species
 

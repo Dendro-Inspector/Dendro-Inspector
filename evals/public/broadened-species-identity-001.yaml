@@ -19,7 +19,7 @@ input:
 
 expect:
   expected_taxon: acer
-  expected_taxon_display_name: Acer (клен)
+  expected_taxon_display_name: Acer (maple)
   expected_candidate_taxa:
     - acer_saccharinum
   expected_resolution: genus

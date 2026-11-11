@@ -5,19 +5,16 @@
 # graph spent its whole reasoning budget choosing between Picea and Fagus. A missing card
 # is not a model failure, and it should not be scored as one. See docs/dataset-policy.md.
 taxon_id: abies
-display_name: Abies (ялиця)
+display_name: Abies (fir)
 native_resolution: genus
 broader_identities:
   - resolution: family
     taxon_id: pinaceae
-    display_name: Pinaceae (соснові)
+    display_name: Pinaceae (pine family)
     provenance:
       source: "Standard botanical taxonomy; the domain prompt names no family"
       source_type: inferred
 aliases:
-  - ялиця
-  - ялица
-  - пихта
   - fir
   - silver fir
   - abies

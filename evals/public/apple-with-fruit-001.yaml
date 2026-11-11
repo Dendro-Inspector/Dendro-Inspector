@@ -17,7 +17,7 @@ input:
       path: examples/apple-001.jpg
       media_type: image/jpeg
   user_text: Яблуня?
-  user_claim: яблуня
+  user_claim: apple
   location: Kyiv Oblast, Ukraine
   season: autumn
   declared_object_type: fruit

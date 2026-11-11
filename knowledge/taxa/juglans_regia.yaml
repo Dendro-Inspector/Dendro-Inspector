@@ -2,27 +2,25 @@
 # domain prompt, not reviewed by a dendrologist. Any rule or identity carrying its own
 # provenance block names a different source. See docs/dataset-policy.md.
 taxon_id: juglans_regia
-display_name: Juglans regia (горіх волоський)
+display_name: Juglans regia (common walnut)
 native_resolution: species
 broader_identities:
   - resolution: genus
     taxon_id: juglans
-    display_name: Juglans (горіх)
+    display_name: Juglans (walnut)
     provenance:
-      source: "Domain prompt section 14 (БАЗОВІ ПОРОДИ)"
+      source: "Domain prompt section 14 (BASE SPECIES)"
       source_type: domain_prompt
   - resolution: family
     taxon_id: juglandaceae
-    display_name: Juglandaceae (горіхові)
+    display_name: Juglandaceae (walnut family)
     provenance:
       source: "Standard botanical taxonomy; the domain prompt names no family"
       source_type: inferred
 aliases:
-  - горіх
-  - волоський горіх
-  - грецький горіх
   - walnut
   - juglans
+  - juglans regia
 supported_resolution:
   - species
 
@@ -62,7 +60,7 @@ follow_up_evidence:
   - prepared_end_grain_macro
 
 provenance:
-  source: "Domain prompt section 14 (БАЗОВІ ПОРОДИ)"
+  source: "Domain prompt section 14 (BASE SPECIES)"
   source_type: domain_prompt
   region: Eastern Europe
   life_stage: any

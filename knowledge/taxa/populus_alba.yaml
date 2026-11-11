@@ -2,24 +2,22 @@
 # domain prompt, not reviewed by a dendrologist. Any rule or identity carrying its own
 # provenance block names a different source. See docs/dataset-policy.md.
 taxon_id: populus_alba
-display_name: Populus alba (тополя біла)
+display_name: Populus alba (white poplar)
 native_resolution: species
 broader_identities:
   - resolution: genus
     taxon_id: populus
-    display_name: Populus (тополя)
+    display_name: Populus (poplar)
     provenance:
-      source: "Domain prompt section 14 (БАЗОВІ ПОРОДИ)"
+      source: "Domain prompt section 14 (BASE SPECIES)"
       source_type: domain_prompt
   - resolution: family
     taxon_id: salicaceae
-    display_name: Salicaceae (вербові)
+    display_name: Salicaceae (willow family)
     provenance:
       source: "Standard botanical taxonomy; the domain prompt names no family"
       source_type: inferred
 aliases:
-  - тополя біла
-  - біла тополя
   - white poplar
   - populus alba
 supported_resolution:
@@ -62,7 +60,7 @@ follow_up_evidence:
   - bark_macro_mid_trunk
 
 provenance:
-  source: "Domain prompt section 14 (БАЗОВІ ПОРОДИ)"
+  source: "Domain prompt section 14 (BASE SPECIES)"
   source_type: domain_prompt
   region: Eastern Europe
   life_stage: any

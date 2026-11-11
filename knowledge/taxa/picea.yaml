@@ -2,19 +2,16 @@
 # domain prompt, not reviewed by a dendrologist. Any rule or identity carrying its own
 # provenance block names a different source. See docs/dataset-policy.md.
 taxon_id: picea
-display_name: Picea (ялина, смерека)
+display_name: Picea (spruce)
 native_resolution: genus
 broader_identities:
   - resolution: family
     taxon_id: pinaceae
-    display_name: Pinaceae (соснові)
+    display_name: Pinaceae (pine family)
     provenance:
       source: "Standard botanical taxonomy; the domain prompt names no family"
       source_type: inferred
 aliases:
-  - ялина
-  - смерека
-  - ель
   - spruce
   - picea
 supported_resolution:
@@ -91,7 +88,7 @@ follow_up_evidence:
   - twig_surface_macro
 
 provenance:
-  source: "Domain prompt section 14 (БАЗОВІ ПОРОДИ)"
+  source: "Domain prompt section 14 (BASE SPECIES)"
   source_type: domain_prompt
   region: Eastern Europe
   life_stage: any

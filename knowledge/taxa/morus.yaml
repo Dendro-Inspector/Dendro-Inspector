@@ -2,18 +2,16 @@
 # domain prompt, not reviewed by a dendrologist. Any rule or identity carrying its own
 # provenance block names a different source. See docs/dataset-policy.md.
 taxon_id: morus
-display_name: Morus (шовковиця)
+display_name: Morus (mulberry)
 native_resolution: genus
 broader_identities:
   - resolution: family
     taxon_id: moraceae
-    display_name: Moraceae (шовковицеві)
+    display_name: Moraceae (mulberry family)
     provenance:
       source: "Standard botanical taxonomy; the domain prompt names no family"
       source_type: inferred
 aliases:
-  - шовковиця
-  - тутовник
   - mulberry
   - morus
 supported_resolution:
@@ -51,7 +49,7 @@ follow_up_evidence:
   - prepared_end_grain_macro
 
 provenance:
-  source: "Domain prompt section 14 (БАЗОВІ ПОРОДИ)"
+  source: "Domain prompt section 14 (BASE SPECIES)"
   source_type: domain_prompt
   region: Eastern Europe
   life_stage: any

@@ -2,24 +2,22 @@
 # domain prompt, not reviewed by a dendrologist. Any rule or identity carrying its own
 # provenance block names a different source. See docs/dataset-policy.md.
 taxon_id: prunus
-display_name: Prunus (кісточкові)
+display_name: Prunus (stone fruit trees)
 native_resolution: genus
 broader_identities:
   - resolution: family
     taxon_id: rosaceae
-    display_name: Rosaceae (розові)
+    display_name: Rosaceae (rose family)
     provenance:
       source: "Standard botanical taxonomy; the domain prompt names no family"
       source_type: inferred
 aliases:
-  - слива
-  - вишня
-  - черешня
-  - алича
-  - терен
-  - абрикос
   - prunus
-  - кісточкові
+  - plum
+  - cherry
+  - blackthorn
+  - sloe
+  - apricot
 supported_resolution:
   - genus
   - species_group
@@ -62,7 +60,7 @@ follow_up_evidence:
   - prepared_end_grain_macro
 
 provenance:
-  source: "Domain prompt section 14 (БАЗОВІ ПОРОДИ)"
+  source: "Domain prompt section 14 (BASE SPECIES)"
   source_type: domain_prompt
   region: Eastern Europe
   life_stage: any

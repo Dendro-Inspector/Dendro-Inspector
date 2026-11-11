@@ -18,7 +18,7 @@ input:
       media_type: image/jpeg
       caption: Sawn log with needle litter across the bark
   user_text: Це ялина, її валили минулого тижня.
-  user_claim: ялина
+  user_claim: spruce
   location: Kyiv Oblast, Ukraine
   season: autumn
   declared_object_type: log

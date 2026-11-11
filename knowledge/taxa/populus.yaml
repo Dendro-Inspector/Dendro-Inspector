@@ -2,17 +2,16 @@
 # domain prompt, not reviewed by a dendrologist. Any rule or identity carrying its own
 # provenance block names a different source. See docs/dataset-policy.md.
 taxon_id: populus
-display_name: Populus (тополя)
+display_name: Populus (poplar)
 native_resolution: genus
 broader_identities:
   - resolution: family
     taxon_id: salicaceae
-    display_name: Salicaceae (вербові)
+    display_name: Salicaceae (willow family)
     provenance:
       source: "Standard botanical taxonomy; the domain prompt names no family"
       source_type: inferred
 aliases:
-  - тополя
   - poplar
   - populus
 supported_resolution:
@@ -54,7 +53,7 @@ follow_up_evidence:
   - crown_photo
 
 provenance:
-  source: "Domain prompt section 14 (БАЗОВІ ПОРОДИ)"
+  source: "Domain prompt section 14 (BASE SPECIES)"
   source_type: domain_prompt
   region: Eastern Europe
   life_stage: any

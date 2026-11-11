@@ -2,24 +2,22 @@
 # domain prompt, not reviewed by a dendrologist. Any rule or identity carrying its own
 # provenance block names a different source. See docs/dataset-policy.md.
 taxon_id: acer_saccharinum
-display_name: Acer saccharinum (клен сріблястий)
+display_name: Acer saccharinum (silver maple)
 native_resolution: species
 broader_identities:
   - resolution: genus
     taxon_id: acer
-    display_name: Acer (клен)
+    display_name: Acer (maple)
     provenance:
-      source: "Domain prompt section 14 (БАЗОВІ ПОРОДИ)"
+      source: "Domain prompt section 14 (BASE SPECIES)"
       source_type: domain_prompt
   - resolution: family
     taxon_id: sapindaceae
-    display_name: Sapindaceae (сапіндові)
+    display_name: Sapindaceae (soapberry family)
     provenance:
       source: "Standard botanical taxonomy; the domain prompt names no family"
       source_type: inferred
 aliases:
-  - клен сріблястий
-  - сріблястий клен
   - silver maple
   - acer saccharinum
 supported_resolution:
@@ -63,7 +61,7 @@ follow_up_evidence:
   - samara_photo
 
 provenance:
-  source: "Domain prompt section 14 (БАЗОВІ ПОРОДИ)"
+  source: "Domain prompt section 14 (BASE SPECIES)"
   source_type: domain_prompt
   region: Eastern Europe
   life_stage: any

@@ -12,6 +12,11 @@ get entries.
 
 ### Changed
 
+- **Tree names are English and Latin only.** Answers name a taxon as "Robinia pseudoacacia
+  (black locust)" or "Pinaceae (pine family)" instead of the Ukrainian common name. A user's
+  own version is recognised by its English common name or Latin name ("oak", "Quercus");
+  Ukrainian names such as "дуб" are no longer matched and are ruled `possible`, the same as
+  any name without a card. No decision changed; `public-v0.10.0` display names refreshed.
 - **A taxon is named only on evidence its card calls diagnostic.** A candidate supported
   only by features its card lists as *supporting* (for example plated bark, which pine shares
   with spruce, fir and sycamore) is still kept and reported, but the answer is "insufficient

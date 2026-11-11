@@ -2,17 +2,16 @@
 # domain prompt, not reviewed by a dendrologist. Any rule or identity carrying its own
 # provenance block names a different source. See docs/dataset-policy.md.
 taxon_id: tilia
-display_name: Tilia (липа)
+display_name: Tilia (lime, linden)
 native_resolution: genus
 broader_identities:
   - resolution: family
     taxon_id: malvaceae
-    display_name: Malvaceae (мальвові)
+    display_name: Malvaceae (mallow family)
     provenance:
       source: "Standard botanical taxonomy; the domain prompt names no family"
       source_type: inferred
 aliases:
-  - липа
   - lime
   - linden
   - tilia
@@ -49,7 +48,7 @@ follow_up_evidence:
   - leaf_attachment_photo
 
 provenance:
-  source: "Domain prompt section 14 (БАЗОВІ ПОРОДИ)"
+  source: "Domain prompt section 14 (BASE SPECIES)"
   source_type: domain_prompt
   region: Eastern Europe
   life_stage: any

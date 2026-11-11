@@ -24,7 +24,7 @@ input:
 
 expect:
   expected_taxon: picea
-  expected_taxon_display_name: Picea (ялина, смерека)
+  expected_taxon_display_name: Picea (spruce)
   expected_taxon_in_top_3: picea
   expected_resolution: genus
   max_resolution: genus
