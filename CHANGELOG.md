@@ -18,6 +18,11 @@ get entries.
   in the files. Their provenance confidence is medium and `placeholder_content` is false.
   Answers using these cards no longer carry the placeholder warning solely on their
   account. Review metadata does not increase identification confidence.
+- **Maple covers box elder and rules out plane tree.** Acer is reviewed: a palmate leaf or
+  paired samara still names it, and box elder's few coarse or lobed leaflets now do too.
+  Alternate leaves and bristly fruit balls (London plane) mark a maple answer as conflicting,
+  as do ash's single-winged samara and finely serrate or entire pinnate leaflets. Rules cite
+  Virginia Tech Dendrology and USU TreeBrowser.
 - **Ash needs discriminating evidence.** The single-winged paddle samara and seven or more
   finely serrate leaflets are the Fraxinus card's strong features, so a male tree (no
   samaras) is still named from an attached leaf. Opposite pinnate leaves alone also fit

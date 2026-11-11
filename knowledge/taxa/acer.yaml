@@ -1,6 +1,10 @@
-# PLACEHOLDER demonstration content — feature rules derived from section 14 of the
-# domain prompt, not reviewed by a dendrologist. Any rule or identity carrying its own
-# provenance block names a different source. See docs/dataset-policy.md.
+# General botanical knowledge reviewed against the source descriptions recorded here and
+# the implementation. Rule-specific sources override the domain-prompt origin. AI-assisted
+# review scope: docs/dataset-policy.md.
+#
+# Look-alike with no card: Platanus x acerifolia (London plane) has a maple-like palmate
+# leaf, but alternate, with bristly fruit balls and camouflage-patch bark. Its alternate
+# leaves and fruit balls are declared below as contradictions.
 taxon_id: acer
 display_name: Acer (maple)
 native_resolution: genus
@@ -11,6 +15,10 @@ broader_identities:
     provenance:
       source: "Standard botanical taxonomy; the domain prompt names no family"
       source_type: inferred
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-11
 aliases:
   - maple
   - acer
@@ -21,9 +29,41 @@ strong_positive_features:
   - feature: leaf.shape
     values:
       - palmate_lobed
+    provenance:
+      source: >-
+        Domain prompt section 14 (BASE SPECIES); USU TreeBrowser, Norway maple (https://extension.usu.edu/treebrowser/catalog/maple-norway): "Opposite; simple"; "typically palmately 5-lobed; lobes sharply pointed". Accessed 2026-11-11.
+      source_type: literature
+      region: Eastern Europe
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-11
   - feature: samara.presence
     values:
       - paired
+    provenance:
+      source: >-
+        Domain prompt section 14 (BASE SPECIES); USU TreeBrowser, Norway maple (https://extension.usu.edu/treebrowser/catalog/maple-norway): "Fruit a samara; 2 wide-spread wings". Accessed 2026-11-11.
+      source_type: literature
+      region: Eastern Europe
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-11
+  # Box elder (Acer negundo) is a maple with a pinnate leaf: few coarse or lobed leaflets.
+  # The same reading rules ash out (fraxinus.yaml).
+  - feature: leaflet.shape
+    values:
+      - coarse_serrate_or_lobed
+    provenance:
+      source: >-
+        Virginia Tech Dendrology, boxelder (https://dendro.cnre.vt.edu/dendrology/syllabus/factsheet.cfm?ID=3): "Opposite, pinnately compound, 3 to 5 leaflets (sometimes 7)"; "margin coarsely serrate or somewhat lobed". Accessed 2026-11-11.
+      source_type: literature
+      region: Eastern Europe
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-11
 
 supporting_features:
   - feature: leaf.arrangement
@@ -31,13 +71,62 @@ supporting_features:
       - opposite
 
 contradictions:
+  # Alternate leaves: plane tree, poplar, mulberry.
   - feature: leaf.arrangement
     values:
       - alternate
+    provenance:
+      source: >-
+        USU TreeBrowser, London planetree (https://extension.usu.edu/treebrowser/catalog/planetree-london): leaves "alternate; simple", "maple-like, with 3 to 5 lobes". Accessed 2026-11-11.
+      source_type: literature
+      region: Eastern Europe
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-11
+  - feature: fruit.type
+    values:
+      - bristly_seed_balls
+    provenance:
+      source: >-
+        USU TreeBrowser, London planetree (https://extension.usu.edu/treebrowser/catalog/planetree-london): "fruit rounded, bristly, and 1" in diameter". Accessed 2026-11-11.
+      source_type: literature
+      region: Eastern Europe
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-11
+  # Ash: one-winged samara and many finely serrate leaflets; Robinia: entire leaflets.
+  - feature: samara.shape
+    values:
+      - single_wing_paddle
+    provenance:
+      source: >-
+        Virginia Tech Dendrology, European ash (https://dendro.cnre.vt.edu/dendrology/syllabus/factsheet.cfm?ID=969): "Straight, single winged samara"; maple samaras are paired (USU TreeBrowser, Norway maple). Accessed 2026-11-11.
+      source_type: literature
+      region: Eastern Europe
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-11
+  - feature: leaflet.shape
+    values:
+      - ovate_lanceolate_serrate
+      - oval_entire_mucronate
+    provenance:
+      source: >-
+        Virginia Tech Dendrology, boxelder (https://dendro.cnre.vt.edu/dendrology/syllabus/factsheet.cfm?ID=3): the only pinnate maple here has "3 to 5 leaflets (sometimes 7)" with a "margin coarsely serrate or somewhat lobed", unlike ash's finely serrate or Robinia's entire leaflets. Accessed 2026-11-11.
+      source_type: literature
+      region: Eastern Europe
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-11
 
 common_confusions:
   - acer_pseudoplatanus
   - acer_saccharinum
+  - fraxinus
   - morus
   - populus_alba
 
@@ -55,9 +144,9 @@ provenance:
   region: Eastern Europe
   life_stage: any
   season: any
-  confidence: low
-  review_state: unreviewed
-  reviewed_by: null
-  last_reviewed: null
+  confidence: medium
+  review_state: reviewed
+  reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+  last_reviewed: 2026-11-11
 
-placeholder_content: true
+placeholder_content: false

@@ -14,6 +14,7 @@ from dendro_inspector.knowledge.taxon_cards import match_card
 from dendro_inspector.nodes.final_decision import decide_subject
 from dendro_inspector.nodes.response_composer import run as compose_response
 from dendro_inspector.schemas.candidates import Candidate, CandidateSet, SupportStrength
+from dendro_inspector.schemas.decisions import DecisionStatus
 from dendro_inspector.schemas.evidence import (
     AttachmentStatus,
     EvidencePacket,
@@ -240,3 +241,26 @@ def test_box_elder_leaflets_rule_out_ash(node_context, simple_case):
     ash = node_context.knowledge.taxon("fraxinus")
     assert match_card(ash, packet, SUBJECT).contradicts_own_card
     assert _decide(node_context, simple_case, "fraxinus", packet).selected_taxon is None
+
+
+def test_box_elder_leaves_name_the_maple_genus(node_context, simple_case):
+    """Acer negundo is a maple with a pinnate leaf; its coarse leaflets are diagnostic."""
+    packet = _packet(
+        ("leaf.arrangement", "opposite"),
+        ("leaflet.shape", "coarse_serrate_or_lobed"),
+    )
+    assert _decide(node_context, simple_case, "acer", packet).selected_taxon == "acer"
+
+
+def test_an_alternate_palmate_leaf_is_not_a_maple(node_context, simple_case):
+    """London plane has a maple-like leaf, but alternate, with bristly fruit balls."""
+    packet = _packet(
+        ("leaf.shape", "palmate_lobed"),
+        ("leaf.arrangement", "alternate"),
+        ("fruit.type", "bristly_seed_balls"),
+    )
+    maple = node_context.knowledge.taxon("acer")
+    assert match_card(maple, packet, SUBJECT).disqualifying_hits == ("obs-1", "obs-2")
+    # A sole contradicted candidate is reported as conflicting, never as a maple identification.
+    decision = _decide(node_context, simple_case, "acer", packet)
+    assert decision.status is DecisionStatus.CONFLICTING_EVIDENCE
