@@ -33,6 +33,7 @@ supporting_features:
   - feature: bark.texture
     values:
       - coarse_old
+    life_stage: old
   - feature: wood.tone
     values:
       - yellowish

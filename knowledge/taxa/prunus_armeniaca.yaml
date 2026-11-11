@@ -40,6 +40,7 @@ supporting_features:
   - feature: bark.texture
     values:
       - dark_cracked_old
+    life_stage: old
   - feature: leaf.shape
     values:
       - rounded_oval

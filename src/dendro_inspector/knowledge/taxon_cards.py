@@ -27,10 +27,41 @@ from dendro_inspector.schemas.taxon import (
     ConfidenceException,
     ExceptionCeiling,
     FeatureExpectation,
+    LifeStage,
     Resolution,
     TaxonCard,
     resolution_rank,
 )
+
+#: The observation that records how old the trunk looks. It is context, never evidence for
+#: a taxon: it only decides which age-specific card rules apply.
+LIFE_STAGE_FEATURE = "trunk.life_stage"
+
+
+def observed_life_stages(observations: Iterable[Observation]) -> frozenset[str]:
+    """The trunk ages read for this subject; empty when nobody read one."""
+    return frozenset(
+        observation.value
+        for observation in observations
+        if observation.feature == LIFE_STAGE_FEATURE and is_positive_reading(observation.value)
+    )
+
+
+def applicable_rules(
+    expectations: tuple[FeatureExpectation, ...], stages: frozenset[str]
+) -> tuple[FeatureExpectation, ...]:
+    """Rules that hold at the observed trunk age.
+
+    An age-specific rule only applies when that age was read. With no age reading it is held
+    back: young beech-smooth bark on an old trunk is not disagreement, and neither is old
+    furrowed bark on a sapling. Rules for any age always apply.
+    """
+    return tuple(
+        expectation
+        for expectation in expectations
+        if expectation.life_stage is LifeStage.ANY or expectation.life_stage.value in stages
+    )
+
 
 #: Which declared ceiling wins when a card earns more than one exception at once.
 _CEILING_ORDER: dict[ExceptionCeiling, int] = {
@@ -145,9 +176,15 @@ def self_contradiction_hits(
     not earn a strong hit, and does not excuse a different, incompatible observation on
     that path: generic thorns cannot conceal a reading of branched trunk thorns.
     """
+    # Only rules that hold at the observed trunk age can be disagreed with; any strong value,
+    # whatever its age, still counts as agreement on its path.
+    stages = observed_life_stages(observations)
     declared: dict[str, set[str]] = {}
-    for expectation in card.strong_positive_features:
+    for expectation in applicable_rules(card.strong_positive_features, stages):
         declared.setdefault(expectation.feature, set()).update(expectation.values)
+    every_strong: dict[str, set[str]] = {}
+    for expectation in card.strong_positive_features:
+        every_strong.setdefault(expectation.feature, set()).update(expectation.values)
     supporting: dict[str, set[str]] = {}
     for expectation in card.supporting_features:
         supporting.setdefault(expectation.feature, set()).update(expectation.values)
@@ -155,7 +192,7 @@ def self_contradiction_hits(
     satisfied = {
         observation.feature
         for observation in observations
-        if observation.value in declared.get(observation.feature, frozenset())
+        if observation.value in every_strong.get(observation.feature, frozenset())
         and is_positive_reading(observation.value)
     }
     return tuple(
@@ -262,7 +299,9 @@ def match_card(
         if not _requirement_satisfied(requirement, decisive)
     )
     contextual = contextual_observations_for(evidence, subject_id)
-    contradiction_hits = _matches(card.contradictions, contextual)
+    contradiction_hits = _matches(
+        applicable_rules(card.contradictions, observed_life_stages(contextual)), contextual
+    )
     by_id = {observation.observation_id: observation for observation in contextual}
     disqualifying_hits = tuple(
         evidence_id

@@ -81,9 +81,13 @@ class TestObservationStatus:
         assert audit.reason.startswith("value not declared")
 
     def test_an_undeclared_feature_is_uncovered(self, knowledge):
-        audit = audit_observation(_obs("o", "bark.epiphytes", "moss_on_base"), knowledge)
+        audit = audit_observation(_obs("o", "bark.ridge_form", "rounded"), knowledge)
         assert audit.status is CoverageStatus.VALID_BUT_UNCOVERED
         assert audit.reason.startswith("feature absent")
+
+    def test_moss_and_lichen_are_context_not_a_gap(self, knowledge):
+        audit = audit_observation(_obs("o", "bark.epiphytes", "moss_on_base"), knowledge)
+        assert audit.status is CoverageStatus.CONTEXT_ONLY
 
     def test_colour_is_uncovered_by_policy(self, knowledge):
         audit = audit_observation(_obs("o", "bark.colour", "orange_red"), knowledge)

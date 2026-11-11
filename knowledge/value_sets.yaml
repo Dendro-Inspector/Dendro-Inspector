@@ -1,0 +1,85 @@
+# Closed value lists for bark and trunk readings. Card matching is exact, and on these
+# paths free wording was the largest source of unusable evidence (169 golden-100 records:
+# trunk.form, bark.texture and bark.surface_marks read with values no card declared). The
+# extractor receives each list with its descriptions and must choose from it; a contract
+# test keeps every card value on these paths inside the list. Descriptions describe what is
+# visible and deliberately name no taxon. See docs/reviews/KNOWLEDGE-RESEARCH-2026-11-11.md.
+
+provenance:
+  source: >-
+    Existing card vocabulary plus verified bark and trunk characters from
+    docs/reviews/KNOWLEDGE-RESEARCH-2026-11-11.json
+  source_type: inferred
+  region: Eastern Europe
+  confidence: medium
+  review_state: reviewed
+  reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+  last_reviewed: 2026-11-11
+
+value_sets:
+  bark.texture:
+    smooth_grey: Smooth, even grey bark with no fissures or plates.
+    smooth_grey_slightly_cracked: Mostly smooth grey bark with a few shallow cracks.
+    smooth_olive_brown: Smooth olive-brown to greenish-brown bark without fissures.
+    fine_scales: Thin, small scales flaking from the surface.
+    scaly_plates: Bark broken into larger flat scaly plates.
+    dark_platy: Dark bark divided into small flat plates.
+    dark_small_blocks: Dark bark broken into small square or rectangular blocks.
+    armoured_plates: Thick, heavy plates like armour.
+    grey_brown_scaly: Grey-brown bark flaking in scales.
+    grey_brown_cracked: Grey-brown bark with irregular cracks.
+    grey_brown_fissured: Grey-brown bark with clear vertical fissures.
+    dark_cracked_old: Dark bark cracked into an irregular network on an old trunk.
+    grey_furrowed_old: Grey bark with deep furrows on an old trunk.
+    coarse_furrowed: Coarse, thick bark with wide irregular furrows.
+    coarse_old: Very coarse, rough bark of an old trunk without a regular pattern.
+    deep_longitudinal_fissures: Deep fissures running mainly up and down the trunk.
+    deep_rope_like_furrows: Deep furrows between thick ridges that twist and interweave like rope.
+    deeply_fissured_flaking_reddish_inner: Deeply fissured bark that flakes and shows reddish inner bark.
+    grey_shaggy_strips: Grey bark separating into long, loose, shaggy strips.
+
+  bark.pattern:
+    white_papery_with_black_marks: White papery bark with black marks or bands.
+    black_rugged_fissured_base_diamonds: Dark, rugged, deeply fissured bark at the base of an otherwise pale trunk.
+    pale_upper_dark_rough_base: Pale smooth upper trunk above a dark rough base.
+    orange_flaking_upper_plated_base: Thin orange flaking bark high on the trunk above thick grey-brown plates at the base.
+    grey_green_smooth_young: Smooth grey-green bark of a young trunk.
+    grey_reddish_banded: Grey to reddish bark with horizontal bands.
+    mosaic_patchwork: Bark flaking in patches that leave a mosaic of colours.
+    diamond_fissures: Fissures that join and part to leave diamond-shaped ridges.
+    fine_interlacing_ridges: Fine, shallow grooves that criss-cross in a tight net.
+    ski_track_ridges_shiny_stripes: Long flat-topped ridges with a smooth shiny stripe along each ridge.
+
+  bark.surface_marks:
+    resin_blisters: Raised blisters filled with resin.
+    round_oval_scars: Round or oval scars on otherwise smooth bark.
+    orange_red_tint_in_furrows: Orange or red colour visible deep in the furrows.
+    horizontal_wrinkles: Horizontal wrinkles or folds on smooth bark, often around branch scars.
+    resin_tears: Drops or streaks of dried resin running down the bark.
+    gum_exudation: Clear amber gum oozing from the bark.
+
+  bark.peeling:
+    thin_layers: Thin paper-like layers peeling away.
+    irregular_plates: Irregular plates flaking off.
+    plates_old: Plates loosening on an old trunk.
+    horizontal_ribbons: Bark peeling in horizontal ribbons around the trunk.
+    large_camouflage_flakes: Large thin flakes falling to leave cream, olive and grey patches.
+
+  trunk.form:
+    straight_cylindrical: Straight, round trunk without fluting.
+    straight_long: Long straight trunk free of branches for much of its height.
+    fluted_muscular: Trunk with irregular lengthwise ridges and hollows, like flexed muscle.
+    crooked_low_branching: Short crooked trunk that branches low.
+    massive: Very thick, massive trunk.
+    small_garden: Small trunk of a garden-sized tree.
+    multi_stemmed: Several stems rising from the same base.
+    leaning: Trunk leaning strongly to one side.
+
+  trunk.burls:
+    basal_burls_and_sprouts: Burls and clusters of sprouts around the base of the trunk.
+    burrs_on_trunk: Rounded burrs or knobbly swellings on the trunk.
+
+  trunk.life_stage:
+    young: Young trunk, thin and smooth-barked for the tree.
+    mature: Mature trunk of medium thickness.
+    old: Old, thick trunk with fully developed bark.

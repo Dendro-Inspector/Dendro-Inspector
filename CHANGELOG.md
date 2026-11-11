@@ -10,7 +10,25 @@ get entries.
 
 ## [Unreleased]
 
+### Added
+
+- **Closed bark and trunk vocabulary.** The extractor now chooses bark texture, pattern,
+  surface marks, peeling, trunk form, burls and trunk age from fixed lists with plain
+  descriptions (`knowledge/value_sets.yaml`), so the same bark is described with the same
+  word that the cards match. Cards may only use listed values on those paths.
+- **Age-specific card rules.** A rule can say it describes young, mature or old bark. Such a
+  rule only counts against a taxon when the trunk was read at that age, so old furrowed bark
+  no longer argues against a card whose diagnostic bark is young and smooth.
+- **Eight sourced bark and trunk rules:** larch flaking bark with reddish inner bark, the
+  dark rugged base of old birch, red oak's shiny-striped ridges, young walnut's smooth
+  olive-brown bark, the orange tint in Robinia's furrows, lime's basal burls and sprouts,
+  Norway maple's criss-crossing grooves and silver maple's shaggy strips. Each cites a quote
+  checked against its page. They support a taxon; none names one on its own.
+
 ### Changed
+
+- **Moss, lichen and trunk age are not knowledge gaps.** `bark.epiphytes` and
+  `trunk.life_stage` are reported as context instead of inflating the coverage-gap count.
 
 - **Every taxon card is reviewed.** The remaining 24 cards record an AI-assisted botanical
   review dated 2026-11-11 and are no longer placeholders. New diagnostic readings name a

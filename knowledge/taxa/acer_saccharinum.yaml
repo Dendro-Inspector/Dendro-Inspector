@@ -46,6 +46,19 @@ supporting_features:
   - feature: context.site
     values:
       - urban_park
+  - feature: bark.texture
+    values:
+      - grey_shaggy_strips
+    life_stage: mature
+    provenance:
+      source: >-
+        https://en.wikipedia.org/wiki/Acer_saccharinum: "On mature trunks, the bark is gray and shaggy." Accessed 2026-11-11 (KNOWLEDGE-RESEARCH-2026-11-11).
+      source_type: literature
+      region: Eastern Europe
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-11
 
 contradictions:
   - feature: leaf.arrangement

@@ -36,6 +36,20 @@ supporting_features:
   - feature: leaf.shape
     values:
       - small_triangular_serrate
+  - feature: bark.pattern
+    values:
+      - black_rugged_fissured_base_diamonds
+    life_stage: old
+    note: The dark base of an old birch; the upper trunk stays white.
+    provenance:
+      source: >-
+        https://en.wikipedia.org/wiki/Silver_birch: "the bark thickens, becoming irregular, dark, and rugged" Accessed 2026-11-11 (KNOWLEDGE-RESEARCH-2026-11-11).
+      source_type: literature
+      region: Eastern Europe
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-11
 
 # White papery bark with black marks is the one bark signature in this pack the domain
 # prompt itself places at the top of the scale: section 6 lists it among the 95-100

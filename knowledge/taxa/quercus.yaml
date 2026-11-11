@@ -43,6 +43,20 @@ supporting_features:
   - feature: wood.tone
     values:
       - yellowish_brown
+  - feature: bark.pattern
+    values:
+      - ski_track_ridges_shiny_stripes
+    life_stage: mature
+    note: Red oak (Quercus rubra); native oaks lack the shiny stripes.
+    provenance:
+      source: >-
+        https://gabrielhemery.com/knowledge/species/quercus-rubra/: "Bark grey-brown, smooth, developing ridges with distinctive shiny central stripes." Accessed 2026-11-11 (KNOWLEDGE-RESEARCH-2026-11-11).
+      source_type: literature
+      region: Eastern Europe
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-11
 
 contradictions:
   - feature: leaf.type

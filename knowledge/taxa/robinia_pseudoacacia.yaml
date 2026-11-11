@@ -136,6 +136,19 @@ supporting_features:
   - feature: heartwood.tone
     values:
       - greenish_gold
+  - feature: bark.surface_marks
+    values:
+      - orange_red_tint_in_furrows
+    life_stage: mature
+    provenance:
+      source: >-
+        https://en.wikipedia.org/wiki/Robinia_pseudoacacia: "The bark is a reddish black and gray and tinged with red or orange in the grooves" Accessed 2026-11-11 (KNOWLEDGE-RESEARCH-2026-11-11).
+      source_type: literature
+      region: Eastern Europe
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-11
 
 contradictions:
   # Ash: opposite leaves.

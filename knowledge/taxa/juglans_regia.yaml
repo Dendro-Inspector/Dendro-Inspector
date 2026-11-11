@@ -67,6 +67,7 @@ supporting_features:
   - feature: bark.texture
     values:
       - grey_furrowed_old
+    life_stage: old
   - feature: crown.shape
     values:
       - spreading_garden
@@ -81,6 +82,19 @@ supporting_features:
     provenance:
       source: "General botanical knowledge (AI-assisted review, 2026-11-11)"
       source_type: inferred
+      region: Eastern Europe
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-11
+  - feature: bark.texture
+    values:
+      - smooth_olive_brown
+    life_stage: young
+    provenance:
+      source: >-
+        https://en.wikipedia.org/wiki/Juglans_regia: "The bark is smooth, olive-brown when young and silvery-grey on older branches" Accessed 2026-11-11 (KNOWLEDGE-RESEARCH-2026-11-11).
+      source_type: literature
       region: Eastern Europe
       confidence: medium
       review_state: reviewed

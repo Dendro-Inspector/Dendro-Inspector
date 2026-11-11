@@ -24,7 +24,7 @@ from dendro_inspector.knowledge.candidate_validation import (
     support_is_colour_only,
     validate_candidate_set_with_report,
 )
-from dendro_inspector.knowledge.comparison_cards import INSUFFICIENT_ALONE
+from dendro_inspector.knowledge.comparison_cards import INSUFFICIENT_ALONE, NON_DIAGNOSTIC_CONTEXT
 from dendro_inspector.knowledge.evidence_hierarchy import (
     EvidenceTier,
     EvidenceTrust,
@@ -270,6 +270,8 @@ def audit_observation(
             CoverageStatus.AMBIGUOUS_MAPPING,
             f"vocabulary relates it to declared {', '.join(related)}; relations never match",
         )
+    if observation.feature in NON_DIAGNOSTIC_CONTEXT:
+        return audit(CoverageStatus.CONTEXT_ONLY, "describes the site or trunk age, not the taxon")
     if organ not in families:
         return audit(
             CoverageStatus.VALID_BUT_UNCOVERED, f"no card describes the organ {organ!r}{also}"

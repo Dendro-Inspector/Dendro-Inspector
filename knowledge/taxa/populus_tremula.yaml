@@ -53,6 +53,7 @@ supporting_features:
   - feature: bark.pattern
     values:
       - grey_green_smooth_young
+    life_stage: young
   - feature: wood.tone
     values:
       - pale_soft

@@ -151,7 +151,27 @@ Two cautions before acting on it:
   away from spruce — and the deterministic rejection was right for a mechanical reason.
 - **Context-tier features can never support an identification** whatever the cards say, so
   they are excluded from the count. Adding `context.site` values changes nothing about
-  support; they matter only as contradictions.
+  support; they matter only as contradictions. `bark.epiphytes` (moss, lichen) and
+  `trunk.life_stage` are counted as non-diagnostic context for the same reason
+  (`NON_DIAGNOSTIC_CONTEXT` in `knowledge/comparison_cards.py`).
+
+### Closed bark and trunk vocabulary
+
+[`knowledge/value_sets.yaml`](../knowledge/value_sets.yaml) closes the value lists for
+`bark.texture`, `bark.pattern`, `bark.surface_marks`, `bark.peeling`, `trunk.form`,
+`trunk.burls` and `trunk.life_stage`. These paths produced most of the unusable evidence in
+the stored golden-100 runs. The extractor receives each list with a plain description per
+value and must choose from it or report the feature unreadable; descriptions never name a
+taxon. A card may only use a listed value on these paths, and a test enforces that. To add
+a bark reading, add it to the list first, with a description, then to the card.
+
+### Age-specific rules
+
+Bark changes with age. A rule may set `life_stage: young | mature | old`. Positive matching
+is unchanged; the stage only limits disagreement. A strong rule or contradiction tied to one
+stage vetoes or contradicts only when the extractor read that `trunk.life_stage`, so old
+furrowed bark does not count against a card whose decisive bark is young and smooth. Leave
+`life_stage` at its default `any` for a reading that holds at every age (beech bark).
 
 ## Photographs
 

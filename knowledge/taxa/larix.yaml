@@ -36,6 +36,19 @@ supporting_features:
   - feature: cones.size
     values:
       - small_upright
+  - feature: bark.texture
+    values:
+      - deeply_fissured_flaking_reddish_inner
+    life_stage: mature
+    provenance:
+      source: >-
+        https://www.conifers.org/pi/Larix_decidua.php: "Bark deeply fissured, flaking, medium to dark gray to reddish brown, with reddish inner bark." Accessed 2026-11-11 (KNOWLEDGE-RESEARCH-2026-11-11).
+      source_type: literature
+      region: Eastern Europe
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-11
 
 contradictions:
   - feature: needles.fascicles

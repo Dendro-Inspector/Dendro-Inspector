@@ -53,6 +53,7 @@ supporting_features:
   - feature: bark.peeling
     values:
       - plates_old
+    life_stage: old
   - feature: leaf.shape
     values:
       - oval_serrate
