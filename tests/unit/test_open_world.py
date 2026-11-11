@@ -733,3 +733,22 @@ class TestTheReaderIsTold:
 
         assert result.open_world_candidates == ()
         assert not any(item.startswith("Outside this") for item in result.limitations)
+
+
+def test_a_name_a_card_declares_is_not_called_missing_taxonomy(open_world_context_):
+    """golden-020 (2026-11-10): `robinia` was retained, and `robinia_pseudoacacia` declares it.
+
+    The line said "Outside this knowledge base" and suggested drafting a card that exists.
+    """
+    state, decision = TestTheReaderIsTold()._decision(open_world_context_)
+    [candidate] = decision.open_world_candidates
+    covered = candidate.model_copy(update={"covered_by": ("prunus_cerasifera",)})
+    decision = decision.model_copy(update={"open_world_candidates": (covered,)})
+
+    result = build_result(decision, "en", state)
+
+    assert not any(item.startswith("Outside this") for item in result.limitations)
+    [line] = [item for item in result.limitations if item.startswith("Also proposed")]
+    assert "broader name on prunus_cerasifera" in line
+    assert "draft-card" not in line
+    assert result.open_world_candidates == ("prunus_fictitia",)

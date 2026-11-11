@@ -316,6 +316,12 @@ _OPEN_WORLD_TEXT: dict[str, dict[str, str]] = {
             "no card, so no feature rule checked it and it did not shape this verdict"
             "{reference}. `dendro draft-card {taxon}` drafts a card for review."
         ),
+        "covered": (
+            "Also proposed: {taxon} ({resolution}), consistent with {count} trusted "
+            "observation(s) here ({evidence}). The knowledge base knows it only as a broader "
+            "name on {cards}, so it was not admitted as a candidate for this subject and did "
+            "not shape this verdict{reference}."
+        ),
         "ranked_above": " The model ranked it above the verdict's taxon.",
         "verified": "; an external reference recognises the name",
     },
@@ -326,6 +332,12 @@ _OPEN_WORLD_TEXT: dict[str, dict[str, str]] = {
             "жодне правило ознак її не перевіряло, і на вердикт вона не вплинула"
             "{reference}. `dendro draft-card {taxon}` готує картку на перевірку."
         ),
+        "covered": (
+            "Також запропоновано: {taxon} ({resolution}), узгоджується з {count} надійними "
+            "спостереженнями тут ({evidence}). Довідник знає цю назву лише як ширшу для "
+            "{cards}, тож кандидатом для цього об'єкта її не допущено, і на вердикт вона не "
+            "вплинула{reference}."
+        ),
         "ranked_above": " Модель поставила її вище за таксон вердикту.",
         "verified": "; зовнішнє джерело визнає цю назву",
     },
@@ -333,18 +345,27 @@ _OPEN_WORLD_TEXT: dict[str, dict[str, str]] = {
 
 
 def _open_world_lines(decision: FinalDecision, locale: str) -> list[str]:
-    """One reader-facing line per retained open-world hypothesis, most plausible first."""
+    """One reader-facing line per retained open-world hypothesis, most plausible first.
+
+    Uncovered names are missing taxonomy and get a draft-card pointer; names a card already
+    declares in a broader form are said to be known, just not admitted for this subject.
+    """
     text = _OPEN_WORLD_TEXT.get(locale, _OPEN_WORLD_TEXT["en"])
     ranked = sorted(decision.open_world_candidates, key=lambda c: c.proposed_rank)
     lines: list[str] = []
     for candidate in ranked[:_MAX_OPEN_WORLD_LINES]:
         verified = candidate.reference_status is ReferenceStatus.EXTERNALLY_VERIFIED
-        line = text["line"].format(
+        # A name some card already declares (a genus of a carded species) is not missing
+        # taxonomy: saying "outside this knowledge base" and suggesting a new card for it
+        # was false. golden-020 retained `robinia`, which `robinia_pseudoacacia` declares.
+        template = text["line"] if candidate.uncovered else text["covered"]
+        line = template.format(
             taxon=candidate.taxon,
             resolution=candidate.resolution.value,
             count=len(candidate.supporting_evidence_ids),
             evidence=", ".join(candidate.supporting_evidence_ids[:4]),
             reference=text["verified"] if verified else "",
+            cards=", ".join(candidate.covered_by[:3]),
         )
         if decision.open_world_conflict and not lines:
             line += text["ranked_above"]

@@ -10,6 +10,14 @@ get entries.
 
 ## [Unreleased]
 
+### Fixed
+
+- An open-world hypothesis whose name a card already declares (a genus of a carded species)
+  is no longer called "Outside this knowledge base" with a pointer to draft a card that
+  exists. It now reads "Also proposed: <taxon> ... The knowledge base knows it only as a
+  broader name on <card>". Found on the first live open-world run: golden-020 retained
+  `robinia`, which `robinia_pseudoacacia` declares, beside a genuinely uncovered `salix`.
+
 ### Added
 
 - Open-world hypotheses are now told to the reader. With `DENDRO_OPEN_WORLD_DISCOVERY`
