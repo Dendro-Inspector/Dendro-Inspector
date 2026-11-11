@@ -140,6 +140,19 @@ class GraphConfig(Contract):
             "never selected — and a run in which nothing was admitted skips the reviewers."
         ),
     )
+    require_discriminating_support: bool = Field(
+        default=True,
+        description=(
+            "Name a taxon only when the leader's admitted support includes a feature its own "
+            "card lists as strong-positive, or a card-declared diagnostic exception. On by "
+            "default since v0.10: supporting features are compatible with a taxon, not "
+            "evidence for it over its look-alikes, and a leader resting on them alone is "
+            "kept as a candidate while the subject is reported as insufficient evidence. "
+            "False restores the earlier policy (a low-confidence genus from supporting "
+            "features) for comparative evaluation only. See "
+            "docs/reviews/EVIDENCE-COVERAGE-2026-11-11.md."
+        ),
+    )
     image_max_edge_px: int | None = Field(
         default=1568,
         ge=256,
@@ -311,13 +324,20 @@ def load_config(overrides: AppConfig | None = None) -> AppConfig:
     reference_records = _env("DENDRO_REFERENCE_RECORDS")
     open_world = (_env("DENDRO_OPEN_WORLD_DISCOVERY", "false") or "false").strip().lower()
     every = (_env("DENDRO_ARBITER_EVERY_DECISION", "false") or "false").strip().lower()
-    graph = GraphConfig(open_world_discovery=open_world in {"1", "true", "yes", "on"})
+    discriminating = (
+        (_env("DENDRO_REQUIRE_DISCRIMINATING_SUPPORT", "true") or "true").strip().lower()
+    )
+    graph = GraphConfig(
+        open_world_discovery=open_world in {"1", "true", "yes", "on"},
+        require_discriminating_support=discriminating in {"1", "true", "yes", "on"},
+    )
     # Longest edge of the photograph sent to models: a number of pixels, or "original" to send
     # the file untouched (no upright rotation, metadata kept).
     max_edge = (_env("DENDRO_IMAGE_MAX_EDGE_PX") or "").strip().lower()
     if max_edge:
         graph = GraphConfig(
             open_world_discovery=graph.open_world_discovery,
+            require_discriminating_support=graph.require_discriminating_support,
             image_max_edge_px=None if max_edge in {"original", "none"} else int(max_edge),
         )
 

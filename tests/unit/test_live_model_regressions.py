@@ -77,6 +77,7 @@ from dendro_inspector.schemas.reviews import (
     Severity,
 )
 from dendro_inspector.schemas.taxon import Confidence, Resolution
+from tests.conftest import with_legacy_policy
 
 
 def _json_block(context: str) -> object:
@@ -200,7 +201,9 @@ def test_arbiter_receives_deterministic_proposed_resolution_and_confidence(
     )
     state = state.evolve(
         provisional_decisions=tuple(
-            decide_subject(state, node_context, candidate_set)
+            # One plated-bark reading names nothing under the default; this test is about
+            # what the arbiter is shown, so it pins the legacy policy.
+            decide_subject(state, with_legacy_policy(node_context), candidate_set)
             for candidate_set in state.candidate_sets
         )
     )

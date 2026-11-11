@@ -53,7 +53,7 @@ from dendro_inspector.schemas.taxon import (
     TaxonIdentity,
     resolution_rank,
 )
-from tests.conftest import _wood_surface
+from tests.conftest import _wood_surface, with_legacy_policy
 
 NON_UNKNOWN_RESOLUTIONS = (
     Resolution.FAMILY,
@@ -200,6 +200,11 @@ class TestFinalDecisionIdentityContract:
 
 
 class TestStructuredAndRenderedIdentity:
+    @pytest.fixture
+    def node_context(self, node_context):
+        # Fixtures here rest on supporting features alone; this class tests other logic.
+        return with_legacy_policy(node_context)
+
     def test_all_candidates_removed_abstains_with_targeted_photo(self, simple_case, node_context):
         observation = _observation("support", "bark.texture", "scaly_plates")
         empty = CandidateSet(subject_id="tree_1")
@@ -548,6 +553,11 @@ class TestRecommendationIsAFloor:
     every reviewer asked for.
     """
 
+    @pytest.fixture
+    def node_context(self, node_context):
+        # Fixtures here rest on supporting features alone; this class tests other logic.
+        return with_legacy_policy(node_context)
+
     def _finding(
         self,
         finding_id: str,
@@ -698,6 +708,11 @@ class TestRecommendationIsAFloor:
 
 
 class TestNearestAlternativeSearch:
+    @pytest.fixture
+    def node_context(self, node_context):
+        # Fixtures here rest on supporting features alone; this class tests other logic.
+        return with_legacy_policy(node_context)
+
     def test_alternative_is_found_past_a_candidate_that_collapsed_into_the_verdict(
         self, simple_case, node_context
     ):

@@ -118,6 +118,24 @@ def node_context(config: AppConfig, repo_root: Path) -> NodeContext:
     )
 
 
+def with_legacy_policy(context: NodeContext) -> NodeContext:
+    """The context with ``require_discriminating_support`` off (the pre-v0.10 policy).
+
+    For tests of *other* mechanisms whose fixtures happen to rest on supporting features
+    alone (plated pine bark, a coarse trunk). Under the default those fixtures name nothing,
+    which says nothing about the broadening, floor or alternative logic they exist to test.
+    """
+    graph = context.config.graph.model_copy(update={"require_discriminating_support": False})
+    return NodeContext(
+        config=context.config.model_copy(update={"graph": graph}),
+        providers=context.providers,
+        knowledge=context.knowledge,
+        prompts=context.prompts,
+        recorder=context.recorder,
+        review_projection=context.review_projection,
+    )
+
+
 @pytest.fixture
 def simple_case() -> CaseInput:
     return CaseInput(

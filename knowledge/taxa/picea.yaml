@@ -45,6 +45,37 @@ contradictions:
   - feature: needles.persistence
     values:
       - deciduous
+  # Fir and larch's separating characters, as on the pine card.
+  - feature: needles.attachment
+    values:
+      - single_on_disc_base
+    provenance:
+      source: >-
+        Gymnosperm Database, Picea (https://www.conifers.org/pi/Picea.php): leaves "sessile on peglike base (called a sterigma)"; Abies (https://www.conifers.org/pi/Abies.php): leaf scars "circular to broadly elliptic, flush with twig surface". Accessed 2026-11-11.
+      source_type: literature
+      region: Eastern Europe
+      confidence: low
+      review_state: unreviewed
+  - feature: cones.type
+    values:
+      - upright_disintegrating
+    provenance:
+      source: >-
+        Gymnosperm Database, Picea (https://www.conifers.org/pi/Picea.php): seed cones "pendent, ovoid to cylindric"; Abies (https://www.conifers.org/pi/Abies.php): cones "erect ... dehiscent (falling apart on maturity)". Accessed 2026-11-11.
+      source_type: literature
+      region: Eastern Europe
+      confidence: low
+      review_state: unreviewed
+  - feature: needles.arrangement
+    values:
+      - clustered_on_short_shoots
+    provenance:
+      source: >-
+        Gymnosperm Database, Picea (https://www.conifers.org/pi/Picea.php): "Leaves borne singly, spreading radially from twigs"; Larix (https://www.conifers.org/pi/Larix.php): "Leaves in tufts of 10-60 on short (spur) shoots". Accessed 2026-11-11.
+      source_type: literature
+      region: Eastern Europe
+      confidence: low
+      review_state: unreviewed
 
 common_confusions:
   - abies

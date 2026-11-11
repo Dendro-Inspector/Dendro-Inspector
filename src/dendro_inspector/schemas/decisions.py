@@ -81,6 +81,10 @@ ResolutionBoundSource = Literal[
     # resting on the same decisive observation. Naming the leader's species would substitute
     # a covered look-alike for it; at genus it no longer does. See `open_world_contest`.
     "open_world_outranked",
+    # The leader was admitted only on features its own card lists as supporting: evidence
+    # *compatible* with the taxon, none of it what the card calls diagnostic of it. That
+    # names no identity. See `final_decision.discriminating_support`.
+    "no_discriminating_support",
 ]
 ConfidenceStepSource = Literal[
     "seed",

@@ -214,6 +214,11 @@ def family_of(feature: str) -> str:
     return feature.split(".", 1)[0]
 
 
+def known_families() -> frozenset[str]:
+    """Feature families the hierarchy places in a tier. Anything else defaults to context."""
+    return frozenset(family_of(prefix) for prefix, _ in _FAMILY_TIERS)
+
+
 def tier_of_feature(feature: str) -> EvidenceTier:
     """Tier for a feature path. Longest matching prefix wins; unknown families are context."""
     best: tuple[int, EvidenceTier] = (0, EvidenceTier.CONTEXT)

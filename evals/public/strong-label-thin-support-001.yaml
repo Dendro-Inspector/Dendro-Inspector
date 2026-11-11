@@ -27,12 +27,18 @@ input:
   habitat: stream bank
   declared_object_type: standing_tree
 
+# v0.10 policy (require_discriminating_support, on by default): this fixture's leader is
+# admitted only on features its card lists as supporting, so it stays a candidate but is
+# not named. Expected resolution moved from genus to unknown on purpose; every other
+# assertion — the mechanism this case exists for — is unchanged.
+# See docs/reviews/EVIDENCE-COVERAGE-2026-11-11.md.
 expect:
-  expected_taxon: alnus
-  expected_resolution: genus
+  expected_resolution: unknown
   max_resolution: genus
   max_confidence: medium
-  expected_status: probable
+  expected_status: insufficient_evidence
+  # An abstention must say which photograph would settle it, not just shrug.
+  require_next_photo: true
   expected_evidence_tier: 6
   require_escalation: false
   forbid_admitted_reranks: true
