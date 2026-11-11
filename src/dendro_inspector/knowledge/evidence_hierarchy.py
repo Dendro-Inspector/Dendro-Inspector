@@ -30,6 +30,7 @@ from dendro_inspector.schemas.evidence import (
     Reliability,
     Visibility,
     WoodSurface,
+    is_positive_reading,
     requires_wood_surface,
 )
 from dendro_inspector.schemas.taxon import Confidence, Resolution
@@ -445,11 +446,18 @@ def unattached_observations(evidence: EvidencePacket, subject_id: str) -> tuple[
     Includes both ``UNKNOWN`` and ``CONFIRMED_DETACHED``: neither can carry a verdict. They
     are reported differently, because "I could not trace the branch" asks for a different
     photograph than "this leaf was lying on the ground".
+
+    ``USER_ATTESTED`` evidence is not loose: the uploader vouched for it, it is counted
+    (capped), and the answer says so in its own words. Nor is a non-reading such as
+    ``not_visible``, which describes nothing that could belong to anyone.
     """
     return tuple(
         o
         for o in contextual_observations_for(evidence, subject_id)
-        if requires_attachment(o.feature) and not o.is_attached
+        if requires_attachment(o.feature)
+        and not o.is_attached
+        and o.attachment is not AttachmentStatus.USER_ATTESTED
+        and is_positive_reading(o.value)
     )
 
 

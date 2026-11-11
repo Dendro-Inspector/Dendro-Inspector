@@ -19,6 +19,7 @@ Two further distinctions the extractor must preserve:
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping
 from enum import StrEnum
 from typing import Any
@@ -360,13 +361,25 @@ UNREADABLE_VALUES: frozenset[str] = frozenset(
         "unknown",
         "obscured",
         "absent",
+        "not_determinable",
+        "undeterminable",
+        "not_countable",
+        "uncountable",
     }
+)
+
+#: A token that *ends* by saying the feature could not be read is a failure to read it,
+#: whatever comes first: ``numerous_not_countable``, ``leaflets_not_resolvable``. Found on
+#: a live walnut upload, where ``leaflet.count = numerous_not_countable`` was taken as a
+#: reading that disagreed with the card's ``fifteen_to_twenty_three`` and vetoed the card.
+_UNREADABLE_SUFFIX = re.compile(
+    r"(?:^|_)(?:not_[a-z]+(?:able|ible)|unresolvable|undeterminable|uncountable|indeterminate)$"
 )
 
 
 def is_positive_reading(value: str) -> bool:
     """Whether an observation's value is an actual reading of the feature."""
-    return value not in UNREADABLE_VALUES
+    return value not in UNREADABLE_VALUES and _UNREADABLE_SUFFIX.search(value) is None
 
 
 class KnowledgeCoverage(Contract):
