@@ -51,6 +51,7 @@ common_confusions:
   - fraxinus
   - quercus
   - robinia_pseudoacacia
+  - juglans_nigra
 
 required_for_high_confidence:
   - nut_or_leaf

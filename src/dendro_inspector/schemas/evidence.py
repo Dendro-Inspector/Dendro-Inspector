@@ -131,11 +131,18 @@ class AttachmentStatus(StrEnum):
     Only ``CONFIRMED_ATTACHED`` lets evidence count at its own tier. ``UNKNOWN`` and
     ``CONFIRMED_DETACHED`` both demote to context, but they say different things in the
     report and call for different photographs.
+
+    ``USER_ATTESTED`` is never written by a model. Deterministic code sets it when the
+    uploader asserts field context for a case with exactly one standing tree: they were at
+    the tree, every photo shows it, and loose parts were picked up beneath it (domain prompt
+    section 3: the user may know the fruits). Such evidence counts, but only as capped
+    support — it cannot carry high confidence or settle a decisive requirement.
     """
 
     CONFIRMED_ATTACHED = "confirmed_attached"
     CONFIRMED_DETACHED = "confirmed_detached"
     UNKNOWN = "unknown"
+    USER_ATTESTED = "user_attested"
 
 
 class InferenceStrength(StrEnum):
@@ -286,6 +293,13 @@ class GeneratedObservation(Observation):
 
     @model_validator(mode="after")
     def _component_provenance_is_internal(self) -> GeneratedObservation:
+        if self.attachment is AttachmentStatus.USER_ATTESTED:
+            msg = (
+                "attachment `user_attested` is set by deterministic code from the uploader's "
+                "own statement; report what the photograph shows (confirmed_attached, "
+                "confirmed_detached or unknown)"
+            )
+            raise ValueError(msg)
         if self.source_component_id is not None:
             msg = "generated observations must omit source_component_id"
             raise ValueError(msg)

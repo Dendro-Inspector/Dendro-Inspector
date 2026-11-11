@@ -20,6 +20,7 @@ from dendro_inspector.graph.executor import NodeContext
 from dendro_inspector.graph.state import GraphState
 from dendro_inspector.knowledge.evidence_hierarchy import BAND_DECISIVE, EvidenceTier
 from dendro_inspector.nodes._support import locale_of
+from dendro_inspector.nodes.field_attestation import attested_evidence_ids
 from dendro_inspector.schemas.decisions import (
     NO_CLAIM_STATUSES,
     CaseResponse,
@@ -305,6 +306,19 @@ def _supporting_evidence(
     )[:8]
 
 
+_ATTESTED_TEXT: dict[str, str] = {
+    "en": (
+        "{count} observation(s) of loose parts ({evidence}) were counted as this tree's on "
+        "your word that every photo shows it. They support the answer but cannot settle it "
+        "alone; a photo of a leaf or fruit still on the tree would."
+    ),
+    "uk": (
+        "{count} спостереження відокремлених частин ({evidence}) зараховано цьому дереву з "
+        "твоїх слів, що всі фото — його. Вони підтримують відповідь, але самі її не "
+        "вирішують; фото листка чи плоду ще на дереві — вирішило б."
+    ),
+}
+
 #: At most this many open-world hypotheses are spelled out per subject.
 _MAX_OPEN_WORLD_LINES = 2
 
@@ -401,6 +415,17 @@ def _limitations(
     # a trusted hypothesis outside the cards is kept on the decision, and this is the only
     # place a reader learns the model saw something the knowledge base cannot name.
     items.extend(_open_world_lines(decision, locale))
+    attested = (
+        attested_evidence_ids(state.evidence, decision.subject_id)
+        if state is not None and state.evidence is not None
+        else ()
+    )
+    if attested:
+        items.append(
+            _ATTESTED_TEXT.get(locale, _ATTESTED_TEXT["en"]).format(
+                count=len(attested), evidence=", ".join(attested[:6])
+            )
+        )
     items.extend(decision.unresolved_questions)
     if state is None or state.evidence is None:
         return tuple(items)

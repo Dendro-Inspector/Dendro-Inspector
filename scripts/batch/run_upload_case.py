@@ -99,6 +99,7 @@ def run(env: dict[str, str]) -> int:
         "upload": {
             "photos": [p["file_name"] for p in manifest["photos"]],
             "note": manifest.get("note", ""),
+            "field_context": manifest.get("field_context") is True,
         },
         "models": configured_models(env),
         "started_at": _now(),
@@ -112,6 +113,10 @@ def run(env: dict[str, str]) -> int:
         argv += ["--location", str(manifest["location"])[:200]]
     if manifest.get("claim"):
         argv += ["--claim", str(manifest["claim"])[:200]]
+    # The uploader was at the tree: every photo shows it, and detached parts were picked
+    # up beneath it. The engine treats this as field context (domain prompt section 3).
+    if manifest.get("field_context") is True:
+        argv.append("--field-context")
     argv.append("--json")
     started = time.monotonic()
     completed = subprocess.run(argv, capture_output=True, text=True, encoding="utf-8", check=False)
