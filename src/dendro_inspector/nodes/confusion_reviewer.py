@@ -54,13 +54,19 @@ def colour_findings(state: GraphState) -> tuple[ReviewFinding, ...]:
 
     findings: list[ReviewFinding] = []
     for subject in evidence.subjects:
-        colour_ids = tuple(
-            observation.observation_id
+        colour = tuple(
+            observation
             for observation in contextual_observations_for(evidence, subject.subject_id)
             if is_colour_feature(observation.feature)
         )
-        if not colour_ids:
+        if not colour:
             continue
+        colour_ids = tuple(observation.observation_id for observation in colour)
+        # Name the organs actually read for colour. The line used to say "bark or wood" on a
+        # pine branch whose colour readings were its needles and a bud.
+        organs = " and ".join(
+            dict.fromkeys(observation.feature.split(".", 1)[0] for observation in colour)
+        )
         findings.append(
             ReviewFinding(
                 origin=FindingOrigin.DETERMINISTIC,
@@ -68,8 +74,8 @@ def colour_findings(state: GraphState) -> tuple[ReviewFinding, ...]:
                 category=FindingCategory.COLOUR_OVERWEIGHTING,
                 severity=Severity.MAJOR,
                 summary=(
-                    "Identification leans on bark or wood colour, which varies with age, "
-                    "aspect, moisture and white balance. It cannot be decisive on its own."
+                    f"Much of the evidence here is {organs} colour, which varies with age, "
+                    "aspect, moisture and white balance. Colour cannot be decisive on its own."
                 ),
                 evidence_ids=colour_ids,
                 subject_id=subject.subject_id,

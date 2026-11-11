@@ -43,6 +43,7 @@ from dendro_inspector.knowledge.evidence_hierarchy import (
     confidence_band,
     confidence_ceiling,
     decisive_observations_for,
+    family_of,
     project_evidence,
     resolution_ceiling,
     resolve_evidence_observations,
@@ -640,8 +641,15 @@ def resolve_resolution(
     leader: Candidate,
     card: TaxonCard | None,
     tier: EvidenceTier,
+    *,
+    require_discriminating_support: bool = True,
 ) -> tuple[Resolution, tuple[ResolutionBound, ...], ResolutionBoundSource, bool]:
-    """Compose every upper bound first, then apply at most one explicit downgrade."""
+    """Compose every upper bound first, then apply at most one explicit downgrade.
+
+    ``require_discriminating_support`` is ``GraphConfig.require_discriminating_support``:
+    on (the default), a leader admitted on supporting features alone names nothing; off, the
+    legacy policy names it at low confidence. Kept switchable for comparative evaluation.
+    """
     recommended = _broadest_recommendation(state, subject_id)
     bounds = [
         ResolutionBound(source="proposed", value=leader.resolution),
@@ -653,6 +661,14 @@ def resolve_resolution(
     substituting, _ = open_world_contest(state, subject_id, leader, card, tier)
     if substituting:
         bounds.append(ResolutionBound(source="open_world_outranked", value=Resolution.GENUS))
+    evidence = state.evidence
+    if (
+        require_discriminating_support
+        and card is not None
+        and evidence is not None
+        and not discriminating_support(card, evidence, leader, subject_id)
+    ):
+        bounds.append(ResolutionBound(source="no_discriminating_support", value=Resolution.UNKNOWN))
     if state.is_abstained(subject_id):
         abstention = state.abstention_for(subject_id)
         abstention_bound = (
@@ -774,6 +790,90 @@ def independent_support_features(
         for observation in decisive_observations_for(evidence, subject_id)
         if observation.observation_id in cited and is_positive_reading(observation.value)
     )
+
+
+def discriminating_support(
+    card: TaxonCard, evidence: EvidencePacket, leader: Candidate, subject_id: str
+) -> tuple[str, ...]:
+    """The leader's admitted observations its own card calls diagnostic.
+
+    Admission asks whether evidence is *compatible* with a card: one trusted reading of any
+    feature the card lists, strong or supporting, opens it. That is the right question for
+    keeping a candidate in play and the wrong one for naming it. A card's supporting
+    features are, by the card's own declaration, things the taxon shares with others —
+    coarse furrowed bark, a crooked trunk, plated bark — and five recorded runs named a
+    genus on exactly one of those and nothing else: poplar on three photographs of birch,
+    spruce on two of pine bark, sycamore on a third, each at "probable" (see
+    ``docs/reviews/EVIDENCE-COVERAGE-2026-11-11.md``).
+
+    The card already draws the line this needs: ``strong_positive_features`` is the card's
+    statement of what *distinguishes* the taxon. Evidence that hits one of those
+    discriminates; evidence that hits only supporting features is compatible and no more.
+    A card-declared confidence exception counts as well, because it names a reading the card
+    has already said is diagnostic on its own (white papery birch bark). No weight, score or
+    threshold is introduced: the split is the one each card's author already made.
+
+    Returns the discriminating observation ids, in the leader's citation order. Empty means
+    the leader may stay a candidate but may not be the answer.
+    """
+    strong = set(match_card(card, evidence, subject_id).strong_hits)
+    cited = tuple(
+        dict.fromkeys(
+            source.observation_id
+            for evidence_id in leader.supporting_evidence_ids
+            for source in resolve_evidence_observations(evidence, evidence_id, subject_id)
+        )
+    )
+    hits = tuple(observation_id for observation_id in cited if observation_id in strong)
+    if hits:
+        return hits
+    exception = confidence_exception_for(card, evidence, subject_id, Resolution.FAMILY)
+    return exception.evidence_ids if exception is not None else ()
+
+
+#: Opens the line that discloses a verdict resting on supporting features alone.
+NO_DISCRIMINATING_SUPPORT_PHRASE = "Matched only supporting features"
+
+
+def _no_discriminating_support_text(card: TaxonCard, *, named: bool) -> str:
+    diagnostic = sorted({expectation.feature for expectation in card.strong_positive_features})
+    wanted = ", ".join(diagnostic) if diagnostic else "a feature its card calls diagnostic"
+    outcome = (
+        "so this is a low-confidence candidate, not an identification"
+        if named
+        else "so no taxon is named"
+    )
+    return (
+        f"{NO_DISCRIMINATING_SUPPORT_PHRASE}: {card.display_name} matched only features its "
+        f"card lists as supporting. Those are shared with other trees and do not distinguish "
+        f"it, {outcome}. Evidence that would: {wanted}."
+    )
+
+
+def _undistinguished_rivals(
+    ctx: NodeContext,
+    contenders: tuple[Candidate, ...],
+    evidence: EvidencePacket,
+    subject_id: str,
+    resolution: Resolution,
+    selected: TaxonIdentity,
+) -> tuple[str, ...]:
+    """Admitted alternatives at the claimed level that the evidence does not rule out.
+
+    Only asked when the leader itself has no discriminating support: then nothing in the
+    photograph prefers it over these, and model rank order is all that separates them.
+    """
+    rivals = []
+    for contender in contenders:
+        rival_card = ctx.knowledge.try_taxon(contender.taxon)
+        identity = resolve_identity(rival_card, resolution)
+        if rival_card is None or identity is None or identity.taxon_id == selected.taxon_id:
+            continue
+        match = match_card(rival_card, evidence, subject_id)
+        if match.has_contradiction or match.contradicts_own_card:
+            continue
+        rivals.append(identity.display_name)
+    return tuple(dict.fromkeys(rivals))
 
 
 #: Prefix of the unresolved question that explains a withheld top band.
@@ -909,7 +1009,12 @@ def resolve_confidence(
     # diagnostic reading says so in the card.
     if confidence is Confidence.HIGH and exception is None and tier < EvidenceTier.FRUIT_SEED:
         independent = independent_support_features(leader, evidence, subject_id)
-        short = len(independent) < MIN_INDEPENDENT_FEATURES_FOR_HIGH
+        # Counted by organ, not by feature path: bark.pattern and bark.peeling read off one
+        # trunk are one look at one organ described twice. Section 6 puts 85-94 at "leaves
+        # and bark visible" — two organs — and that is the corroboration this step asks for.
+        short = (
+            len({family_of(feature) for feature in independent}) < MIN_INDEPENDENT_FEATURES_FOR_HIGH
+        )
         before = confidence
         if short:
             confidence = Confidence.MEDIUM
@@ -1163,6 +1268,7 @@ def _unresolved(
     subject_id: str,
     leader: Candidate,
     competing: tuple[OpenWorldCandidate, ...] = (),
+    disclosure: tuple[str, ...] = (),
 ) -> tuple[str, ...]:
     questions = []
     if evidence.possible_multiple_taxa:
@@ -1170,6 +1276,9 @@ def _unresolved(
             "This verdict is scoped to this subject; other pieces or trees in the frame may "
             "be different taxa."
         )
+    # Next, what the verdict rests on when nothing in it is diagnostic. It qualifies the
+    # answer itself, so it must survive the cap ahead of every later line.
+    questions.extend(disclosure)
     # Ahead of the decisive-feature lines: the eight-item cap drops late entries, and this
     # is the one a reader cannot reconstruct from the verdict — the model's own hypothesis
     # that the knowledge base had no card for.
@@ -1258,7 +1367,12 @@ def decide_subject_base(
     card = ctx.knowledge.try_taxon(leader.taxon)
     tier = candidate_support_tier(leader, evidence, subject_id)
     resolution_bound, bounds, binding_source, action_applied = resolve_resolution(
-        state, subject_id, leader, card, tier
+        state,
+        subject_id,
+        leader,
+        card,
+        tier,
+        require_discriminating_support=ctx.config.graph.require_discriminating_support,
     )
     derivation = DecisionDerivation(
         subject_id=subject_id,
@@ -1300,11 +1414,34 @@ def decide_subject_base(
             )
         )
         verdict = rule_on_user_claim(state, ctx, subject_id, reranked, evidence, None)
+        why_not: tuple[str, ...] = ()
+        if card is not None and binding_source == "no_discriminating_support":
+            # Abstaining is not forgetting: say which genera this evidence still fits, so
+            # the reader keeps the hypotheses and knows what the next photograph must split.
+            genus = card.identity_at_or_broader(Resolution.GENUS)
+            plausible = (
+                (
+                    genus.display_name,
+                    *_undistinguished_rivals(
+                        ctx, reranked.ordered[1:], evidence, subject_id, Resolution.GENUS, genus
+                    ),
+                )
+                if genus is not None
+                else ()
+            )
+            why_not = (_no_discriminating_support_text(card, named=False),)
+            if plausible:
+                why_not = (
+                    *why_not,
+                    f"Still consistent with this evidence: {', '.join(plausible)}.",
+                )
         return FinalDecision(
             subject_id=subject_id,
             status=DecisionStatus.INSUFFICIENT_EVIDENCE,
             supporting_evidence=_support_summary(evidence, leader),
-            unresolved_questions=_unresolved(state, evidence, subject_id, leader),
+            unresolved_questions=_unresolved(
+                state, evidence, subject_id, leader, disclosure=why_not
+            ),
             best_next_photo=_next_photo(
                 state, ctx, evidence, reranked, leader, tier, Confidence.LOW
             ),
@@ -1322,7 +1459,20 @@ def decide_subject_base(
     keep(derivation.model_copy(update={"confidence_steps": confidence_steps}))
     verdict = rule_on_user_claim(state, ctx, subject_id, reranked, evidence, selected.taxon_id)
     alternative = _nearest_alternative(ctx, reranked.ordered[1:], resolution, selected)
-    unresolved = _unresolved(state, evidence, subject_id, leader, competing)
+    disclosure: list[str] = []
+    if card is not None and not discriminating_support(card, evidence, leader, subject_id):
+        disclosure.append(_no_discriminating_support_text(card, named=True))
+        rivals = _undistinguished_rivals(
+            ctx, reranked.ordered[1:], evidence, subject_id, resolution, selected
+        )
+        if rivals:
+            disclosure.append(
+                f"Not ruled out on this evidence: {', '.join(rivals)}. Nothing in the "
+                "photograph separates it from the answer above; only the ranking does."
+            )
+    unresolved = _unresolved(
+        state, evidence, subject_id, leader, competing, disclosure=tuple(disclosure)
+    )
     top_band = _reaches_the_top_band(card, evidence, subject_id, resolution)
     standing = (
         _declared_confusion_left_standing(

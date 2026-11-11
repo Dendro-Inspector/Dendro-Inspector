@@ -17,13 +17,16 @@ input:
   season: winter
   declared_object_type: bark
 
+# v0.10 policy (require_discriminating_support, on by default): this fixture's leader is
+# admitted only on features its card lists as supporting, so it stays a candidate but is
+# not named. Expected resolution moved from genus to unknown on purpose; every other
+# assertion — the mechanism this case exists for — is unchanged.
+# See docs/reviews/EVIDENCE-COVERAGE-2026-11-11.md.
 expect:
-  expected_taxon: pinus
-  expected_taxon_display_name: Pinus (сосна)
   expected_candidate_taxa:
     - pinus
     - picea
-  expected_resolution: genus
+  expected_resolution: unknown
   max_resolution: genus
   max_confidence: low
   expected_evidence_tier: 3

@@ -9,6 +9,7 @@ from typing import Literal
 from dendro_inspector.knowledge.evidence_hierarchy import (
     EvidenceTier,
     confidence_ceiling,
+    family_of,
     is_colour_feature,
     positive_observations_for,
     project_evidence,
@@ -234,7 +235,7 @@ def open_world_candidate(
         ):
             surviving.append(evidence_id)
             tiers.append(projection.tier)
-    if not surviving or _support_is_colour_only(tuple(surviving), evidence, subject_id):
+    if not surviving or support_is_colour_only(tuple(surviving), evidence, subject_id):
         return None
 
     tier = max(tiers)
@@ -265,7 +266,7 @@ def open_world_candidate(
     )
 
 
-def _support_is_colour_only(
+def support_is_colour_only(
     support_ids: tuple[str, ...],
     evidence: EvidencePacket,
     subject_id: str,
@@ -405,7 +406,7 @@ def validate_candidate_set_with_report(
 
         if (
             not supporting
-            or _support_is_colour_only(supporting, evidence, candidate_set.subject_id)
+            or support_is_colour_only(supporting, evidence, candidate_set.subject_id)
             # Kept in step with `cards_in_play` deliberately. The retrieval filter is safe
             # only while admission cannot keep a taxon retrieval would not have shown, and
             # the contract test asserts exactly that containment.
@@ -479,10 +480,22 @@ def derive_support_strength(
     full_strong = set(match.full_strong_hits) & reachable
     strong = set(match.strong_hits) & reachable
     supporting = set(match.supporting_hits) & reachable
+    # Supporting hits are counted once per organ. Three readings of one bark surface —
+    # plates, mosaic, peeling — are one observation of one organ described three ways, and
+    # counting them as three is how a sycamore card outranked pine on a photograph of pine
+    # bark. Two organs agreeing is corroboration; one organ restated is not.
+    features = {
+        observation.observation_id: observation.feature for observation in evidence.observations
+    }
+    supporting_organs = {
+        family_of(features[observation_id])
+        for observation_id in supporting
+        if observation_id in features
+    }
 
     if full_strong and not match.missing_for_high_confidence:
         return SupportStrength.STRONG
-    if strong or len(supporting) >= 2:
+    if strong or len(supporting_organs) >= 2:
         return SupportStrength.MODERATE
     return SupportStrength.WEAK
 
