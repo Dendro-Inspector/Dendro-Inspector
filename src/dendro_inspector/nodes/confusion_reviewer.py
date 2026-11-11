@@ -175,6 +175,13 @@ def bark_only_findings(
                 f"to {limit} level, so the claim may rest on it there; anything narrower "
                 "needs attached foliage, fruit or twigs."
             )
+        elif _has_attested_evidence(evidence, subject_id):
+            severity, impact = Severity.MAJOR, Impact.CONFIDENCE_CHANGE
+            summary = (
+                "Above bark level there is only fruit or foliage counted on the uploader's "
+                "word, not photographed on the tree. It weighs no more than bark: together "
+                "they support a candidate but cannot confirm one."
+            )
         else:
             severity, impact = Severity.MAJOR, Impact.CONFIDENCE_CHANGE
             summary = (
@@ -195,6 +202,13 @@ def bark_only_findings(
             )
         )
     return tuple(findings)
+
+
+def _has_attested_evidence(evidence: EvidencePacket, subject_id: str) -> bool:
+    return any(
+        o.attachment is AttachmentStatus.USER_ATTESTED
+        for o in evidence.observations_for(subject_id)
+    )
 
 
 def _diagnostic_bark_exception(

@@ -10,6 +10,16 @@ get entries.
 
 ## [Unreleased]
 
+### Fixed
+
+- A value that says a feature could not be read (`numerous_not_countable`,
+  `not_determinable`, any `..._not_<x>able`) no longer counts as a reading that
+  disagrees with a card. On the live walnut upload it vetoed Juglans nigra, although the
+  nuts, husk and leaflets matched the card, and the answer fell back to Fraxinus.
+- With field context, the answer no longer says that fruit or leaves "could not be traced
+  to this trunk" about evidence it counted on the uploader's word, nor "nothing above bark
+  level is resolvable"; it says that evidence weighs no more than bark.
+
 ### Added
 
 - A Juglans nigra (black walnut) card. A live upload of a planted walnut was answered
