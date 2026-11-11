@@ -43,6 +43,22 @@ supporting_features:
   - feature: trunk.form
     values:
       - straight_long
+  # Scots pine's two-zone trunk. Supporting, not strong-positive: the lower trunk alone is
+  # legitimately read as something else, and a strong positive would then veto the card.
+  - feature: bark.pattern
+    values:
+      - orange_flaking_upper_plated_base
+    note: >-
+      Thin orange-red flaking bark on the upper stem above thick grey-brown scaly plates at
+      the base. Characteristic of Pinus sylvestris; plated bark alone is not (Picea, Abies
+      and Acer pseudoplatanus bark also forms plates).
+    provenance:
+      source: >-
+        Gymnosperm Database, Pinus sylvestris (https://www.conifers.org/pi/Pinus_sylvestris.php, accessed 2026-11-11): "Bark on lower stem thick, scaly-plated, grey-brown; on upper stem and branches, thin, flaking, orange-red."
+      source_type: literature
+      region: Eastern Europe
+      confidence: low
+      review_state: unreviewed
 
 contradictions:
   - feature: needles.attachment
@@ -52,6 +68,39 @@ contradictions:
     values:
       - broadleaf_simple
       - compound_pinnate
+  # The separating characters of the three conifer confusions, each the confusion card's own
+  # strong-positive token. Pine needles come in sheathed fascicles of a few, never in
+  # spur-shoot tufts or singly on disc bases; pine cones do not disintegrate on the tree.
+  - feature: needles.arrangement
+    values:
+      - clustered_on_short_shoots
+    provenance:
+      source: >-
+        Gymnosperm Database, Pinus (https://www.conifers.org/pi/Pinus.php): needles in "fascicles of one to eight needles, initially bound together by a basal sheath"; Larix (https://www.conifers.org/pi/Larix.php): "Leaves in tufts of 10-60 on short (spur) shoots". Accessed 2026-11-11.
+      source_type: literature
+      region: Eastern Europe
+      confidence: low
+      review_state: unreviewed
+  - feature: needles.attachment
+    values:
+      - single_on_disc_base
+    provenance:
+      source: >-
+        Gymnosperm Database, Pinus (https://www.conifers.org/pi/Pinus.php): needles in sheathed fascicles; Abies (https://www.conifers.org/pi/Abies.php): "Leaves: Borne singly", leaving "prominent leaf scars, circular to broadly elliptic". Accessed 2026-11-11.
+      source_type: literature
+      region: Eastern Europe
+      confidence: low
+      review_state: unreviewed
+  - feature: cones.type
+    values:
+      - upright_disintegrating
+    provenance:
+      source: >-
+        Gymnosperm Database, Abies (https://www.conifers.org/pi/Abies.php): "Abies is unique among conifers in bearing erect cones that disarticulate in situ"; Pinus (https://www.conifers.org/pi/Pinus.php): "relatively stiff, woody scales". Accessed 2026-11-11.
+      source_type: literature
+      region: Eastern Europe
+      confidence: low
+      review_state: unreviewed
 
 common_confusions:
   - abies

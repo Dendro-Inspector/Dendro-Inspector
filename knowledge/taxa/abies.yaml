@@ -68,6 +68,16 @@ contradictions:
   - feature: needles.persistence
     values:
       - deciduous
+  - feature: needles.arrangement
+    values:
+      - clustered_on_short_shoots
+    provenance:
+      source: >-
+        Gymnosperm Database, Abies (https://www.conifers.org/pi/Abies.php): "Leaves: Borne singly, persisting 5 or more years"; Larix (https://www.conifers.org/pi/Larix.php): "Leaves in tufts of 10-60 on short (spur) shoots". Accessed 2026-11-11.
+      source_type: literature
+      region: Eastern Europe
+      confidence: low
+      review_state: unreviewed
 
 common_confusions:
   - picea
