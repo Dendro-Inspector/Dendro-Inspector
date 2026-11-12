@@ -19,6 +19,7 @@ from dendro_inspector.knowledge.coverage_audit import CoverageStatus, audit_obse
 from dendro_inspector.knowledge.taxon_cards import (
     diagnostic_combination_for,
     match_card,
+    owed_combination,
     self_contradiction_hits,
 )
 from dendro_inspector.nodes.final_decision import (
@@ -610,6 +611,46 @@ class TestEveryDeclaredCombination:
                     assert diagnostic_combination_for(knowledge.taxon(other), packet, SUBJECT) is (
                         None
                     ), (taxon_id, other)
+
+
+class TestTheNextLookAtALog:
+    """A log is asked for its cut end, not for needles it does not have."""
+
+    def test_bark_and_resin_ask_for_the_cut_end(self, simple_case, node_context):
+        state = _state(simple_case, _packet(PLATES, RESIN), _candidate("pinus", "plates", "resin"))
+        decision = decide_subject(state, node_context, state.candidate_sets[0])
+        assert decision.selected_taxon is None
+        request = decision.best_next_photo
+        assert request is not None
+        assert request.target == "prepared_end_grain_macro"
+        assert "heartwood.demarcation" in request.reason
+
+    def test_a_pine_named_on_the_weaker_signs_is_still_asked_for_the_cut_end(
+        self, simple_case, node_context
+    ):
+        state = _state(simple_case, _packet(PLATES, RESIN, HONEY), _candidate("pinus", *LOG))
+        decision = decide_subject(state, node_context, state.candidate_sets[0])
+        assert decision.selected_taxon == "pinus"
+        assert decision.best_next_photo is not None
+        assert decision.best_next_photo.target == "prepared_end_grain_macro"
+
+    def test_the_strongest_combination_complete_owes_nothing(self, knowledge):
+        heart = _wood("heart", "heartwood.demarcation", "reddish_core_wide_pale_sapwood")
+        assert owed_combination(knowledge.taxon("pinus"), _packet(PLATES, heart), SUBJECT) is None
+
+    def test_a_contradicted_card_owes_nothing(self, knowledge):
+        blisters = _obs("blisters", "bark.surface_marks", "resin_blisters")
+        assert owed_combination(knowledge.taxon("pinus"), _packet(PLATES, blisters), SUBJECT) is (
+            None
+        )
+
+    def test_a_standing_tree_is_not_asked_for_a_cross_section(
+        self, standing_tree_case, node_context
+    ):
+        state = _state(standing_tree_case, _packet(PLATES), _candidate("pinus", "plates"))
+        decision = decide_subject(state, node_context, state.candidate_sets[0])
+        assert decision.best_next_photo is not None
+        assert decision.best_next_photo.target != "prepared_end_grain_macro"
 
 
 class TestLogLookAlikeChecks:

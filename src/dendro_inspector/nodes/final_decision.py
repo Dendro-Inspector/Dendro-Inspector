@@ -56,6 +56,7 @@ from dendro_inspector.knowledge.taxon_cards import (
     confidence_exception_for,
     diagnostic_combination_for,
     match_card,
+    owed_combination,
 )
 from dendro_inspector.nodes.abstain import settle_unverified_abstention
 from dendro_inspector.nodes.photo_planner import (
@@ -85,7 +86,12 @@ from dendro_inspector.schemas.decisions import (
     ResolutionBoundSource,
     UserClaimVerdict,
 )
-from dendro_inspector.schemas.evidence import EvidencePacket, is_positive_reading
+from dendro_inspector.schemas.evidence import (
+    EvidencePacket,
+    SubjectKind,
+    is_positive_reading,
+    requires_wood_surface,
+)
 from dendro_inspector.schemas.input import DeclaredObjectType
 from dendro_inspector.schemas.reference import (
     ReferenceStatus,
@@ -1294,6 +1300,68 @@ def _contradiction_summary(
     return None
 
 
+#: Subjects that are cut material: there is no crown to photograph, and asking for foliage
+#: sends the reader to look for something a log does not have.
+_CUT_MATERIAL_TYPES: frozenset[DeclaredObjectType] = frozenset(
+    {DeclaredObjectType.LOG, DeclaredObjectType.WOOD}
+)
+_CUT_MATERIAL_KINDS: frozenset[SubjectKind] = frozenset(
+    {SubjectKind.LOG, SubjectKind.MATERIAL_GROUP, SubjectKind.WOOD_SURFACE}
+)
+
+
+def _is_cut_material(state: GraphState, evidence: EvidencePacket, subject_id: str) -> bool:
+    if effective_object_type(state, subject_id) in _CUT_MATERIAL_TYPES:
+        return True
+    return any(
+        subject.subject_id == subject_id and subject.kind in _CUT_MATERIAL_KINDS
+        for subject in evidence.subjects
+    )
+
+
+def _owed_combination_request(
+    state: GraphState,
+    ctx: NodeContext,
+    evidence: EvidencePacket,
+    candidate_set: CandidateSet,
+    leader: Candidate,
+) -> PhotoRequest | None:
+    """On a log, ask for the look that would finish the log signs already read.
+
+    The leader's follow-up list and the comparison cards are written for a standing tree and
+    lead with needles, leaves and cones. A log has none of them, and the request was a
+    needle macro of a pile of roundwood. A person who half recognises a log looks at its
+    other end: the card's combinations say which reading is still owed, and for wood that
+    is always the same photograph.
+
+    Cut material only. On a standing tree the foliage is the better photograph and nobody
+    can be asked for a cross-section.
+    """
+    subject_id = candidate_set.subject_id
+    card = ctx.knowledge.try_taxon(leader.taxon)
+    if card is None or not _is_cut_material(state, evidence, subject_id):
+        return None
+    owed = owed_combination(card, evidence, subject_id)
+    if owed is None:
+        return None
+    features = ", ".join(expectation.feature for expectation in owed.owed)
+    have = ", ".join(expectation.feature for expectation in owed.read) or "what is visible"
+    if any(requires_wood_surface(expectation.feature) for expectation in owed.owed):
+        target = "prepared_end_grain_macro"
+        look = "a clean, perpendicular cut end of this same piece, close enough to read"
+    else:
+        target = "bark_close_up_same_piece"
+        look = "the bark of this same piece, close and evenly lit, to read"
+    return PhotoRequest(
+        target=target,
+        reason=(
+            f"Photograph {look} {features}. With {have} already read, that would complete "
+            f"the log signs the {card.display_name} card names together."
+        ),
+        subject_id=subject_id,
+    )
+
+
 def _next_photo(
     state: GraphState,
     ctx: NodeContext,
@@ -1327,6 +1395,10 @@ def _next_photo(
     authority_first = attachment_request(state, candidate_set.subject_id)
     if authority_first is not None:
         return authority_first
+
+    owed_first = _owed_combination_request(state, ctx, evidence, candidate_set, leader)
+    if owed_first is not None:
+        return owed_first
 
     taxa = frozenset(candidate.taxon for candidate in candidate_set.ordered)
     candidate_cards = tuple(

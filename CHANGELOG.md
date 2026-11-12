@@ -54,6 +54,11 @@ get entries.
   spruce. Ash, the walnuts, the fruit trees, maples, poplars, lime, alder and mulberry gain
   no log rule: no source consulted supports naming them without leaves or fruit. Sources
   are quoted on the cards and were checked against their pages on 2026-11-12.
+- **A log is asked for its cut end.** The next-photograph request for a log or pile used the
+  standing-tree lists and asked for a needle or leaf macro. When the leading card declares
+  log signs that are not all read yet, the request is now the photograph that would finish
+  them — a clean, perpendicular cut end of the same piece, or its bark — and names the
+  readings still owed. Standing trees are unchanged.
 - **A dark base beside white papery bark agrees with birch.** The Betula card now lists the
   pale-above, dark-and-rough-below trunk as a supporting reading (Woodland Trust: the white
   bark "becomes black and rugged at the base"). White poplar shares it, so it names nothing
