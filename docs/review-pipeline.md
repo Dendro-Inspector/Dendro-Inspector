@@ -102,6 +102,13 @@ card does not support, `missing_decisive_feature` when the card's high-confidenc
 requirements are not visible, and `invalid_negative_evidence` when a feature appears in both
 `absent_features` and a `not_visible` observation.
 
+The `missing_decisive_feature` finding normally costs one confidence step. It costs none
+when the claim rests on a confidence exception its card declares: the exception states how
+far that reading reaches without the requirement, and the decision engine's requirement cap
+still keeps the claim below high. The finding is recorded either way, and the confidence
+ledger shows its step as not applied
+([`resolve_confidence`](../src/dendro_inspector/nodes/final_decision.py)).
+
 ## Admissibility
 
 Synthesis first resolves one effective subject from the finding, review result and referenced

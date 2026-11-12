@@ -22,6 +22,28 @@ Live providers are bound to images actually passed to the extraction call. Regre
 coverage for image provenance, review ownership, omitted subjects, retrieval and cancellation
 is in [the architecture boundary tests](../tests/unit/test_architecture_boundaries.py).
 
+## Compare identification policy offline
+
+`coverage-audit` can replay saved case records under both discriminating-support settings:
+
+```bash
+dendro coverage-audit runs/saved/cases --replay --require-discriminating-support --json-out runs/strict.json
+dendro coverage-audit runs/saved/cases --replay --no-require-discriminating-support --json-out runs/legacy.json
+```
+
+Both commands use the same recorded observations and candidate proposals with neutral fake
+reviewers. They make no provider calls and change no deployment configuration. With neither
+flag, replay inherits the configured policy; either flag explicitly overrides it for that
+command. The default identification policy remains unchanged.
+
+This comparison measures the deterministic layer, not the accuracy of new model readings
+or the effect of live reviewers. Inspect the reported replay-fidelity mismatches before
+interpreting a difference. New traces preserve the wood surface used to assign evidence
+trust. Older traces that omit it replay with an unknown surface; they cannot establish
+prepared end grain, and any changed trust or tier is flagged. Labels must use the records'
+case IDs; repeated IDs do not become independent photographs. A family-level answer does
+not establish a labelled genus.
+
 ## What assertions check
 
 Assertions run against the **graph's decisions**, never against prose. Rewriting the tone

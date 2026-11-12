@@ -149,6 +149,7 @@ class ObservationRecord(Contract):
     visibility: str = Field(max_length=40)
     reliability: str = Field(max_length=40)
     attachment: str | None = Field(default=None, max_length=40)
+    wood_surface: str | None = Field(default=None, max_length=40)
     trust: str = Field(
         max_length=40,
         description="Whether this reading may support an identification (EvidenceTrust).",

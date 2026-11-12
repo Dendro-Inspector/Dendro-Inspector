@@ -22,6 +22,8 @@ from dendro_inspector.knowledge.taxon_cards import (
     owed_combination,
     self_contradiction_hits,
 )
+from dendro_inspector.nodes._support import merge_findings
+from dendro_inspector.nodes.confidence_reviewer import unsupported_resolution_findings
 from dendro_inspector.nodes.final_decision import (
     DIAGNOSTIC_COMBINATION_PHRASE,
     NO_DISCRIMINATING_SUPPORT_PHRASE,
@@ -29,6 +31,7 @@ from dendro_inspector.nodes.final_decision import (
     discriminating_support,
     rerank_displaces_diagnostic_leader,
 )
+from dendro_inspector.nodes.review_synthesizer import adjudicate
 from dendro_inspector.schemas.candidates import Candidate, CandidateSet, SupportStrength
 from dendro_inspector.schemas.decisions import DecisionStatus
 from dendro_inspector.schemas.evidence import (
@@ -51,6 +54,8 @@ from dendro_inspector.schemas.reviews import (
     RequiredAction,
     Reviewer,
     ReviewFinding,
+    ReviewResult,
+    ReviewStatus,
     ReviewSynthesis,
     Severity,
 )
@@ -59,6 +64,7 @@ from dendro_inspector.schemas.taxon import (
     DiagnosticCombination,
     Resolution,
     TaxonCard,
+    confidence_rank,
     resolution_rank,
 )
 from tests.conftest import with_legacy_policy
@@ -817,3 +823,102 @@ class TestRerankCannotDisplaceADiagnosedLeader:
         state = self._reranked_state(simple_case, packet, original, reranked)
         decision = decide_subject(state, with_legacy_policy(node_context), original)
         assert decision.selected_taxon == "populus"
+
+
+def _after_confidence_review(state: GraphState, ctx) -> GraphState:
+    """The state as the engine sees it: with the confidence reviewer's code-raised findings.
+
+    `decide_subject` on a bare state skips the review stage, and that is where the unmet
+    requirement is raised. A test that skips it measures a path no real run takes.
+    """
+    review = merge_findings(
+        ReviewResult(reviewer=Reviewer.CONFIDENCE, status=ReviewStatus.PASS, subject_id=SUBJECT),
+        unsupported_resolution_findings(state, ctx),
+    )
+    return state.evolve(
+        synthesis=adjudicate((review,), evidence=state.evidence, knowledge=ctx.knowledge)
+    )
+
+
+def _requirement_steps(ctx) -> list[bool]:
+    derivation = ctx.recorder._decision_derivations[SUBJECT]
+    return [
+        step.applied
+        for step in derivation.confidence_steps
+        if step.source == "deterministic_finding"
+        and (step.finding_id or "").startswith("auto-missing-decisive")
+    ]
+
+
+class TestRequirementDoesNotCancelADeclaredException:
+    """A card's high-confidence requirement gates high confidence and nothing below it.
+
+    A confidence exception is the card saying how far one reading reaches on its own. The
+    unmet-requirement finding used to be charged after the exception had lifted the ceiling,
+    so an exception declared at medium was reported at low on every run that passed through
+    review — the lift appeared in the ledger and never in the answer.
+    """
+
+    def test_every_earned_exception_survives_review_and_stays_below_high_when_unmet(
+        self, knowledge, standing_tree_case, node_context
+    ):
+        declared = [
+            (taxon_id, exception)
+            for taxon_id in sorted(knowledge.available_taxon_ids())
+            if (card := knowledge.try_taxon(taxon_id)) is not None
+            for exception in card.confidence_exceptions
+        ]
+        assert declared, "no card declares a confidence exception; this property is vacuous"
+        for taxon_id, exception in declared:
+            card = knowledge.taxon(taxon_id)
+            rows = tuple(
+                _clean_reading(f"row-{number}", expectation.feature, expectation.values[0])
+                for number, expectation in enumerate(exception.requires)
+            )
+            packet = _packet(*rows)
+            candidate = _candidate(taxon_id, *(row.observation_id for row in rows))
+            state = _after_confidence_review(
+                _state(standing_tree_case, packet, candidate), node_context
+            )
+            decision = decide_subject(state, node_context, state.candidate_sets[0])
+
+            unmet = bool(match_card(card, packet, SUBJECT).missing_for_high_confidence)
+            assert decision.selected_taxon is not None, taxon_id
+            assert confidence_rank(decision.confidence) >= confidence_rank(Confidence.MEDIUM), (
+                taxon_id
+            )
+            if unmet:
+                # The requirement still does its own job: no high without it.
+                assert decision.confidence is Confidence.MEDIUM, taxon_id
+                assert _requirement_steps(node_context) == [False], taxon_id
+
+    def test_layered_pine_bark_is_reported_at_medium_after_review(
+        self, standing_tree_case, node_context
+    ):
+        layered = _obs("layered", "bark.plate_build", "layered_orange_brown")
+        state = _after_confidence_review(
+            _state(standing_tree_case, _packet(PLATES, layered), _candidate("pinus", "layered")),
+            node_context,
+        )
+        assert state.synthesis is not None
+        assert any(
+            finding.finding_id.startswith("auto-missing-decisive")
+            for finding in state.synthesis.accepted_findings
+        )
+        decision = decide_subject(state, node_context, state.candidate_sets[0])
+        assert decision.selected_taxon == "pinus"
+        assert decision.resolution is Resolution.GENUS
+        assert decision.confidence is Confidence.MEDIUM
+
+    def test_without_an_exception_the_unmet_requirement_is_still_charged(
+        self, simple_case, node_context
+    ):
+        # The pine log combination names the genus and lifts no ceiling, so nothing waives
+        # the requirement: the step runs, as it did before.
+        state = _after_confidence_review(
+            _state(simple_case, _packet(PLATES, RESIN, HONEY), _candidate("pinus", *LOG)),
+            node_context,
+        )
+        decision = decide_subject(state, node_context, state.candidate_sets[0])
+        assert decision.confidence is Confidence.LOW
+        assert _requirement_steps(node_context) == [True]
