@@ -84,7 +84,11 @@ get entries.
   recommended medium or low for "bark alone" in three recorded runs. Their context now lists
   each earned exception or combination with its evidence ids and limits. Where nothing is
   earned no section is added; the card data every reviewer receives does gain the new
-  `diagnostic_combinations` field, empty on every card but Pinus.
+  `diagnostic_combinations` field, empty on the cards that declare none.
+- **Free-text limits are stated to the model in words.** Short text fields such as a
+  finding summary now carry their 400-character limit in the schema description on every
+  provider. An OpenAI arbiter overran the limit on its first attempt in three live cases
+  out of three, costing a repair call each time.
 - **Moss, lichen and trunk age are not knowledge gaps.** `bark.epiphytes` and
   `trunk.life_stage` are reported as context instead of inflating the coverage-gap count.
 

@@ -475,9 +475,6 @@ partial, the file records which parts it covers.
 - All 27 taxon cards have an AI-assisted review, recorded per card; comparison and
   regional cards do not. No independent dendrologist review is recorded. Feature rules cite
   the domain prompt's §14 or their own sources; `larix` and `abies` are not in the prompt.
-- Node prompts ask for `bark.flake_geometry`, which no taxon card declares — evidence for it
-  is recorded and then admits nothing. Unresolved: see
-  `docs/reviews/CORRECTNESS-BOUNDARY-2026-07-26.md`.
 - Not validated against real photographs at scale. The suite proves the machinery, not
   field accuracy.
 - Provider adapters are integration boundaries, not hardened clients.

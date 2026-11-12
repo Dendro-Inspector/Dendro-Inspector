@@ -63,7 +63,20 @@ Identifier = Annotated[str, StringConstraints(pattern=IDENTIFIER_PATTERN, max_le
 #: killing the whole case at the parser before code could adjudicate anything. Length is
 #: still bounded, because an unbounded string is a different problem.
 EvidenceRef = Annotated[str, StringConstraints(max_length=120)]
-ShortText = Annotated[str, StringConstraints(min_length=1, max_length=400)]
+#: The limit is stated in words for the same reason the token rules are: ``maxLength`` is a
+#: hint that decoders drop or ignore. An OpenAI arbiter overran a finding summary on its
+#: first attempt in all three cases of one smoke run, paying a repair call each time, and one
+#: case died when the repair overran too.
+SHORT_TEXT_MAX = 400
+SHORT_TEXT_RULE = (
+    f"One or two plain sentences, at most {SHORT_TEXT_MAX} characters including spaces. "
+    "Longer text is rejected, not truncated: state the single point and stop."
+)
+ShortText = Annotated[
+    str,
+    StringConstraints(min_length=1, max_length=SHORT_TEXT_MAX),
+    Field(description=SHORT_TEXT_RULE),
+]
 
 
 class Contract(BaseModel):

@@ -66,6 +66,7 @@ from dendro_inspector.nodes.photo_planner import (
     effective_object_type,
     planned_attachment_request,
 )
+from dendro_inspector.schemas.base import SHORT_TEXT_MAX
 from dendro_inspector.schemas.candidates import (
     STRENGTH_CONFIDENCE_CEILING,
     Candidate,
@@ -904,9 +905,6 @@ def _discrimination(
 #: Opens the line that discloses a verdict named on a card-declared combination.
 DIAGNOSTIC_COMBINATION_PHRASE = "Named on combined features"
 
-#: The `ShortText` length limit in `schemas.base`.
-_SHORT_TEXT_LIMIT = 400
-
 
 def _diagnostic_combination_text(card: TaxonCard, hit: DiagnosticCombinationHit) -> str:
     readings = "; ".join(
@@ -924,7 +922,7 @@ def _diagnostic_combination_text(card: TaxonCard, hit: DiagnosticCombinationHit)
     )
     # `unresolved_questions` entries are short text; a long card note must not break the
     # verdict it annotates.
-    return text if len(text) <= _SHORT_TEXT_LIMIT else text[: _SHORT_TEXT_LIMIT - 1] + "…"
+    return text if len(text) <= SHORT_TEXT_MAX else text[: SHORT_TEXT_MAX - 1] + "…"
 
 
 def rerank_displaces_diagnostic_leader(

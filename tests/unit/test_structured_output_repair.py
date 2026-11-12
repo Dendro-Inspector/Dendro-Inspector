@@ -278,3 +278,40 @@ def test_a_dropped_length_limit_is_restated_for_the_model():
     summary = schema["$defs"]["ReviewFinding"]["properties"]["summary"]
     assert "maxLength" not in summary
     assert "at most 400 characters" in summary["description"]
+
+
+def test_the_short_text_limit_is_stated_in_words_in_the_undialected_schema():
+    """The OpenAI adapter sends Pydantic's schema as written, with ``strict: False``.
+
+    ``maxLength`` is then advisory, and an arbiter overran `findings.0.summary` on its
+    first attempt in three smoke cases out of three. A description reaches the model on
+    every dialect, so the limit has to be in one.
+    """
+    from dendro_inspector.schemas.base import SHORT_TEXT_MAX
+    from dendro_inspector.schemas.reviews import ReviewResult
+
+    summary = ReviewResult.model_json_schema()["$defs"]["ReviewFinding"]["properties"]["summary"]
+    assert summary["maxLength"] == SHORT_TEXT_MAX
+    assert f"at most {SHORT_TEXT_MAX} characters" in summary["description"]
+
+
+def test_repair_feedback_for_an_overlong_text_says_how_long_it_was():
+    """The limit alone invites a token trim; the overrun says how much has to go."""
+    from pydantic import ValidationError
+
+    from dendro_inspector.providers.base import repair_feedback
+    from dendro_inspector.schemas.reviews import ReviewFinding
+
+    with pytest.raises(ValidationError) as caught:
+        ReviewFinding.model_validate(
+            {
+                "finding_id": "f-1",
+                "category": "unsupported_claim",
+                "severity": "minor",
+                "summary": "x" * 650,
+            }
+        )
+
+    text, codes = repair_feedback(caught.value)
+    assert codes == ("summary:string_too_long",)
+    assert "at most 400 characters, you sent 650" in text
