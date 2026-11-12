@@ -19,8 +19,12 @@ docker build -f deploy/k8s/agents.Dockerfile --build-arg BASE_IMAGE=dendro-inspe
 
 The batch scripts are standard library only and call `dendro inspect --json`:
 
-- `run_dataset_case.py`: one photograph of a pinned Hugging Face dataset revision, chosen by
-  `JOB_COMPLETION_INDEX`, checked against its SHA-256 before use.
+- `run_dataset_case.py`: one photograph of a pinned dataset, chosen by
+  `JOB_COMPLETION_INDEX`, checked against its SHA-256 before use. The dataset is a Hugging
+  Face revision, or with `DATASET_DIR` a directory on the results volume
+  (`RESULTS_DIR/_datasets/<name>/` with `metadata.jsonl` and the images), pinned by the
+  SHA-256 of that `metadata.jsonl`. The engine's log is kept at
+  `RESULTS_DIR/<run>/logs/<case>.log`.
 - `run_upload_case.py`: one uploaded case from `RESULTS_DIR/<run>/inputs/`.
 - `summarize_run.py`: collects the per-case records of a run.
 
