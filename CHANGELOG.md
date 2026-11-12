@@ -12,6 +12,15 @@ get entries.
 
 ### Added
 
+- **Compare identification policy offline.** `coverage-audit --replay` now accepts
+  `--no-require-discriminating-support` as well as `--require-discriminating-support`.
+  Either explicitly overrides the configured setting for that replay; omitting both
+  preserves it. Saved evidence can be compared without changing a live deployment or
+  calling a model.
+- **Wood evidence can be replayed.** Traces now retain the observed wood surface, which
+  determines whether anatomy readings may support identification. Offline replay accepts
+  older traces with no surface as unknown and flags changed evidence trust, instead of
+  failing extractor validation on wood observations.
 - **Closed bark and trunk vocabulary.** The extractor now chooses bark texture, pattern,
   surface marks, peeling, trunk form, burls and trunk age from fixed lists with plain
   descriptions (`knowledge/value_sets.yaml`), so the same bark is described with the same
@@ -110,6 +119,26 @@ get entries.
 
 ### Changed
 
+- **Pine bark is read by its build, not its colour.** The layered-plate reading
+  (`bark.plate_build = layered_orange_brown`) was described as orange-brown to reddish, so
+  a pine trunk photographed in forest shade, where the same plates look grey-brown, was
+  left without it and stayed unnamed. The description now leads with the structure — thick
+  plates of many thin layers with stepped, flaking edges and deep dark fissures — and says
+  the face is grey-brown in shade or on a mature lower stem (Gymnosperm Database: "Bark on
+  lower stem thick, scaly-plated, grey-brown"). The extractor is also told that the bark
+  paths describe different aspects of one trunk and are each to be considered, and that a
+  structural value is not withheld because shade muted the colour. The token keeps its
+  name. Larch remains the look-alike on bark alone.
+- **A card's confidence exception is no longer cancelled by its own high-confidence
+  requirement.** The pine card answers layered orange-brown bark at middle confidence, yet
+  every reviewed run reported it at 50–69: the exception lifted the bark ceiling to medium,
+  and the code-raised "needles or cones are required before high confidence" finding then
+  charged a step and returned it to low. That requirement gates high confidence, which a
+  separate cap already enforces. When a card-declared exception applies, the finding is
+  still recorded and shown but no longer lowers the confidence; the trace lists its step as
+  not applied. Claims without an exception are charged as before, and no exception reaches
+  high while its card's requirement is unmet. The implementation moved; the pine card and
+  the domain prompt did not.
 - **A reviewer's rerank cannot bury a diagnosed tree.** A reviewer moved poplar, matched on
   coarse bark and a massive trunk, above a birch with white papery bark, and the interim
   verdict became "insufficient evidence". A rerank is now withheld when it would put a
