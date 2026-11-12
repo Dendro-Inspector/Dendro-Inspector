@@ -8,6 +8,7 @@ likely_taxa:
   - acer
   - acer_pseudoplatanus
   - acer_saccharinum
+  - aesculus  # not in the domain prompt; one of the commonest street and park trees
   - alnus
   - betula
   - carpinus

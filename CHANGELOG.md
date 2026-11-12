@@ -47,6 +47,17 @@ get entries.
   with a uniformly pale cut end. All permit the genus and raise no confidence. A log already
   named on a strong feature is no longer asked for a photograph that would only complete a
   combination.
+- **Horse chestnut has a card.** *Aesculus* was the commonest street tree the pack could
+  not represent: three models read its palmately compound leaf, proposed the genus and had
+  it rejected as outside the knowledge base, and one then answered poplar. The new genus
+  card names it from the leaf (five to seven leaflets from one point) or the spiny husk
+  with its conker; sticky winter buds and plated old bark support. Sources are quoted on
+  the card: Woodland Trust and Trees and Shrubs Online. The domain prompt does not name the
+  genus, which is recorded as a documented exception.
+- **Black locust is named from bark and leaf together.** Rope-like bark under pinnate
+  leaves of rounded, untoothed leaflets now permits the genus as a diagnostic combination
+  (Virginia Tech Dendrology, quoted on the card). Before, only a pod or paired spines could
+  name it, so a tree in leaf ended as "insufficient evidence".
 - **Log look-alikes are checked the way a forester checks them.** Resin blisters in smooth
   bark (fir) and a dark core reaching almost to the bark (larch's very narrow sapwood) count
   against pine and block a pine log answer; a wide pale sapwood band counts against larch.
