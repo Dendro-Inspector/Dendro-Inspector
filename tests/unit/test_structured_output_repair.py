@@ -293,3 +293,25 @@ def test_the_short_text_limit_is_stated_in_words_in_the_undialected_schema():
     summary = ReviewResult.model_json_schema()["$defs"]["ReviewFinding"]["properties"]["summary"]
     assert summary["maxLength"] == SHORT_TEXT_MAX
     assert f"at most {SHORT_TEXT_MAX} characters" in summary["description"]
+
+
+def test_repair_feedback_for_an_overlong_text_says_how_long_it_was():
+    """The limit alone invites a token trim; the overrun says how much has to go."""
+    from pydantic import ValidationError
+
+    from dendro_inspector.providers.base import repair_feedback
+    from dendro_inspector.schemas.reviews import ReviewFinding
+
+    with pytest.raises(ValidationError) as caught:
+        ReviewFinding.model_validate(
+            {
+                "finding_id": "f-1",
+                "category": "unsupported_claim",
+                "severity": "minor",
+                "summary": "x" * 650,
+            }
+        )
+
+    text, codes = repair_feedback(caught.value)
+    assert codes == ("summary:string_too_long",)
+    assert "at most 400 characters, you sent 650" in text
