@@ -3,9 +3,15 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from pathlib import Path
 from typing import Any
 
+import pytest
+from typer.testing import CliRunner
+
+from dendro_inspector.cli import app
+from dendro_inspector.config import DEFAULT_DOMAIN_PROMPT_PATH, DEFAULT_PROMPT_MANIFEST_PATH
 from dendro_inspector.evaluation.trace_replay import (
     StoredRecord,
     fixture_from_trace,
@@ -21,16 +27,19 @@ from dendro_inspector.knowledge.coverage_audit import (
     audit_observation,
     audit_packet,
 )
+from dendro_inspector.observability.trace import TraceRecorder
 from dendro_inspector.schemas.candidates import Candidate, CandidateSet, SupportStrength
 from dendro_inspector.schemas.evidence import (
     AttachmentStatus,
     EvidencePacket,
+    GeneratedEvidencePacket,
     Observation,
     ObservationSource,
     Reliability,
     Subject,
     SubjectKind,
     Visibility,
+    WoodSurface,
 )
 from dendro_inspector.schemas.taxon import Resolution
 
@@ -254,6 +263,47 @@ TRACE: dict[str, Any] = {
 
 
 class TestTraceReplay:
+    @pytest.mark.parametrize("surface", list(WoodSurface))
+    def test_recorded_wood_surfaces_preserve_replay_trust(self, surface):
+        packet = _packet(
+            _obs("bark", "bark.texture", "scaly_plates"),
+            _obs("pores", "pores.arrangement", "ring_porous").model_copy(
+                update={"wood_surface": surface}
+            ),
+        )
+        recorder = TraceRecorder("wood-trace")
+        recorder.record_evidence(packet)
+        trace = recorder.build().model_dump(mode="json")
+        record = StoredRecord("wood-trace", "inline", trace, (), False)
+
+        assert trace["evidence_observations"][1]["wood_surface"] == surface.value
+        assert packet_from_trace(trace).observations[1].wood_surface is surface
+        assert replay_fidelity(record) == ()
+        generated = fixture_from_trace(trace)["responses"]["primary:evidence_extractor"]
+        assert (
+            GeneratedEvidencePacket.model_validate(generated).observations[1].wood_surface
+            is surface
+        )
+
+    def test_legacy_wood_observations_replay_as_unknown_surface(self):
+        trace = {
+            **TRACE,
+            "evidence_observations": [
+                {
+                    **TRACE["evidence_observations"][1],
+                    "feature": "pores.arrangement",
+                    "value": "ring_porous",
+                    "trust": "full_positive",
+                    "tier": 5,
+                }
+            ],
+        }
+        generated = fixture_from_trace(trace)["responses"]["primary:evidence_extractor"]
+        observation = GeneratedEvidencePacket.model_validate(generated).observations[0]
+        assert observation.wood_surface is WoodSurface.UNKNOWN
+        record = StoredRecord("legacy-wood-trace", "inline", trace, (), False)
+        assert replay_fidelity(record) == ("obs-2",)
+
     def test_proposals_are_rebuilt_with_the_models_original_score(self):
         (proposal,) = proposals_from_trace(TRACE)
         pinus, picea = proposal["candidates"]
@@ -282,3 +332,43 @@ class TestTraceReplay:
         (decision,) = state.decisions
         assert decision.selected_taxon == "pinus"
         assert decision.resolution is Resolution.GENUS
+
+
+@pytest.mark.parametrize(
+    ("environment", "flag", "expected_taxon"),
+    [
+        ("true", "--no-require-discriminating-support", "pinus"),
+        ("false", "--require-discriminating-support", None),
+        ("true", None, None),
+        ("false", None, "pinus"),
+    ],
+)
+def test_coverage_replay_policy_override(tmp_path, monkeypatch, environment, flag, expected_taxon):
+    """Compare supporting-only evidence without changing deployment configuration."""
+    monkeypatch.setenv("DENDRO_REQUIRE_DISCRIMINATING_SUPPORT", environment)
+    monkeypatch.setenv("DENDRO_DOMAIN_PROMPT_PATH", str(DEFAULT_DOMAIN_PROMPT_PATH))
+    monkeypatch.setenv("DENDRO_PROMPT_MANIFEST_PATH", str(DEFAULT_PROMPT_MANIFEST_PATH))
+    trace = {
+        **TRACE,
+        "evidence_observations": [
+            TRACE["evidence_observations"][1],
+            {
+                **TRACE["evidence_observations"][1],
+                "observation_id": "obs-3",
+                "feature": "crown.shape",
+                "value": "broad_irregular_spreading",
+                "tier": 1,
+            },
+        ],
+    }
+    record = tmp_path / "record.json"
+    record.write_text(json.dumps({"result": {"trace": trace}}), encoding="utf-8")
+    report = tmp_path / "report.json"
+    args = ["coverage-audit", str(record), "--replay", "--json-out", str(report)]
+    if flag is not None:
+        args.append(flag)
+    result = CliRunner().invoke(app, args)
+    assert result.exit_code == 0, result.exception
+    decisions = json.loads(report.read_text(encoding="utf-8"))["records"][0]["replayed"]
+    assert decisions[0]["taxon"] == expected_taxon
+    assert decisions[0]["confidence"] == "low"

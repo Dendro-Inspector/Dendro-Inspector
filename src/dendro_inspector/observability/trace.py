@@ -144,6 +144,7 @@ class TraceRecorder:
                 visibility=observation.visibility.value,
                 reliability=observation.reliability.value,
                 attachment=observation.attachment.value if observation.attachment else None,
+                wood_surface=observation.wood_surface.value if observation.wood_surface else None,
                 trust=observation_trust(observation).name.lower(),
                 tier=int(effective_tier(observation)),
             )

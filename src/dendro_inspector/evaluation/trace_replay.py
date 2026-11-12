@@ -20,6 +20,8 @@ What a trace does not carry is reconstructed conservatively and reported, never 
   record's field-context flag, so attestation is re-derived rather than copied. The subject
   it was originally filed under is not recorded, so it is replayed on the tree.
 * Inferences are not recorded, so a proposal that cited an inference id loses that id.
+* Older traces omit wood surfaces. They replay as ``unknown``, never as prepared end grain;
+  any resulting trust or tier change is reported by :func:`replay_fidelity`.
 * A rejected proposal's resolution and score are not recorded. Resolution is read from the
   taxon id's shape and the score is taken as ``weak``; admission recomputes both anyway.
 """
@@ -35,7 +37,13 @@ from typing import Any
 
 from dendro_inspector.config import Adapter, AppConfig, ProviderConfig, Role
 from dendro_inspector.knowledge.evidence_hierarchy import project_observation
-from dendro_inspector.schemas.evidence import AttachmentStatus, EvidencePacket, SubjectKind
+from dendro_inspector.schemas.evidence import (
+    AttachmentStatus,
+    EvidencePacket,
+    SubjectKind,
+    WoodSurface,
+    requires_wood_surface,
+)
 from dendro_inspector.schemas.input import CaseInput, ImageRef
 
 #: Subject-id words that name a kind. Checked in order; the first hit wins.
@@ -66,6 +74,7 @@ _OBSERVATION_FIELDS = (
     "visibility",
     "reliability",
     "attachment",
+    "wood_surface",
 )
 
 _NEUTRAL_REVIEWS = {
@@ -120,6 +129,10 @@ def _observations(trace: Mapping[str, Any]) -> list[dict[str, Any]]:
     rows = []
     for stored in trace.get("evidence_observations") or ():
         row = {key: stored.get(key) for key in _OBSERVATION_FIELDS}
+        if requires_wood_surface(str(row["feature"])) and row["wood_surface"] is None:
+            # Legacy records lack this field. Match Observation's conservative fallback
+            # explicitly, since the fake extractor validates GeneratedObservation.
+            row["wood_surface"] = WoodSurface.UNKNOWN.value
         if row.get("attachment") == AttachmentStatus.USER_ATTESTED.value:
             # Only code sets this, after extraction; replaying the field-context flag
             # re-applies it. The model-side status it replaced was not recorded.

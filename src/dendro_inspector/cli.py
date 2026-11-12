@@ -405,12 +405,12 @@ def coverage_audit_command(
         Path | None, typer.Option("--labels", help="JSON of reference genus labels by case id.")
     ] = None,
     require_discriminating_support: Annotated[
-        bool,
+        bool | None,
         typer.Option(
-            "--require-discriminating-support",
-            help="Replay with GraphConfig.require_discriminating_support switched on.",
+            "--require-discriminating-support/--no-require-discriminating-support",
+            help="Override the discriminating-support policy for offline replay only.",
         ),
-    ] = False,
+    ] = None,
     json_output: Annotated[
         Path | None, typer.Option("--json-out", help="Write the full report as JSON here.")
     ] = None,
@@ -424,10 +424,12 @@ def coverage_audit_command(
     from dendro_inspector.evaluation import coverage_report
 
     config = load_config()
-    if require_discriminating_support:
+    if require_discriminating_support is not None:
         config = config.model_copy(
             update={
-                "graph": config.graph.model_copy(update={"require_discriminating_support": True})
+                "graph": config.graph.model_copy(
+                    update={"require_discriminating_support": require_discriminating_support}
+                )
             }
         )
     knowledge = KnowledgeBase(config.knowledge)
