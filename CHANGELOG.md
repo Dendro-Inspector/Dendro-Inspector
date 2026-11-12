@@ -37,6 +37,16 @@ get entries.
   50–69/100. The answer says it was named on combined features, and for the weaker trio that
   spruce and larch are not excluded and what would settle it. `log-pile-pinus-001` expects
   genus again.
+- **A pine or birch log is named from less.** A maintainer decision, not a literature
+  rule, prompted by live photographs: a weathered pine stump on which three models read
+  pine bark and abstained, and a felled birch stem named by two models and missed by one.
+  Pinus gains a third, weakest combination: pine bark on a piece whose cut end shows clear
+  annual rings, with no heartwood boundary or resin required. The bark does the separating
+  and the answer says larch and spruce are not excluded by the wood. Betula gains two for a
+  stem whose white pattern was not read: thin papery peeling with horizontal lenticels, or
+  with a uniformly pale cut end. All permit the genus and raise no confidence. A log already
+  named on a strong feature is no longer asked for a photograph that would only complete a
+  combination.
 - **Log look-alikes are checked the way a forester checks them.** Resin blisters in smooth
   bark (fir) and a dark core reaching almost to the bark (larch's very narrow sapwood) count
   against pine and block a pine log answer; a wide pale sapwood band counts against larch.

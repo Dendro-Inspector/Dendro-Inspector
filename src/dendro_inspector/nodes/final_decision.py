@@ -1339,6 +1339,12 @@ def _owed_combination_request(
     card = ctx.knowledge.try_taxon(leader.taxon)
     if card is None or not _is_cut_material(state, evidence, subject_id):
         return None
+    discriminating, combination = _discrimination(card, evidence, leader, subject_id)
+    if discriminating and combination is None:
+        # Already named on a strong positive or a confidence exception. A combination is
+        # only permission to name, so finishing one would add nothing: a birch log read by
+        # its white papery bark does not need its lenticels photographed.
+        return None
     owed = owed_combination(card, evidence, subject_id)
     if owed is None:
         return None

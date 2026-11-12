@@ -97,6 +97,26 @@ supporting_features:
       review_state: reviewed
       reviewed_by: "Claude (AI-assisted botanical and implementation review)"
       last_reviewed: 2026-11-12
+  # Annual rings readable by eye on a rough cut end. Every conifer and every ring-porous
+  # broadleaf shows them, so this names nothing alone; it is the sign that the cut end of
+  # the piece was in view at all, which the bark-and-log combination below needs.
+  - feature: rings.visibility
+    values:
+      - clear
+    note: >-
+      Annual rings clearly readable by eye across the cut end, without preparation. Shared
+      with spruce, fir, larch and ring-porous broadleaves.
+    provenance:
+      source: >-
+        Maintainer decision, 2026-11-12: a pine log or piece of log is recognisable from its
+        bark with the cut end in view. Reading recorded on live case photo-095 (sawn pine
+        stump) as rings.visibility = clear. No literature quotation; not a separating feature
+      source_type: expert_review
+      region: Eastern Europe
+      confidence: low
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-12
 
 # A pine log has no needles and no cones, so neither strong positive above can ever be read
 # from one. A forester names it anyway, from several log signs that agree, and checks the
@@ -148,6 +168,34 @@ diagnostic_combinations:
       source_type: domain_prompt
       region: Eastern Europe
       confidence: medium
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-12
+  # The weakest one, and the one a weathered or obliquely photographed log end can still
+  # earn: pine bark on a piece whose cut end is in view. No heartwood boundary and no resin
+  # is asked for, because a stump photographed in the yard often shows neither. The bark
+  # does all the separating here (spruce bark is finely scaled, fir smooth, larch deeply
+  # fissured); the rings only show that the cut end was read. Listed last so either
+  # combination above is reported first when it is also earned.
+  - requires:
+      bark.texture:
+        - scaly_plates
+        - thin_orange_flaking
+      rings.visibility: clear
+    max_resolution: genus
+    note: >-
+      Named from the bark with the cut end in view. The wood excludes no conifer: larch and
+      spruce are separated by bark only, and a reddish core in a wide pale band on a clean
+      cut end would settle it.
+    provenance:
+      source: >-
+        Maintainer decision, 2026-11-12: a pine log or piece of log is recognisable enough
+        to name. Prompted by live case photo-095, a sawn pine stump on which three models
+        read pine bark and abstained because neither combination above could be completed.
+        Naming policy, not a feature rule
+      source_type: expert_review
+      region: Eastern Europe
+      confidence: low
       review_state: reviewed
       reviewed_by: "Claude (AI-assisted botanical and implementation review)"
       last_reviewed: 2026-11-12

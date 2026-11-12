@@ -66,6 +66,69 @@ supporting_features:
       review_state: reviewed
       reviewed_by: "Claude (AI-assisted botanical and implementation review)"
       last_reviewed: 2026-11-12
+  # The birch cut end: one pale colour from pith to bark, no darker core. Shared with
+  # spruce, hornbeam, poplar and other pale woods, so it names nothing alone; cherry, the
+  # other tree with banded peeling bark, has a clearly darker heartwood.
+  - feature: heartwood.demarcation
+    values:
+      - none_uniform_pale
+    note: >-
+      The cut end is one pale colour with no darker core. Record only when the whole radius
+      from pith to bark is visible.
+    provenance:
+      source: >-
+        General botanical knowledge (AI-assisted review, 2026-11-12); read on live case
+        photo-019 (felled birch stem) as heartwood.demarcation = none_uniform_pale. No
+        literature quotation
+      source_type: inferred
+      region: Eastern Europe
+      confidence: low
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-12
+
+# A birch log is usually named from the strong positive above. These cover the piece where
+# the white pattern itself was not read — a stem lying in grass, dirty or seen end-on — but
+# the papery peeling was, together with a second sign. Permission to name the genus only;
+# confidence keeps the ceiling of the evidence seen.
+diagnostic_combinations:
+  # Papery peeling with horizontal lenticels. Cherry also has horizontal lenticels but its
+  # bark comes away in horizontal ribbons, which is a different reading.
+  - requires:
+      bark.peeling: thin_layers
+      lenticels.orientation: horizontal
+    max_resolution: genus
+    note: >-
+      Thin papery peeling with horizontal lenticels; white poplar is not excluded by these
+      two readings alone.
+    provenance:
+      source: >-
+        Maintainer decision, 2026-11-12: a birch log is recognisable enough to name, as for
+        pine. Woodland Trust, silver birch (https://www.woodlandtrust.org.uk/trees-woods-and-wildlife/british-trees/a-z-of-british-trees/silver-birch/): "The white bark sheds layers like tissue paper". Naming policy, not a feature rule
+      source_type: expert_review
+      region: Eastern Europe
+      confidence: low
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-12
+  # Papery peeling with the pale cut end: the reading a felled stem photographed end-on gives.
+  - requires:
+      bark.peeling: thin_layers
+      heartwood.demarcation: none_uniform_pale
+    max_resolution: genus
+    note: >-
+      Thin papery peeling on a piece whose cut end is one pale colour with no darker core.
+    provenance:
+      source: >-
+        Maintainer decision, 2026-11-12: a birch log is recognisable enough to name, as for
+        pine. Prompted by live case photo-019, where one model read papery peeling on the
+        felled stem, missed the white pattern and abstained. Naming policy, not a feature rule
+      source_type: expert_review
+      region: Eastern Europe
+      confidence: low
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-12
 
 # White papery bark with black marks is the one bark signature in this pack the domain
 # prompt itself places at the top of the scale: section 6 lists it among the 95-100

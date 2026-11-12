@@ -532,6 +532,7 @@ class TestDiagnosticCombinationDeclarationIsValidated:
 #: is a reviewed, sourced decision, so the list is pinned rather than discovered.
 DECLARING = [
     "abies",
+    "betula",
     "larix",
     "picea",
     "pinus",
