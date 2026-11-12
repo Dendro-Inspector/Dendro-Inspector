@@ -214,9 +214,10 @@ def open_world_candidate(
     estimate and never by any reference source: resolution by the tier ceiling, score below
     strong, and image confidence below high and below the tier ceiling.
 
-    A covered name is kept out of admission deliberately. Resolving ``juglans`` to the
-    walnut card would widen the admission boundary to match names instead of card ids, and
-    that boundary is not widened to admit a candidate (``AGENTS.md``, key files).
+    A covered name is kept out of admission deliberately. Resolving ``juglans`` to a
+    walnut card would be a choice between two cards that admission may not make. The one
+    exception is made before this function is reached: a broader identity exactly one card
+    declares is read as that card (:func:`_resolved_to_sole_card`).
     """
     covered_by = knowledge.declared_names().get(candidate.taxon, ())
     if (
@@ -356,6 +357,39 @@ def _validated_contradiction_ids(
     return tuple(kept), tuple(dropped)
 
 
+def _resolved_to_sole_card(candidate: Candidate, knowledge: KnowledgeBase) -> Candidate:
+    """Read a broader name that exactly one card declares as that card, at that level.
+
+    Live case photo-090: a model proposed ``robinia`` for a black locust. The only card is
+    ``robinia_pseudoacacia``, which declares ``robinia`` as its genus, so the hypothesis was
+    turned away at the door and the tree ended as insufficient evidence with the right card
+    never consulted. The name is unambiguous — one card, one declared identity — so it is
+    read as that card, with the claim capped at the level the model actually named. The
+    card's own rules then admit or reject it exactly as if its id had been proposed.
+
+    Deliberately narrow. A name two cards share (``juglans``) is not a choice this function
+    may make and stays in the open-world channel, as does an alias: admission still matches
+    card ids, and this adds only the ids a single card itself declares as its broader self.
+    """
+    if knowledge.try_taxon(candidate.taxon) is not None:
+        return candidate
+    covering = knowledge.declared_names().get(candidate.taxon, ())
+    if len(covering) != 1:
+        return candidate
+    card = knowledge.taxon(covering[0])
+    identity = next(
+        (item for item in card.broader_identities if item.taxon_id == candidate.taxon), None
+    )
+    if identity is None:
+        return candidate
+    return candidate.model_copy(
+        update={
+            "taxon": card.taxon_id,
+            "resolution": min(candidate.resolution, identity.resolution, key=resolution_rank),
+        }
+    )
+
+
 def validate_candidate_set_with_report(
     candidate_set: CandidateSet,
     evidence: EvidencePacket,
@@ -374,7 +408,16 @@ def validate_candidate_set_with_report(
     demoted: list[tuple[str, SupportStrength, SupportStrength]] = []
     open_world: list[OpenWorldCandidate] = []
 
-    for candidate in candidate_set.ordered:
+    for proposed in candidate_set.ordered:
+        candidate = _resolved_to_sole_card(proposed, knowledge)
+        if candidate is not proposed and any(
+            survivor.taxon == candidate.taxon for survivor in survivors
+        ):
+            # The card this name resolves to is already in play under its own id.
+            dropped.extend(
+                (*proposed.supporting_evidence_ids, *proposed.contradicting_evidence_ids)
+            )
+            continue
         card = knowledge.try_taxon(candidate.taxon)
         if card is None:
             rejected.append(candidate.taxon)

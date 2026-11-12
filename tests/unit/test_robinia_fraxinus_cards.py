@@ -299,3 +299,41 @@ def test_a_reviewed_diagnostic_reading_names_the_taxon(
 )
 def test_a_look_alikes_character_disqualifies_the_card(taxon, reading, knowledge):
     assert match_card(knowledge.taxon(taxon), _packet(reading), SUBJECT).disqualifying_hits
+
+
+def test_a_genus_name_one_card_declares_is_read_as_that_card_at_genus(knowledge):
+    """Live case photo-090: a model proposed ``robinia`` and the only card was never consulted."""
+    packet = _packet(("pod.shape", MEASURED_POD))
+    proposed = CandidateSet(
+        subject_id=SUBJECT,
+        candidates=(
+            Candidate(
+                taxon="robinia",
+                resolution=Resolution.SPECIES,
+                score=SupportStrength.STRONG,
+                supporting_evidence_ids=("obs-0",),
+                rank=1,
+            ),
+        ),
+    )
+    admitted = validate_candidate_set(proposed, packet, knowledge)
+    (candidate,) = admitted.candidates
+    assert candidate.taxon == "robinia_pseudoacacia"
+    assert candidate.resolution is Resolution.GENUS
+
+
+def test_a_genus_name_two_cards_share_is_not_resolved(knowledge):
+    packet = _packet(("leaf.type", "compound_pinnate"))
+    proposed = CandidateSet(
+        subject_id=SUBJECT,
+        candidates=(
+            Candidate(
+                taxon="juglans",
+                resolution=Resolution.GENUS,
+                score=SupportStrength.MODERATE,
+                supporting_evidence_ids=("obs-0",),
+                rank=1,
+            ),
+        ),
+    )
+    assert not validate_candidate_set(proposed, packet, knowledge).candidates
