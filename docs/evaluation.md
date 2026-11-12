@@ -350,6 +350,13 @@ scripted beside it. That is a statement about the fixtures, not about the change
 recorded case had ever exercised a label that outran its evidence, which is precisely why
 one had to be written.
 
+The v0.11.0 baseline is frozen in `evals/baselines/public-v0.11.0.json`: twenty-four passing
+cases, zero failures and zero overconfidence. One decision moves on purpose.
+`log-pile-pinus-001` answers `pinus` at genus again, where the v0.10.0 baseline recorded
+`unknown`: the Pinus card now declares scaly bark, resin and honey-coloured wood a diagnostic
+combination, which permits the genus and leaves confidence at the bark-tier ceiling (`low`).
+Every other frozen decision and every metric is unchanged.
+
 Read the result honestly: twenty-four hand-built cases over recorded fixtures can show that
 the machinery follows these contracts. It says nothing about identification accuracy on real
 photographs, which has not been measured.

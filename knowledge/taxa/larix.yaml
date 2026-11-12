@@ -49,8 +49,57 @@ supporting_features:
       review_state: reviewed
       reviewed_by: "Claude (AI-assisted botanical and implementation review)"
       last_reviewed: 2026-11-11
+  # The larch cut end: a dark core reaching almost to the bark. Supporting only; it is the
+  # sign that tells a larch log from a pine log.
+  - feature: heartwood.demarcation
+    values:
+      - dark_core_very_narrow_sapwood
+    note: >-
+      A dark red-brown core clearly set off from a very narrow whitish outer band on the
+      cut end.
+    provenance:
+      source: >-
+        Wood Database, European larch (https://www.wood-database.com/european-larch/): "Narrow sapwood is nearly white and is clearly demarcated from the heartwood."; CZU timber atlas (https://r.fld.czu.cz/vyzkum/multimedia/timber_atlas/nextpages/softwoods.html): "Sapwood very narrow, heartwood quite wide, compared to pine." Verified 2026-11-12.
+      source_type: literature
+      region: Eastern Europe
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-12
+
+# A larch log: deeply fissured bark with reddish inner bark, and a dark core reaching almost
+# to the bark. The narrow sapwood is what separates it from pine.
+diagnostic_combinations:
+  - requires:
+      bark.texture: deeply_fissured_flaking_reddish_inner
+      heartwood.demarcation: dark_core_very_narrow_sapwood
+    max_resolution: genus
+    note: >-
+      Douglas-fir, which has no card here, has a similar cut end and is not excluded.
+    provenance:
+      source: >-
+        Gymnosperm Database, Larix decidua (https://www.conifers.org/pi/Larix_decidua.php): "Bark deeply fissured, flaking, medium to dark gray to reddish brown, with reddish inner bark."; CZU timber atlas (https://r.fld.czu.cz/vyzkum/multimedia/timber_atlas/nextpages/softwoods.html): "Sapwood very narrow, heartwood quite wide, compared to pine." Verified 2026-11-12. Naming policy, not a feature rule
+      source_type: literature
+      region: Eastern Europe
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-12
 
 contradictions:
+  - feature: heartwood.demarcation
+    values:
+      - reddish_core_wide_pale_sapwood
+    note: A wide pale sapwood band around the coloured core is pine, not larch.
+    provenance:
+      source: >-
+        CZU timber atlas (https://r.fld.czu.cz/vyzkum/multimedia/timber_atlas/nextpages/softwoods.html): Scotch pine "The sapwood is quite wide."; larch "Sapwood very narrow, heartwood quite wide, compared to pine." Verified 2026-11-12.
+      source_type: literature
+      region: Eastern Europe
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-12
   - feature: needles.fascicles
     values:
       - two

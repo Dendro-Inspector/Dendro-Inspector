@@ -58,6 +58,28 @@ supporting_features:
       reviewed_by: "Claude (AI-assisted botanical and implementation review)"
       last_reviewed: 2026-11-11
 
+# An oak log is named from its end grain: large pores along each ring boundary together with
+# rays broad enough to see without a lens. Ash, elm and robinia are ring-porous too, but
+# their rays are not visible on the cut end, so neither reading names oak alone. Both
+# readings need a prepared end grain to count at all.
+diagnostic_combinations:
+  - requires:
+      pores.arrangement: ring_porous
+      rays.visibility: prominent
+    max_resolution: genus
+    note: >-
+      Ring-porous wood with rays visible to the naked eye; the species of oak is not
+      established by the wood.
+    provenance:
+      source: >-
+        CZU timber atlas, oak (https://r.fld.czu.cz/vyzkum/multimedia/timber_atlas/nextpages/hardwoods.html): "Ring-porous distribution"; "Ray great and well visible, one of the biggest rays from the Czech species."; Wood Database, European ash (https://www.wood-database.com/european-ash/): "Ashes lack these conspicuous rays." Verified 2026-11-12. Naming policy, not a feature rule
+      source_type: literature
+      region: Eastern Europe
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-12
+
 contradictions:
   - feature: leaf.type
     values:

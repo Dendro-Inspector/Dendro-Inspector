@@ -51,9 +51,12 @@ from dendro_inspector.knowledge.evidence_hierarchy import (
 )
 from dendro_inspector.knowledge.loader import KnowledgeBase
 from dendro_inspector.knowledge.taxon_cards import (
+    DiagnosticCombinationHit,
     card_value_vocabulary,
     confidence_exception_for,
+    diagnostic_combination_for,
     match_card,
+    owed_combination,
 )
 from dendro_inspector.nodes.abstain import settle_unverified_abstention
 from dendro_inspector.nodes.photo_planner import (
@@ -63,6 +66,7 @@ from dendro_inspector.nodes.photo_planner import (
     effective_object_type,
     planned_attachment_request,
 )
+from dendro_inspector.schemas.base import SHORT_TEXT_MAX
 from dendro_inspector.schemas.candidates import (
     STRENGTH_CONFIDENCE_CEILING,
     Candidate,
@@ -83,7 +87,12 @@ from dendro_inspector.schemas.decisions import (
     ResolutionBoundSource,
     UserClaimVerdict,
 )
-from dendro_inspector.schemas.evidence import EvidencePacket, is_positive_reading
+from dendro_inspector.schemas.evidence import (
+    EvidencePacket,
+    SubjectKind,
+    is_positive_reading,
+    requires_wood_surface,
+)
 from dendro_inspector.schemas.input import DeclaredObjectType
 from dendro_inspector.schemas.reference import (
     ReferenceStatus,
@@ -697,13 +706,21 @@ def resolve_resolution(
     if substituting:
         bounds.append(ResolutionBound(source="open_world_outranked", value=Resolution.GENUS))
     evidence = state.evidence
-    if (
-        require_discriminating_support
-        and card is not None
-        and evidence is not None
-        and not discriminating_support(card, evidence, leader, subject_id)
-    ):
-        bounds.append(ResolutionBound(source="no_discriminating_support", value=Resolution.UNKNOWN))
+    if card is not None and evidence is not None:
+        discriminating, combination = _discrimination(card, evidence, leader, subject_id)
+        if require_discriminating_support and not discriminating:
+            bounds.append(
+                ResolutionBound(source="no_discriminating_support", value=Resolution.UNKNOWN)
+            )
+        elif combination is not None:
+            # Named on a combination and nothing stronger: the combination's own limit is
+            # the narrowest claim those readings can carry.
+            bounds.append(
+                ResolutionBound(
+                    source="diagnostic_combination",
+                    value=combination.combination.max_resolution,
+                )
+            )
     if state.is_abstained(subject_id):
         abstention = state.abstention_for(subject_id)
         abstention_bound = (
@@ -851,6 +868,20 @@ def discriminating_support(
     Returns the discriminating observation ids, in the leader's citation order. Empty means
     the leader may stay a candidate but may not be the answer.
     """
+    return _discrimination(card, evidence, leader, subject_id)[0]
+
+
+def _discrimination(
+    card: TaxonCard, evidence: EvidencePacket, leader: Candidate, subject_id: str
+) -> tuple[tuple[str, ...], DiagnosticCombinationHit | None]:
+    """The discriminating observation ids, and the combination when nothing else supplied them.
+
+    Three card-declared routes, strongest first: a cited strong positive, an earned
+    confidence exception, and a completed diagnostic combination — readings the card calls
+    shared one by one and diagnostic together (pine logs, section 14 of the domain prompt).
+    The combination is reported separately because it is the only route that carries its own
+    resolution bound and its own disclosure; the other two return ``None`` there.
+    """
     strong = set(match_card(card, evidence, subject_id).strong_hits)
     cited = tuple(
         dict.fromkeys(
@@ -861,9 +892,72 @@ def discriminating_support(
     )
     hits = tuple(observation_id for observation_id in cited if observation_id in strong)
     if hits:
-        return hits
+        return hits, None
     exception = confidence_exception_for(card, evidence, subject_id, Resolution.FAMILY)
-    return exception.evidence_ids if exception is not None else ()
+    if exception is not None:
+        return exception.evidence_ids, None
+    combination = diagnostic_combination_for(card, evidence, subject_id, cited=frozenset(cited))
+    if combination is not None:
+        return combination.evidence_ids, combination
+    return (), None
+
+
+#: Opens the line that discloses a verdict named on a card-declared combination.
+DIAGNOSTIC_COMBINATION_PHRASE = "Named on combined features"
+
+
+def _diagnostic_combination_text(card: TaxonCard, hit: DiagnosticCombinationHit) -> str:
+    readings = "; ".join(
+        f"{expectation.feature} = {' | '.join(expectation.values)}"
+        for expectation in hit.combination.requires
+    )
+    # The card's note says what this particular combination leaves open — which look-alike
+    # it does not exclude and what would. A person naming a log says that in the same breath.
+    note = f" {hit.combination.note}" if hit.combination.note else ""
+    text = (
+        f"{DIAGNOSTIC_COMBINATION_PHRASE}: {card.display_name} is named from {readings}, read "
+        f"together; none is diagnostic alone. The claim stops at "
+        f"{hit.combination.max_resolution.value.replace('_', ' ')} and keeps the confidence "
+        f"ceiling of the evidence seen.{note}"
+    )
+    # `unresolved_questions` entries are short text; a long card note must not break the
+    # verdict it annotates.
+    return text if len(text) <= SHORT_TEXT_MAX else text[: SHORT_TEXT_MAX - 1] + "…"
+
+
+def rerank_displaces_diagnostic_leader(
+    ctx: NodeContext,
+    evidence: EvidencePacket,
+    original: CandidateSet,
+    reranked: CandidateSet,
+) -> bool:
+    """Whether a rerank would replace a diagnosed leader with a merely compatible one.
+
+    A rerank is admitted on the strength of a finding and a validated ranking, and
+    validation asks only whether each candidate has *some* card support. That let a reviewer
+    move poplar — coarse furrowed bark and a massive trunk, both supporting features — above
+    a birch whose white papery bark its card declares diagnostic and nothing contradicted.
+    The new leader then had no discriminating support, so the verdict became "insufficient
+    evidence" on a photograph the cards could name.
+
+    Rank order is not evidence. The card-validated leader keeps its place when all three
+    hold: it has discriminating support, nothing in the packet contradicts its card, and the
+    candidate the rerank would put first has no discriminating support of its own. A rerank
+    toward a candidate with diagnostic evidence, or away from a contradicted one, is
+    untouched — and every confidence downgrade the reviewers filed still applies.
+    """
+    before, after = original.leader, reranked.leader
+    if before is None or after is None or before.taxon == after.taxon:
+        return False
+    subject_id = original.subject_id
+    before_card = ctx.knowledge.try_taxon(before.taxon)
+    if before_card is None or not discriminating_support(before_card, evidence, before, subject_id):
+        return False
+    match = match_card(before_card, evidence, subject_id)
+    if match.has_contradiction or match.contradicts_own_card:
+        return False
+    after_card = ctx.knowledge.try_taxon(after.taxon)
+    return after_card is None or not discriminating_support(after_card, evidence, after, subject_id)
 
 
 #: Opens the line that discloses a verdict resting on supporting features alone.
@@ -1204,6 +1298,68 @@ def _contradiction_summary(
     return None
 
 
+#: Subjects that are cut material: there is no crown to photograph, and asking for foliage
+#: sends the reader to look for something a log does not have.
+_CUT_MATERIAL_TYPES: frozenset[DeclaredObjectType] = frozenset(
+    {DeclaredObjectType.LOG, DeclaredObjectType.WOOD}
+)
+_CUT_MATERIAL_KINDS: frozenset[SubjectKind] = frozenset(
+    {SubjectKind.LOG, SubjectKind.MATERIAL_GROUP, SubjectKind.WOOD_SURFACE}
+)
+
+
+def _is_cut_material(state: GraphState, evidence: EvidencePacket, subject_id: str) -> bool:
+    if effective_object_type(state, subject_id) in _CUT_MATERIAL_TYPES:
+        return True
+    return any(
+        subject.subject_id == subject_id and subject.kind in _CUT_MATERIAL_KINDS
+        for subject in evidence.subjects
+    )
+
+
+def _owed_combination_request(
+    state: GraphState,
+    ctx: NodeContext,
+    evidence: EvidencePacket,
+    candidate_set: CandidateSet,
+    leader: Candidate,
+) -> PhotoRequest | None:
+    """On a log, ask for the look that would finish the log signs already read.
+
+    The leader's follow-up list and the comparison cards are written for a standing tree and
+    lead with needles, leaves and cones. A log has none of them, and the request was a
+    needle macro of a pile of roundwood. A person who half recognises a log looks at its
+    other end: the card's combinations say which reading is still owed, and for wood that
+    is always the same photograph.
+
+    Cut material only. On a standing tree the foliage is the better photograph and nobody
+    can be asked for a cross-section.
+    """
+    subject_id = candidate_set.subject_id
+    card = ctx.knowledge.try_taxon(leader.taxon)
+    if card is None or not _is_cut_material(state, evidence, subject_id):
+        return None
+    owed = owed_combination(card, evidence, subject_id)
+    if owed is None:
+        return None
+    features = ", ".join(expectation.feature for expectation in owed.owed)
+    have = ", ".join(expectation.feature for expectation in owed.read) or "what is visible"
+    if any(requires_wood_surface(expectation.feature) for expectation in owed.owed):
+        target = "prepared_end_grain_macro"
+        look = "a clean, perpendicular cut end of this same piece, close enough to read"
+    else:
+        target = "bark_close_up_same_piece"
+        look = "the bark of this same piece, close and evenly lit, to read"
+    return PhotoRequest(
+        target=target,
+        reason=(
+            f"Photograph {look} {features}. With {have} already read, that would complete "
+            f"the log signs the {card.display_name} card names together."
+        ),
+        subject_id=subject_id,
+    )
+
+
 def _next_photo(
     state: GraphState,
     ctx: NodeContext,
@@ -1237,6 +1393,10 @@ def _next_photo(
     authority_first = attachment_request(state, candidate_set.subject_id)
     if authority_first is not None:
         return authority_first
+
+    owed_first = _owed_combination_request(state, ctx, evidence, candidate_set, leader)
+    if owed_first is not None:
+        return owed_first
 
     taxa = frozenset(candidate.taxon for candidate in candidate_set.ordered)
     candidate_cards = tuple(
@@ -1355,6 +1515,14 @@ def decide_subject_base(
         if already_reranked
         else _apply_reranking_with_source(state, candidate_set)
     )
+    if (
+        rerank_source != "none"
+        and ctx.config.graph.require_discriminating_support
+        and rerank_displaces_diagnostic_leader(ctx, evidence, candidate_set, reranked)
+    ):
+        # The finding stays accepted and is still named in the trace; only its ranking is
+        # not applied.
+        reranked, rerank_source = candidate_set, "withheld"
     leader = reranked.leader
     subject_id = reranked.subject_id
 
@@ -1495,7 +1663,12 @@ def decide_subject_base(
     verdict = rule_on_user_claim(state, ctx, subject_id, reranked, evidence, selected.taxon_id)
     alternative = _nearest_alternative(ctx, reranked.ordered[1:], resolution, selected)
     disclosure: list[str] = []
-    if card is not None and not discriminating_support(card, evidence, leader, subject_id):
+    discriminating, combination = (
+        _discrimination(card, evidence, leader, subject_id) if card is not None else ((), None)
+    )
+    if card is not None and combination is not None:
+        disclosure.append(_diagnostic_combination_text(card, combination))
+    if card is not None and not discriminating:
         disclosure.append(_no_discriminating_support_text(card, named=True))
         rivals = _undistinguished_rivals(
             ctx, reranked.ordered[1:], evidence, subject_id, resolution, selected

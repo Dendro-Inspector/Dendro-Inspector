@@ -437,6 +437,77 @@ class ConfidenceException(Contract):
         return self
 
 
+class DiagnosticCombination(Contract):
+    """Readings a card calls shared one by one and diagnostic together.
+
+    The gap this closes is a log. A card's strong positives are single readings that
+    distinguish the taxon alone, and for pine those are needles and cones — which a log does
+    not have. Section 14 of the domain prompt nevertheless says a pile of pine logs may be
+    named when reddish scaly bark, coniferous wood and typical log ends are all visible at
+    once. Plated bark alone is shared with spruce, fir and sycamore; resin alone with every
+    conifer; honey-coloured wood is a colour. No one of them may name a genus, and the three
+    agreeing across organs is exactly how a person recognises the log.
+
+    Permission to *name*, and nothing else. A combination never raises a confidence ceiling:
+    the claim stays under the evidence-tier ceiling of what was actually seen, so bark and
+    a rough log end still read as a low-confidence answer. ``max_resolution`` is the
+    narrowest claim the combination can carry.
+
+    Every field narrows. Each required pair must already be a strong or supporting rule on
+    the card, so a combination cannot introduce evidence the card does not otherwise
+    declare. The rows must span at least two organs once colour is set aside: three readings
+    of one bark surface are one look at one organ, and colour is never structural support.
+    """
+
+    requires: tuple[FeatureExpectation, ...] = Field(min_length=2)
+    max_resolution: Resolution
+    note: ShortText | None = None
+    provenance: Provenance | None = Field(
+        default=None,
+        description=(
+            "Overrides the card's provenance for this combination. A combination is a "
+            "naming policy claim, not a feature rule, and needs its own source."
+        ),
+    )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _accept_the_requires_mapping(cls, data: Any) -> Any:
+        """Read ``requires: {feature: value}``, or ``{feature: [value, ...]}``."""
+        if not isinstance(data, dict):
+            return data
+        requires = data.get("requires")
+        if not isinstance(requires, dict):
+            return data
+        rows = [
+            {"feature": feature, "values": tuple(value) if isinstance(value, list) else (value,)}
+            for feature, value in requires.items()
+        ]
+        return {**data, "requires": rows}
+
+    @model_validator(mode="after")
+    def _the_combination_is_corroboration(self) -> DiagnosticCombination:
+        if self.max_resolution is Resolution.UNKNOWN:
+            msg = "a diagnostic combination cannot apply at resolution=unknown"
+            raise ValueError(msg)
+        features = [expectation.feature for expectation in self.requires]
+        if len(set(features)) != len(features):
+            msg = f"a diagnostic combination names {features} twice; one row per feature"
+            raise ValueError(msg)
+        organs = {
+            feature.split(".", 1)[0]
+            for feature in features
+            if not feature.endswith(_COLOUR_SUFFIXES)
+        }
+        if len(organs) < 2:
+            msg = (
+                "a diagnostic combination must span at least two organs besides colour; "
+                f"{features} reads {sorted(organs) or 'colour only'}"
+            )
+            raise ValueError(msg)
+        return self
+
+
 class TaxonCard(Contract):
     """Structured, declarative knowledge about one taxon."""
 
@@ -477,6 +548,15 @@ class TaxonCard(Contract):
             "`bark.texture = smooth_grey` does not, and appearing among a card's strong "
             "positives is not sufficient on its own. Every required pair must also appear in "
             "`strong_positive_features`."
+        ),
+    )
+    diagnostic_combinations: tuple[DiagnosticCombination, ...] = Field(
+        default=(),
+        description=(
+            "Readings that are shared with other taxa one by one and name this taxon when "
+            "all are read together, each with the narrowest claim it may carry. Permission "
+            "to name only: a combination never raises a confidence ceiling. Every required "
+            "pair must also appear in `strong_positive_features` or `supporting_features`."
         ),
     )
     follow_up_evidence: tuple[ValueToken, ...] = ()
@@ -557,6 +637,36 @@ class TaxonCard(Contract):
                 msg = (
                     f"confidence_exceptions for {self.taxon_id!r} may not reach "
                     f"{exception.max_resolution.value}; the card supports "
+                    f"{[r.value for r in self.supported_resolution]}"
+                )
+                raise ValueError(msg)
+
+        # A combination may only join readings the card already declares, for the same
+        # reason: it is permission to name, and must not be a way to add evidence.
+        declared = strong | {
+            (expectation.feature, value)
+            for expectation in self.supporting_features
+            for value in expectation.values
+        }
+        narrowest = max(resolution_rank(supported) for supported in self.supported_resolution)
+        for combination in self.diagnostic_combinations:
+            for expectation in combination.requires:
+                missing = sorted(
+                    value
+                    for value in expectation.values
+                    if (expectation.feature, value) not in declared
+                )
+                if missing:
+                    msg = (
+                        f"diagnostic_combinations for {self.taxon_id!r} must also appear in "
+                        f"strong_positive_features or supporting_features; "
+                        f"{expectation.feature!r} lacks {missing}"
+                    )
+                    raise ValueError(msg)
+            if resolution_rank(combination.max_resolution) > narrowest:
+                msg = (
+                    f"diagnostic_combinations for {self.taxon_id!r} may not reach "
+                    f"{combination.max_resolution.value}; the card supports "
                     f"{[r.value for r in self.supported_resolution]}"
                 )
                 raise ValueError(msg)

@@ -21,10 +21,12 @@ from dendro_inspector.knowledge.evidence_hierarchy import (
 from dendro_inspector.schemas.evidence import (
     EvidencePacket,
     Observation,
+    Reliability,
     is_positive_reading,
 )
 from dendro_inspector.schemas.taxon import (
     ConfidenceException,
+    DiagnosticCombination,
     ExceptionCeiling,
     FeatureExpectation,
     LifeStage,
@@ -274,6 +276,126 @@ def confidence_exception_for(
     if not earned:
         return None
     return max(earned, key=lambda hit: _CEILING_ORDER[hit.exception.ceiling])
+
+
+@dataclass(frozen=True, slots=True)
+class DiagnosticCombinationHit:
+    """One card-declared combination that this subject's evidence completes."""
+
+    combination: DiagnosticCombination
+    evidence_ids: tuple[str, ...]
+
+
+def diagnostic_combination_for(
+    card: TaxonCard,
+    evidence: EvidencePacket,
+    subject_id: str,
+    *,
+    cited: Collection[str] | None = None,
+) -> DiagnosticCombinationHit | None:
+    """The combination this card declares that this evidence completes, if any.
+
+    A combination is permission to name a taxon from readings its card calls shared one by
+    one (see :class:`~dendro_inspector.schemas.taxon.DiagnosticCombination`). Three
+    conditions, all required:
+
+    * every row is read — each feature with one of its declared values — by a trusted
+      observation of this subject. Capped trust is enough, because a resin streak on a
+      chainsawn log end is real evidence that can never be prepared end grain; a reading the
+      extractor itself marked ``low`` reliability is not, because doubt about one row is
+      doubt about the whole conjunction;
+    * when ``cited`` is given, every row is read by an observation in it. Naming is about
+      what a verdict rests on, so a row sitting uncited in the packet does not count;
+    * nothing in the packet contradicts the card, on its own terms or on the terms it wrote
+      out for other taxa. A combination is not a way to out-argue contrary evidence.
+
+    Returns the earned combination with the narrowest ``max_resolution``, so a card may
+    declare several without their order in the file deciding the answer. It never touches
+    confidence: nothing here is read by any confidence step.
+    """
+    if not card.diagnostic_combinations:
+        return None
+    match = match_card(card, evidence, subject_id)
+    if match.has_contradiction or match.contradicts_own_card:
+        return None
+    readable = tuple(
+        observation
+        for observation in positive_observations_for(evidence, subject_id)
+        if observation.reliability is not Reliability.LOW
+        and (cited is None or observation.observation_id in cited)
+    )
+    earned: list[DiagnosticCombinationHit] = []
+    for combination in card.diagnostic_combinations:
+        matched: list[str] = []
+        for expectation in combination.requires:
+            hits = _matches((expectation,), readable)
+            if not hits:
+                matched = []
+                break
+            matched.extend(hits)
+        if matched:
+            earned.append(
+                DiagnosticCombinationHit(
+                    combination=combination, evidence_ids=tuple(dict.fromkeys(matched))
+                )
+            )
+    if not earned:
+        return None
+    return max(earned, key=lambda hit: resolution_rank(hit.combination.max_resolution))
+
+
+@dataclass(frozen=True, slots=True)
+class OwedCombination:
+    """A combination this subject's evidence has not finished; ``read`` may be empty."""
+
+    combination: DiagnosticCombination
+    read: tuple[FeatureExpectation, ...]
+    owed: tuple[FeatureExpectation, ...]
+
+
+def owed_combination(
+    card: TaxonCard, evidence: EvidencePacket, subject_id: str
+) -> OwedCombination | None:
+    """The card's combination closest to complete, with the rows still to be read.
+
+    What a person does with a log they half recognise: the bark says pine, so they look at
+    the cut end. This names that next look from declared data — the rows of a combination
+    that no trusted reading has supplied yet.
+
+    Declaration order is the card author's statement of strength, strongest first. A
+    combination listed after one that is already complete is never returned: finishing a
+    weaker one adds nothing to a stronger one already earned. Among the rest, the one with
+    the fewest rows owed wins, and declaration order breaks a tie. A combination with no
+    row read yet still counts: the card is in play on other evidence, and its combination
+    is still the most useful thing to look for. ``None`` when the card declares none, when
+    the strongest is already complete, or when the packet contradicts the card —
+    the same refusal :func:`diagnostic_combination_for` makes, because a photograph cannot
+    complete a combination the evidence already argues against.
+    """
+    if not card.diagnostic_combinations:
+        return None
+    match = match_card(card, evidence, subject_id)
+    if match.has_contradiction or match.contradicts_own_card:
+        return None
+    readable = tuple(
+        observation
+        for observation in positive_observations_for(evidence, subject_id)
+        if observation.reliability is not Reliability.LOW
+    )
+    started: list[OwedCombination] = []
+    for combination in card.diagnostic_combinations:
+        read = tuple(
+            expectation
+            for expectation in combination.requires
+            if _matches((expectation,), readable)
+        )
+        owed = tuple(expectation for expectation in combination.requires if expectation not in read)
+        if not owed:
+            break
+        started.append(OwedCombination(combination=combination, read=read, owed=owed))
+    if not started:
+        return None
+    return min(started, key=lambda item: len(item.owed))
 
 
 def match_card(

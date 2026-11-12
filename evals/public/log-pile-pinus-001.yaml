@@ -15,15 +15,15 @@ input:
   location: Kyiv Oblast, Ukraine
   declared_object_type: log
 
-# v0.10 policy (require_discriminating_support, on by default): this fixture's leader is
-# admitted only on features its card lists as supporting, so it stays a candidate but is
-# not named. Expected resolution moved from genus to unknown on purpose; every other
-# assertion — the mechanism this case exists for — is unchanged.
-# See docs/reviews/EVIDENCE-COVERAGE-2026-11-11.md.
+# The leader matches no single feature its card calls diagnostic: a log has no needles and
+# no cones. It is named because the Pinus card declares scaly bark, resin and honey-coloured
+# wood a diagnostic combination (domain prompt section 14, "On a pile of logs..."), which
+# permits the genus and leaves the bark-tier confidence ceiling in place. Under v0.10 this
+# case expected `unknown`; the specification says a pine log pile may be named.
 expect:
   expected_candidate_taxa:
     - pinus
-  expected_resolution: unknown
+  expected_resolution: genus
   max_resolution: genus
   max_confidence: low
   expected_evidence_tier: 3

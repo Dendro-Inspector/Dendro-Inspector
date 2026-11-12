@@ -85,6 +85,10 @@ ResolutionBoundSource = Literal[
     # *compatible* with the taxon, none of it what the card calls diagnostic of it. That
     # names no identity. See `final_decision.discriminating_support`.
     "no_discriminating_support",
+    # The leader is named on a card-declared combination of readings that are shared one by
+    # one. The combination's own `max_resolution` bounds the claim. See
+    # `schemas.taxon.DiagnosticCombination`.
+    "diagnostic_combination",
 ]
 ConfidenceStepSource = Literal[
     "seed",
@@ -103,7 +107,10 @@ ConfidenceStepSource = Literal[
     "abstention",
     "no_identity",
 ]
-RerankSource = Literal["arbiter", "internal", "none"]
+#: `withheld`: an admitted rerank named by `rerank_finding_id` was not applied, because it
+#: would have put a candidate with no discriminating support above a card-diagnosed,
+#: uncontradicted leader. See `final_decision.rerank_displaces_diagnostic_leader`.
+RerankSource = Literal["arbiter", "internal", "none", "withheld"]
 
 
 class ResolutionBound(Contract):

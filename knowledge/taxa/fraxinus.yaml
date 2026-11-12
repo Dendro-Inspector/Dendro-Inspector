@@ -147,6 +147,21 @@ contradictions:
       review_state: reviewed
       reviewed_by: "Codex (AI-assisted botanical and implementation review)"
       last_reviewed: 2026-11-11
+  # Oak on the cut end: both are ring-porous, only oak has rays visible without a lens.
+  # No ash log combination is declared: elm is ring-porous as well and has no card, and no
+  # source consulted treats bark with ring-porous wood as enough to name ash.
+  - feature: rays.visibility
+    values:
+      - prominent
+    provenance:
+      source: >-
+        Wood Database, European ash (https://www.wood-database.com/european-ash/): "rays barely visible without lens"; "oaks have much wider rays, which are visible on all wood surfaces"; "Ashes lack these conspicuous rays." Verified 2026-11-12.
+      source_type: literature
+      region: Eastern Europe
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-12
 
 common_confusions:
   - acer

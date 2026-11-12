@@ -149,6 +149,53 @@ supporting_features:
       review_state: reviewed
       reviewed_by: "Claude (AI-assisted botanical and implementation review)"
       last_reviewed: 2026-11-11
+  # The Robinia cut end: a yellow-green core reaching almost to the bark, in ring-porous wood.
+  - feature: sapwood.width
+    values:
+      - very_narrow
+    provenance:
+      source: >-
+        CZU timber atlas, false acacia (https://r.fld.czu.cz/vyzkum/multimedia/timber_atlas/nextpages/hardwoods.html): "Sapwood is very narrow, only few annual rings wide."; "Sapwood yellowish, heartwood yellowish-green to golden-brown". Verified 2026-11-12.
+      source_type: literature
+      region: Eastern Europe
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-12
+  - feature: pores.arrangement
+    values:
+      - ring_porous
+    provenance:
+      source: >-
+        CZU timber atlas, false acacia (https://r.fld.czu.cz/vyzkum/multimedia/timber_atlas/nextpages/hardwoods.html): "Ring-porous distribution". Verified 2026-11-12.
+      source_type: literature
+      region: Eastern Europe
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-12
+
+# A Robinia log has no leaves, pods or spines to read. It is named from rope-like bark with
+# its cut end: a greenish-gold core inside a sapwood band only a few rings wide. The genus
+# only; the heartwood colour is the third sign and never one of the two that carry it.
+diagnostic_combinations:
+  - requires:
+      bark.texture: deep_rope_like_furrows
+      sapwood.width: very_narrow
+      heartwood.tone: greenish_gold
+    max_resolution: genus
+    note: >-
+      Rope-like bark with a greenish-gold core in very narrow sapwood. Mulberry heartwood is
+      yellow too, but its bark is not rope-like.
+    provenance:
+      source: >-
+        Virginia Tech Dendrology, black locust (https://dendro.cnre.vt.edu/dendrology/syllabus/factsheet.cfm?ID=40): "heavily ridged and furrowed, resembles a woven rope."; CZU timber atlas (https://r.fld.czu.cz/vyzkum/multimedia/timber_atlas/nextpages/hardwoods.html): "Sapwood is very narrow, only few annual rings wide." Verified 2026-11-12. Naming policy, not a feature rule
+      source_type: literature
+      region: Eastern Europe
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-12
 
 contradictions:
   # Ash: opposite leaves.

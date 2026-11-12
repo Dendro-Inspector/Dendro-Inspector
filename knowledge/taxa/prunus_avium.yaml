@@ -71,7 +71,54 @@ supporting_features:
       reviewed_by: "Claude (AI-assisted botanical and implementation review)"
       last_reviewed: 2026-11-11
 
+# A leafless cherry is recognised by its bark: reddish and banded, with prominent horizontal
+# lenticels. Neither reading decides it alone, and other Prunus share both, so together they
+# name the genus and no more. Young birch bark is the look-alike; white papery or tissue-thin
+# peeling bark is recorded below as evidence against cherry for that reason.
+diagnostic_combinations:
+  - requires:
+      bark.pattern: grey_reddish_banded
+      lenticels.orientation: prominent_horizontal
+    max_resolution: genus
+    note: >-
+      Young birch bark is also reddish with horizontal lenticels before it turns white and is
+      not excluded; a leaf, fruit or twig would settle it.
+    provenance:
+      source: >-
+        Woodland Trust, wild cherry (https://www.woodlandtrust.org.uk/trees-woods-and-wildlife/british-trees/a-z-of-british-trees/wild-cherry/): "The shiny bark is a deep reddish-brown with prominent cream-coloured horizontal lines called lenticels." Verified 2026-11-12. Naming policy, not a feature rule
+      source_type: literature
+      region: Eastern Europe
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-12
+
 contradictions:
+  # Birch: white papery bark shedding in tissue-thin layers.
+  - feature: bark.pattern
+    values:
+      - white_papery_with_black_marks
+    provenance:
+      source: >-
+        Woodland Trust, silver birch (https://www.woodlandtrust.org.uk/trees-woods-and-wildlife/british-trees/a-z-of-british-trees/silver-birch/): "The white bark sheds layers like tissue paper and becomes black and rugged at the base."; wild cherry bark is "a deep reddish-brown". Verified 2026-11-12.
+      source_type: literature
+      region: Eastern Europe
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-12
+  - feature: bark.peeling
+    values:
+      - thin_layers
+    provenance:
+      source: >-
+        Woodland Trust, silver birch (https://www.woodlandtrust.org.uk/trees-woods-and-wildlife/british-trees/a-z-of-british-trees/silver-birch/): "The white bark sheds layers like tissue paper and becomes black and rugged at the base." Verified 2026-11-12.
+      source_type: literature
+      region: Eastern Europe
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-12
   - feature: fruit.type
     values:
       - apricot
