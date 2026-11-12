@@ -58,6 +58,16 @@ get entries.
   leaves of rounded, untoothed leaflets now permits the genus as a diagnostic combination
   (Virginia Tech Dendrology, quoted on the card). Before, only a pod or paired spines could
   name it, so a tree in leaf ended as "insufficient evidence".
+- **A genus name is understood when only one card answers to it.** A model that proposed
+  "Robinia" for a black locust was turned away because the only card is the species
+  *Robinia pseudoacacia*, and the tree ended as "insufficient evidence" with the right card
+  never consulted. A broader name that exactly one card declares is now read as that card,
+  with the claim capped at the level named. A name two cards share ("Juglans") is still
+  reported and not resolved.
+- **One solid reading can carry a doubtful one.** A diagnostic combination used to need
+  every reading above low reliability. A weathered pine stump read its bark clearly and its
+  rings only loosely, and stayed unnamed. A combination now needs at least one solid
+  reading; readings that are all doubtful still name nothing.
 - **Log look-alikes are checked the way a forester checks them.** Resin blisters in smooth
   bark (fir) and a dark core reaching almost to the bark (larch's very narrow sapwood) count
   against pine and block a pine log answer; a wide pale sapwood band counts against larch.
