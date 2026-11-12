@@ -30,11 +30,47 @@ strong_positive_features:
   - feature: cones.scale_shape
     values:
       - woody_umbo
+  # The trunk a person recognises as pine without looking up: thick plates built of thin
+  # layers, orange-brown to reddish, flaking at the edges, dark fissures between. Maintainer
+  # decision: this names the genus, at middle confidence and no higher (see the exception
+  # below). Plainer plated bark stays supporting, because sycamore maple, horse chestnut and
+  # old spruce also break into plates.
+  - feature: bark.plate_build
+    values:
+      - layered_orange_brown
+    note: >-
+      Record only when the layered build of the plates and their orange-brown to reddish
+      face are both visible. Its own path, so that an ordinary bark.texture reading of
+      the same trunk is never a contradiction of this one.
+    provenance:
+      source: >-
+        Woodland Trust, Scots pine (https://www.woodlandtrust.org.uk/trees-woods-and-wildlife/british-trees/a-z-of-british-trees/scots-pine/): "The bark is a scaly orange-brown, which develops plates and fissures with age." Accessed 2026-11-12. Maintainer decision 2026-11-12 that this bark names the genus.
+      source_type: literature
+      region: Eastern Europe
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-12
 
 supporting_features:
   - feature: bark.texture
     values:
       - scaly_plates
+  # Old lower trunks: the plates are separated by long fissures. Supporting, and declared so
+  # that this reading beside the layered plates is agreement, not a contradiction.
+  - feature: bark.texture
+    values:
+      - deep_longitudinal_fissures
+    life_stage: old
+    provenance:
+      source: >-
+        Woodland Trust, Scots pine (https://www.woodlandtrust.org.uk/trees-woods-and-wildlife/british-trees/a-z-of-british-trees/scots-pine/): "The bark is a scaly orange-brown, which develops plates and fissures with age." Accessed 2026-11-12.
+      source_type: literature
+      region: Eastern Europe
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-12
   - feature: wood.tone
     values:
       - light_yellow_honey
@@ -114,6 +150,31 @@ supporting_features:
       source_type: expert_review
       region: Eastern Europe
       confidence: low
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-12
+
+# Bark caps at low confidence by default. The domain prompt's own pine line is stronger than
+# that ("If reddish bark, needles or typical coniferous log ends are visible: This is a
+# pine"), and the maintainer set the level: the layered orange-brown plates answer pine at
+# middle confidence. Genus only; needles or cones are still what high confidence needs.
+confidence_exceptions:
+  - requires:
+      bark.plate_build: layered_orange_brown
+    max_resolution: genus
+    ceiling: medium
+    note: >-
+      Layered orange-brown plated bark names the pine genus at middle confidence. Larch is
+      the look-alike on bark alone; needles or cones settle it.
+    provenance:
+      source: >-
+        Maintainer decision, 2026-11-12 ("pine mid level"), after 5 of 5 standing pine
+        trunks were read as pine by the model and left unnamed. Domain prompt, PINE: "If
+        reddish bark, needles or typical coniferous log ends are visible". Confidence
+        policy, not a feature rule
+      source_type: expert_review
+      region: Eastern Europe
+      confidence: medium
       review_state: reviewed
       reviewed_by: "Claude (AI-assisted botanical and implementation review)"
       last_reviewed: 2026-11-12

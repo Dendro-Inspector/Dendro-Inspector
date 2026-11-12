@@ -634,7 +634,7 @@ class TestCardDeclaredConfidenceException:
         assert match_card(card, contradicted, "log_1").has_contradiction
         assert _exception_ids(card, contradicted) == ()
 
-    def test_exactly_one_card_in_this_pack_declares_an_exception(self, knowledge):
+    def test_only_the_reviewed_cards_in_this_pack_declare_an_exception(self, knowledge):
         """A count, so a careless card edit shows up as a failure rather than a surprise."""
         declaring = {
             taxon_id
@@ -642,7 +642,7 @@ class TestCardDeclaredConfidenceException:
             if (card := knowledge.try_taxon(taxon_id)) is not None and card.confidence_exceptions
         }
 
-        assert declaring == {"betula"}
+        assert declaring == {"betula", "pinus"}
 
 
 class TestConfidenceExceptionDeclarationIsValidated:
