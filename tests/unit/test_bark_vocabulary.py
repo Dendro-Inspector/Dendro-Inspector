@@ -71,6 +71,23 @@ def test_the_extractor_gets_closed_lists_with_descriptions(node_context):
         assert taxon not in text
 
 
+def test_the_extractor_is_told_bark_paths_are_read_together_and_structure_first(node_context):
+    """One trunk has a texture and a plate build; reading one must not stand in for the other.
+
+    A structural value withheld because shade muted the colour is evidence lost: the
+    extractor prompt already says colour is never decisive, and this says the converse.
+    """
+    context = support.evidence_value_vocabulary_context(node_context)
+    instruction = context.split("## Closed bark and trunk vocabulary")[1].split("```json")[0]
+    assert "not alternatives" in instruction
+    assert "each `bark.*` path" in instruction
+    assert "structure first" in instruction
+    closed = json.loads(context.split("```json\n")[2].split("\n```", maxsplit=1)[0])
+    # A path with a single value is the one most easily skipped; it must still be offered.
+    assert closed["bark.plate_build"]
+    assert "pine" not in json.dumps(closed["bark.plate_build"]).lower()
+
+
 def _card_with_young_only_bark(knowledge):
     card = knowledge.taxon("fagus")
     young_bark = FeatureExpectation(

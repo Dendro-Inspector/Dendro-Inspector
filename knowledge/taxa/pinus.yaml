@@ -39,12 +39,13 @@ strong_positive_features:
     values:
       - layered_orange_brown
     note: >-
-      Record only when the layered build of the plates and their orange-brown to reddish
-      face are both visible. Its own path, so that an ordinary bark.texture reading of
-      the same trunk is never a contradiction of this one.
+      Record when the layered build of the thick, separate plates is visible. Colour is
+      not required: a younger pine is brighter, an older one darker (maintainer,
+      2026-11-13), and shade greys both. Its own path, so that an ordinary bark.texture
+      reading of the same trunk is never a contradiction of this one.
     provenance:
       source: >-
-        Woodland Trust, Scots pine (https://www.woodlandtrust.org.uk/trees-woods-and-wildlife/british-trees/a-z-of-british-trees/scots-pine/): "The bark is a scaly orange-brown, which develops plates and fissures with age." Accessed 2026-11-12. Maintainer decision 2026-11-12 that this bark names the genus.
+        Gymnosperm Database, Pinus sylvestris (https://www.conifers.org/pi/Pinus_sylvestris.php): "Bark on lower stem thick, scaly-plated, grey-brown; on upper stem and branches, thin, flaking, orange-red." Accessed 2026-11-13. Woodland Trust, Scots pine, cited below. Maintainer decision 2026-11-12 that this bark names the genus.
       source_type: literature
       region: Eastern Europe
       confidence: medium
