@@ -371,10 +371,28 @@ class TestDiagnosticCombination:
         leader = _candidate("pinus", "plates", "honey")
         assert discriminating_support(card, packet, leader, SUBJECT) == ()
 
-    def test_a_doubtful_reading_breaks_the_conjunction(self, knowledge):
-        doubtful = _wood("resin", "resin.presence", "present", reliability=Reliability.LOW)
-        packet = _packet(PLATES, doubtful, HONEY)
+    def test_readings_that_are_all_doubtful_name_nothing(self, knowledge):
+        low = Reliability.LOW
+        packet = _packet(
+            _obs("plates", "bark.texture", "scaly_plates", reliability=low),
+            _wood("resin", "resin.presence", "present", reliability=low),
+            _wood("honey", "wood.tone", "light_yellow_honey", reliability=low),
+        )
         assert diagnostic_combination_for(knowledge.taxon("pinus"), packet, SUBJECT) is None
+
+    def test_one_solid_reading_carries_a_doubtful_look_at_another_organ(self, knowledge):
+        """Live case photo-095: pine bark read clearly, a weathered cut end read loosely.
+
+        Requiring every row above low reliability left a pine stump unnamed by three models.
+        One solid row is the anchor; the others corroborate it at whatever the photograph
+        allowed.
+        """
+        doubtful = _wood("rings", "rings.visibility", "clear", reliability=Reliability.LOW)
+        hit = diagnostic_combination_for(
+            knowledge.taxon("pinus"), _packet(PLATES, doubtful), SUBJECT
+        )
+        assert hit is not None
+        assert set(hit.evidence_ids) == {"plates", "rings"}
 
     def test_contradicting_evidence_earns_nothing(self, knowledge):
         # Spruce's needle attachment on the same subject: the combination cannot out-argue it.

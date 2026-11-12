@@ -296,14 +296,17 @@ def diagnostic_combination_for(
     """The combination this card declares that this evidence completes, if any.
 
     A combination is permission to name a taxon from readings its card calls shared one by
-    one (see :class:`~dendro_inspector.schemas.taxon.DiagnosticCombination`). Three
+    one (see :class:`~dendro_inspector.schemas.taxon.DiagnosticCombination`). Four
     conditions, all required:
 
     * every row is read — each feature with one of its declared values — by a trusted
       observation of this subject. Capped trust is enough, because a resin streak on a
-      chainsawn log end is real evidence that can never be prepared end grain; a reading the
-      extractor itself marked ``low`` reliability is not, because doubt about one row is
-      doubt about the whole conjunction;
+      chainsawn log end is real evidence that can never be prepared end grain;
+    * at least one row is read above ``low`` reliability. A conjunction of nothing but
+      doubtful readings names nothing, but a solid reading of one organ corroborated by a
+      doubtful look at another is how a weathered log is recognised: live case photo-095 read
+      pine bark clearly and the rings of an oblique, weathered cut end only loosely, and
+      requiring both rows solid left a pine stump unnamed by three models;
     * when ``cited`` is given, every row is read by an observation in it. Naming is about
       what a verdict rests on, so a row sitting uncited in the packet does not count;
     * nothing in the packet contradicts the card, on its own terms or on the terms it wrote
@@ -321,19 +324,25 @@ def diagnostic_combination_for(
     readable = tuple(
         observation
         for observation in positive_observations_for(evidence, subject_id)
+        if cited is None or observation.observation_id in cited
+    )
+    solid = frozenset(
+        observation.observation_id
+        for observation in readable
         if observation.reliability is not Reliability.LOW
-        and (cited is None or observation.observation_id in cited)
     )
     earned: list[DiagnosticCombinationHit] = []
     for combination in card.diagnostic_combinations:
         matched: list[str] = []
+        anchored = False
         for expectation in combination.requires:
             hits = _matches((expectation,), readable)
             if not hits:
                 matched = []
                 break
+            anchored = anchored or any(hit in solid for hit in hits)
             matched.extend(hits)
-        if matched:
+        if matched and anchored:
             earned.append(
                 DiagnosticCombinationHit(
                     combination=combination, evidence_ids=tuple(dict.fromkeys(matched))
