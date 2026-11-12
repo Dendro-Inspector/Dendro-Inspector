@@ -21,10 +21,12 @@ from dendro_inspector.knowledge.evidence_hierarchy import (
 from dendro_inspector.schemas.evidence import (
     EvidencePacket,
     Observation,
+    Reliability,
     is_positive_reading,
 )
 from dendro_inspector.schemas.taxon import (
     ConfidenceException,
+    DiagnosticCombination,
     ExceptionCeiling,
     FeatureExpectation,
     LifeStage,
@@ -274,6 +276,72 @@ def confidence_exception_for(
     if not earned:
         return None
     return max(earned, key=lambda hit: _CEILING_ORDER[hit.exception.ceiling])
+
+
+@dataclass(frozen=True, slots=True)
+class DiagnosticCombinationHit:
+    """One card-declared combination that this subject's evidence completes."""
+
+    combination: DiagnosticCombination
+    evidence_ids: tuple[str, ...]
+
+
+def diagnostic_combination_for(
+    card: TaxonCard,
+    evidence: EvidencePacket,
+    subject_id: str,
+    *,
+    cited: Collection[str] | None = None,
+) -> DiagnosticCombinationHit | None:
+    """The combination this card declares that this evidence completes, if any.
+
+    A combination is permission to name a taxon from readings its card calls shared one by
+    one (see :class:`~dendro_inspector.schemas.taxon.DiagnosticCombination`). Three
+    conditions, all required:
+
+    * every row is read — each feature with one of its declared values — by a trusted
+      observation of this subject. Capped trust is enough, because a resin streak on a
+      chainsawn log end is real evidence that can never be prepared end grain; a reading the
+      extractor itself marked ``low`` reliability is not, because doubt about one row is
+      doubt about the whole conjunction;
+    * when ``cited`` is given, every row is read by an observation in it. Naming is about
+      what a verdict rests on, so a row sitting uncited in the packet does not count;
+    * nothing in the packet contradicts the card, on its own terms or on the terms it wrote
+      out for other taxa. A combination is not a way to out-argue contrary evidence.
+
+    Returns the earned combination with the narrowest ``max_resolution``, so a card may
+    declare several without their order in the file deciding the answer. It never touches
+    confidence: nothing here is read by any confidence step.
+    """
+    if not card.diagnostic_combinations:
+        return None
+    match = match_card(card, evidence, subject_id)
+    if match.has_contradiction or match.contradicts_own_card:
+        return None
+    readable = tuple(
+        observation
+        for observation in positive_observations_for(evidence, subject_id)
+        if observation.reliability is not Reliability.LOW
+        and (cited is None or observation.observation_id in cited)
+    )
+    earned: list[DiagnosticCombinationHit] = []
+    for combination in card.diagnostic_combinations:
+        matched: list[str] = []
+        for expectation in combination.requires:
+            hits = _matches((expectation,), readable)
+            if not hits:
+                matched = []
+                break
+            matched.extend(hits)
+        if matched:
+            earned.append(
+                DiagnosticCombinationHit(
+                    combination=combination, evidence_ids=tuple(dict.fromkeys(matched))
+                )
+            )
+    if not earned:
+        return None
+    return max(earned, key=lambda hit: resolution_rank(hit.combination.max_resolution))
 
 
 def match_card(

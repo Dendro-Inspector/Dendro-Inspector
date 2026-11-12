@@ -16,11 +16,17 @@ import pytest
 from dendro_inspector.graph.state import GraphState
 from dendro_inspector.knowledge.candidate_validation import derive_support_strength
 from dendro_inspector.knowledge.coverage_audit import CoverageStatus, audit_observation
-from dendro_inspector.knowledge.taxon_cards import match_card, self_contradiction_hits
+from dendro_inspector.knowledge.taxon_cards import (
+    diagnostic_combination_for,
+    match_card,
+    self_contradiction_hits,
+)
 from dendro_inspector.nodes.final_decision import (
+    DIAGNOSTIC_COMBINATION_PHRASE,
     NO_DISCRIMINATING_SUPPORT_PHRASE,
     decide_subject,
     discriminating_support,
+    rerank_displaces_diagnostic_leader,
 )
 from dendro_inspector.schemas.candidates import Candidate, CandidateSet, SupportStrength
 from dendro_inspector.schemas.decisions import DecisionStatus
@@ -33,8 +39,26 @@ from dendro_inspector.schemas.evidence import (
     Subject,
     SubjectKind,
     Visibility,
+    WoodSurface,
 )
-from dendro_inspector.schemas.taxon import Resolution, resolution_rank
+from dendro_inspector.schemas.reviews import (
+    AdmittedRerank,
+    FindingCategory,
+    FindingStatus,
+    Impact,
+    RequiredAction,
+    Reviewer,
+    ReviewFinding,
+    ReviewSynthesis,
+    Severity,
+)
+from dendro_inspector.schemas.taxon import (
+    Confidence,
+    DiagnosticCombination,
+    Resolution,
+    TaxonCard,
+    resolution_rank,
+)
 from tests.conftest import with_legacy_policy
 
 SUBJECT = "tree_1"
@@ -284,3 +308,304 @@ class TestConiferSeparatingCharacters:
         # read as some other pattern, is silence about pine rather than a contradiction.
         other = _obs("lower", "bark.pattern", "deep_fissures_grey")
         assert self_contradiction_hits(knowledge.taxon("pinus"), (other,)) == ()
+
+
+def _wood(
+    observation_id: str,
+    feature: str,
+    value: str,
+    *,
+    reliability: Reliability = Reliability.MEDIUM,
+) -> Observation:
+    """A reading off a chainsawn log end: real evidence, never prepared end grain."""
+    return Observation(
+        observation_id=observation_id,
+        feature=feature,
+        value=value,
+        subject_id=SUBJECT,
+        source=ObservationSource.IMAGE,
+        image_id="img-1",
+        visibility=Visibility.CLEAR,
+        reliability=reliability,
+        wood_surface=WoodSurface.ROUGH_END_GRAIN,
+    )
+
+
+# The three log readings section 14 of the domain prompt names together for pine.
+RESIN = _wood("resin", "resin.presence", "present")
+HONEY = _wood("honey", "wood.tone", "light_yellow_honey")
+LOG = ("plates", "resin", "honey")
+
+
+class TestDiagnosticCombination:
+    """Readings that are shared one by one may name a taxon together — and only name it.
+
+    Source: domain prompt section 14, PINE — "On a pile of logs you may go high if reddish
+    bark, coniferous structure and typical log ends are all visible at once." A log has no
+    needles and no cones, so without this the pine card could never name one.
+    """
+
+    def test_the_complete_combination_discriminates(self, knowledge):
+        card = knowledge.taxon("pinus")
+        packet = _packet(PLATES, RESIN, HONEY)
+        hit = diagnostic_combination_for(card, packet, SUBJECT)
+        assert hit is not None
+        assert set(hit.evidence_ids) == set(LOG)
+        assert set(discriminating_support(card, packet, _candidate("pinus", *LOG), SUBJECT)) == (
+            set(LOG)
+        )
+
+    @pytest.mark.parametrize("missing", LOG)
+    def test_any_missing_row_earns_nothing(self, knowledge, missing):
+        rows = {"plates": PLATES, "resin": RESIN, "honey": HONEY}
+        present = tuple(row for key, row in rows.items() if key != missing)
+        assert diagnostic_combination_for(knowledge.taxon("pinus"), _packet(*present), SUBJECT) is (
+            None
+        )
+
+    def test_a_row_the_leader_does_not_cite_does_not_count(self, knowledge):
+        card = knowledge.taxon("pinus")
+        packet = _packet(PLATES, RESIN, HONEY)
+        leader = _candidate("pinus", "plates", "honey")
+        assert discriminating_support(card, packet, leader, SUBJECT) == ()
+
+    def test_a_doubtful_reading_breaks_the_conjunction(self, knowledge):
+        doubtful = _wood("resin", "resin.presence", "present", reliability=Reliability.LOW)
+        packet = _packet(PLATES, doubtful, HONEY)
+        assert diagnostic_combination_for(knowledge.taxon("pinus"), packet, SUBJECT) is None
+
+    def test_contradicting_evidence_earns_nothing(self, knowledge):
+        # Spruce's needle attachment on the same subject: the combination cannot out-argue it.
+        peg = _obs("peg", "needles.attachment", "single_on_woody_peg")
+        packet = _packet(PLATES, RESIN, HONEY, peg)
+        assert diagnostic_combination_for(knowledge.taxon("pinus"), packet, SUBJECT) is None
+
+    def test_the_log_is_named_at_genus_and_no_higher_than_its_tier_allows(
+        self, simple_case, node_context
+    ):
+        state = _state(simple_case, _packet(PLATES, RESIN, HONEY), _candidate("pinus", *LOG))
+        decision = decide_subject(state, node_context, state.candidate_sets[0])
+        assert decision.selected_taxon == "pinus"
+        assert decision.resolution is Resolution.GENUS
+        # Permission to name, not to be sure: a rough log end and bark stay at the bark-tier
+        # ceiling whatever the combination says.
+        assert decision.confidence is Confidence.LOW
+        assert decision.status is DecisionStatus.PROBABLE
+        assert any(
+            q.startswith(DIAGNOSTIC_COMBINATION_PHRASE) for q in decision.unresolved_questions
+        )
+        derivation = node_context.recorder._decision_derivations[SUBJECT]
+        assert "diagnostic_combination" in {b.source for b in derivation.resolution_bounds}
+        assert "diagnostic_exception" not in {s.source for s in derivation.confidence_steps}
+
+    def test_bark_and_resin_without_the_log_end_still_name_nothing(self, simple_case, node_context):
+        state = _state(simple_case, _packet(PLATES, RESIN), _candidate("pinus", "plates", "resin"))
+        decision = decide_subject(state, node_context, state.candidate_sets[0])
+        assert decision.selected_taxon is None
+        assert decision.status is DecisionStatus.INSUFFICIENT_EVIDENCE
+
+    def test_spruce_is_not_named_from_the_pine_combination(self, simple_case, node_context):
+        # The combination belongs to one card. Spruce bark on the same log end stays an
+        # abstention: nothing on the spruce card is diagnostic without needles or cones.
+        fine = _obs("fine", "bark.texture", "fine_scales")
+        state = _state(simple_case, _packet(fine, RESIN), _candidate("picea", "fine"))
+        decision = decide_subject(state, node_context, state.candidate_sets[0])
+        assert decision.selected_taxon is None
+
+    def test_the_weaker_combination_says_which_look_alikes_it_leaves_open(
+        self, simple_case, node_context
+    ):
+        # Bark, resin and tone do not exclude a spruce or larch log (both carry resin). The
+        # answer names pine and says so, with the sign that would settle it.
+        state = _state(simple_case, _packet(PLATES, RESIN, HONEY), _candidate("pinus", *LOG))
+        decision = decide_subject(state, node_context, state.candidate_sets[0])
+        line = next(
+            q for q in decision.unresolved_questions if q.startswith(DIAGNOSTIC_COMBINATION_PHRASE)
+        )
+        assert "Spruce and larch" in line
+        assert "cut end" in line
+
+    def test_bark_with_the_pine_cut_end_names_pine_without_resin_or_tone(
+        self, simple_case, node_context
+    ):
+        # Sources on the card: pine has a reddish core in a wide pale band; spruce and fir
+        # have no coloured heartwood, larch a very narrow sapwood.
+        orange = _obs("orange", "bark.texture", "thin_orange_flaking")
+        heart = _wood("heart", "heartwood.demarcation", "reddish_core_wide_pale_sapwood")
+        state = _state(simple_case, _packet(orange, heart), _candidate("pinus", "orange", "heart"))
+        decision = decide_subject(state, node_context, state.candidate_sets[0])
+        assert decision.selected_taxon == "pinus"
+        assert decision.resolution is Resolution.GENUS
+        assert decision.confidence is Confidence.LOW
+
+    def test_orange_flaking_bark_alone_names_nothing(self, simple_case, node_context):
+        # Young spruce bark is also orange-brown and finely flaking.
+        orange = _obs("orange", "bark.texture", "thin_orange_flaking")
+        state = _state(simple_case, _packet(orange), _candidate("pinus", "orange"))
+        decision = decide_subject(state, node_context, state.candidate_sets[0])
+        assert decision.selected_taxon is None
+
+    def test_fir_resin_blisters_block_the_log_combination(self, knowledge):
+        blisters = _obs("blisters", "bark.surface_marks", "resin_blisters")
+        packet = _packet(PLATES, RESIN, HONEY, blisters)
+        assert diagnostic_combination_for(knowledge.taxon("pinus"), packet, SUBJECT) is None
+
+    def test_a_larch_cut_end_contradicts_pine_and_blocks_it(self, knowledge):
+        card = knowledge.taxon("pinus")
+        larch_end = _wood("end", "heartwood.demarcation", "dark_core_very_narrow_sapwood")
+        packet = _packet(PLATES, RESIN, HONEY, larch_end)
+        assert match_card(card, packet, SUBJECT).contradiction_hits == ("end",)
+        assert diagnostic_combination_for(card, packet, SUBJECT) is None
+
+    def test_a_pine_cut_end_contradicts_larch(self, knowledge):
+        pine_end = _wood("end", "heartwood.demarcation", "reddish_core_wide_pale_sapwood")
+        match = match_card(knowledge.taxon("larix"), _packet(pine_end), SUBJECT)
+        assert match.contradiction_hits == ("end",)
+
+
+class TestOldBirchBase:
+    def test_a_dark_base_beside_white_papery_bark_agrees_with_birch(self, knowledge):
+        # Woodland Trust: the white bark "becomes black and rugged at the base". Read as one
+        # two-zone pattern, it supports birch and is not disagreement on `bark.pattern`.
+        white = _obs("white", "bark.pattern", "white_papery_with_black_marks")
+        base = _obs("base", "bark.pattern", "pale_upper_dark_rough_base")
+        match = match_card(knowledge.taxon("betula"), _packet(white, base), SUBJECT)
+        assert not match.contradicts_own_card
+        assert "base" in match.supporting_hits
+        assert "white" in match.strong_hits
+
+    def test_the_dark_base_alone_still_names_nothing(self, simple_case, node_context):
+        # Old white poplar goes dark at the base too; the card says so.
+        base = _obs("base", "bark.pattern", "pale_upper_dark_rough_base")
+        state = _state(simple_case, _packet(base), _candidate("betula", "base"))
+        decision = decide_subject(state, node_context, state.candidate_sets[0])
+        assert decision.selected_taxon is None
+
+
+class TestDiagnosticCombinationDeclarationIsValidated:
+    @staticmethod
+    def _combination(**requires: str) -> DiagnosticCombination:
+        return DiagnosticCombination.model_validate(
+            {
+                "requires": {key.replace("__", "."): value for key, value in requires.items()},
+                "max_resolution": "genus",
+            }
+        )
+
+    def test_one_organ_described_twice_is_refused(self):
+        with pytest.raises(ValueError, match="at least two organs"):
+            self._combination(bark__texture="scaly_plates", bark__peeling="irregular_plates")
+
+    def test_colour_does_not_count_as_a_second_organ(self):
+        with pytest.raises(ValueError, match="at least two organs"):
+            self._combination(bark__texture="scaly_plates", wood__tone="light_yellow_honey")
+
+    def test_a_single_reading_is_not_a_combination(self):
+        with pytest.raises(ValueError):
+            self._combination(bark__texture="scaly_plates")
+
+    def test_a_reading_the_card_does_not_declare_is_refused(self, knowledge):
+        card = knowledge.taxon("pinus")
+        foreign = self._combination(bark__texture="fine_scales", resin__presence="present")
+        with pytest.raises(ValueError, match="must also appear"):
+            TaxonCard.model_validate(
+                {**card.model_dump(mode="json"), "diagnostic_combinations": [foreign.model_dump()]}
+            )
+
+    def test_only_cards_with_a_recorded_source_declare_one(self, knowledge):
+        """New combinations are a naming policy; each one is a reviewed, sourced decision."""
+        declaring = sorted(
+            taxon_id
+            for taxon_id in knowledge.available_taxon_ids()
+            if knowledge.taxon(taxon_id).diagnostic_combinations
+        )
+        assert declaring == ["pinus"]
+        for combination in knowledge.taxon("pinus").diagnostic_combinations:
+            assert combination.provenance is not None
+
+
+class TestRerankCannotDisplaceADiagnosedLeader:
+    """Rank order is not evidence.
+
+    A reviewer may reorder candidates, and validation only checks that each one has some
+    card support. That let poplar — coarse bark and a massive trunk, both supporting — be
+    moved above a birch whose white papery bark its card declares diagnostic.
+    """
+
+    BIRCH_BARK = _obs("white", "bark.pattern", "white_papery_with_black_marks")
+    COARSE = _obs("coarse", "bark.texture", "coarse_furrowed")
+
+    @staticmethod
+    def _reranked_state(case, packet, original: CandidateSet, reranked: CandidateSet) -> GraphState:
+        finding = ReviewFinding(
+            finding_id="swap",
+            category=FindingCategory.OVERLOOKED_ALTERNATIVE,
+            severity=Severity.MAJOR,
+            status=FindingStatus.ACCEPTED,
+            summary="Poplar explains the coarse base.",
+            subject_id=SUBJECT,
+            required_action=RequiredAction.RERANK_CANDIDATES,
+            impact=Impact.CANDIDATE_CHANGE,
+        )
+        return GraphState(
+            case=case,
+            evidence=packet,
+            candidate_sets=(original,),
+            synthesis=ReviewSynthesis(
+                accepted_findings=(finding,),
+                admitted_reranks=(
+                    AdmittedRerank(
+                        finding=finding, reviewer=Reviewer.CONFUSION, candidate_set=reranked
+                    ),
+                ),
+                recommendations=(),
+            ),
+        )
+
+    def _sets(self) -> tuple[CandidateSet, CandidateSet]:
+        birch = _candidate("betula", "white")
+        poplar = _candidate("populus", "coarse", rank=2)
+        original = CandidateSet(subject_id=SUBJECT, candidates=(birch, poplar))
+        reranked = CandidateSet(
+            subject_id=SUBJECT,
+            candidates=(
+                poplar.model_copy(update={"rank": 1}),
+                birch.model_copy(update={"rank": 2}),
+            ),
+        )
+        return original, reranked
+
+    def test_a_supporting_only_candidate_does_not_displace_diagnostic_bark(
+        self, simple_case, node_context
+    ):
+        original, reranked = self._sets()
+        packet = _packet(self.BIRCH_BARK, self.COARSE)
+        assert rerank_displaces_diagnostic_leader(node_context, packet, original, reranked)
+
+        state = self._reranked_state(simple_case, packet, original, reranked)
+        decision = decide_subject(state, node_context, original)
+        assert decision.selected_taxon == "betula"
+        derivation = node_context.recorder._decision_derivations[SUBJECT]
+        assert derivation.rerank_source == "withheld"
+        assert derivation.rerank_finding_id == "swap"
+
+    def test_a_rerank_toward_diagnostic_evidence_is_applied(self, node_context):
+        # The mirror image: the reviewer moves the diagnosed candidate up. Untouched.
+        original, reranked = self._sets()
+        packet = _packet(self.BIRCH_BARK, self.COARSE)
+        assert not rerank_displaces_diagnostic_leader(node_context, packet, reranked, original)
+
+    def test_a_contradicted_leader_may_still_be_displaced(self, node_context):
+        # White-felted leaf undersides contradict the birch card; its bark no longer
+        # protects its rank.
+        original, reranked = self._sets()
+        felted = _obs("felt", "leaf.underside", "white_tomentose")
+        packet = _packet(self.BIRCH_BARK, self.COARSE, felted)
+        assert not rerank_displaces_diagnostic_leader(node_context, packet, original, reranked)
+
+    def test_legacy_policy_applies_the_rerank_as_before(self, simple_case, node_context):
+        original, reranked = self._sets()
+        packet = _packet(self.BIRCH_BARK, self.COARSE)
+        state = self._reranked_state(simple_case, packet, original, reranked)
+        decision = decide_subject(state, with_legacy_policy(node_context), original)
+        assert decision.selected_taxon == "populus"

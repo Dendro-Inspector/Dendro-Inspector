@@ -24,9 +24,44 @@ get entries.
   olive-brown bark, the orange tint in Robinia's furrows, lime's basal burls and sprouts,
   Norway maple's criss-crossing grooves and silver maple's shaggy strips. Each cites a quote
   checked against its page. They support a taxon; none names one on its own.
+- **A pine log can be named.** A log has no needles and no cones, the only readings the
+  Pinus card calls diagnostic, so every pine log ended as "insufficient evidence". The
+  domain prompt says otherwise (section 14: "On a pile of logs you may go high if reddish
+  bark, coniferous structure and typical log ends are all visible at once"). This is a
+  specification-conformance fix and the implementation is the side that moved. A card can
+  now declare a *diagnostic combination*: readings shared with other trees one by one that
+  name the taxon when all are read together across at least two organs. Pinus declares two:
+  pine bark with the pine cut end (a reddish core inside a wide pale sapwood band), and the
+  prompt's own trio of pine bark, visible resin and light honey-coloured wood. Either
+  permits the genus and raises no confidence: bark with a rough log end still answers at
+  50–69/100. The answer says it was named on combined features, and for the weaker trio that
+  spruce and larch are not excluded and what would settle it. `log-pile-pinus-001` expects
+  genus again.
+- **Log look-alikes are checked the way a forester checks them.** Resin blisters in smooth
+  bark (fir) and a dark core reaching almost to the bark (larch's very narrow sapwood) count
+  against pine and block a pine log answer; a wide pale sapwood band counts against larch.
+  New readings: thin orange flaking bark (the upper stem of Scots pine, supporting only,
+  since young spruce bark is similar) and the two cut-end patterns. Sources are quoted on the
+  cards: Gymnosperm Database, Wood Database and the CZU timber atlas.
+- **A dark base beside white papery bark agrees with birch.** The Betula card now lists the
+  pale-above, dark-and-rough-below trunk as a supporting reading (Woodland Trust: the white
+  bark "becomes black and rugged at the base"). White poplar shares it, so it names nothing
+  alone.
 
 ### Changed
 
+- **A reviewer's rerank cannot bury a diagnosed tree.** A reviewer moved poplar, matched on
+  coarse bark and a massive trunk, above a birch with white papery bark, and the interim
+  verdict became "insufficient evidence". A rerank is now withheld when it would put a
+  candidate with no diagnostic evidence above an uncontradicted one that has it. The
+  reviewer's finding and any confidence it lowers still apply; the trace records the rerank
+  as `withheld`. Off under the legacy `require_discriminating_support: false` policy.
+- **Reviewers are told when a card-declared diagnostic reading was earned.** They were shown
+  that the Betula card has a bark exception but not that the evidence had earned it, and
+  recommended medium or low for "bark alone" in three recorded runs. Their context now lists
+  each earned exception or combination with its evidence ids and limits. Where nothing is
+  earned no section is added; the card data every reviewer receives does gain the new
+  `diagnostic_combinations` field, empty on every card but Pinus.
 - **Moss, lichen and trunk age are not knowledge gaps.** `bark.epiphytes` and
   `trunk.life_stage` are reported as context instead of inflating the coverage-gap count.
 

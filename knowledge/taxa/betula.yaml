@@ -51,6 +51,22 @@ supporting_features:
       reviewed_by: "Claude (AI-assisted botanical and implementation review)"
       last_reviewed: 2026-11-11
 
+  # The same old trunk read as a whole: pale above, dark and rough below. Supporting, and
+  # shared with white poplar, whose old base also turns dark and fissured. It is recorded so
+  # that a dark base beside white papery bark reads as agreement with birch, not against it.
+  - feature: bark.pattern
+    values:
+      - pale_upper_dark_rough_base
+    provenance:
+      source: >-
+        Woodland Trust, silver birch (https://www.woodlandtrust.org.uk/trees-woods-and-wildlife/british-trees/a-z-of-british-trees/silver-birch/): "The white bark sheds layers like tissue paper and becomes black and rugged at the base." Verified 2026-11-12.
+      source_type: literature
+      region: Eastern Europe
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-12
+
 # White papery bark with black marks is the one bark signature in this pack the domain
 # prompt itself places at the top of the scale: section 6 lists it among the 95-100
 # examples, and section 14 says the genus may be called very high from it. RHS and Trees

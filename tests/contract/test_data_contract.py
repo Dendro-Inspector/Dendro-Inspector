@@ -200,6 +200,7 @@ class TestKnowledgeCards:
                 card.provenance,
                 *(rule.provenance or card.provenance for rule in rules),
                 *(rule.provenance or card.provenance for rule in card.confidence_exceptions),
+                *(rule.provenance or card.provenance for rule in card.diagnostic_combinations),
                 *(identity.provenance for identity in card.broader_identities),
             )
             for source in sources:

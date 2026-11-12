@@ -51,8 +51,10 @@ from dendro_inspector.knowledge.evidence_hierarchy import (
 )
 from dendro_inspector.knowledge.loader import KnowledgeBase
 from dendro_inspector.knowledge.taxon_cards import (
+    DiagnosticCombinationHit,
     card_value_vocabulary,
     confidence_exception_for,
+    diagnostic_combination_for,
     match_card,
 )
 from dendro_inspector.nodes.abstain import settle_unverified_abstention
@@ -697,13 +699,21 @@ def resolve_resolution(
     if substituting:
         bounds.append(ResolutionBound(source="open_world_outranked", value=Resolution.GENUS))
     evidence = state.evidence
-    if (
-        require_discriminating_support
-        and card is not None
-        and evidence is not None
-        and not discriminating_support(card, evidence, leader, subject_id)
-    ):
-        bounds.append(ResolutionBound(source="no_discriminating_support", value=Resolution.UNKNOWN))
+    if card is not None and evidence is not None:
+        discriminating, combination = _discrimination(card, evidence, leader, subject_id)
+        if require_discriminating_support and not discriminating:
+            bounds.append(
+                ResolutionBound(source="no_discriminating_support", value=Resolution.UNKNOWN)
+            )
+        elif combination is not None:
+            # Named on a combination and nothing stronger: the combination's own limit is
+            # the narrowest claim those readings can carry.
+            bounds.append(
+                ResolutionBound(
+                    source="diagnostic_combination",
+                    value=combination.combination.max_resolution,
+                )
+            )
     if state.is_abstained(subject_id):
         abstention = state.abstention_for(subject_id)
         abstention_bound = (
@@ -851,6 +861,20 @@ def discriminating_support(
     Returns the discriminating observation ids, in the leader's citation order. Empty means
     the leader may stay a candidate but may not be the answer.
     """
+    return _discrimination(card, evidence, leader, subject_id)[0]
+
+
+def _discrimination(
+    card: TaxonCard, evidence: EvidencePacket, leader: Candidate, subject_id: str
+) -> tuple[tuple[str, ...], DiagnosticCombinationHit | None]:
+    """The discriminating observation ids, and the combination when nothing else supplied them.
+
+    Three card-declared routes, strongest first: a cited strong positive, an earned
+    confidence exception, and a completed diagnostic combination — readings the card calls
+    shared one by one and diagnostic together (pine logs, section 14 of the domain prompt).
+    The combination is reported separately because it is the only route that carries its own
+    resolution bound and its own disclosure; the other two return ``None`` there.
+    """
     strong = set(match_card(card, evidence, subject_id).strong_hits)
     cited = tuple(
         dict.fromkeys(
@@ -861,9 +885,75 @@ def discriminating_support(
     )
     hits = tuple(observation_id for observation_id in cited if observation_id in strong)
     if hits:
-        return hits
+        return hits, None
     exception = confidence_exception_for(card, evidence, subject_id, Resolution.FAMILY)
-    return exception.evidence_ids if exception is not None else ()
+    if exception is not None:
+        return exception.evidence_ids, None
+    combination = diagnostic_combination_for(card, evidence, subject_id, cited=frozenset(cited))
+    if combination is not None:
+        return combination.evidence_ids, combination
+    return (), None
+
+
+#: Opens the line that discloses a verdict named on a card-declared combination.
+DIAGNOSTIC_COMBINATION_PHRASE = "Named on combined features"
+
+#: The `ShortText` length limit in `schemas.base`.
+_SHORT_TEXT_LIMIT = 400
+
+
+def _diagnostic_combination_text(card: TaxonCard, hit: DiagnosticCombinationHit) -> str:
+    readings = "; ".join(
+        f"{expectation.feature} = {' | '.join(expectation.values)}"
+        for expectation in hit.combination.requires
+    )
+    # The card's note says what this particular combination leaves open — which look-alike
+    # it does not exclude and what would. A person naming a log says that in the same breath.
+    note = f" {hit.combination.note}" if hit.combination.note else ""
+    text = (
+        f"{DIAGNOSTIC_COMBINATION_PHRASE}: {card.display_name} is named from {readings}, read "
+        f"together; none is diagnostic alone. The claim stops at "
+        f"{hit.combination.max_resolution.value.replace('_', ' ')} and keeps the confidence "
+        f"ceiling of the evidence seen.{note}"
+    )
+    # `unresolved_questions` entries are short text; a long card note must not break the
+    # verdict it annotates.
+    return text if len(text) <= _SHORT_TEXT_LIMIT else text[: _SHORT_TEXT_LIMIT - 1] + "…"
+
+
+def rerank_displaces_diagnostic_leader(
+    ctx: NodeContext,
+    evidence: EvidencePacket,
+    original: CandidateSet,
+    reranked: CandidateSet,
+) -> bool:
+    """Whether a rerank would replace a diagnosed leader with a merely compatible one.
+
+    A rerank is admitted on the strength of a finding and a validated ranking, and
+    validation asks only whether each candidate has *some* card support. That let a reviewer
+    move poplar — coarse furrowed bark and a massive trunk, both supporting features — above
+    a birch whose white papery bark its card declares diagnostic and nothing contradicted.
+    The new leader then had no discriminating support, so the verdict became "insufficient
+    evidence" on a photograph the cards could name.
+
+    Rank order is not evidence. The card-validated leader keeps its place when all three
+    hold: it has discriminating support, nothing in the packet contradicts its card, and the
+    candidate the rerank would put first has no discriminating support of its own. A rerank
+    toward a candidate with diagnostic evidence, or away from a contradicted one, is
+    untouched — and every confidence downgrade the reviewers filed still applies.
+    """
+    before, after = original.leader, reranked.leader
+    if before is None or after is None or before.taxon == after.taxon:
+        return False
+    subject_id = original.subject_id
+    before_card = ctx.knowledge.try_taxon(before.taxon)
+    if before_card is None or not discriminating_support(before_card, evidence, before, subject_id):
+        return False
+    match = match_card(before_card, evidence, subject_id)
+    if match.has_contradiction or match.contradicts_own_card:
+        return False
+    after_card = ctx.knowledge.try_taxon(after.taxon)
+    return after_card is None or not discriminating_support(after_card, evidence, after, subject_id)
 
 
 #: Opens the line that discloses a verdict resting on supporting features alone.
@@ -1355,6 +1445,14 @@ def decide_subject_base(
         if already_reranked
         else _apply_reranking_with_source(state, candidate_set)
     )
+    if (
+        rerank_source != "none"
+        and ctx.config.graph.require_discriminating_support
+        and rerank_displaces_diagnostic_leader(ctx, evidence, candidate_set, reranked)
+    ):
+        # The finding stays accepted and is still named in the trace; only its ranking is
+        # not applied.
+        reranked, rerank_source = candidate_set, "withheld"
     leader = reranked.leader
     subject_id = reranked.subject_id
 
@@ -1495,7 +1593,12 @@ def decide_subject_base(
     verdict = rule_on_user_claim(state, ctx, subject_id, reranked, evidence, selected.taxon_id)
     alternative = _nearest_alternative(ctx, reranked.ordered[1:], resolution, selected)
     disclosure: list[str] = []
-    if card is not None and not discriminating_support(card, evidence, leader, subject_id):
+    discriminating, combination = (
+        _discrimination(card, evidence, leader, subject_id) if card is not None else ((), None)
+    )
+    if card is not None and combination is not None:
+        disclosure.append(_diagnostic_combination_text(card, combination))
+    if card is not None and not discriminating:
         disclosure.append(_no_discriminating_support_text(card, named=True))
         rivals = _undistinguished_rivals(
             ctx, reranked.ordered[1:], evidence, subject_id, resolution, selected

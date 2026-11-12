@@ -22,6 +22,7 @@ value_sets:
     smooth_grey_slightly_cracked: Mostly smooth grey bark with a few shallow cracks.
     smooth_olive_brown: Smooth olive-brown to greenish-brown bark without fissures.
     fine_scales: Thin, small scales flaking from the surface.
+    thin_orange_flaking: Thin bark flaking in papery orange to orange-red scales.
     scaly_plates: Bark broken into larger flat scaly plates.
     dark_platy: Dark bark divided into small flat plates.
     dark_small_blocks: Dark bark broken into small square or rectangular blocks.

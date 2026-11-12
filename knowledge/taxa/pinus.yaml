@@ -63,6 +63,95 @@ supporting_features:
       reviewed_by: "Claude (AI-assisted botanical and implementation review)"
       last_reviewed: 2026-11-11
 
+  # The upper-stem bark of Scots pine, which is what most of a pine log pile shows. Supporting:
+  # young Norway spruce bark is also "orange-brown, finely flaking" (Gymnosperm Database,
+  # Picea abies), so it names nothing alone.
+  - feature: bark.texture
+    values:
+      - thin_orange_flaking
+    provenance:
+      source: >-
+        Gymnosperm Database, Pinus sylvestris (https://www.conifers.org/pi/Pinus_sylvestris.php): "Bark on lower stem thick, scaly-plated, grey-brown; on upper stem and branches, thin, flaking, orange-red." Verified 2026-11-12.
+      source_type: literature
+      region: Eastern Europe
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-12
+  # The cut end: a reddish core inside a wide pale band. Spruce and fir have no coloured
+  # heartwood; larch has one, inside a very narrow sapwood band. A thin young pine log may
+  # show no heartwood yet, so its absence is not recorded as evidence against pine.
+  - feature: heartwood.demarcation
+    values:
+      - reddish_core_wide_pale_sapwood
+    note: >-
+      A light reddish-brown core clearly set off from a wide pale yellow to whitish outer
+      band on the cut end. Record only when both zones and the width of the pale band are
+      visible.
+    provenance:
+      source: >-
+        Wood Database, Scots pine (https://www.wood-database.com/scots-pine/): "Heartwood is light reddish brown, demarcated sapwood is pale yellow to nearly white."; CZU timber atlas (https://r.fld.czu.cz/vyzkum/multimedia/timber_atlas/nextpages/softwoods.html): "The sapwood is quite wide." Verified 2026-11-12.
+      source_type: literature
+      region: Eastern Europe
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-12
+
+# A pine log has no needles and no cones, so neither strong positive above can ever be read
+# from one. A forester names it anyway, from several log signs that agree, and checks the
+# look-alikes with one specific sign each. The combinations below are those agreements; the
+# contradictions further down are those checks (fir's resin blisters, larch's narrow sapwood).
+#
+# Permission to name the genus only. Confidence keeps the ceiling of the evidence seen, so
+# bark with a chainsawn log end answers low and a prepared end grain can reach medium. Each
+# reading alone stays supporting. When both are earned the first one is reported.
+diagnostic_combinations:
+  # The stronger one: pine bark with the pine cut end. The cut end is what separates pine
+  # from spruce and fir (no coloured heartwood) and from larch (very narrow sapwood).
+  - requires:
+      bark.texture:
+        - scaly_plates
+        - thin_orange_flaking
+      heartwood.demarcation: reddish_core_wide_pale_sapwood
+    max_resolution: genus
+    note: >-
+      Bark and cut end agree; the wide pale sapwood sets it apart from spruce, fir and larch.
+    provenance:
+      source: >-
+        Wood Database, Scots pine: "Heartwood is light reddish brown, demarcated sapwood is pale yellow to nearly white."; CZU timber atlas (https://r.fld.czu.cz/vyzkum/multimedia/timber_atlas/nextpages/softwoods.html): spruce heartwood "Absent"; larch "Sapwood very narrow, heartwood quite wide, compared to pine." Verified 2026-11-12. Naming policy, not a feature rule
+      source_type: literature
+      region: Eastern Europe
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-12
+  # The domain prompt's own log rule, with each of its three signs mapped to the token the
+  # prompt gives: "reddish-brown or orange scaly bark", "resinous areas", "cross-section
+  # light yellow or honey-coloured". Weaker than the one above and says so: spruce and larch
+  # also carry resin, and tone is colour.
+  - requires:
+      bark.texture:
+        - scaly_plates
+        - thin_orange_flaking
+      resin.presence: present
+      wood.tone: light_yellow_honey
+    max_resolution: genus
+    note: >-
+      Spruce and larch logs are not excluded; a reddish core in a wide pale band on the cut
+      end would settle it.
+    provenance:
+      source: >-
+        Domain prompt section 14 (PINE): "On a pile of logs you may go high if reddish bark,
+        coniferous structure and typical log ends are all visible at once"; naming policy,
+        not a feature rule
+      source_type: domain_prompt
+      region: Eastern Europe
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-12
+
 contradictions:
   - feature: needles.attachment
     values:
@@ -110,6 +199,35 @@ contradictions:
       review_state: reviewed
       reviewed_by: "Claude (AI-assisted botanical and implementation review)"
       last_reviewed: 2026-11-11
+
+  # The two checks a log allows. Bark-tier and wood-tier contradictions block the
+  # combinations above; neither depends on needles or cones.
+  - feature: bark.surface_marks
+    values:
+      - resin_blisters
+    note: Resin blisters in smooth bark are fir; pine bark is plated or flaking.
+    provenance:
+      source: >-
+        Gymnosperm Database, Abies alba (https://www.conifers.org/pi/Abies_alba.php): "Bark smooth, gray, scaly, with resin blisters."; Pinus sylvestris (https://www.conifers.org/pi/Pinus_sylvestris.php): bark "thick, scaly-plated" below and "thin, flaking" above. Verified 2026-11-12.
+      source_type: literature
+      region: Eastern Europe
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-12
+  - feature: heartwood.demarcation
+    values:
+      - dark_core_very_narrow_sapwood
+    note: A dark red-brown core reaching almost to the bark is larch; pine sapwood is wide.
+    provenance:
+      source: >-
+        CZU timber atlas (https://r.fld.czu.cz/vyzkum/multimedia/timber_atlas/nextpages/softwoods.html): larch "Sapwood very narrow, heartwood quite wide, compared to pine."; Scotch pine "The sapwood is quite wide." Verified 2026-11-12.
+      source_type: literature
+      region: Eastern Europe
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-12
 
 common_confusions:
   - abies
