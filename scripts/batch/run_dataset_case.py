@@ -1,13 +1,20 @@
-"""Run one photograph from a Hugging Face image dataset through `dendro inspect`.
+"""Run one photograph from an image dataset through `dendro inspect`.
 
 Built for a Kubernetes Indexed Job: each pod handles the case at JOB_COMPLETION_INDEX and
-writes one JSON record to RESULTS_DIR/<RUN_ID>/cases/<case_id>.json. The dataset revision
-must be pinned, and every image is checked against the SHA-256 in the dataset's
-metadata.jsonl before it is sent anywhere. Standard library only.
+writes one JSON record to RESULTS_DIR/<RUN_ID>/cases/<case_id>.json and the engine's log
+to RESULTS_DIR/<RUN_ID>/logs/<case_id>.log. The dataset revision must be pinned, and every
+image is checked against the SHA-256 in the dataset's metadata.jsonl before it is sent
+anywhere. Standard library only.
+
+A dataset is either a Hugging Face repository or a directory on the results volume,
+RESULTS_DIR/_datasets/<DATASET_DIR>, holding metadata.jsonl and the images beside it.
 
 Environment:
     DATASET_REPO          e.g. Dendro-Inspector/dendro-golden-100
-    DATASET_REVISION      full commit SHA of the dataset (no branch names)
+    DATASET_REVISION      Hugging Face: full commit SHA of the dataset (no branch names).
+                          Results volume: SHA-256 of that directory's metadata.jsonl.
+    DATASET_DIR           optional; a directory name under RESULTS_DIR/_datasets. When set,
+                          nothing is fetched from Hugging Face.
     JOB_COMPLETION_INDEX  0-based case index (set by Kubernetes)
     RUN_ID                identifier for this run
     RESULTS_DIR           where run directories are written (default: /results)
@@ -34,6 +41,7 @@ HF_BASE = "https://huggingface.co/datasets"
 REVISION = re.compile(r"^[0-9a-f]{40}$")
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
 SAFE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$")
+LOCAL_DATASETS = "_datasets"
 ROLES = ("PRIMARY", "REVIEWER", "ARBITER")
 
 
@@ -83,6 +91,15 @@ def verify_digest(payload: bytes, expected: str) -> None:
         raise CaseError(msg)
 
 
+def write_log(path: Path, text: str) -> None:
+    """Keep the engine's own log beside the record. Never fails the case it describes."""
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+    except OSError as exc:
+        print(f"log not saved: {exc}", file=sys.stderr)
+
+
 def configured_models(env: dict[str, str]) -> dict[str, str]:
     return {
         role.lower(): (
@@ -124,23 +141,43 @@ def run(env: dict[str, str]) -> int:
     repo = env["DATASET_REPO"]
     revision = env["DATASET_REVISION"]
     run_id = env["RUN_ID"]
-    if not REVISION.match(revision):
-        msg = "DATASET_REVISION must be a full 40-character commit SHA"
-        raise CaseError(msg)
+    local = env.get("DATASET_DIR", "")
     if not SAFE_ID.match(run_id):
         msg = "RUN_ID may hold only letters, digits, '.', '_' and '-'"
         raise CaseError(msg)
     index = int(env["JOB_COMPLETION_INDEX"])
-    out_dir = Path(env.get("RESULTS_DIR", "/results")) / run_id / "cases"
+    results = Path(env.get("RESULTS_DIR", "/results"))
+    out_dir = results / run_id / "cases"
 
-    base = f"{HF_BASE}/{repo}/resolve/{revision}"
-    case = select_case(_fetch(f"{base}/metadata.jsonl").decode("utf-8"), index)
+    if local:
+        if not SAFE_ID.match(local):
+            msg = "DATASET_DIR may hold only letters, digits, '.', '_' and '-'"
+            raise CaseError(msg)
+        folder = results / LOCAL_DATASETS / local
+        metadata = (folder / "metadata.jsonl").read_bytes()
+        # The pin for a directory is the digest of its own index: a changed file list or a
+        # changed image digest is a different dataset.
+        verify_digest(metadata, revision)
+
+        def load(name: str) -> bytes:
+            return (folder / name).read_bytes()
+    else:
+        if not REVISION.match(revision):
+            msg = "DATASET_REVISION must be a full 40-character commit SHA"
+            raise CaseError(msg)
+        base = f"{HF_BASE}/{repo}/resolve/{revision}"
+        metadata = _fetch(f"{base}/metadata.jsonl")
+
+        def load(name: str) -> bytes:
+            return _fetch(f"{base}/{name}")
+
+    case = select_case(metadata.decode("utf-8"), index)
     target = out_dir / f"{case['id']}.json"
     if already_done(target):
         print(f"{case['id']}: already done, skipping")
         return 0
 
-    image = _fetch(f"{base}/{case['file_name']}")
+    image = load(case["file_name"])
     verify_digest(image, case["sha256"])
 
     record: dict[str, Any] = {
@@ -173,6 +210,7 @@ def run(env: dict[str, str]) -> int:
     record["wall_seconds"] = round(time.monotonic() - started, 1)
     record["finished_at"] = _now()
     record["exit_code"] = completed.returncode
+    write_log(results / run_id / "logs" / f"{case['id']}.log", completed.stderr)
     if completed.returncode == 0:
         record["result"] = json.loads(completed.stdout)
     else:
@@ -188,6 +226,6 @@ def run(env: dict[str, str]) -> int:
 if __name__ == "__main__":
     try:
         sys.exit(run(dict(os.environ)))
-    except (CaseError, KeyError, ValueError) as exc:
+    except (CaseError, KeyError, ValueError, OSError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         sys.exit(2)

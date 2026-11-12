@@ -12,6 +12,11 @@ get entries.
 
 ### Added
 
+- **Batch runs can read photographs from the results volume.** The batch worker accepts
+  `DATASET_DIR`, a directory under `_datasets/` on the results volume holding
+  `metadata.jsonl` and the images, pinned by the SHA-256 of that index, so a private photo
+  set can be run without publishing it as a Hugging Face dataset. Every batch case now
+  also keeps the engine's log beside its record, in `<run>/logs/<case>.log`.
 - **Compare identification policy offline.** `coverage-audit --replay` now accepts
   `--no-require-discriminating-support` as well as `--require-discriminating-support`.
   Either explicitly overrides the configured setting for that replay; omitting both
