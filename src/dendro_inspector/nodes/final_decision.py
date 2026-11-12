@@ -1188,13 +1188,23 @@ def resolve_confidence(
             continue
         if finding.origin is not FindingOrigin.DETERMINISTIC:
             continue
+        # A card's high-confidence requirement is about high confidence, and
+        # `requirement_cap` above has already held an exception-lifted claim below it. The
+        # exception is the card's own statement of how far this reading reaches without
+        # that requirement; charging the unmet requirement once more took a ceiling the
+        # card set at medium back to low, so the exception could never be observed. Every
+        # other code-raised finding still bites.
+        waived = (
+            exception is not None and finding.category is FindingCategory.MISSING_DECISIVE_FEATURE
+        )
         before = confidence
-        confidence = lower_confidence(confidence)
+        if not waived:
+            confidence = lower_confidence(confidence)
         step(
             "deterministic_finding",
             before,
             confidence,
-            applied=True,
+            applied=not waived,
             finding_id=finding.finding_id,
         )
 
