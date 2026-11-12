@@ -43,6 +43,17 @@ get entries.
   New readings: thin orange flaking bark (the upper stem of Scots pine, supporting only,
   since young spruce bark is similar) and the two cut-end patterns. Sources are quoted on the
   cards: Gymnosperm Database, Wood Database and the CZU timber atlas.
+- **Oak, spruce, fir, larch and Robinia logs can be named.** Each card declares the signs a
+  forester reads from a log, as a diagnostic combination that permits the genus and raises
+  no confidence: ring-porous wood with rays visible to the naked eye (oak); finely scaled
+  bark with resin canals and no coloured core (spruce); resin blisters in the bark with no
+  resin canals in the wood (fir); deeply fissured bark with a dark core in very narrow
+  sapwood (larch); rope-like bark with a greenish-gold core in very narrow sapwood
+  (Robinia). Pores, rays and resin canals count only from a prepared end grain. Rays visible
+  on the cut end now count against ash, and an end grain without resin canals against
+  spruce. Ash, the walnuts, the fruit trees, maples, poplars, lime, alder and mulberry gain
+  no log rule: no source consulted supports naming them without leaves or fruit. Sources
+  are quoted on the cards and were checked against their pages on 2026-11-12.
 - **A dark base beside white papery bark agrees with birch.** The Betula card now lists the
   pale-above, dark-and-rough-below trunk as a supporting reading (Woodland Trust: the white
   bark "becomes black and rugged at the base"). White poplar shares it, so it names nothing

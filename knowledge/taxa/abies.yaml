@@ -53,6 +53,41 @@ supporting_features:
   - feature: crown.shape
     values:
       - conical
+  # The fir cut end has no resin canals; spruce, pine and larch have them. Readable only on
+  # a prepared end grain, and not a contradiction of the other conifers when missing from a
+  # rough cut. Wounded fir can form traumatic canals, so canals present are not recorded
+  # here as evidence against fir.
+  - feature: wood.resin_canals
+    values:
+      - none_in_end_grain
+    provenance:
+      source: >-
+        CZU timber atlas, fir (https://r.fld.czu.cz/vyzkum/multimedia/timber_atlas/nextpages/softwoods.html): "Resin canals: Absent"; "Absence of the resin canals is one of the most important features to distinguish fir from spruce." Verified 2026-11-12.
+      source_type: literature
+      region: Eastern Europe
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-12
+
+# A fir log: resin blisters in the bark and no resin canals in the wood. The blisters keep
+# this from matching a smooth-barked broadleaf, which has no resin canals either.
+diagnostic_combinations:
+  - requires:
+      bark.surface_marks: resin_blisters
+      wood.resin_canals: none_in_end_grain
+    max_resolution: genus
+    note: >-
+      Resin blisters in the bark with no resin canals in a prepared end grain.
+    provenance:
+      source: >-
+        Gymnosperm Database, Abies alba (https://www.conifers.org/pi/Abies_alba.php): "Bark smooth, gray, scaly, with resin blisters."; CZU timber atlas (https://r.fld.czu.cz/vyzkum/multimedia/timber_atlas/nextpages/softwoods.html): "Absence of the resin canals is one of the most important features to distinguish fir from spruce." Verified 2026-11-12. Naming policy, not a feature rule
+      source_type: literature
+      region: Eastern Europe
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-12
 
 contradictions:
   - feature: needles.attachment

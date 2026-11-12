@@ -40,6 +40,7 @@ from dendro_inspector.schemas.evidence import (
     SubjectKind,
     Visibility,
     WoodSurface,
+    requires_wood_surface,
 )
 from dendro_inspector.schemas.reviews import (
     AdmittedRerank,
@@ -519,9 +520,124 @@ class TestDiagnosticCombinationDeclarationIsValidated:
             for taxon_id in knowledge.available_taxon_ids()
             if knowledge.taxon(taxon_id).diagnostic_combinations
         )
-        assert declaring == ["pinus"]
-        for combination in knowledge.taxon("pinus").diagnostic_combinations:
-            assert combination.provenance is not None
+        assert declaring == DECLARING
+        for taxon_id in DECLARING:
+            for combination in knowledge.taxon(taxon_id).diagnostic_combinations:
+                assert combination.provenance is not None
+                assert combination.note
+
+
+#: Every card that names its taxon from a log or trunk without foliage or fruit. Adding one
+#: is a reviewed, sourced decision, so the list is pinned rather than discovered.
+DECLARING = ["abies", "larix", "picea", "pinus", "quercus", "robinia_pseudoacacia"]
+
+
+def _clean_reading(observation_id: str, feature: str, value: str) -> Observation:
+    """One row read as well as a photograph can: clearly, on a prepared end grain if wood."""
+    return Observation(
+        observation_id=observation_id,
+        feature=feature,
+        value=value,
+        subject_id=SUBJECT,
+        source=ObservationSource.IMAGE,
+        image_id="img-1",
+        visibility=Visibility.CLEAR,
+        reliability=Reliability.HIGH,
+        wood_surface=WoodSurface.PREPARED_END_GRAIN if requires_wood_surface(feature) else None,
+    )
+
+
+def _declared_combinations(knowledge) -> list[tuple[str, int]]:
+    return [
+        (taxon_id, index)
+        for taxon_id in DECLARING
+        for index, _ in enumerate(knowledge.taxon(taxon_id).diagnostic_combinations)
+    ]
+
+
+class TestEveryDeclaredCombination:
+    """Properties every card's combination must hold, whatever the taxon."""
+
+    def test_complete_it_names_the_taxon_and_never_at_high_confidence(
+        self, knowledge, simple_case, node_context
+    ):
+        for taxon_id, index in _declared_combinations(knowledge):
+            card = knowledge.taxon(taxon_id)
+            combination = card.diagnostic_combinations[index]
+            rows = tuple(
+                _clean_reading(f"row-{number}", expectation.feature, expectation.values[0])
+                for number, expectation in enumerate(combination.requires)
+            )
+            ids = tuple(row.observation_id for row in rows)
+            state = _state(simple_case, _packet(*rows), _candidate(taxon_id, *ids))
+            decision = decide_subject(state, node_context, state.candidate_sets[0])
+
+            expected = card.identity_at_or_broader(combination.max_resolution)
+            assert expected is not None
+            assert decision.selected_taxon == expected.taxon_id, taxon_id
+            assert decision.confidence is not Confidence.HIGH, taxon_id
+            assert any(
+                q.startswith(DIAGNOSTIC_COMBINATION_PHRASE) for q in decision.unresolved_questions
+            ), taxon_id
+
+    def test_with_any_one_row_missing_it_earns_nothing(self, knowledge):
+        for taxon_id, index in _declared_combinations(knowledge):
+            card = knowledge.taxon(taxon_id)
+            combination = card.diagnostic_combinations[index]
+            rows = tuple(
+                _clean_reading(f"row-{number}", expectation.feature, expectation.values[0])
+                for number, expectation in enumerate(combination.requires)
+            )
+            for dropped in range(len(rows)):
+                partial = tuple(row for number, row in enumerate(rows) if number != dropped)
+                assert diagnostic_combination_for(card, _packet(*partial), SUBJECT) is None, (
+                    taxon_id,
+                    dropped,
+                )
+
+    def test_no_complete_combination_also_completes_another_cards(self, knowledge):
+        """One log must not be nameable as two different trees."""
+        for taxon_id, index in _declared_combinations(knowledge):
+            combination = knowledge.taxon(taxon_id).diagnostic_combinations[index]
+            rows = tuple(
+                _clean_reading(f"row-{number}", expectation.feature, value)
+                for number, expectation in enumerate(combination.requires)
+                for value in expectation.values[:1]
+            )
+            packet = _packet(*rows)
+            for other in DECLARING:
+                if other != taxon_id:
+                    assert diagnostic_combination_for(knowledge.taxon(other), packet, SUBJECT) is (
+                        None
+                    ), (taxon_id, other)
+
+
+class TestLogLookAlikeChecks:
+    def test_oak_needs_a_prepared_end_grain(self, knowledge):
+        # Pores and rays claim anatomy a chainsawn end cannot show; read there they are
+        # context and complete nothing.
+        pores = _wood("pores", "pores.arrangement", "ring_porous")
+        rays = _wood("rays", "rays.visibility", "prominent")
+        assert diagnostic_combination_for(
+            knowledge.taxon("quercus"), _packet(pores, rays), SUBJECT
+        ) is (None)
+
+    def test_rays_visible_on_the_cut_end_count_against_ash(self, knowledge):
+        rays = _clean_reading("rays", "rays.visibility", "prominent")
+        match = match_card(knowledge.taxon("fraxinus"), _packet(rays), SUBJECT)
+        assert match.contradiction_hits == ("rays",)
+
+    def test_an_end_grain_without_resin_canals_counts_against_spruce(self, knowledge):
+        none = _clean_reading("canals", "wood.resin_canals", "none_in_end_grain")
+        match = match_card(knowledge.taxon("picea"), _packet(none), SUBJECT)
+        assert match.contradiction_hits == ("canals",)
+
+    def test_resin_canals_do_not_count_against_fir(self, knowledge):
+        # Wounded fir forms traumatic canals, so their presence is silence about fir.
+        present = _clean_reading("canals", "wood.resin_canals", "present")
+        match = match_card(knowledge.taxon("abies"), _packet(present), SUBJECT)
+        assert match.contradiction_hits == ()
+        assert not match.contradicts_own_card
 
 
 class TestRerankCannotDisplaceADiagnosedLeader:

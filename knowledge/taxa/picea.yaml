@@ -49,8 +49,71 @@ supporting_features:
   - feature: wood.tone
     values:
       - light
+  # The spruce cut end: resin canals, and no coloured heartwood. Canals are faint in spruce
+  # and count only from a prepared end grain.
+  - feature: wood.resin_canals
+    values:
+      - present
+    provenance:
+      source: >-
+        CZU timber atlas, spruce (https://r.fld.czu.cz/vyzkum/multimedia/timber_atlas/nextpages/softwoods.html): "Resin canals: Present". Verified 2026-11-12.
+      source_type: literature
+      region: Eastern Europe
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-12
+  - feature: heartwood.demarcation
+    values:
+      - none_uniform_pale
+    note: >-
+      The cut end is one pale colour from pith to bark, with no darker core. Record only on
+      a log thick enough that a core would show.
+    provenance:
+      source: >-
+        CZU timber atlas, spruce (https://r.fld.czu.cz/vyzkum/multimedia/timber_atlas/nextpages/softwoods.html): "Heartwood: Absent". Verified 2026-11-12.
+      source_type: literature
+      region: Eastern Europe
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-12
+
+# A spruce log: finely scaled bark, resin canals in the wood and no coloured core. The
+# canals separate it from fir and the missing core from larch and from pine of any size.
+diagnostic_combinations:
+  - requires:
+      bark.texture: fine_scales
+      wood.resin_canals: present
+      heartwood.demarcation: none_uniform_pale
+    max_resolution: genus
+    note: >-
+      A thin young pine log without heartwood is not excluded by the wood; the finely
+      scaled bark is what points to spruce.
+    provenance:
+      source: >-
+        CZU timber atlas (https://r.fld.czu.cz/vyzkum/multimedia/timber_atlas/nextpages/softwoods.html): spruce "Resin canals: Present", "Heartwood: Absent"; "Absence of the resin canals is one of the most important features to distinguish fir from spruce." Verified 2026-11-12. Naming policy, not a feature rule
+      source_type: literature
+      region: Eastern Europe
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-12
 
 contradictions:
+  # A prepared end grain with no resin canals is fir, not spruce.
+  - feature: wood.resin_canals
+    values:
+      - none_in_end_grain
+    provenance:
+      source: >-
+        CZU timber atlas (https://r.fld.czu.cz/vyzkum/multimedia/timber_atlas/nextpages/softwoods.html): "Absence of the resin canals is one of the most important features to distinguish fir from spruce." Verified 2026-11-12.
+      source_type: literature
+      region: Eastern Europe
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-12
   - feature: needles.fascicles
     values:
       - two

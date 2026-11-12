@@ -48,15 +48,13 @@ def _vocabulary(knowledge: KnowledgeBase) -> frozenset[str]:
     return frozenset(card_value_vocabulary(knowledge.taxa(knowledge.available_taxon_ids())))
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "M1 (docs/specs/core-modernisation.md): the planner prompt asks for "
-        "`bark.flake_geometry` and `wood.resin_canals`, which no taxon card declares, so "
-        "evidence for either is recorded and then admits nothing. Open decision 1."
-    ),
-)
 def test_every_non_colour_feature_the_prompts_request_can_be_matched(repo_root, knowledge):
+    """Was a strict expected failure (M1, docs/specs/core-modernisation.md, Open decision 1).
+
+    The planner prompt asked for `bark.flake_geometry` and `wood.resin_canals` while no card
+    declared either. Abies declares the first; Picea and Abies now declare the second, which
+    is the character that separates a spruce log from a fir log.
+    """
     vocabulary = _vocabulary(knowledge)
     unmatchable = {
         path: sorted(prompts)
