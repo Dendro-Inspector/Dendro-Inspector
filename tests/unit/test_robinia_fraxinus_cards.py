@@ -337,3 +337,25 @@ def test_a_genus_name_two_cards_share_is_not_resolved(knowledge):
         ),
     )
     assert not validate_candidate_set(proposed, packet, knowledge).candidates
+
+
+def test_layered_orange_brown_bark_names_pine_at_middle_confidence(
+    node_context, standing_tree_case
+):
+    """Maintainer decision 2026-11-12: a standing pine trunk is named from its bark, mid level."""
+    decision = _decide(
+        node_context,
+        standing_tree_case,
+        "pinus",
+        _packet(("bark.plate_build", "layered_orange_brown"), ("bark.texture", "scaly_plates")),
+    )
+    assert decision.selected_taxon == "pinus"
+    assert decision.resolution is Resolution.GENUS
+    assert decision.confidence is Confidence.MEDIUM
+
+
+def test_plain_plated_bark_still_names_no_pine(node_context, standing_tree_case):
+    decision = _decide(
+        node_context, standing_tree_case, "pinus", _packet(("bark.texture", "scaly_plates"))
+    )
+    assert decision.selected_taxon is None

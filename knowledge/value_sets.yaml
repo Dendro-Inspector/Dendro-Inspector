@@ -39,6 +39,9 @@ value_sets:
     deeply_fissured_flaking_reddish_inner: Deeply fissured bark that flakes and shows reddish inner bark.
     grey_shaggy_strips: Grey bark separating into long, loose, shaggy strips.
 
+  bark.plate_build:
+    layered_orange_brown: Thick plates built up of many thin layers, orange-brown to reddish or grey-violet on the face, flaking in irregular pieces at the edges, with dark fissures between the plates.
+
   bark.pattern:
     white_papery_with_black_marks: White papery bark with black marks or bands.
     black_rugged_fissured_base_diamonds: Dark, rugged, deeply fissured bark at the base of an otherwise pale trunk.

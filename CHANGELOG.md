@@ -68,6 +68,12 @@ get entries.
   every reading above low reliability. A weathered pine stump read its bark clearly and its
   rings only loosely, and stayed unnamed. A combination now needs at least one solid
   reading; readings that are all doubtful still name nothing.
+- **A standing pine is named from its bark, at middle confidence.** Five of five standing
+  pine trunks were read as pine by the model and left as "insufficient evidence", because
+  only needles or cones could name the genus. A new bark reading, thick layered plates with
+  an orange-brown to reddish face (`bark.plate_build = layered_orange_brown`), now names
+  Pinus and answers at 50–69/100, never higher. Plain plated bark still names nothing.
+  A maintainer decision; the bark description cites Woodland Trust.
 - **Log look-alikes are checked the way a forester checks them.** Resin blisters in smooth
   bark (fir) and a dark core reaching almost to the bark (larch's very narrow sapwood) count
   against pine and block a pine log answer; a wide pale sapwood band counts against larch.
