@@ -52,8 +52,9 @@ def _vocabulary(knowledge: KnowledgeBase) -> frozenset[str]:
     strict=True,
     reason=(
         "M1 (docs/specs/core-modernisation.md): the planner prompt asks for "
-        "`bark.flake_geometry` and `wood.resin_canals`, which no taxon card declares, so "
-        "evidence for either is recorded and then admits nothing. Open decision 1."
+        "`wood.resin_canals`, which no taxon card declares, so evidence for it is "
+        "recorded and then admits nothing (`bark.flake_geometry` is declared by the "
+        "Abies card). Open decision 1."
     ),
 )
 def test_every_non_colour_feature_the_prompts_request_can_be_matched(repo_root, knowledge):

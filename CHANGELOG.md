@@ -27,6 +27,10 @@ get entries.
 
 ### Changed
 
+- **Free-text limits are stated to the model in words.** Short text fields such as a
+  finding summary now carry their 400-character limit in the schema description on every
+  provider. An OpenAI arbiter overran the limit on its first attempt in three live cases
+  out of three, costing a repair call each time.
 - **Moss, lichen and trunk age are not knowledge gaps.** `bark.epiphytes` and
   `trunk.life_stage` are reported as context instead of inflating the coverage-gap count.
 

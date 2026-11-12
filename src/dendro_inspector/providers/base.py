@@ -405,6 +405,10 @@ def repair_feedback(exc: BaseException) -> tuple[str, tuple[str, ...]]:
             rule = f"allowed values: {context.get('expected', detail['msg'])}"
         elif kind == "string_too_long":
             rule = f"at most {context.get('max_length', '?')} characters"
+            if isinstance(received, str):
+                # A model told only the limit trims a little and overruns again; the
+                # size of the overrun is what tells it how much to cut.
+                rule += f", you sent {len(received)}: shorten it, do not split it"
         else:
             rule = _REPAIR_RULES.get(kind, str(detail["msg"]))
         category = "format" if kind in _FORMAT_ERROR_TYPES else "semantic"
