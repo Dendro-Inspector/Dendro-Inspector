@@ -64,6 +64,56 @@ supporting_features:
       review_state: reviewed
       reviewed_by: "Claude (AI-assisted botanical and implementation review)"
       last_reviewed: 2026-11-11
+  # The poplar trunk without leaves: pale smooth bark pitted with diamond-shaped lenticels,
+  # in white poplar and aspen alike. Birch lenticels run horizontally.
+  - feature: lenticels.shape
+    values:
+      - diamond
+    provenance:
+      source: >-
+        Woodland Trust (https://www.woodlandtrust.org.uk/trees-woods-and-wildlife/british-trees/a-z-of-british-trees/), white-poplar page: "The bark is pale grey with lines of black diamond-shaped pores, called lenticels."; aspen page: "The bark is grey and often pitted with diamond-shaped pores, called lenticels." Verified 2026-11-12.
+      source_type: literature
+      region: Eastern Europe
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-12
+  - feature: bark.pattern
+    values:
+      - grey_green_smooth_young
+      - pale_upper_dark_rough_base
+    note: Pale bark, smooth when young and dark and rough at the base of an old trunk.
+    provenance:
+      source: >-
+        Woodland Trust, white poplar: "The bark is pale grey with lines of black diamond-shaped pores, called lenticels."; aspen: "The bark is grey and often pitted with diamond-shaped pores, called lenticels." URLs above. Verified 2026-11-12.
+      source_type: literature
+      region: Eastern Europe
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-12
+
+# A leafless poplar: pale bark with diamond-shaped lenticels. Shared by white poplar and
+# aspen, so it names the genus. The lenticel shape is what separates it from birch.
+diagnostic_combinations:
+  - requires:
+      bark.pattern:
+        - grey_green_smooth_young
+        - pale_upper_dark_rough_base
+      lenticels.shape: diamond
+    max_resolution: genus
+    note: >-
+      Diamond-shaped lenticels, not the diamond-shaped fissures at the base of an old birch;
+      which poplar it is needs a leaf.
+    provenance:
+      source: >-
+        Woodland Trust (https://www.woodlandtrust.org.uk/trees-woods-and-wildlife/british-trees/a-z-of-british-trees/), white-poplar page: "The bark is pale grey with lines of black diamond-shaped pores, called lenticels."; aspen page: "pitted with diamond-shaped pores, called lenticels." Verified 2026-11-12. Naming policy, not a feature rule
+      source_type: literature
+      region: Eastern Europe
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-12
 
 contradictions:
   - feature: leaf.arrangement

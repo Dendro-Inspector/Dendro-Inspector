@@ -530,7 +530,16 @@ class TestDiagnosticCombinationDeclarationIsValidated:
 
 #: Every card that names its taxon from a log or trunk without foliage or fruit. Adding one
 #: is a reviewed, sourced decision, so the list is pinned rather than discovered.
-DECLARING = ["abies", "larix", "picea", "pinus", "quercus", "robinia_pseudoacacia"]
+DECLARING = [
+    "abies",
+    "larix",
+    "picea",
+    "pinus",
+    "populus",
+    "prunus_avium",
+    "quercus",
+    "robinia_pseudoacacia",
+]
 
 
 def _clean_reading(observation_id: str, feature: str, value: str) -> Observation:
@@ -672,6 +681,23 @@ class TestLogLookAlikeChecks:
         none = _clean_reading("canals", "wood.resin_canals", "none_in_end_grain")
         match = match_card(knowledge.taxon("picea"), _packet(none), SUBJECT)
         assert match.contradiction_hits == ("canals",)
+
+    def test_tissue_thin_peeling_bark_blocks_the_cherry_bark_answer(self, knowledge):
+        # Young birch is the look-alike of cherry bark; papery peeling is the birch sign.
+        card = knowledge.taxon("prunus_avium")
+        banded = _obs("banded", "bark.pattern", "grey_reddish_banded")
+        lenticels = _obs("lenticels", "lenticels.orientation", "prominent_horizontal")
+        peeling = _obs("peeling", "bark.peeling", "thin_layers")
+        assert diagnostic_combination_for(card, _packet(banded, lenticels), SUBJECT) is not None
+        assert diagnostic_combination_for(card, _packet(banded, lenticels, peeling), SUBJECT) is (
+            None
+        )
+
+    def test_diamond_lenticels_alone_do_not_name_poplar(self, simple_case, node_context):
+        diamonds = _obs("diamonds", "lenticels.shape", "diamond")
+        state = _state(simple_case, _packet(diamonds), _candidate("populus", "diamonds"))
+        decision = decide_subject(state, node_context, state.candidate_sets[0])
+        assert decision.selected_taxon is None
 
     def test_resin_canals_do_not_count_against_fir(self, knowledge):
         # Wounded fir forms traumatic canals, so their presence is silence about fir.

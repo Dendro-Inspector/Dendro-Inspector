@@ -54,6 +54,13 @@ get entries.
   spruce. Ash, the walnuts, the fruit trees, maples, poplars, lime, alder and mulberry gain
   no log rule: no source consulted supports naming them without leaves or fruit. Sources
   are quoted on the cards and were checked against their pages on 2026-11-12.
+- **A leafless cherry or poplar can be named to genus from its bark.** Reddish banded bark
+  with prominent horizontal lenticels names Prunus, and the answer says young birch is not
+  excluded; white papery or tissue-thin peeling bark now counts against wild cherry. Pale
+  bark with diamond-shaped lenticels names Populus; which poplar needs a leaf. Sources:
+  Woodland Trust, checked 2026-11-12. The walnuts, lime, mulberry, apple, pear, apricot,
+  cherry plum and the maples still need leaves or fruit: no source consulted gives a leafless
+  sign for them that a look-alike does not share.
 - **A log is asked for its cut end.** The next-photograph request for a log or pile used the
   standing-tree lists and asked for a needle or leaf macro. When the leading card declares
   log signs that are not all read yet, the request is now the photograph that would finish
