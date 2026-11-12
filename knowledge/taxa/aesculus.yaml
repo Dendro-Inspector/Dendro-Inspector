@@ -1,0 +1,178 @@
+# Added 2026-11-12 after a live check: three models read a palmately compound leaf on a
+# street tree, proposed Aesculus first and had it rejected as outside the knowledge base;
+# one then answered poplar. Rule sources are quoted below and were fetched on that date.
+# AI-assisted review scope: docs/dataset-policy.md.
+#
+# Genus card. The common tree is A. hippocastanum, but red horse chestnut (A. x carnea) and
+# the buckeyes share the leaf, so the leaf names the genus and no further.
+#
+# Not named in the domain prompt: a documented exception in
+# tests/contract/test_domain_prompt_contract.py, like larix and abies.
+taxon_id: aesculus
+display_name: Aesculus (horse chestnut)
+native_resolution: genus
+broader_identities:
+  - resolution: family
+    taxon_id: sapindaceae
+    display_name: Sapindaceae (soapberry family)
+    provenance:
+      source: "Standard botanical taxonomy; the domain prompt names no family"
+      source_type: inferred
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-11
+# "chestnut" alone is not an alias: it also names sweet chestnut (Castanea).
+aliases:
+  - horse chestnut
+  - horse-chestnut
+  - conker tree
+  - buckeye
+  - aesculus
+supported_resolution:
+  - genus
+
+strong_positive_features:
+  # Several leaflets spreading from one point at the tip of the stalk. No other card in this
+  # pack has it: maples are lobed, not divided; ash, walnut and Robinia are pinnate.
+  - feature: leaf.type
+    values:
+      - palmately_compound
+    note: >-
+      Five to seven separate leaflets radiating from a single point at the end of the leaf
+      stalk. A deeply lobed single blade is not this value.
+    provenance:
+      source: >-
+        Woodland Trust, horse chestnut (https://www.woodlandtrust.org.uk/trees-woods-and-wildlife/british-trees/a-z-of-british-trees/horse-chestnut/): "The palmate leaves comprise 5–7 pointed, toothed leaflets spreading from a central stem." Accessed 2026-11-12.
+      source_type: literature
+      region: Eastern Europe
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-12
+  - feature: fruit.type
+    values:
+      - spiny_husk_with_conker
+    note: >-
+      A green husk with spines, splitting to show a glossy red-brown nut. Sweet chestnut's
+      husk is densely bristly like a hedgehog and holds flattened nuts; do not record that
+      here.
+    provenance:
+      source: >-
+        Woodland Trust, horse chestnut (https://www.woodlandtrust.org.uk/trees-woods-and-wildlife/british-trees/a-z-of-british-trees/horse-chestnut/): "each flower develops into a glossy red-brown conker inside a spiky green husk, which falls in autumn." Accessed 2026-11-12.
+      source_type: literature
+      region: Eastern Europe
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-12
+
+supporting_features:
+  - feature: leaflet.shape
+    values:
+      - obovate_toothed
+    provenance:
+      source: >-
+        Trees and Shrubs Online, Aesculus hippocastanum (https://www.treesandshrubsonline.org/articles/aesculus/aesculus-hippocastanum/): "Leaves composed of five to seven leaflets, which are obovate"; "irregularly toothed, the terminal one the largest". Accessed 2026-11-12.
+      source_type: literature
+      region: Eastern Europe
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-12
+  - feature: leaf.arrangement
+    values:
+      - opposite
+    provenance:
+      source: "General botanical knowledge (AI-assisted review, 2026-11-12)"
+      source_type: inferred
+      region: Eastern Europe
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-12
+  # The winter twig: large sticky buds.
+  - feature: bud.surface
+    values:
+      - large_sticky_resinous
+    provenance:
+      source: >-
+        Woodland Trust, horse chestnut (https://www.woodlandtrust.org.uk/trees-woods-and-wildlife/british-trees/a-z-of-british-trees/horse-chestnut/): "Its twigs have large, sticky red buds."; Trees and Shrubs Online (https://www.treesandshrubsonline.org/articles/aesculus/aesculus-hippocastanum/): "winter buds very resinous". Accessed 2026-11-12.
+      source_type: literature
+      region: Eastern Europe
+      season: winter
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-12
+  # Bark supports and never names: sycamore maple and pine bark also break into plates.
+  - feature: bark.texture
+    values:
+      - scaly_plates
+    life_stage: old
+    provenance:
+      source: >-
+        Woodland Trust, horse chestnut (https://www.woodlandtrust.org.uk/trees-woods-and-wildlife/british-trees/a-z-of-british-trees/horse-chestnut/): "The bark is smooth and pinky-grey when young, which darkens and develops scaly plates with age." Accessed 2026-11-12.
+      source_type: literature
+      region: Eastern Europe
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-12
+
+contradictions:
+  - feature: leaf.type
+    values:
+      - broadleaf_simple
+      - compound_pinnate
+      - compound_pinnate_rounded_leaflets
+      - bipinnate
+    note: >-
+      A single blade, however deeply lobed, is a maple or plane; leaflets ranked along a
+      stalk are ash, walnut or Robinia.
+    provenance:
+      source: >-
+        Woodland Trust, horse chestnut (https://www.woodlandtrust.org.uk/trees-woods-and-wildlife/british-trees/a-z-of-british-trees/horse-chestnut/): "The palmate leaves comprise 5–7 pointed, toothed leaflets spreading from a central stem." Accessed 2026-11-12.
+      source_type: literature
+      region: Eastern Europe
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-12
+  - feature: leaf.arrangement
+    values:
+      - alternate
+    provenance:
+      source: "General botanical knowledge (AI-assisted review, 2026-11-12)"
+      source_type: inferred
+      region: Eastern Europe
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-12
+
+common_confusions:
+  - acer_pseudoplatanus
+
+required_for_high_confidence:
+  - leaf_or_fruit
+
+follow_up_evidence:
+  - leaf_upper_macro
+  - fruit_photo
+  - twig_photo
+
+provenance:
+  source: >-
+    Woodland Trust and Trees and Shrubs Online species accounts, quoted per rule; the domain
+    prompt has no horse chestnut section
+  source_type: literature
+  region: Eastern Europe
+  life_stage: any
+  season: any
+  confidence: medium
+  review_state: reviewed
+  reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+  last_reviewed: 2026-11-12
+
+placeholder_content: false

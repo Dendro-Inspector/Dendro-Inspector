@@ -532,6 +532,7 @@ class TestDiagnosticCombinationDeclarationIsValidated:
 #: is a reviewed, sourced decision, so the list is pinned rather than discovered.
 DECLARING = [
     "abies",
+    "betula",
     "larix",
     "picea",
     "pinus",
@@ -554,6 +555,12 @@ def _clean_reading(observation_id: str, feature: str, value: str) -> Observation
         visibility=Visibility.CLEAR,
         reliability=Reliability.HIGH,
         wood_surface=WoodSurface.PREPARED_END_GRAIN if requires_wood_surface(feature) else None,
+        # Foliage must say whose it is; a clean reading is foliage seen on this subject.
+        attachment=(
+            AttachmentStatus.CONFIRMED_ATTACHED
+            if feature.startswith(("leaf.", "leaflet."))
+            else None
+        ),
     )
 
 

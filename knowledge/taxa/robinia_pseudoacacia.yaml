@@ -196,6 +196,27 @@ diagnostic_combinations:
       review_state: reviewed
       reviewed_by: "Claude (AI-assisted botanical and implementation review)"
       last_reviewed: 2026-11-12
+  # The standing tree in leaf with no pod or spine in reach: rope-like bark under pinnate
+  # leaves of rounded, untoothed leaflets. Walnut and ash share a pinnate leaf and old
+  # furrowed bark, but their leaflets are pointed and toothed, which is a different reading
+  # (and the black walnut one is a contradiction below).
+  - requires:
+      bark.texture: deep_rope_like_furrows
+      leaf.type: compound_pinnate_rounded_leaflets
+    max_resolution: genus
+    note: >-
+      Rope-like bark with pinnate leaves of rounded, untoothed leaflets. Styphnolobium and
+      Gleditsia, which have no card here, are not excluded; a pod or the paired spines would
+      settle it.
+    provenance:
+      source: >-
+        Virginia Tech Dendrology, black locust (https://dendro.cnre.vt.edu/dendrology/syllabus/factsheet.cfm?ID=40): "Gray or light brown, thick and fibrous, heavily ridged and furrowed, resembles a woven rope."; "Leaflets are oval, one inch long, with entire margins." Accessed 2026-11-12. Naming policy, not a feature rule
+      source_type: literature
+      region: Eastern Europe
+      confidence: medium
+      review_state: reviewed
+      reviewed_by: "Claude (AI-assisted botanical and implementation review)"
+      last_reviewed: 2026-11-12
 
 contradictions:
   # Ash: opposite leaves.
