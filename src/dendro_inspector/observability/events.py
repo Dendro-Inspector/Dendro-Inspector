@@ -61,13 +61,20 @@ class ProviderCallRecord(Contract):
     #: Provider-reported accounting, summed over every attempt this call made, because
     #: `duration_ms` spans them all. `None` means the provider reported nothing, which is a
     #: different fact from zero and must not be rendered as one.
-    input_tokens: int | None = Field(default=None, ge=0)
+    input_tokens: int | None = Field(
+        default=None, ge=0, description="Total input tokens, including cache reads and writes."
+    )
     cached_input_tokens: int | None = Field(
         default=None,
         ge=0,
         description="Prompt tokens served from the provider's cache, where it says so.",
     )
     output_tokens: int | None = Field(default=None, ge=0)
+    cache_write_input_tokens: int | None = Field(
+        default=None,
+        ge=0,
+        description="Input tokens written to the provider's cache, already in input_tokens.",
+    )
     reasoning_output_tokens: int | None = Field(
         default=None,
         ge=0,

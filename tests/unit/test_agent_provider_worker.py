@@ -299,7 +299,7 @@ def test_bridge_cache_separates_model_routes() -> None:
             "anthropic",
             {
                 "usage": {
-                    "input_tokens": 120,
+                    "input_tokens": 40,
                     "cache_read_input_tokens": 80,
                     "output_tokens": 15,
                 },
@@ -307,6 +307,8 @@ def test_bridge_cache_separates_model_routes() -> None:
                     "input_tokens": 120,
                     "cached_input_tokens": 80,
                     "output_tokens": 15,
+                    "cache_write_input_tokens": None,
+                    "reasoning_output_tokens": None,
                 },
             },
         ),

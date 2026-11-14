@@ -27,8 +27,8 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-openai = ["openai>=1.40"]
-anthropic = ["anthropic>=0.34"]
+openai = ["openai>=3.51.0"]
+anthropic = ["anthropic>=2.8.0"]
 # Bounds the image bytes actually transmitted (GraphConfig.image_max_edge_px) and strips
 # embedded metadata (EXIF, XMP, comments) from them. Optional because the core has no
 # imaging dependency: without it, originals are sent as before, metadata included.

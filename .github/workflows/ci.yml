@@ -98,6 +98,19 @@ jobs:
           path: eval-report.json
           if-no-files-found: ignore
 
+  sdk-transport:
+    name: SDK image transport (offline)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install SDK extras
+        run: pip install -e ".[dev,images,openai,anthropic]"
+      - name: Verify real SDK requests against the local bridge handler
+        run: pytest tests/integration/test_sdk_wire_transport.py -q
+
   secrets:
     name: Secret scan
     runs-on: ubuntu-latest

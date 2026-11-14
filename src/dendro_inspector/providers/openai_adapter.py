@@ -20,8 +20,10 @@ from dendro_inspector.providers.base import (
     ProviderUnavailableError,
     ResponseT,
     StructuredOutputError,
+    cache_prefix_of,
     usage_sink_of,
 )
+from dendro_inspector.providers.image_files import ImageTransport, SDKImageFiles, image_transport
 
 DEFAULT_MODEL = "gpt-5.6"
 
@@ -37,7 +39,7 @@ def _accepts_metadata(client: Any) -> bool:
 
 
 class OpenAIProvider:
-    """Structured-output adapter for OpenAI-compatible multimodal chat models."""
+    """Native Responses/file transport, with an inline Chat Completions compatibility mode."""
 
     adapter_name = "openai"
 
@@ -46,12 +48,22 @@ class OpenAIProvider:
         *,
         model: str | None = None,
         api_key_env: str = "OPENAI_API_KEY",
-        timeout_seconds: float = 120.0,
+        timeout_seconds: float | None = None,
+        image_mode: ImageTransport | None = None,
+        image_files: SDKImageFiles | None = None,
     ) -> None:
         self.model = model or DEFAULT_MODEL
         self._api_key_env = api_key_env
-        self._timeout = timeout_seconds
+        if timeout_seconds is not None:
+            self._timeout = timeout_seconds
+        else:
+            try:
+                self._timeout = float(os.environ.get("OPENAI_TIMEOUT_SECONDS") or 120.0)
+            except ValueError:
+                self._timeout = 120.0
         self._client: Any | None = None
+        self._image_mode = image_transport("OPENAI_IMAGE_TRANSPORT", image_mode)
+        self._image_files = image_files if image_files is not None else SDKImageFiles("openai")
 
     def _ensure_client(self) -> Any:
         if self._client is not None:
@@ -73,11 +85,93 @@ class OpenAIProvider:
 
     @staticmethod
     def _image_part(image: ImageInput) -> dict[str, Any]:
-        encoded = base64.b64encode(image.read_bytes()).decode("ascii")
+        data, media_type = image.read_payload()
+        encoded = base64.b64encode(data).decode("ascii")
         return {
             "type": "image_url",
-            "image_url": {"url": f"data:{image.media_type};base64,{encoded}"},
+            "image_url": {"url": f"data:{media_type};base64,{encoded}"},
         }
+
+    async def aclose(self) -> None:
+        """Release this run's uploads before closing the SDK client."""
+        if self._client is not None:
+            await self._image_files.close(self._client)
+            close = getattr(self._client, "close", None)
+            if callable(close):
+                await close()
+
+    async def _file_response(
+        self,
+        client: Any,
+        *,
+        role: str,
+        prompt: str,
+        images: Sequence[ImageInput],
+        response_model: type[ResponseT],
+        metadata: Mapping[str, Any],
+    ) -> ResponseT:
+        responses = getattr(client, "responses", None)
+        if responses is None or not callable(getattr(responses, "create", None)):
+            raise ProviderUnavailableError(
+                "OpenAI file transport requires a current SDK with Responses API support; "
+                "set OPENAI_IMAGE_TRANSPORT=inline for a Chat Completions endpoint"
+            )
+        prefix_chars = cache_prefix_of(metadata, prompt)
+        content: list[dict[str, Any]] = []
+        if prefix_chars:
+            content.append({"type": "input_text", "text": prompt[:prefix_chars]})
+        for image in images:
+            file_id = await self._image_files.get(client, image)
+            content.extend(
+                [
+                    {"type": "input_text", "text": f"Image ID: {image.image_id}"},
+                    {"type": "input_image", "file_id": file_id, "detail": "auto"},
+                ]
+            )
+        inputs: list[dict[str, Any]] = []
+        if content:
+            inputs.append({"role": "user", "content": content})
+        if prompt[prefix_chars:]:
+            inputs.append(
+                {"role": "user", "content": [{"type": "input_text", "text": prompt[prefix_chars:]}]}
+            )
+        request: dict[str, Any] = {
+            "model": self.model,
+            "input": inputs,
+            "store": False,
+            "text": {
+                "format": {
+                    "type": "json_schema",
+                    "name": response_model.__name__,
+                    "schema": response_model.model_json_schema(),
+                    "strict": False,
+                }
+            },
+        }
+        if _accepts_metadata(client):
+            request["metadata"] = {"node": str(metadata.get("node", "")), "logical_role": role}
+        response = await responses.create(**request)
+        sink = usage_sink_of(metadata)
+        usage = getattr(response, "usage", None)
+        if sink is not None and usage is not None:
+            details = getattr(usage, "input_tokens_details", None)
+            sink.record(
+                input_tokens=getattr(usage, "input_tokens", None),
+                cached_input_tokens=getattr(details, "cached_tokens", None),
+                cache_write_input_tokens=getattr(details, "cache_write_tokens", None),
+                output_tokens=getattr(usage, "output_tokens", None),
+                reasoning_output_tokens=getattr(
+                    getattr(usage, "output_tokens_details", None), "reasoning_tokens", None
+                ),
+            )
+        if getattr(response, "status", None) == "incomplete":
+            reason = getattr(getattr(response, "incomplete_details", None), "reason", "unknown")
+            raise StructuredOutputError(f"openai returned incomplete output: {reason}")
+        try:
+            return response_model.model_validate_json(response.output_text)
+        except ValidationError as exc:
+            msg = f"openai returned unparseable output for {response_model.__name__}: {exc}"
+            raise StructuredOutputError(msg) from exc
 
     async def generate_structured(
         self,
@@ -89,12 +183,36 @@ class OpenAIProvider:
         metadata: Mapping[str, Any],
     ) -> ResponseT:
         client = self._ensure_client()
-        content: list[dict[str, Any]] = [{"type": "text", "text": prompt}]
-        content.extend(self._image_part(image) for image in images)
+        if self._image_mode == "files":
+            return await self._file_response(
+                client,
+                role=role,
+                prompt=prompt,
+                images=images,
+                response_model=response_model,
+                metadata=metadata,
+            )
+        prefix_chars = cache_prefix_of(metadata, prompt)
+        content: list[dict[str, Any]] = []
+        if prefix_chars:
+            content.append({"type": "text", "text": prompt[:prefix_chars]})
+        for image in images:
+            content.append({"type": "text", "text": f"Image ID: {image.image_id}"})
+            content.append(self._image_part(image))
+        # A separate stable message leaves a reusable cache boundary before the node's
+        # changing instructions. Image bytes used to follow those instructions, so their
+        # prefix differed on every node. Output-schema changes can still prevent a hit.
+        messages: list[dict[str, Any]] = []
+        if content:
+            messages.append({"role": "user", "content": content})
+        if prompt[prefix_chars:]:
+            messages.append(
+                {"role": "user", "content": [{"type": "text", "text": prompt[prefix_chars:]}]}
+            )
 
         request: dict[str, Any] = {
             "model": self.model,
-            "messages": [{"role": "user", "content": content}],
+            "messages": messages,
             "response_format": {
                 "type": "json_schema",
                 "json_schema": {
@@ -115,6 +233,9 @@ class OpenAIProvider:
                 input_tokens=getattr(reported, "prompt_tokens", None),
                 cached_input_tokens=getattr(details, "cached_tokens", None),
                 output_tokens=getattr(reported, "completion_tokens", None),
+                reasoning_output_tokens=getattr(
+                    getattr(reported, "completion_tokens_details", None), "reasoning_tokens", None
+                ),
             )
         raw = response.choices[0].message.content or ""
         try:

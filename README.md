@@ -228,6 +228,32 @@ NVIDIA/OpenRouter adapters use direct HTTPS, and Ollama needs no key. Provider-s
 schema translation never relaxes the Pydantic contract used to validate the response. See
 [docs/model-roles.md](docs/model-roles.md).
 
+OpenAI, `anthropic-sdk` and the `anthropic` bridge adapter default to Files API uploads:
+prepared image bytes are uploaded once per provider/credential scope in a run, including across concurrent reviewers
+and different models. Calls reuse file IDs. Run teardown attempts deletion after success,
+failure or cancellation; each upload also expires after one hour if cleanup cannot complete.
+Standalone adapter users must call `await provider.aclose()` when finished. File IDs are
+kept only in memory and never reused across runs. Install or upgrade the optional SDK extras
+with `pip install -U '.[openai,anthropic,images]'` (OpenAI 3.51.0+ and Anthropic 2.8.0+).
+The `images` extra provides the existing resize/rotation/metadata stripping;
+without Pillow, originals may include embedded metadata, as the warning reports.
+
+OpenAI uses Responses with `store=False` and keeps shared policy and labelled images in a
+leading message before changing node instructions. Anthropic keeps native Messages and marks
+the shared image/policy prefix for caching; changing a native output schema can invalidate it.
+File references reduce repeated upload bytes; image tokens still depend on visual processing
+and caching. To use inline base64 instead, set `OPENAI_IMAGE_TRANSPORT=inline` or
+`ANTHROPIC_IMAGE_TRANSPORT=inline`. OpenAI inline mode uses Chat Completions for compatible
+endpoints. Older bridge servers also need inline mode. The bridge accepts Responses,
+native Anthropic schemas and prompt schemas, and retains its local request evidence files
+after upload references expire or are deleted. See
+[the bridge guide](docs/agent-as-provider.md).
+
+Trace `input_tokens` includes cache reads and writes, with `cached_input_tokens` and
+`cache_write_input_tokens` recording those subsets where reported. A missing counter is `null`,
+not a measured zero. Older Anthropic traces omitted cache-write tokens from the input total;
+do not compare their totals directly with new runs.
+
 ## The domain prompt
 
 The dendrology system prompt at `prompts/domain/system-prompt.md` is an **opaque,

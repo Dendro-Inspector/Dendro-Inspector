@@ -21,6 +21,9 @@ Usage
 
 Endpoints
 ---------
+    POST /v1/files, DELETE /v1/files/<id>          Temporary OpenAI / Anthropic image uploads
+    POST /v1/responses                           OpenAI Responses with file references
+    POST /v1/messages                            Anthropic Messages with files or inline images
     POST /v1/chat/completions                     OpenAI-compatible (NVIDIA NIM, OpenRouter)
     POST /api/chat                                Ollama
     POST /v1beta/models/<model>:generateContent   Gemini
@@ -41,13 +44,24 @@ import hashlib
 import json
 import re
 import time
+import uuid
+from email import policy
+from email.parser import BytesParser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from threading import RLock
 from typing import Any
 
 from dendro_inspector.observability.upstream_usage import upstream_usage
+from dendro_inspector.providers.base import (
+    MAX_IMAGE_FILE_BYTES,
+    InvalidImageError,
+    _image_media_type,
+)
 
 POLL_SECONDS = 0.5
+MAX_UPLOAD_REQUEST_BYTES = MAX_IMAGE_FILE_BYTES + 64 * 1024
+MAX_FILE_STORE_BYTES = 256 * 1024 * 1024
 
 #: Constructs Pydantic emits that a host's structured-output dialect cannot accept. Listed
 #: independently of `schema_compat`'s own allow-list on purpose: importing that module's
@@ -96,6 +110,10 @@ class State:
         self.wait_timeout = wait_timeout
         self.counter = 0
         self.fault_calls: dict[str, int] = {}
+        # File references are transient and credential-scoped. Request evidence on disk
+        # retains the bridge's existing lifecycle, independently of these upload handles.
+        self.files: dict[str, tuple[str, str, bytes, int, int]] = {}
+        self.lock = RLock()
         for directory in (
             self.root,
             self.pending,
@@ -107,8 +125,16 @@ class State:
             directory.mkdir(parents=True, exist_ok=True)
 
     def next_id(self) -> int:
-        self.counter += 1
-        return self.counter
+        with self.lock:
+            self.counter += 1
+            return self.counter
+
+    def expire_files(self) -> None:
+        with self.lock:
+            now = time.time()
+            for file_id, entry in tuple(self.files.items()):
+                if entry[4] <= now:
+                    del self.files[file_id]
 
     def record(self, request_id: int, **fields: Any) -> None:
         with self.log.open("a", encoding="utf-8") as handle:
@@ -213,6 +239,7 @@ REJECTORS = {
     "ollama": reject_ollama,
     "openai": reject_openai,
     "anthropic": reject_anthropic,
+    "openai-responses": reject_anthropic,
 }
 
 
@@ -348,6 +375,15 @@ class Handler(BaseHTTPRequestHandler):
 
     # The stdlib spells its request hooks this way.
     def do_POST(self) -> None:
+        try:
+            path, _ = self._split_fault(self.path)
+        except DialectRejectionError as exc:
+            self.close_connection = True
+            self._send(exc.status, exc.body)
+            return
+        if path in {"/files", "/v1/files"}:
+            self._upload_file()
+            return
         raw = self.rfile.read(int(self.headers.get("Content-Length") or 0))
         request_id = self.state.next_id()
         started = time.monotonic()
@@ -396,6 +432,159 @@ class Handler(BaseHTTPRequestHandler):
             print(f"[bridge] req-{request_id:03d} bridge error: {exc!r}", flush=True)
             self._send(500, {"error": {"message": f"bridge fault: {exc!r}"}})
 
+    def _file_scope(self) -> str:
+        """Check native SDK headers; never retain the placeholder credential itself."""
+        anthropic = bool(self.headers.get("anthropic-version"))
+        if anthropic:
+            self._anthropic_headers()
+        else:
+            self._require_header("Authorization", "Bearer ")
+        bearer = self.headers.get("authorization") or ""
+        key = bearer[7:].strip() if bearer.startswith("Bearer ") else ""
+        key = key or (self.headers.get("x-api-key") or "").strip()
+        return hashlib.sha256(f"{anthropic}:{key}".encode()).hexdigest()
+
+    @staticmethod
+    def _file_error(status: int, message: str) -> DialectRejectionError:
+        return DialectRejectionError(
+            status,
+            {"type": "error", "error": {"type": "invalid_request_error", "message": message}},
+            message,
+        )
+
+    def _upload_file(self) -> None:
+        try:
+            scope = self._file_scope()
+            length = int(self.headers.get("Content-Length") or 0)
+            if not 0 < length <= MAX_UPLOAD_REQUEST_BYTES:
+                raise self._file_error(413, "image upload exceeds the bridge request limit")
+            content_type = self.headers.get("Content-Type", "")
+            raw = self.rfile.read(length)
+            message = BytesParser(policy=policy.default).parsebytes(
+                f"Content-Type: {content_type}\r\nMIME-Version: 1.0\r\n\r\n".encode() + raw
+            )
+            if message.get_content_type() != "multipart/form-data" or not message.is_multipart():
+                raise self._file_error(400, "file upload requires multipart/form-data")
+            fields: dict[str, bytes] = {}
+            media_type = ""
+            for part in message.iter_parts():
+                name = part.get_param("name", header="content-disposition")
+                if not isinstance(name, str) or name in fields:
+                    raise self._file_error(400, "invalid or duplicate upload field")
+                payload = part.get_payload(decode=True)
+                if not isinstance(payload, bytes):
+                    raise self._file_error(400, "invalid upload field")
+                fields[name] = payload
+                if name == "file":
+                    media_type = part.get_content_type()
+            data = fields.get("file", b"")
+            if not data or len(data) > MAX_IMAGE_FILE_BYTES:
+                raise self._file_error(413, "invalid image file size")
+            if _image_media_type(data[:12]) != media_type:
+                raise self._file_error(400, "image MIME type does not match its bytes")
+            anthropic = bool(self.headers.get("anthropic-version"))
+            if anthropic:
+                ttl = int(fields.get("expires_in_seconds", b"0"))
+                maximum = 7776000
+            else:
+                if fields.get("purpose") != b"vision":
+                    raise self._file_error(400, "bridge image uploads require purpose=vision")
+                if fields.get("expires_after[anchor]") != b"created_at":
+                    raise self._file_error(400, "bridge image uploads require created_at expiry")
+                ttl = int(fields.get("expires_after[seconds]", b"0"))
+                maximum = 2592000
+            if not 3600 <= ttl <= maximum:
+                raise self._file_error(400, "image upload requires a valid expiry")
+            with self.state.lock:
+                self.state.expire_files()
+                if (
+                    sum(len(entry[2]) for entry in self.state.files.values()) + len(data)
+                    > MAX_FILE_STORE_BYTES
+                ):
+                    raise self._file_error(413, "bridge temporary image storage is full")
+                file_id = "file-" + uuid.uuid4().hex
+                created = int(time.time())
+                self.state.files[file_id] = (scope, media_type, data, created, created + ttl)
+            filename = f"image.{media_type.split('/', 1)[1]}"
+            if anthropic:
+                result = {
+                    "id": file_id,
+                    "type": "file",
+                    "filename": filename,
+                    "mime_type": media_type,
+                    "size_bytes": len(data),
+                    "downloadable": False,
+                    "created_at": self._timestamp(created),
+                    "expires_at": self._timestamp(created + ttl),
+                }
+            else:
+                result = {
+                    "id": file_id,
+                    "object": "file",
+                    "filename": filename,
+                    "bytes": len(data),
+                    "created_at": created,
+                    "expires_at": created + ttl,
+                    "purpose": "vision",
+                    "status": "processed",
+                }
+            self._send(200, result)
+        except (ValueError, InvalidImageError):
+            self.close_connection = True
+            self._send(400, {"error": {"message": "invalid image upload"}})
+        except DialectRejectionError as exc:
+            self.close_connection = True
+            self._send(exc.status, exc.body)
+
+    @staticmethod
+    def _timestamp(value: int) -> str:
+        return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(value))
+
+    def _file_image(self, file_id: str) -> tuple[str, bytes]:
+        scope = self._file_scope()
+        with self.state.lock:
+            self.state.expire_files()
+            entry = self.state.files.get(file_id)
+            if entry is None or entry[0] != scope:
+                raise self._file_error(404, "image file is unavailable")
+            return entry[1], entry[2]
+
+    def do_DELETE(self) -> None:
+        try:
+            path, _ = self._split_fault(self.path)
+            match = re.fullmatch(r"/(?:v1/)?files/(file-[a-f0-9]{32})", path)
+            if match is None:
+                raise self._file_error(404, "unknown file route")
+            file_id = match.group(1)
+            with self.state.lock:
+                self._file_image(file_id)
+                del self.state.files[file_id]
+            result = (
+                {"id": file_id, "type": "file_deleted"}
+                if self.headers.get("anthropic-version")
+                else {"id": file_id, "object": "file", "deleted": True}
+            )
+            self._send(200, result)
+        except DialectRejectionError as exc:
+            self._send(exc.status, exc.body)
+
+    def _anthropic_headers(self) -> None:
+        bearer = self.headers.get("authorization") or ""
+        if not (bearer.startswith("Bearer ") and bearer[7:].strip()):
+            self._require_header("x-api-key", "")
+        self._require_header("anthropic-version", "")
+
+    @staticmethod
+    def _content(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Keep every message: the shared image prefix and changing task are separate."""
+        result = []
+        for message in messages:
+            content = message["content"]
+            result.extend(
+                [{"type": "text", "text": content}] if isinstance(content, str) else content
+            )
+        return result
+
     @staticmethod
     def _split_fault(path: str) -> tuple[str, str]:
         match = re.match(r"^/fault/([a-z-]+)(/.*)$", path)
@@ -412,10 +601,32 @@ class Handler(BaseHTTPRequestHandler):
 
     def _parse(
         self, path: str, body: dict[str, Any]
-    ) -> tuple[str, str, list[tuple[str, str]], dict[str, Any], str, str]:
+    ) -> tuple[str, str, list[tuple[str, str | bytes]], dict[str, Any], str, str]:
+        if path.endswith("/responses"):
+            self._require_header("Authorization", "Bearer ")
+            content = self._content(body["input"])
+            prompt = "".join(
+                part["text"] for part in content if part.get("type") in {"text", "input_text"}
+            )
+            images: list[tuple[str, str | bytes]] = [
+                self._file_image(part["file_id"])
+                if part.get("file_id")
+                else self._split_data_uri(part["image_url"])
+                for part in content
+                if part.get("type") == "input_image"
+            ]
+            spec = body["text"]["format"]
+            return (
+                "openai-responses",
+                prompt,
+                images,
+                spec["schema"],
+                body.get("model", "?"),
+                spec["name"],
+            )
         if path.endswith("/chat/completions"):
             self._require_header("Authorization", "Bearer ")
-            content = body["messages"][0]["content"]
+            content = self._content(body["messages"])
             prompt = "".join(part["text"] for part in content if part.get("type") == "text")
             images = [
                 self._split_data_uri(part["image_url"]["url"])
@@ -433,10 +644,7 @@ class Handler(BaseHTTPRequestHandler):
         if path.endswith("/v1/messages"):
             # SDK releases on API version 2026-10-21 send the key as a bearer token; older
             # ones use x-api-key. The real host accepts both, so the bridge does too.
-            bearer = self.headers.get("authorization") or ""
-            if not (bearer.startswith("Bearer ") and bearer[7:].strip()):
-                self._require_header("x-api-key", "")
-            self._require_header("anthropic-version", "")
+            self._anthropic_headers()
             if not body.get("max_tokens"):
                 raise DialectRejectionError(
                     400,
@@ -449,18 +657,23 @@ class Handler(BaseHTTPRequestHandler):
                     },
                     "anthropic requires max_tokens",
                 )
-            content = body["messages"][0]["content"]
+            content = self._content(body["messages"])
             prompt = "".join(part["text"] for part in content if part.get("type") == "text")
             images = [
-                (part["source"]["media_type"], part["source"]["data"])
+                self._file_image(part["source"]["file_id"])
+                if part["source"]["type"] == "file"
+                else (part["source"]["media_type"], part["source"]["data"])
                 for part in content
                 if part.get("type") == "image"
             ]
-            # Unlike the other three, this adapter carries no structured-output field: it
-            # appends the raw Pydantic schema to the prompt as prose. Recover it from the
-            # tail so the pending request still shows the contract that was actually asked
-            # for, and so a missing one is a loud rejection rather than a silent `{}`.
-            schema = self._trailing_schema(prompt)
+            # Accept native Messages schemas as well as the bridge adapter's prompt
+            # contract. A missing schema is a rejection, never a silent empty contract.
+            native = body.get("output_config", {}).get("format", {})
+            schema = (
+                native["schema"]
+                if native.get("type") == "json_schema"
+                else self._trailing_schema(prompt)
+            )
             return (
                 "anthropic",
                 prompt,
@@ -574,19 +787,30 @@ class Handler(BaseHTTPRequestHandler):
             )
         return match.group(1), match.group(2)
 
-    def _decode_images(self, raw: list[tuple[str, str]], request_id: int) -> list[dict[str, Any]]:
+    def _decode_images(
+        self, raw: list[tuple[str, str | bytes]], request_id: int
+    ) -> list[dict[str, Any]]:
         """Persist every image the adapter actually transmitted, and fingerprint it."""
         out: list[dict[str, Any]] = []
         for index, (media_type, payload) in enumerate(raw, start=1):
             try:
-                data = base64.b64decode(payload, validate=True)
+                data = (
+                    payload
+                    if isinstance(payload, bytes)
+                    else base64.b64decode(payload, validate=True)
+                )
             except (binascii.Error, ValueError) as exc:
                 raise DialectRejectionError(
                     400,
                     {"error": {"message": f"image {index} is not valid base64: {exc}"}},
                     "image payload was not decodable base64",
                 ) from exc
-            suffix = {"image/jpeg": ".jpg", "image/png": ".png"}.get(media_type, ".bin")
+            suffix = {
+                "image/jpeg": ".jpg",
+                "image/png": ".png",
+                "image/webp": ".webp",
+                "image/gif": ".gif",
+            }.get(media_type, ".bin")
             path = self.state.images / f"req-{request_id:03d}-img{index}{suffix}"
             path.write_bytes(data)
             out.append(
@@ -771,6 +995,42 @@ class Handler(BaseHTTPRequestHandler):
         text: str,
         usage: dict[str, int] | None = None,
     ) -> dict[str, Any]:
+        if dialect == "openai-responses":
+            response: dict[str, Any] = {
+                "id": "resp_bridge",
+                "object": "response",
+                "created_at": int(time.time()),
+                "model": model,
+                "status": "completed" if text else "incomplete",
+                "store": False,
+                "error": None,
+                "incomplete_details": None if text else {"reason": "max_output_tokens"},
+                "output": [
+                    {
+                        "id": "msg_bridge",
+                        "type": "message",
+                        "role": "assistant",
+                        "status": "completed",
+                        "content": [{"type": "output_text", "text": text, "annotations": []}],
+                    }
+                ]
+                if text
+                else [],
+                "usage": None,
+            }
+            if usage is not None:
+                response["usage"] = {
+                    "input_tokens": usage.get("input_tokens"),
+                    "output_tokens": usage.get("output_tokens"),
+                    "input_tokens_details": {
+                        "cached_tokens": usage.get("cached_input_tokens"),
+                        "cache_write_tokens": usage.get("cache_write_input_tokens"),
+                    },
+                    "output_tokens_details": {
+                        "reasoning_tokens": usage.get("reasoning_output_tokens")
+                    },
+                }
+            return response
         if dialect == "openai":
             envelope: dict[str, Any] = {
                 "id": "chatcmpl-bridge",
@@ -814,15 +1074,30 @@ class Handler(BaseHTTPRequestHandler):
                     usage.get("cached_input_tokens") if usage is not None else None
                 ),
                 "output_tokens": usage.get("output_tokens") if usage is not None else None,
+                "cache_write_input_tokens": usage.get("cache_write_input_tokens")
+                if usage is not None
+                else None,
+                "reasoning_output_tokens": usage.get("reasoning_output_tokens")
+                if usage is not None
+                else None,
             }
             anthropic_usage = {
                 # The Anthropic SDK requires these two integers. `dendro_usage` below
                 # carries the authoritative nullable bridge counters for the adapter.
-                "input_tokens": bridge_usage["input_tokens"] or 0,
+                "input_tokens": max(
+                    0,
+                    (bridge_usage["input_tokens"] or 0)
+                    - (bridge_usage["cached_input_tokens"] or 0)
+                    - (bridge_usage["cache_write_input_tokens"] or 0),
+                ),
                 "output_tokens": bridge_usage["output_tokens"] or 0,
             }
             if bridge_usage["cached_input_tokens"] is not None:
                 anthropic_usage["cache_read_input_tokens"] = bridge_usage["cached_input_tokens"]
+            if bridge_usage["cache_write_input_tokens"] is not None:
+                anthropic_usage["cache_creation_input_tokens"] = bridge_usage[
+                    "cache_write_input_tokens"
+                ]
             return {
                 "id": "msg_bridge",
                 "type": "message",
@@ -853,6 +1128,11 @@ class Handler(BaseHTTPRequestHandler):
         return envelope
 
 
+class BridgeServer(ThreadingHTTPServer):
+    def service_actions(self) -> None:
+        self.RequestHandlerClass.state.expire_files()
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawTextHelpFormatter
@@ -873,7 +1153,7 @@ def main() -> None:
     args = parser.parse_args()
 
     Handler.state = State(args.state_dir.resolve(), args.wait_timeout)
-    server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
+    server = BridgeServer(("127.0.0.1", args.port), Handler)
     print(f"[bridge] listening on http://127.0.0.1:{args.port}", flush=True)
     print(f"[bridge] state    {Handler.state.root}", flush=True)
     print(f"[bridge] faults   {', '.join(FAULTS)} (prefix a path with /fault/<name>)", flush=True)

@@ -12,6 +12,23 @@ get entries.
 
 ### Added
 
+- **Current SDKs and bridge image uploads.** Optional extras now require OpenAI 3.51.0+
+  and Anthropic 2.8.0+. The local bridge accepts temporary multipart image uploads,
+  credential-scoped file references, expiry and deletion, OpenAI Responses and native
+  Anthropic output schemas. The `anthropic` adapter reuses uploads across a run too;
+  set `ANTHROPIC_IMAGE_TRANSPORT=inline` when using an older bridge. OpenAI bridge runs
+  are available through the launcher, with `OPENAI_TIMEOUT_SECONDS` for long worker calls.
+  Bridge parsing preserves changing instructions in later messages, and its usage
+  envelopes carry cache writes without double-counting cached input. Existing local
+  request evidence remains on disk after a temporary upload is deleted.
+- **Upload SDK images once per run.** OpenAI and the direct Anthropic SDK adapter now
+  upload prepared images through their Files APIs and reuse file IDs across calls and
+  concurrent reviewers sharing credentials. OpenAI uses Responses with `store=False`;
+  native structured output and Pydantic validation remain. Normal teardown deletes uploads
+  on success, failure or cancellation, and each upload requests a one-hour expiry as a
+  fallback. Near-expiry references are refreshed. Current SDKs with expiry support are
+  required; `OPENAI_IMAGE_TRANSPORT=inline` and `ANTHROPIC_IMAGE_TRANSPORT=inline` retain
+  inline image transport, including OpenAI-compatible Chat Completions endpoints.
 - **Batch runs can read photographs from the results volume.** The batch worker accepts
   `DATASET_DIR`, a directory under `_datasets/` on the results volume holding
   `metadata.jsonl` and the images, pinned by the SHA-256 of that index, so a private photo
@@ -231,6 +248,16 @@ get entries.
   cones. See `docs/reviews/EVIDENCE-COVERAGE-2026-11-11.md`.
 
 ### Fixed
+
+- **SDK image transport and accounting.** OpenAI places shared policy and labelled images
+  before changing node instructions so the image prefix can be reused when the model and
+  output format permit caching. OpenAI and the direct Anthropic SDK adapter detect the
+  actual JPEG, PNG, GIF or WebP MIME type from image bytes before preparing and sending
+  them; a PNG with a JPEG filename or MIME hint is no longer sent as mislabeled JPEG or
+  needlessly converted to it. The CLI infers MIME hints from filename extensions.
+  Anthropic input-token totals now include cache reads and writes, with writes preserved
+  separately as `cache_write_input_tokens`, including across repair attempts. Older
+  Anthropic trace totals omit these categories and are not directly comparable.
 
 - `unresolved`, `not_resolved`, `unreadable`, `not_seen` and `none_seen` are now treated as
   failed readings, not as readings that disagree with a card.

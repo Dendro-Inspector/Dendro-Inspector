@@ -93,7 +93,7 @@ def test_images_fall_inside_the_cached_prefix(tmp_path):
     photo = tmp_path / "log.jpg"
     photo.write_bytes(b"\xff\xd8\xff\xdbfake-jpeg-bytes")
     client = _RecordingClient()
-    provider = AnthropicProvider(model="test")
+    provider = AnthropicProvider(model="test", image_mode="inline")
     provider._client = client
     asyncio.run(
         provider.generate_structured(

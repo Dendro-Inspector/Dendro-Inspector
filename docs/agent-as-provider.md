@@ -158,6 +158,7 @@ dialect's schema translation and envelope. To re-author a call, move its file ou
 | `gemini` | `GEMINI_TIMEOUT_SECONDS`, raised to 3600 by the launcher | authoring answers live |
 | `ollama` | `OLLAMA_TIMEOUT_SECONDS`, raised to 3600 by the launcher | authoring answers live, no credential at all |
 | `anthropic` | `ANTHROPIC_TIMEOUT_SECONDS`, raised to 3600 by the launcher | authoring answers live |
+| `openai` | `OPENAI_TIMEOUT_SECONDS`, raised to 3600 by the launcher | authoring answers live through Responses |
 | `nvidia`, `openrouter` | 300 s, fixed — the registry does not pass the constructor argument | replaying cached answers |
 
 Use `anthropic` or `gemini` for a live factory run. The bridge still routes by
@@ -166,14 +167,22 @@ In the total-system role-split run, a Cline reviewer exceeded the OpenRouter ada
 300-second client timeout, while the same graph completed through the Anthropic dialect's
 3600-second timeout.
 
-The `anthropic` dialect needs the optional extra: `pip install '.[anthropic]'`. It is the only
-dialect whose adapter is an SDK rather than a raw `urlopen`, so two behaviours differ. The SDK
+The `anthropic` and `openai` dialects need their optional extras:
+`pip install '.[anthropic,openai]'` (Anthropic 2.8.0+, OpenAI 3.51.0+). They are the only
+dialects whose adapters are SDKs rather than a raw `urlopen`, so two behaviours differ. The SDK
 retries a timed-out request twice on its own, which against a socket waiting for a human means
 three pending requests for one answer file — the raised timeout, not a retry setting, is what
-prevents that, because the SDK reads no environment variable for retry count. And the base URL
-is redirected through `ANTHROPIC_BASE_URL`, which the SDK reads itself, so `-Fault` cannot be
-expressed on this dialect: the SDK appends `/v1/messages` to the base URL and a path prefix
-would not survive.
+prevents that, because the SDKs read no environment variable for retry count. And the base URL
+is redirected through `ANTHROPIC_BASE_URL` / `OPENAI_BASE_URL`, which the SDKs read themselves;
+they append `/v1/messages`, `/responses` and `/files` to it, so a `-Fault` prefix sits in the
+base path.
+
+Both SDK dialects upload each prepared image once to the bridge's `/v1/files`, send file
+references afterwards, and delete the upload at teardown. The bridge holds uploads in memory
+only, scoped to the credential that sent them, requires an expiry of at least an hour, and
+caps the store at 256 MB; the decoded image evidence under `.bridge/images/` is written per
+request as before. Set `OPENAI_IMAGE_TRANSPORT=inline` or `ANTHROPIC_IMAGE_TRANSPORT=inline`
+to send base64 blocks instead.
 
 ## The bridge is a strict vendor
 

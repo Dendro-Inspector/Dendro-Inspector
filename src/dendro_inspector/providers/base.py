@@ -12,7 +12,7 @@ from __future__ import annotations
 import io
 import time
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Protocol, TypeVar
@@ -76,6 +76,7 @@ class UsageSink:
 
     input_tokens: int | None = None
     cached_input_tokens: int | None = None
+    cache_write_input_tokens: int | None = None
     output_tokens: int | None = None
     #: The share of ``output_tokens`` spent on reasoning the caller never sees. Kept beside
     #: the total rather than instead of it: billing wants one number, and the question of
@@ -88,6 +89,7 @@ class UsageSink:
         *,
         input_tokens: int | None = None,
         cached_input_tokens: int | None = None,
+        cache_write_input_tokens: int | None = None,
         output_tokens: int | None = None,
         reasoning_output_tokens: int | None = None,
         reported_cost_usd: float | None = None,
@@ -101,6 +103,9 @@ class UsageSink:
         """
         self.input_tokens = _accumulate(self.input_tokens, input_tokens)
         self.cached_input_tokens = _accumulate(self.cached_input_tokens, cached_input_tokens)
+        self.cache_write_input_tokens = _accumulate(
+            self.cache_write_input_tokens, cache_write_input_tokens
+        )
         self.output_tokens = _accumulate(self.output_tokens, output_tokens)
         self.reasoning_output_tokens = _accumulate(
             self.reasoning_output_tokens, reasoning_output_tokens
@@ -112,6 +117,22 @@ def usage_sink_of(metadata: Mapping[str, Any]) -> UsageSink | None:
     """Read the call's usage sink, or ``None`` when the caller supplied none."""
     sink = metadata.get(USAGE_SINK)
     return sink if isinstance(sink, UsageSink) else None
+
+
+def record_anthropic_usage(usage: Any, sink: UsageSink | None) -> None:
+    """Normalize Claude's disjoint input counters into a total and its cache subsets."""
+    if sink is None or usage is None:
+        return
+    uncached = getattr(usage, "input_tokens", None)
+    reads = getattr(usage, "cache_read_input_tokens", None)
+    writes = getattr(usage, "cache_creation_input_tokens", None)
+    counts = [count for count in (uncached, reads, writes) if count is not None]
+    sink.record(
+        input_tokens=sum(counts) if counts else None,
+        cached_input_tokens=reads,
+        cache_write_input_tokens=writes,
+        output_tokens=getattr(usage, "output_tokens", None),
+    )
 
 
 def cache_prefix_of(metadata: Mapping[str, Any], prompt: str) -> int:
@@ -138,6 +159,23 @@ class StructuredOutputError(ProviderError):
 
 class ImageTooLargeError(ProviderError):
     """An image file exceeds the size any provider request may carry."""
+
+
+class InvalidImageError(ProviderError):
+    """An SDK image input is not a supported raster image."""
+
+
+def _image_media_type(header: bytes) -> str:
+    """Identify SDK-supported formats independently of filename and caller MIME hints."""
+    if header.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg"
+    if header.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "image/png"
+    if header.startswith((b"GIF87a", b"GIF89a")):
+        return "image/gif"
+    if header.startswith(b"RIFF") and header[8:12] == b"WEBP":
+        return "image/webp"
+    raise InvalidImageError("SDK image inputs must contain JPEG, PNG, GIF or WebP image bytes")
 
 
 #: Formats worth re-encoding. Anything else is passed through untouched rather than
@@ -255,6 +293,13 @@ class ImageInput:
     path: Path
     media_type: str = "image/jpeg"
     max_edge_px: int | None = None
+
+    def read_payload(self) -> tuple[bytes, str]:
+        """Prepare the actual format and return bytes with their matching MIME type."""
+        with self.path.open("rb") as handle:
+            media_type = _image_media_type(handle.read(12))
+        data = replace(self, media_type=media_type).read_bytes()
+        return data, _image_media_type(data[:12])
 
     def read_bytes(self) -> bytes:
         pillow_format = _RESIZABLE_MEDIA_TYPES.get(self.media_type)
@@ -511,6 +556,7 @@ async def request_structured(
                     duration_ms=(time.perf_counter() - started) * 1000.0,
                     input_tokens=usage.input_tokens,
                     cached_input_tokens=usage.cached_input_tokens,
+                    cache_write_input_tokens=usage.cache_write_input_tokens,
                     output_tokens=usage.output_tokens,
                     reasoning_output_tokens=usage.reasoning_output_tokens,
                     reported_cost_usd=usage.reported_cost_usd,
@@ -532,6 +578,7 @@ async def request_structured(
                 duration_ms=(time.perf_counter() - started) * 1000.0,
                 input_tokens=usage.input_tokens,
                 cached_input_tokens=usage.cached_input_tokens,
+                cache_write_input_tokens=usage.cache_write_input_tokens,
                 output_tokens=usage.output_tokens,
                 reasoning_output_tokens=usage.reasoning_output_tokens,
                 reported_cost_usd=usage.reported_cost_usd,

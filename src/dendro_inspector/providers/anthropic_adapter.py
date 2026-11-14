@@ -21,8 +21,10 @@ from dendro_inspector.providers.base import (
     ResponseT,
     StructuredOutputError,
     cache_prefix_of,
+    record_anthropic_usage,
     usage_sink_of,
 )
+from dendro_inspector.providers.image_files import ImageTransport, SDKImageFiles, image_transport
 
 DEFAULT_MODEL = "claude-opus-5"
 MAX_TOKENS = 4096
@@ -56,11 +58,15 @@ class AnthropicProvider:
         model: str | None = None,
         api_key_env: str = "ANTHROPIC_API_KEY",
         timeout_seconds: float | None = None,
+        image_mode: ImageTransport | None = None,
+        image_files: SDKImageFiles | None = None,
     ) -> None:
         self.model = model or DEFAULT_MODEL
         self._api_key_env = api_key_env
         self._timeout = timeout_seconds if timeout_seconds is not None else _default_timeout()
         self._client: Any | None = None
+        self._image_mode = image_transport("ANTHROPIC_IMAGE_TRANSPORT", image_mode)
+        self._image_files = image_files if image_files is not None else SDKImageFiles("anthropic")
 
     def _ensure_client(self) -> Any:
         if self._client is not None:
@@ -82,11 +88,20 @@ class AnthropicProvider:
 
     @staticmethod
     def _image_block(image: ImageInput) -> dict[str, Any]:
-        encoded = base64.b64encode(image.read_bytes()).decode("ascii")
+        data, media_type = image.read_payload()
+        encoded = base64.b64encode(data).decode("ascii")
         return {
             "type": "image",
-            "source": {"type": "base64", "media_type": image.media_type, "data": encoded},
+            "source": {"type": "base64", "media_type": media_type, "data": encoded},
         }
+
+    async def aclose(self) -> None:
+        """Delete run-scoped uploads before closing the SDK connection."""
+        if self._client is not None:
+            await self._image_files.close(self._client)
+            close = getattr(self._client, "close", None)
+            if callable(close):
+                await close()
 
     async def generate_structured(
         self,
@@ -99,7 +114,14 @@ class AnthropicProvider:
     ) -> ResponseT:
         del role
         client = self._ensure_client()
-        blocks: list[dict[str, Any]] = [self._image_block(image) for image in images]
+        blocks: list[dict[str, Any]] = []
+        for image in images:
+            blocks.append({"type": "text", "text": f"Image ID: {image.image_id}"})
+            if self._image_mode == "files":
+                file_id = await self._image_files.get(client, image)
+                blocks.append({"type": "image", "source": {"type": "file", "file_id": file_id}})
+            else:
+                blocks.append(self._image_block(image))
         schema = json.dumps(response_model.model_json_schema(), ensure_ascii=False)
 
         # A cache breakpoint covers everything before it, so placing one after the domain
@@ -134,21 +156,19 @@ class AnthropicProvider:
         sink = usage_sink_of(metadata)
         reported = getattr(response, "usage", None)
         if sink is not None and reported is not None:
-            # `cache_read_input_tokens` is the half of the caching story worth having: it
-            # says the breakpoint above actually hit, rather than that one was requested.
+            # The bridge already supplies canonical totals. Native Claude counters are
+            # disjoint: ordinary input, cache writes and cache reads must all be counted.
             bridge_usage = getattr(response, "dendro_usage", None)
             if isinstance(bridge_usage, Mapping):
                 sink.record(
                     input_tokens=bridge_usage.get("input_tokens"),
                     cached_input_tokens=bridge_usage.get("cached_input_tokens"),
+                    cache_write_input_tokens=bridge_usage.get("cache_write_input_tokens"),
                     output_tokens=bridge_usage.get("output_tokens"),
+                    reasoning_output_tokens=bridge_usage.get("reasoning_output_tokens"),
                 )
             else:
-                sink.record(
-                    input_tokens=getattr(reported, "input_tokens", None),
-                    cached_input_tokens=getattr(reported, "cache_read_input_tokens", None),
-                    output_tokens=getattr(reported, "output_tokens", None),
-                )
+                record_anthropic_usage(reported, sink)
         raw = "".join(
             block.text for block in response.content if getattr(block, "type", "") == "text"
         )

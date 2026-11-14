@@ -79,5 +79,8 @@ async def run_case(
 ) -> CaseRunResult:
     """Run one case end to end."""
     ctx = build_context(config, root=root, case_id=case.case_id)
-    result = await run_graph(case, ctx, build_registry())
-    return CaseRunResult(state=result.state, trace=result.trace)
+    try:
+        result = await run_graph(case, ctx, build_registry())
+        return CaseRunResult(state=result.state, trace=result.trace)
+    finally:
+        await ctx.providers.aclose()
