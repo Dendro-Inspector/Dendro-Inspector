@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import mimetypes
 from pathlib import Path
 from typing import Annotated
 
@@ -81,7 +82,11 @@ def _build_case(
     return CaseInput(
         case_id=case_id,
         images=tuple(
-            ImageRef(image_id=f"img-{index}", path=path)
+            ImageRef(
+                image_id=f"img-{index}",
+                path=path,
+                media_type=mimetypes.guess_type(path.name)[0] or "image/jpeg",
+            )
             for index, path in enumerate(images, start=1)
         ),
         user_text=text,

@@ -21,6 +21,7 @@ from dendro_inspector.providers.base import (
     ResponseT,
     StructuredOutputError,
     cache_prefix_of,
+    record_anthropic_usage,
     usage_sink_of,
 )
 
@@ -134,21 +135,18 @@ class AnthropicProvider:
         sink = usage_sink_of(metadata)
         reported = getattr(response, "usage", None)
         if sink is not None and reported is not None:
-            # `cache_read_input_tokens` is the half of the caching story worth having: it
-            # says the breakpoint above actually hit, rather than that one was requested.
+            # The bridge already supplies canonical totals. Native Claude counters are
+            # disjoint: ordinary input, cache writes and cache reads must all be counted.
             bridge_usage = getattr(response, "dendro_usage", None)
             if isinstance(bridge_usage, Mapping):
                 sink.record(
                     input_tokens=bridge_usage.get("input_tokens"),
                     cached_input_tokens=bridge_usage.get("cached_input_tokens"),
+                    cache_write_input_tokens=bridge_usage.get("cache_write_input_tokens"),
                     output_tokens=bridge_usage.get("output_tokens"),
                 )
             else:
-                sink.record(
-                    input_tokens=getattr(reported, "input_tokens", None),
-                    cached_input_tokens=getattr(reported, "cache_read_input_tokens", None),
-                    output_tokens=getattr(reported, "output_tokens", None),
-                )
+                record_anthropic_usage(reported, sink)
         raw = "".join(
             block.text for block in response.content if getattr(block, "type", "") == "text"
         )

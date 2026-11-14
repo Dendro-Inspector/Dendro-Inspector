@@ -228,6 +228,15 @@ NVIDIA/OpenRouter adapters use direct HTTPS, and Ollama needs no key. Provider-s
 schema translation never relaxes the Pydantic contract used to validate the response. See
 [docs/model-roles.md](docs/model-roles.md).
 
+The SDK adapters send images in native image content blocks. Base64 increases request bytes,
+while image token usage depends on the model's visual processing. OpenAI keeps shared policy
+and labelled images in a leading message before changing node instructions. Anthropic marks
+the shared image/policy prefix for caching; changing a native output schema can invalidate it.
+Trace `input_tokens` includes cache reads and writes, with `cached_input_tokens` and
+`cache_write_input_tokens` recording those subsets where reported. A missing counter is `null`,
+not a measured zero. Older Anthropic traces omitted cache-write tokens from the input total;
+do not compare their totals directly with new runs.
+
 ## The domain prompt
 
 The dendrology system prompt at `prompts/domain/system-prompt.md` is an **opaque,

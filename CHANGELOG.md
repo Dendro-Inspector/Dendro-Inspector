@@ -232,6 +232,16 @@ get entries.
 
 ### Fixed
 
+- **SDK image transport and accounting.** OpenAI places shared policy and labelled images
+  before changing node instructions so the image prefix can be reused when the model and
+  output format permit caching. OpenAI and the direct Anthropic SDK adapter detect the
+  actual JPEG, PNG, GIF or WebP MIME type from image bytes before preparing and sending
+  them; a PNG with a JPEG filename or MIME hint is no longer sent as mislabeled JPEG or
+  needlessly converted to it. The CLI infers MIME hints from filename extensions.
+  Anthropic input-token totals now include cache reads and writes, with writes preserved
+  separately as `cache_write_input_tokens`, including across repair attempts. Older
+  Anthropic trace totals omit these categories and are not directly comparable.
+
 - `unresolved`, `not_resolved`, `unreadable`, `not_seen` and `none_seen` are now treated as
   failed readings, not as readings that disagree with a card.
 

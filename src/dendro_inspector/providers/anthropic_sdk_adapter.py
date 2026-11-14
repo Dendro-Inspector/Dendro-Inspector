@@ -32,6 +32,7 @@ from dendro_inspector.providers.base import (
     ResponseT,
     StructuredOutputError,
     cache_prefix_of,
+    record_anthropic_usage,
     usage_sink_of,
 )
 from dendro_inspector.providers.schema_compat import to_anthropic_schema
@@ -150,10 +151,11 @@ class AnthropicSDKProvider:
 
     @staticmethod
     def _image_block(image: ImageInput) -> dict[str, Any]:
-        encoded = base64.b64encode(image.read_bytes()).decode("ascii")
+        data, media_type = image.read_payload()
+        encoded = base64.b64encode(data).decode("ascii")
         return {
             "type": "image",
-            "source": {"type": "base64", "media_type": image.media_type, "data": encoded},
+            "source": {"type": "base64", "media_type": media_type, "data": encoded},
         }
 
     def _request(
@@ -165,10 +167,15 @@ class AnthropicSDKProvider:
         *,
         native: bool = True,
     ) -> dict[str, Any]:
-        blocks: list[dict[str, Any]] = [self._image_block(image) for image in images]
+        blocks: list[dict[str, Any]] = []
+        for image in images:
+            blocks.append({"type": "text", "text": f"Image ID: {image.image_id}"})
+            blocks.append(self._image_block(image))
 
         # Same cache placement as the bridge adapter: one breakpoint after the domain prompt
         # covers the photographs too, which repeat byte for byte across a case's calls.
+        # Native output schemas also form part of the provider's prefix: different schemas
+        # invalidate it, so reuse is expected only for identical formats (e.g. reviewers).
         prefix_chars = cache_prefix_of(metadata, prompt)
         if prefix_chars:
             blocks.append(
@@ -248,12 +255,7 @@ class AnthropicSDKProvider:
 
         sink = usage_sink_of(metadata)
         usage = getattr(response, "usage", None)
-        if sink is not None and usage is not None:
-            sink.record(
-                input_tokens=getattr(usage, "input_tokens", None),
-                cached_input_tokens=getattr(usage, "cache_read_input_tokens", None),
-                output_tokens=getattr(usage, "output_tokens", None),
-            )
+        record_anthropic_usage(usage, sink)
 
         stop = getattr(response, "stop_reason", None)
         if stop == "refusal":

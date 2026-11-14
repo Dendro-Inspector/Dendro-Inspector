@@ -63,7 +63,12 @@ def _response(text: str, *, stop: str = "end_turn", category: str | None = None)
         ],
         stop_reason=stop,
         stop_details=SimpleNamespace(category=category) if stop == "refusal" else None,
-        usage=SimpleNamespace(input_tokens=120, cache_read_input_tokens=80, output_tokens=30),
+        usage=SimpleNamespace(
+            input_tokens=120,
+            cache_read_input_tokens=80,
+            cache_creation_input_tokens=300,
+            output_tokens=30,
+        ),
     )
 
 
@@ -184,7 +189,8 @@ class TestResponse:
         result = _run(provider, **{USAGE_SINK: sink})
 
         assert result == Verdict(taxon="pinus", confidence=70)
-        assert (sink.input_tokens, sink.cached_input_tokens, sink.output_tokens) == (120, 80, 30)
+        assert (sink.input_tokens, sink.cached_input_tokens, sink.output_tokens) == (500, 80, 30)
+        assert sink.cache_write_input_tokens == 300
 
     def test_constraints_dropped_from_the_schema_are_still_enforced(self, provider):
         provider._client = _client(_response(json.dumps({"taxon": "Pinus!", "confidence": 70})))

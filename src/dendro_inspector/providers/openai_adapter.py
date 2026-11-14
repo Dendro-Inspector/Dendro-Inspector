@@ -20,6 +20,7 @@ from dendro_inspector.providers.base import (
     ProviderUnavailableError,
     ResponseT,
     StructuredOutputError,
+    cache_prefix_of,
     usage_sink_of,
 )
 
@@ -73,10 +74,11 @@ class OpenAIProvider:
 
     @staticmethod
     def _image_part(image: ImageInput) -> dict[str, Any]:
-        encoded = base64.b64encode(image.read_bytes()).decode("ascii")
+        data, media_type = image.read_payload()
+        encoded = base64.b64encode(data).decode("ascii")
         return {
             "type": "image_url",
-            "image_url": {"url": f"data:{image.media_type};base64,{encoded}"},
+            "image_url": {"url": f"data:{media_type};base64,{encoded}"},
         }
 
     async def generate_structured(
@@ -89,12 +91,27 @@ class OpenAIProvider:
         metadata: Mapping[str, Any],
     ) -> ResponseT:
         client = self._ensure_client()
-        content: list[dict[str, Any]] = [{"type": "text", "text": prompt}]
-        content.extend(self._image_part(image) for image in images)
+        prefix_chars = cache_prefix_of(metadata, prompt)
+        content: list[dict[str, Any]] = []
+        if prefix_chars:
+            content.append({"type": "text", "text": prompt[:prefix_chars]})
+        for image in images:
+            content.append({"type": "text", "text": f"Image ID: {image.image_id}"})
+            content.append(self._image_part(image))
+        # A separate stable message leaves a reusable cache boundary before the node's
+        # changing instructions. Image bytes used to follow those instructions, so their
+        # prefix differed on every node. Output-schema changes can still prevent a hit.
+        messages: list[dict[str, Any]] = []
+        if content:
+            messages.append({"role": "user", "content": content})
+        if prompt[prefix_chars:]:
+            messages.append(
+                {"role": "user", "content": [{"type": "text", "text": prompt[prefix_chars:]}]}
+            )
 
         request: dict[str, Any] = {
             "model": self.model,
-            "messages": [{"role": "user", "content": content}],
+            "messages": messages,
             "response_format": {
                 "type": "json_schema",
                 "json_schema": {
@@ -115,6 +132,9 @@ class OpenAIProvider:
                 input_tokens=getattr(reported, "prompt_tokens", None),
                 cached_input_tokens=getattr(details, "cached_tokens", None),
                 output_tokens=getattr(reported, "completion_tokens", None),
+                reasoning_output_tokens=getattr(
+                    getattr(reported, "completion_tokens_details", None), "reasoning_tokens", None
+                ),
             )
         raw = response.choices[0].message.content or ""
         try:
