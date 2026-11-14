@@ -48,13 +48,19 @@ class OpenAIProvider:
         *,
         model: str | None = None,
         api_key_env: str = "OPENAI_API_KEY",
-        timeout_seconds: float = 120.0,
+        timeout_seconds: float | None = None,
         image_mode: ImageTransport | None = None,
         image_files: SDKImageFiles | None = None,
     ) -> None:
         self.model = model or DEFAULT_MODEL
         self._api_key_env = api_key_env
-        self._timeout = timeout_seconds
+        if timeout_seconds is not None:
+            self._timeout = timeout_seconds
+        else:
+            try:
+                self._timeout = float(os.environ.get("OPENAI_TIMEOUT_SECONDS") or 120.0)
+            except ValueError:
+                self._timeout = 120.0
         self._client: Any | None = None
         self._image_mode = image_transport("OPENAI_IMAGE_TRANSPORT", image_mode)
         self._image_files = image_files if image_files is not None else SDKImageFiles("openai")

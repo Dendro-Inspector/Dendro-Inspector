@@ -12,6 +12,15 @@ get entries.
 
 ### Added
 
+- **Current SDKs and bridge image uploads.** Optional extras now require OpenAI 3.51.0+
+  and Anthropic 2.8.0+. The local bridge accepts temporary multipart image uploads,
+  credential-scoped file references, expiry and deletion, OpenAI Responses and native
+  Anthropic output schemas. The `anthropic` adapter reuses uploads across a run too;
+  set `ANTHROPIC_IMAGE_TRANSPORT=inline` when using an older bridge. OpenAI bridge runs
+  are available through the launcher, with `OPENAI_TIMEOUT_SECONDS` for long worker calls.
+  Bridge parsing preserves changing instructions in later messages, and its usage
+  envelopes carry cache writes without double-counting cached input. Existing local
+  request evidence remains on disk after a temporary upload is deleted.
 - **Upload SDK images once per run.** OpenAI and the direct Anthropic SDK adapter now
   upload prepared images through their Files APIs and reuse file IDs across calls and
   concurrent reviewers sharing credentials. OpenAI uses Responses with `store=False`;

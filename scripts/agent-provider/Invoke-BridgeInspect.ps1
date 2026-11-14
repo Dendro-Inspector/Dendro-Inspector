@@ -10,12 +10,13 @@ place.
 
 Timeouts are the reason to prefer one dialect over another when a human or an agent is doing
 the answering. `gemini` and `ollama` read their timeout from the environment, so this script
-raises both to an hour. The OpenAI-compatible adapters (`nvidia`, `openrouter`) take theirs
-from a constructor argument the registry does not pass, which leaves 300 s per call — fine
-for replaying cached answers, tight for authoring them live.
+raises both to an hour, as it does for the `openai` and `anthropic` SDK adapters. The
+OpenAI-compatible adapters (`nvidia`, `openrouter`) take theirs from a constructor argument
+the registry does not pass, which leaves 300 s per call — fine for replaying cached answers,
+tight for authoring them live.
 
 .PARAMETER Dialect
-Which adapter to exercise: gemini, ollama, nvidia or openrouter.
+Which adapter to exercise: gemini, ollama, nvidia, openrouter, openai or anthropic.
 
 .PARAMETER Image
 Photograph to inspect. Repeat the parameter for several.
@@ -36,7 +37,7 @@ See docs/agent-as-provider.md. Start bridge.py first.
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)]
-    [ValidateSet('gemini', 'ollama', 'nvidia', 'openrouter', 'anthropic')]
+    [ValidateSet('gemini', 'ollama', 'nvidia', 'openrouter', 'openai', 'anthropic')]
     [string]$Dialect,
 
     [Parameter(Mandatory = $true)]
@@ -99,11 +100,16 @@ switch ($Dialect) {
         $env:OPENROUTER_BASE_URL = "$root/v1"
         $env:OPENROUTER_API_KEY = 'bridge-local-placeholder'
     }
+    'openai' {
+        # The SDK reads OPENAI_BASE_URL itself; Responses and Files both hang off /v1.
+        $env:OPENAI_BASE_URL = "$root/v1"
+        $env:OPENAI_API_KEY = 'bridge-local-placeholder'
+        $env:OPENAI_TIMEOUT_SECONDS = '3600'
+    }
     'anthropic' {
-        # The adapter takes no base-url argument; the SDK reads this env var, which is why
-        # the redirect needs no change to `anthropic_adapter.py`. A fault prefix cannot be
-        # expressed here — the SDK appends `/v1/messages` to the base URL itself.
-        $env:ANTHROPIC_BASE_URL = "http://127.0.0.1:$Port"
+        # The adapter takes no base-url argument; the SDK reads this env var and appends
+        # /v1/messages and /v1/files to it, so a fault prefix survives in the base path.
+        $env:ANTHROPIC_BASE_URL = $root
         $env:ANTHROPIC_API_KEY = 'bridge-local-placeholder'
         # Without this the SDK's own 120s default expires while the answer is being
         # written, and it then retries twice — three pending requests for one answer file.

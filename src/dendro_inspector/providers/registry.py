@@ -44,6 +44,7 @@ def build_provider(
             return AnthropicProvider(
                 model=config.model,
                 api_key_env=config.api_key_env or "ANTHROPIC_API_KEY",
+                image_files=image_files,
             )
         case Adapter.ANTHROPIC_SDK:
             from dendro_inspector.providers.anthropic_sdk_adapter import AnthropicSDKProvider
@@ -101,7 +102,7 @@ class ProviderRegistry:
         for role in Role:
             selected = config.provider_for(role)
             cache = None
-            if selected.adapter in {Adapter.OPENAI, Adapter.ANTHROPIC_SDK}:
+            if selected.adapter in {Adapter.OPENAI, Adapter.ANTHROPIC, Adapter.ANTHROPIC_SDK}:
                 key = (selected.adapter, selected.api_key_env or DEFAULT_KEY_ENV[selected.adapter])
                 if key not in caches:
                     caches[key] = SDKImageFiles(
