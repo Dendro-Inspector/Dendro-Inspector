@@ -120,7 +120,7 @@ def test_preparation_uses_actual_format_without_converting_a_png_to_jpeg(tmp_pat
 def test_invalid_image_is_rejected_before_a_model_request(tmp_path):
     path = tmp_path / "photo.jpg"
     path.write_bytes(b"this is not a supported image")
-    provider = OpenAIProvider(model="test")
+    provider = OpenAIProvider(model="test", image_mode="inline")
     client = RecordingClient()
     provider._client = client
 
@@ -133,7 +133,7 @@ def test_openai_keeps_images_and_shared_text_in_a_stable_leading_message(tmp_pat
     path = tmp_path / "photo.jpg"
     path.write_bytes(b"\xff\xd8\xff\xdbsynthetic")
     image = ImageInput("img-9", path)
-    provider = OpenAIProvider(model="test")
+    provider = OpenAIProvider(model="test", image_mode="inline")
     client = RecordingClient()
     provider._client = client
     prefix = "SHARED POLICY\n"
@@ -153,7 +153,7 @@ def test_openai_keeps_images_and_shared_text_in_a_stable_leading_message(tmp_pat
 
 @pytest.mark.parametrize("boundary", [0, 7, 999])
 def test_splitting_openai_messages_preserves_all_prompt_characters(boundary):
-    provider = OpenAIProvider(model="test")
+    provider = OpenAIProvider(model="test", image_mode="inline")
     client = RecordingClient()
     provider._client = client
     prompt = "POLICY\n\nDo not invent evidence."
@@ -189,7 +189,7 @@ def test_anthropic_labels_every_image_inside_the_shared_cache_boundary(tmp_path)
 
 
 def test_openai_records_reasoning_without_double_counting_output():
-    provider = OpenAIProvider(model="test")
+    provider = OpenAIProvider(model="test", image_mode="inline")
     provider._client = RecordingClient()
     usage = UsageSink()
     run_openai(provider, "inspect", sink=usage)

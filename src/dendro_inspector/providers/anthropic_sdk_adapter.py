@@ -35,6 +35,7 @@ from dendro_inspector.providers.base import (
     record_anthropic_usage,
     usage_sink_of,
 )
+from dendro_inspector.providers.image_files import ImageTransport, SDKImageFiles, image_transport
 from dendro_inspector.providers.schema_compat import to_anthropic_schema
 
 DEFAULT_MODEL = "claude-opus-5-5"
@@ -113,6 +114,8 @@ class AnthropicSDKProvider:
         api_key_env: str = "ANTHROPIC_SDK_API_KEY",
         timeout_seconds: float | None = None,
         effort: str | None = None,
+        image_mode: ImageTransport | None = None,
+        image_files: SDKImageFiles | None = None,
     ) -> None:
         self.model = model or DEFAULT_MODEL
         self._api_key_env = api_key_env
@@ -124,6 +127,8 @@ class AnthropicSDKProvider:
         self._effort = effort if effort in EFFORTS else _effort()
         self._fallbacks = _fallbacks_enabled()
         self._client: Any | None = None
+        self._image_mode = image_transport("ANTHROPIC_IMAGE_TRANSPORT", image_mode)
+        self._image_files = image_files if image_files is not None else SDKImageFiles("anthropic")
         # Contracts whose schema the API refused to compile: asked for in the prompt instead.
         self._prompt_only: set[str] = set()
 
@@ -158,6 +163,14 @@ class AnthropicSDKProvider:
             "source": {"type": "base64", "media_type": media_type, "data": encoded},
         }
 
+    async def aclose(self) -> None:
+        """Release this run's uploads before closing the SDK client."""
+        if self._client is not None:
+            await self._image_files.close(self._client)
+            close = getattr(self._client, "close", None)
+            if callable(close):
+                await close()
+
     def _request(
         self,
         prompt: str,
@@ -166,11 +179,16 @@ class AnthropicSDKProvider:
         metadata: Mapping[str, Any],
         *,
         native: bool = True,
+        file_ids: Sequence[str] | None = None,
     ) -> dict[str, Any]:
         blocks: list[dict[str, Any]] = []
-        for image in images:
+        for index, image in enumerate(images):
             blocks.append({"type": "text", "text": f"Image ID: {image.image_id}"})
-            blocks.append(self._image_block(image))
+            blocks.append(
+                {"type": "image", "source": {"type": "file", "file_id": file_ids[index]}}
+                if file_ids is not None
+                else self._image_block(image)
+            )
 
         # Same cache placement as the bridge adapter: one breakpoint after the domain prompt
         # covers the photographs too, which repeat byte for byte across a case's calls.
@@ -228,9 +246,16 @@ class AnthropicSDKProvider:
     ) -> ResponseT:
         del role
         client = self._ensure_client()
+        file_ids = (
+            [await self._image_files.get(client, image) for image in images]
+            if self._image_mode == "files"
+            else None
+        )
         name = response_model.__name__
         native = name not in self._prompt_only
-        request = self._request(prompt, images, response_model, metadata, native=native)
+        request = self._request(
+            prompt, images, response_model, metadata, native=native, file_ids=file_ids
+        )
         node = metadata.get("node", "?")
 
         auth_errors, missing_errors, bad_request = _sdk_errors()
@@ -244,7 +269,9 @@ class AnthropicSDKProvider:
                 if "format" not in request["output_config"]:
                     raise
                 self._prompt_only.add(name)
-                request = self._request(prompt, images, response_model, metadata, native=False)
+                request = self._request(
+                    prompt, images, response_model, metadata, native=False, file_ids=file_ids
+                )
                 response = await self._send(client, request)
         except auth_errors as exc:
             msg = f"Claude API rejected the credential in {self._api_key_env}: {exc}"

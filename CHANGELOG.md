@@ -12,6 +12,14 @@ get entries.
 
 ### Added
 
+- **Upload SDK images once per run.** OpenAI and the direct Anthropic SDK adapter now
+  upload prepared images through their Files APIs and reuse file IDs across calls and
+  concurrent reviewers sharing credentials. OpenAI uses Responses with `store=False`;
+  native structured output and Pydantic validation remain. Normal teardown deletes uploads
+  on success, failure or cancellation, and each upload requests a one-hour expiry as a
+  fallback. Near-expiry references are refreshed. Current SDKs with expiry support are
+  required; `OPENAI_IMAGE_TRANSPORT=inline` and `ANTHROPIC_IMAGE_TRANSPORT=inline` retain
+  inline image transport, including OpenAI-compatible Chat Completions endpoints.
 - **Batch runs can read photographs from the results volume.** The batch worker accepts
   `DATASET_DIR`, a directory under `_datasets/` on the results volume holding
   `metadata.jsonl` and the images, pinned by the SHA-256 of that index, so a private photo

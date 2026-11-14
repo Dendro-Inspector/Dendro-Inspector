@@ -9,15 +9,18 @@ from __future__ import annotations
 from pathlib import Path
 from typing import assert_never
 
-from dendro_inspector.config import Adapter, AppConfig, ProviderConfig, Role
+from dendro_inspector.config import DEFAULT_KEY_ENV, Adapter, AppConfig, ProviderConfig, Role
+from dendro_inspector.observability.logging import get_logger
 from dendro_inspector.providers.base import ModelProvider, ProviderUnavailableError
 from dendro_inspector.providers.fake import FakeModelProvider
+from dendro_inspector.providers.image_files import SDKImageFiles
 
 
 def build_provider(
     config: ProviderConfig,
     *,
     fixtures_root: Path,
+    image_files: SDKImageFiles | None = None,
 ) -> ModelProvider:
     """Instantiate one adapter. Vendor SDKs are imported only when actually selected."""
     match config.adapter:
@@ -33,6 +36,7 @@ def build_provider(
             return OpenAIProvider(
                 model=config.model,
                 api_key_env=config.api_key_env or "OPENAI_API_KEY",
+                image_files=image_files,
             )
         case Adapter.ANTHROPIC:
             from dendro_inspector.providers.anthropic_adapter import AnthropicProvider
@@ -47,6 +51,7 @@ def build_provider(
             return AnthropicSDKProvider(
                 model=config.model,
                 api_key_env=config.api_key_env or "ANTHROPIC_SDK_API_KEY",
+                image_files=image_files,
             )
         case Adapter.OLLAMA:
             from dendro_inspector.providers.ollama_adapter import OllamaProvider
@@ -91,12 +96,38 @@ class ProviderRegistry:
             if config.fixtures_root.is_absolute()
             else base / config.fixtures_root
         )
-        return cls(
-            {
-                role: build_provider(config.provider_for(role), fixtures_root=fixtures_root)
-                for role in Role
-            }
-        )
+        caches: dict[tuple[Adapter, str], SDKImageFiles] = {}
+        providers: dict[Role, ModelProvider] = {}
+        for role in Role:
+            selected = config.provider_for(role)
+            cache = None
+            if selected.adapter in {Adapter.OPENAI, Adapter.ANTHROPIC_SDK}:
+                key = (selected.adapter, selected.api_key_env or DEFAULT_KEY_ENV[selected.adapter])
+                if key not in caches:
+                    caches[key] = SDKImageFiles(
+                        "openai" if selected.adapter is Adapter.OPENAI else "anthropic"
+                    )
+                cache = caches[key]
+            providers[role] = build_provider(
+                selected, fixtures_root=fixtures_root, image_files=cache
+            )
+        return cls(providers)
+
+    async def aclose(self) -> None:
+        """Release optional provider resources after all graph tasks have finished."""
+        seen: set[int] = set()
+        for provider in self._providers.values():
+            if id(provider) in seen:
+                continue
+            seen.add(id(provider))
+            close = getattr(provider, "aclose", None)
+            if callable(close):
+                try:
+                    await close()
+                except Exception:
+                    get_logger("providers").warning(
+                        "provider_cleanup_failed", extra={"provider": provider.adapter_name}
+                    )
 
     def get(self, role: Role) -> ModelProvider:
         try:

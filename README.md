@@ -228,10 +228,23 @@ NVIDIA/OpenRouter adapters use direct HTTPS, and Ollama needs no key. Provider-s
 schema translation never relaxes the Pydantic contract used to validate the response. See
 [docs/model-roles.md](docs/model-roles.md).
 
-The SDK adapters send images in native image content blocks. Base64 increases request bytes,
-while image token usage depends on the model's visual processing. OpenAI keeps shared policy
-and labelled images in a leading message before changing node instructions. Anthropic marks
+OpenAI and `anthropic-sdk` default to native Files API uploads: prepared image bytes are
+uploaded once per provider/credential scope in a run, including across concurrent reviewers
+and different models. Calls reuse file IDs. Run teardown attempts deletion after success,
+failure or cancellation; each upload also expires after one hour if cleanup cannot complete.
+Standalone adapter users must call `await provider.aclose()` when finished. File IDs are
+kept only in memory and never reused across runs. Current SDKs with Files API expiry support
+are required. Install the `images` extra for the existing resize/rotation/metadata stripping;
+without Pillow, originals may include embedded metadata, as the warning reports.
+
+OpenAI uses Responses with `store=False` and keeps shared policy and labelled images in a
+leading message before changing node instructions. Anthropic keeps native Messages and marks
 the shared image/policy prefix for caching; changing a native output schema can invalidate it.
+File references reduce repeated upload bytes; image tokens still depend on visual processing
+and caching. To use inline base64 instead, set `OPENAI_IMAGE_TRANSPORT=inline` or
+`ANTHROPIC_IMAGE_TRANSPORT=inline`. OpenAI inline mode uses Chat Completions for compatible
+endpoints and older SDKs. The `anthropic` bridge adapter keeps its existing transport.
+
 Trace `input_tokens` includes cache reads and writes, with `cached_input_tokens` and
 `cache_write_input_tokens` recording those subsets where reported. A missing counter is `null`,
 not a measured zero. Older Anthropic traces omitted cache-write tokens from the input total;
