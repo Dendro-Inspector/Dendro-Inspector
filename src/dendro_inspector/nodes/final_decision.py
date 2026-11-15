@@ -26,6 +26,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
+from dendro_inspector.config import ReviewAuthority
 from dendro_inspector.graph.executor import NodeContext
 from dendro_inspector.graph.state import GraphState
 from dendro_inspector.knowledge.candidate_validation import (
@@ -46,6 +47,7 @@ from dendro_inspector.knowledge.evidence_hierarchy import (
     decisive_observations_for,
     family_of,
     project_evidence,
+    project_observation,
     resolution_ceiling,
     resolve_evidence_observations,
     tier_of_feature,
@@ -704,18 +706,24 @@ def _recommendation_sources(
     *,
     resolution: Resolution | None = None,
     confidence: Confidence | None = None,
+    grounds: ValidatedGrounds | None = None,
 ) -> tuple[RecommendationSource, ...]:
     """Every admitted recommendation that named a level of the kind that was pooled.
 
     Reads the recommendations `_broadest_recommendation` and `_lowest_recommendation` pool,
     so the attribution cannot name a review the pooled level did not come from. Exactly one
-    of ``resolution`` and ``confidence`` is that pooled level.
+    of ``resolution`` and ``confidence`` is that pooled level. With ``grounds`` (the
+    evidence-bound policy) only the recommendations a verified finding stands behind are
+    listed, each with what was verified; the rest are in `_advisory_recommendations`.
     """
     pooled = resolution if resolution is not None else confidence
     sources: list[RecommendationSource] = []
     for stage, round_index, synthesis, item in _staged_recommendations(state, subject_id):
         level = item.resolution if resolution is not None else item.confidence
         if level is None:
+            continue
+        ground = grounds.of(item.finding) if grounds is not None else None
+        if grounds is not None and ground is None:
             continue
         attribution = synthesis.attribution_of(item.finding) if item.finding is not None else None
         sources.append(
@@ -729,22 +737,179 @@ def _recommendation_sources(
                     attribution.reference(stage, round_index) if attribution is not None else None
                 ),
                 binding=level == pooled,
+                ground=ground,
+            )
+        )
+    return tuple(sources)
+
+
+@dataclass(frozen=True, slots=True)
+class ValidatedGrounds:
+    """Which of a subject's accepted model findings code could check, and on what ground."""
+
+    entries: tuple[tuple[ReviewFinding, str], ...] = ()
+
+    def of(self, finding: ReviewFinding | None) -> str | None:
+        """The verified ground behind this exact finding, or None."""
+        if finding is None:
+            return None
+        return next((ground for known, ground in self.entries if known == finding), None)
+
+
+def _supported_at_least_as_well(
+    alternative: TaxonCard,
+    card: TaxonCard,
+    cited: frozenset[str],
+    evidence: EvidencePacket,
+    subject_id: str,
+) -> bool:
+    """Whether the cited readings support the alternative as well as all readings do the leader.
+
+    Compared as (strong hits, supporting hits). The alternative is credited with the cited
+    readings only: what the reviewer pointed at, not everything its card could match.
+    """
+    theirs = match_card(alternative, evidence, subject_id)
+    ours = match_card(card, evidence, subject_id)
+    alternative_support = (
+        len(cited.intersection(theirs.strong_hits)),
+        len(cited.intersection(theirs.supporting_hits)),
+    )
+    leader_support = (len(set(ours.strong_hits)), len(set(ours.supporting_hits)))
+    return alternative_support > (0, 0) and alternative_support >= leader_support
+
+
+def validated_ground(
+    finding: ReviewFinding,
+    leader: Candidate,
+    card: TaxonCard | None,
+    evidence: EvidencePacket | None,
+    subject_id: str,
+    knowledge: KnowledgeBase | None,
+) -> str | None:
+    """What code can verify about an accepted model finding, or None when nothing.
+
+    The evidence-bound policy lets a review lower the taxonomic level only on one of these:
+
+    * ``card_contradiction``: a cited observation is trusted evidence that the leader's own
+      card lists as a contradiction, or that disagrees with the card on a path the card
+      calls decisive. The reviewer's category is not consulted: what counts is what the
+      cited reading is. A reading the trust boundary holds as context only (an unattached
+      leaf, an obscured feature) cannot do this, as it cannot support a claim either.
+    * ``supported_alternative``: the finding names another card taxon, and the cited
+      observations support that card at least as well as the evidence supports the leader.
+    * ``contaminated_support``: the finding reports subject contamination and cites
+      evidence the leader's claim rests on.
+
+    A finding that cites nothing, or cites readings that do none of this, states a doubt.
+    It keeps every other effect it has today; it does not move the level.
+    """
+    if evidence is None:
+        return None
+    cited = _observations_behind(evidence, subject_id, finding.evidence_ids)
+    if not cited:
+        return None
+    if card is not None:
+        match = match_card(card, evidence, subject_id)
+        trusted = {
+            observation.observation_id
+            for observation in evidence.observations_for(subject_id)
+            if project_observation(observation).supports_identification
+        }
+        if cited.intersection(trusted.intersection(match.contradiction_hits)) or (
+            cited.intersection(match.self_contradiction_hits)
+        ):
+            return "card_contradiction"
+    if (
+        finding.category is FindingCategory.OVERLOOKED_ALTERNATIVE
+        and finding.proposed_taxon is not None
+        and finding.proposed_taxon != leader.taxon
+        and card is not None
+        and knowledge is not None
+    ):
+        alternative = knowledge.try_taxon(finding.proposed_taxon)
+        if alternative is not None and _supported_at_least_as_well(
+            alternative, card, cited, evidence, subject_id
+        ):
+            return "supported_alternative"
+    if finding.category is FindingCategory.SUBJECT_CONTAMINATION and cited.intersection(
+        _observations_behind(evidence, subject_id, leader.supporting_evidence_ids)
+    ):
+        return "contaminated_support"
+    return None
+
+
+def _validated_grounds(
+    state: GraphState,
+    subject_id: str,
+    leader: Candidate,
+    card: TaxonCard | None,
+    knowledge: KnowledgeBase | None,
+) -> ValidatedGrounds:
+    """Every accepted model finding of this subject that code could check."""
+    entries: list[tuple[ReviewFinding, str]] = []
+    for *_, finding in _staged_findings_for(state, subject_id):
+        if finding.origin is not FindingOrigin.MODEL:
+            continue
+        ground = validated_ground(finding, leader, card, state.evidence, subject_id, knowledge)
+        if ground is not None:
+            entries.append((finding, ground))
+    return ValidatedGrounds(tuple(entries))
+
+
+def _advisory_recommendations(
+    state: GraphState, subject_id: str, grounds: ValidatedGrounds
+) -> tuple[RecommendationSource, ...]:
+    """Recommended levels the evidence-bound policy recorded and did not apply."""
+    if state.is_abstained(subject_id):
+        return ()
+    sources: list[RecommendationSource] = []
+    for stage, round_index, synthesis, item in _staged_recommendations(state, subject_id):
+        if item.resolution is None or grounds.of(item.finding) is not None:
+            continue
+        attribution = synthesis.attribution_of(item.finding) if item.finding is not None else None
+        if item.finding is None:
+            reason = "no_finding"
+        elif not item.finding.evidence_ids:
+            reason = "no_cited_evidence"
+        else:
+            reason = "not_validated"
+        sources.append(
+            RecommendationSource(
+                stage=stage,
+                reviewer=item.reviewer.value if item.reviewer is not None else None,
+                resolution=item.resolution,
+                finding_id=item.finding.finding_id if item.finding is not None else None,
+                finding_ref=(
+                    attribution.reference(stage, round_index) if attribution is not None else None
+                ),
+                binding=False,
+                advisory_reason=reason,
             )
         )
     return tuple(sources)
 
 
 def _broadest_recommendation(
-    state: GraphState, subject_id: str, finding: ReviewFinding | None = None
+    state: GraphState,
+    subject_id: str,
+    finding: ReviewFinding | None = None,
+    *,
+    grounds: ValidatedGrounds | None = None,
 ) -> Resolution | None:
-    """This subject's cap, or the floor bound to one exact model finding."""
+    """This subject's cap, or the floor bound to one exact model finding.
+
+    With ``grounds`` (the evidence-bound policy) the cap pools only the recommendations a
+    verified finding stands behind.
+    """
     if state.is_abstained(subject_id):
         # The abstention bound already incorporates this subject's review recommendations.
         return None
     recommendations = [
         item.resolution
         for item in _recommendations_for(state, subject_id)
-        if item.resolution is not None and (finding is None or item.finding == finding)
+        if item.resolution is not None
+        and (finding is None or item.finding == finding)
+        and (grounds is None or grounds.of(item.finding) is not None)
     ]
     return min(recommendations, key=resolution_rank) if recommendations else None
 
@@ -772,6 +937,8 @@ class ResolutionComposition:
     binding_source: ResolutionBoundSource
     action_applied: bool
     action_findings: tuple[FindingReference, ...]
+    advisory_recommendations: tuple[RecommendationSource, ...] = ()
+    advisory_action_findings: tuple[FindingReference, ...] = ()
 
 
 def resolve_resolution(
@@ -782,12 +949,15 @@ def resolve_resolution(
     tier: EvidenceTier,
     *,
     require_discriminating_support: bool = True,
+    review_authority: ReviewAuthority = ReviewAuthority.RECOMMENDATION,
+    knowledge: KnowledgeBase | None = None,
 ) -> tuple[Resolution, tuple[ResolutionBound, ...], ResolutionBoundSource, bool]:
     """Compose every upper bound first, then apply at most one explicit downgrade.
 
     ``require_discriminating_support`` is ``GraphConfig.require_discriminating_support``:
     on (the default), a leader admitted on supporting features alone names nothing; off, the
     legacy policy names it at low confidence. Kept switchable for comparative evaluation.
+    ``review_authority`` is ``GraphConfig.review_authority``; see `compose_resolution`.
     """
     composed = compose_resolution(
         state,
@@ -796,6 +966,8 @@ def resolve_resolution(
         card,
         tier,
         require_discriminating_support=require_discriminating_support,
+        review_authority=review_authority,
+        knowledge=knowledge,
     )
     return composed.resolution, composed.bounds, composed.binding_source, composed.action_applied
 
@@ -808,9 +980,23 @@ def compose_resolution(
     tier: EvidenceTier,
     *,
     require_discriminating_support: bool = True,
+    review_authority: ReviewAuthority = ReviewAuthority.RECOMMENDATION,
+    knowledge: KnowledgeBase | None = None,
 ) -> ResolutionComposition:
-    """`resolve_resolution`, also naming who stood behind each review bound and action."""
-    recommended = _broadest_recommendation(state, subject_id)
+    """`resolve_resolution`, also naming who stood behind each review bound and action.
+
+    Under ``ReviewAuthority.EVIDENCE_BOUND`` a model review moves the level only through a
+    finding `validated_ground` could check: its recommended level joins the bound, and its
+    lower-resolution action is taken, on that condition. Everything else a review asked of
+    the level is returned as advisory. Code-raised findings and every other bound are
+    composed exactly as under the released policy.
+    """
+    grounds = (
+        _validated_grounds(state, subject_id, leader, card, knowledge)
+        if review_authority is ReviewAuthority.EVIDENCE_BOUND
+        else None
+    )
+    recommended = _broadest_recommendation(state, subject_id, grounds=grounds)
     bounds = [
         ResolutionBound(source="proposed", value=leader.resolution),
         ResolutionBound(source="card_cap", value=cap_resolution(leader.resolution, card)),
@@ -821,7 +1007,9 @@ def compose_resolution(
             ResolutionBound(
                 source="reviewer_recommendation",
                 value=recommended,
-                sources=_recommendation_sources(state, subject_id, resolution=recommended),
+                sources=_recommendation_sources(
+                    state, subject_id, resolution=recommended, grounds=grounds
+                ),
             )
         )
     substituting, _ = open_world_contest(state, subject_id, leader, card, tier)
@@ -866,11 +1054,22 @@ def compose_resolution(
     # floor as well as a ceiling, for that review's own accepted model findings.
     actions = list(_deterministic_actions_for(state, subject_id))
     owed: list[FindingReference] = []
+    unverified: list[FindingReference] = []
     for stage, round_index, synthesis, finding in _staged_findings_for(state, subject_id):
         live = finding.origin is FindingOrigin.DETERMINISTIC
         if finding.origin is FindingOrigin.MODEL:
             own_bound = _broadest_recommendation(state, subject_id, finding)
             live = own_bound is None or resolution_rank(resolution) > resolution_rank(own_bound)
+            if (
+                live
+                and grounds is not None
+                and finding.required_action is RequiredAction.LOWER_RESOLUTION
+                and grounds.of(finding) is None
+            ):
+                # The reviewer asked for a broader level and code could verify nothing
+                # behind the request. Recorded, not taken.
+                unverified.append(finding_reference(stage, round_index, synthesis, finding))
+                live = False
             if live:
                 actions.append(finding.required_action)
         if live and finding.required_action is RequiredAction.LOWER_RESOLUTION:
@@ -887,6 +1086,10 @@ def compose_resolution(
         binding_source=binding.source,
         action_applied=action_applied,
         action_findings=tuple(owed),
+        advisory_recommendations=(
+            _advisory_recommendations(state, subject_id, grounds) if grounds is not None else ()
+        ),
+        advisory_action_findings=tuple(unverified),
     )
 
 
@@ -1736,6 +1939,8 @@ def decide_subject_base(
         card,
         tier,
         require_discriminating_support=ctx.config.graph.require_discriminating_support,
+        review_authority=ctx.config.graph.review_authority,
+        knowledge=ctx.knowledge,
     )
     resolution_bound, binding_source = composed.resolution, composed.binding_source
     derivation = DecisionDerivation(
@@ -1746,6 +1951,9 @@ def decide_subject_base(
         resolution_binding_source=binding_source,
         resolution_action_applied=composed.action_applied,
         resolution_action_findings=composed.action_findings,
+        review_authority=ctx.config.graph.review_authority.value,
+        advisory_recommendations=composed.advisory_recommendations,
+        advisory_action_findings=composed.advisory_action_findings,
         confidence_steps=(
             ConfidenceStep(
                 source="seed",

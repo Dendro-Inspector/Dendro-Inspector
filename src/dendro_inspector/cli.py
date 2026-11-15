@@ -18,6 +18,7 @@ from dendro_inspector.config import (
     Adapter,
     AppConfig,
     ProviderConfig,
+    ReviewAuthority,
     Role,
     load_config,
     load_dotenv,
@@ -433,6 +434,17 @@ def coverage_audit_command(
             help="Override the discriminating-support policy for offline replay only.",
         ),
     ] = None,
+    review_authority: Annotated[
+        ReviewAuthority | None,
+        typer.Option(
+            "--review-authority",
+            help=(
+                "Override what a model review may do to the taxonomic level, for offline "
+                "replay only. 'evidence_bound' is experimental; pair it with --reviews "
+                "recorded, since neutral reviewers lower nothing."
+            ),
+        ),
+    ] = None,
     reviews: Annotated[
         str,
         typer.Option(
@@ -468,6 +480,10 @@ def coverage_audit_command(
                     update={"require_discriminating_support": require_discriminating_support}
                 )
             }
+        )
+    if review_authority is not None:
+        config = config.model_copy(
+            update={"graph": config.graph.model_copy(update={"review_authority": review_authority})}
         )
     try:
         references = label_scoring.load_labels(labels)

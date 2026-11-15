@@ -146,6 +146,23 @@ class RecommendationSource(Contract):
     binding: bool = Field(
         description="Whether this recommendation named the level the bound or step took."
     )
+    ground: str | None = Field(
+        default=None,
+        max_length=40,
+        description=(
+            "Under the evidence-bound review policy: what code verified about the finding "
+            "behind a recommendation allowed to bind (`card_contradiction`, "
+            "`supported_alternative`, `contaminated_support`)."
+        ),
+    )
+    advisory_reason: str | None = Field(
+        default=None,
+        max_length=40,
+        description=(
+            "Under the evidence-bound review policy: why this recommendation was recorded "
+            "and not applied (`no_finding`, `no_cited_evidence`, `not_validated`)."
+        ),
+    )
 
 
 class FindingReference(Contract):
@@ -213,6 +230,25 @@ class DecisionDerivation(Contract):
             "Accepted findings whose `lower_resolution` action was still owed once the "
             "bounds were composed. `resolution_action_applied` says whether the one step "
             "they ask for was taken; a bound that had already broadened the claim absorbs it."
+        ),
+    )
+    review_authority: str = Field(
+        default="recommendation",
+        max_length=40,
+        description="`GraphConfig.review_authority` this verdict was composed under.",
+    )
+    advisory_recommendations: tuple[RecommendationSource, ...] = Field(
+        default=(),
+        description=(
+            "Under the evidence-bound review policy: recommended levels that were recorded "
+            "and not applied, each with its reason. Empty under the released policy."
+        ),
+    )
+    advisory_action_findings: tuple[FindingReference, ...] = Field(
+        default=(),
+        description=(
+            "Under the evidence-bound review policy: accepted model findings whose "
+            "`lower_resolution` action was not taken because code could not verify them."
         ),
     )
     confidence_steps: tuple[ConfidenceStep, ...] = Field(min_length=1)

@@ -12,6 +12,20 @@ get entries.
 
 ### Added
 
+- **An experimental review policy, off by default, for offline comparison.** Under the
+  released policy the broadest level any admitted review recommends caps the claim, so a
+  reviewer's stated doubt can withdraw a name the evidence supports. Setting
+  `DENDRO_REVIEW_AUTHORITY=evidence_bound` (`GraphConfig.review_authority`) lets a model
+  review lower the taxonomic level only through an accepted finding that code can check: a
+  cited, trusted observation the leader's own card lists as a contradiction or that
+  disagrees with the card on a decisive path; a named alternative that the cited
+  observations support at least as well; or contamination of the evidence the claim rests
+  on. Every other recommended level, and every unverified request to lower the level, is
+  recorded in the decision derivation as advisory with its reason and is not applied.
+  Code-raised findings, the card and tier ceilings, the discriminating-support rule,
+  confidence and abstention are composed as before. `coverage-audit --replay --reviews
+  recorded --review-authority evidence_bound` replays stored runs under it without a model
+  call. The default is unchanged, and so is every answer produced under it.
 - **Replay every recorded correction attempt.** With evidence history, `coverage-audit
   --replay --reviews recorded` now starts at the first extraction and uses each retry's
   original evidence, candidate proposal and reviews. Missing artifacts and changed routes
