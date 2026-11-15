@@ -31,6 +31,9 @@ ResponseT = TypeVar("ResponseT", bound=BaseModel)
 #: ignores it. Advisory in both directions: it never changes the text that is sent.
 CACHE_PREFIX_CHARS = "cache_prefix_chars"
 
+#: The graph attempt, separate from structured-output repair attempts within one call.
+GRAPH_RETRY_INDEX = "graph_retry_index"
+
 #: Call-metadata key carrying the code-owned subject identifiers a reviewer may return.
 #: Adapters with native enum-constrained output can bind every ``subject_id`` field to
 #: these exact values. Other adapters ignore it; Pydantic and review synthesis remain the
@@ -518,6 +521,7 @@ async def request_structured(
         CACHE_PREFIX_CHARS: cache_prefix_chars,
         USAGE_SINK: usage,
         **(metadata or {}),
+        GRAPH_RETRY_INDEX: recorder.retry_index if recorder is not None else 0,
     }
     attempt_prompt = prompt
     validation_failures = 0
