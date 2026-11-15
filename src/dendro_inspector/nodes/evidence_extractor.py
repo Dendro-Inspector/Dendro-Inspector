@@ -71,7 +71,9 @@ def reconcile_packet(state: GraphState, packet: EvidencePacket) -> EvidencePacke
 async def run(state: GraphState, ctx: NodeContext) -> GraphState:
     guard = state.guard
     if guard is not None and not guard.safe_to_continue:
-        return state.evolve(evidence=_empty_packet(state))
+        packet = _empty_packet(state)
+        ctx.recorder.record_evidence(packet, retry_index=state.retries)
+        return state.evolve(evidence=packet)
 
     context_parts = [
         case_context(state.case),
@@ -119,5 +121,5 @@ async def run(state: GraphState, ctx: NodeContext) -> GraphState:
     packet = reconcile_packet(state, generated.to_evidence_packet())
     packet = attest_one_tree(state.case, packet)
     ctx.recorder.record_component_projections(packet)
-    ctx.recorder.record_evidence(packet)
+    ctx.recorder.record_evidence(packet, generated=generated, retry_index=state.retries)
     return state.evolve(evidence=packet)

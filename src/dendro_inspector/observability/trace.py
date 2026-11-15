@@ -34,6 +34,7 @@ from dendro_inspector.observability.events import (
     NodeEvent,
     NodeStatus,
     ObservationRecord,
+    ObservationUseRecord,
     PlanRecord,
     PromptMetadata,
     ProviderCallRecord,
@@ -46,6 +47,7 @@ from dendro_inspector.observability.events import (
     RunTrace,
     SubjectRecord,
 )
+from dendro_inspector.observability.evidence_history import EvidenceRevision, packet_digest
 from dendro_inspector.observability.logging import get_logger
 from dendro_inspector.schemas.decisions import AuthorityCheckStatus
 from dendro_inspector.schemas.evidence import KnowledgeCoverage
@@ -54,14 +56,14 @@ from dendro_inspector.schemas.taxon import Confidence, Resolution
 
 if TYPE_CHECKING:
     from dendro_inspector.knowledge.candidate_validation import CandidateValidationResult
-    from dendro_inspector.schemas.candidates import Candidate, CandidateSet
+    from dendro_inspector.schemas.candidates import Candidate, CandidateProposal, CandidateSet
     from dendro_inspector.schemas.decisions import (
         AuthorityCheckTrace,
         DecisionDerivation,
         FinalDecision,
         FindingReference,
     )
-    from dendro_inspector.schemas.evidence import EvidencePacket
+    from dendro_inspector.schemas.evidence import EvidencePacket, GeneratedEvidencePacket
     from dendro_inspector.schemas.reviews import ReviewFinding, ReviewResult, ReviewSynthesis
 
 
@@ -169,6 +171,8 @@ class TraceRecorder:
         self._knowledge_coverage: KnowledgeCoverage | None = None
         self._evidence_observations: tuple[ObservationRecord, ...] = ()
         self._evidence_revision = 0
+        self._evidence_history: list[EvidenceRevision] = []
+        self._candidate_validation_history: list[CandidateValidationRecord] = []
         self._evidence_context: EvidenceContextRecord | None = None
         self._plan: PlanRecord | None = None
         self._candidate_validations: dict[str, CandidateValidationRecord] = {}
@@ -218,12 +222,18 @@ class TraceRecorder:
             for (identity_id, component_id), observation_ids in grouped.items()
         )
 
-    def record_evidence(self, evidence: EvidencePacket) -> None:
+    def record_evidence(
+        self,
+        evidence: EvidencePacket,
+        *,
+        generated: GeneratedEvidencePacket | None = None,
+        retry_index: int = 0,
+    ) -> None:
         """Keep the evidence ledger: attribution, reading and trust per observation.
 
-        The latest packet wins, since a correction round re-extracts. Tokens only — notes,
-        regions and image bytes stay out — and bounded, so one runaway extraction cannot
-        turn a case record into a megabyte.
+        Compact compatibility fields describe the final packet. Complete raw/effective
+        artifacts retain every revision, including notes and regions, before another
+        extraction reuses the IDs. No image bytes, local paths or case metadata are copied.
         """
         from dendro_inspector.knowledge.evidence_hierarchy import (
             effective_tier,
@@ -248,6 +258,18 @@ class TraceRecorder:
             for observation in evidence.observations[:MAX_LEDGER_OBSERVATIONS]
         )
         self._evidence_revision += 1
+        self._evidence_history.append(
+            EvidenceRevision(
+                revision=self._evidence_revision,
+                retry_index=retry_index,
+                raw=generated,
+                effective=evidence,
+                raw_sha256=packet_digest(generated) if generated is not None else None,
+                effective_sha256=packet_digest(evidence),
+            )
+        )
+        # Prior validations remain in history, but cannot describe the new packet's IDs.
+        self._candidate_validations.clear()
         self._evidence_context = EvidenceContextRecord(
             revision=self._evidence_revision,
             subjects=tuple(
@@ -298,6 +320,13 @@ class TraceRecorder:
             bark_only_input=bark_only_input,
             split_firewood_input=split_firewood_input,
         )
+
+    def record_candidate_proposal(self, proposal: CandidateProposal) -> None:
+        """Keep even rejected taxa, uncited support and proposals for unusable subjects."""
+        if self._evidence_history:
+            self._evidence_history[-1] = self._evidence_history[-1].model_copy(
+                update={"candidate_proposal": proposal}
+            )
 
     def record_review_round(
         self,
@@ -468,6 +497,70 @@ class TraceRecorder:
             malformed_evidence_ids=validation.malformed_evidence_ids,
             evidence_revision=self._evidence_revision or None,
         )
+        self._candidate_validation_history.append(self._candidate_validations[proposed.subject_id])
+
+    def _observation_uses(self) -> tuple[ObservationUseRecord, ...]:
+        """Account for every effective observation, including evidence no candidate cited."""
+        uses = []
+        for revision in self._evidence_history:
+            validations = [
+                record
+                for record in self._candidate_validation_history
+                if record.evidence_revision == revision.revision
+            ]
+            for observation in revision.effective.observations:
+                evidence_ids = {observation.observation_id}
+                evidence_ids.update(
+                    inference.inference_id
+                    for inference in revision.effective.inferences
+                    if observation.observation_id in inference.derived_from
+                )
+                relevant = [v for v in validations if v.subject_id == observation.subject_id]
+                support = tuple(
+                    dict.fromkeys(
+                        c.taxon
+                        for v in relevant
+                        for c in v.admitted
+                        if evidence_ids.intersection(c.supporting_evidence_ids)
+                    )
+                )
+                contradictions = tuple(
+                    dict.fromkeys(
+                        c.taxon
+                        for v in relevant
+                        for c in v.admitted
+                        if evidence_ids.intersection(c.contradicting_evidence_ids)
+                    )
+                )
+                rejected = tuple(
+                    detail
+                    for v in relevant
+                    for detail in v.dropped_support
+                    if detail.evidence_id in evidence_ids
+                )
+                proposal = revision.candidate_proposal
+                cited = bool(
+                    proposal
+                    and any(
+                        evidence_ids.intersection(candidate.supporting_evidence_ids)
+                        or evidence_ids.intersection(candidate.contradicting_evidence_ids)
+                        for group in proposal.sets
+                        for candidate in group.candidates
+                    )
+                )
+                uses.append(
+                    ObservationUseRecord(
+                        evidence_revision=revision.revision,
+                        evidence_ref=revision.reference(observation.observation_id),
+                        observation_id=observation.observation_id,
+                        supporting_taxa=support,
+                        contradicting_taxa=contradictions,
+                        rejected_support=rejected,
+                        candidate_validation_ran=bool(relevant),
+                        cited=cited or bool(support or contradictions or rejected),
+                    )
+                )
+        return tuple(uses)
 
     def record_review_projection(self, node: str, projection: ReviewProjection) -> None:
         """Record IDs and countable inputs without storing prompt text or private metadata."""
@@ -619,6 +712,9 @@ class TraceRecorder:
             evidence_observations=self._evidence_observations,
             candidate_validations=tuple(self._candidate_validations.values()),
             evidence_context=self._evidence_context,
+            evidence_history=tuple(self._evidence_history),
+            candidate_validation_history=tuple(self._candidate_validation_history),
+            observation_uses=self._observation_uses(),
             plan=self._plan,
             review_rounds=tuple(self._review_rounds.values()),
             abstentions=tuple(self._abstentions.values()),

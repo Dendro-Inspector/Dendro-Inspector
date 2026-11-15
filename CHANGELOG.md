@@ -12,6 +12,13 @@ get entries.
 
 ### Added
 
+- **Evidence survives correction retries.** Trace schema 3 retains each extraction's raw
+  and effective evidence packets, including notes, regions, component attribution and
+  inferences, with SHA-256 hashes. Revision-qualified references distinguish reused
+  observation IDs. Original candidate proposals and validation history remain available,
+  and every effective observation has a record of accepted, rejected or absent candidate
+  use. Offline replay reads the last recorded raw packet and original proposal when
+  available; the compact final ledger remains available and older trace files stay readable.
 - **Offline reference scoring respects the target subject.** `coverage-audit --labels`
   accepts target subject IDs, an optional family and visible-label annotations. It reports
   background names separately and distinguishes missing targets, ambiguous answers,

@@ -284,6 +284,12 @@ The record is attribution only. No rule reads it, and a synthesis built without 
 exactly as before. Summaries are stored as the reviewer wrote them; photographs and prompts
 are not stored.
 
+In trace schema 3, each round's `evidence_revision` identifies the corresponding raw and
+effective packet in `evidence_history`. Resolve a finding's local evidence ID against that
+revision, not against the compact final ledger: a correction retry may reuse the same ID for
+a different reading. Candidate validations follow the same rule. See
+[evidence revisions](architecture.md#evidence-revisions).
+
 `dendro coverage-audit --replay --reviews recorded` replays a stored run with these reviews
 ([evaluation](evaluation.md#replay-with-the-recorded-reviews)).
 
