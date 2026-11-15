@@ -23,4 +23,10 @@ async def run(state: GraphState, ctx: NodeContext) -> GraphState:
         evidence=state.evidence,
         knowledge=ctx.knowledge,
     )
+    ctx.recorder.record_review_round(
+        stage="arbiter",
+        round_index=1,
+        results=state.arbiter_reviews,
+        synthesis=synthesis,
+    )
     return state.evolve(arbiter_synthesis=synthesis)

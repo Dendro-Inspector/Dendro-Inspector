@@ -4,9 +4,11 @@ For each record: every observation's coverage status (:mod:`knowledge.coverage_a
 every proposal's admission outcome with its exact reason, and optionally a replay of the
 recorded evidence through today's deterministic decision (:mod:`evaluation.trace_replay`).
 
-Labels, when given, are compared at genus. They are reported per record *and* per distinct
-case, because several runs of one photograph are one sample: five photographs through four
-model configurations are five samples, not twenty.
+Labels, when given, are graded at genus by :mod:`evaluation.label_scoring`: only a record's
+target subjects are graded, and a record whose target is not known is reported as unscoped
+instead of being graded on whichever subject was named first. Grades are reported per
+record *and* per distinct case, because several runs of one photograph are one sample: five
+photographs through four model configurations are five samples, not twenty.
 """
 
 from __future__ import annotations
@@ -14,18 +16,30 @@ from __future__ import annotations
 import json
 from collections import Counter
 from collections.abc import Iterable, Mapping
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import Any
 
 from dendro_inspector.config import AppConfig
+from dendro_inspector.evaluation.label_scoring import (
+    Grade,
+    Outcome,
+    ReferenceLabel,
+    SubjectAnswer,
+    grade_record,
+    parse_names,
+    summarise_grades,
+)
 from dendro_inspector.evaluation.trace_replay import (
+    ReplayUnavailableError,
+    ReviewReplay,
     StoredRecord,
     load_record,
     packet_from_trace,
     proposals_from_trace,
     replay,
     replay_fidelity,
+    replay_gaps,
 )
 from dendro_inspector.knowledge.coverage_audit import CoverageAudit, audit_packet
 from dendro_inspector.knowledge.loader import KnowledgeBase
@@ -51,19 +65,18 @@ class RecordReport:
     fidelity_mismatches: tuple[str, ...]
     stored: tuple[DecisionRow, ...]
     replayed: tuple[DecisionRow, ...] = ()
+    #: The labelled genus, and the full reference it came from.
     label: str | None = None
-
-
-def load_labels(path: Path | None) -> dict[str, str]:
-    """``{case_id: genus}``, from either a flat mapping or ``{"labels": {id: {"genus": g}}}``."""
-    if path is None:
-        return {}
-    payload = json.loads(path.read_text(encoding="utf-8"))
-    labels = payload.get("labels", payload) if isinstance(payload, dict) else {}
-    return {
-        str(case): str(value.get("genus") if isinstance(value, dict) else value).lower()
-        for case, value in labels.items()
-    }
+    reference: ReferenceLabel | None = None
+    stored_grade: Grade | None = None
+    #: None when the record was not replayed, or could not be.
+    replayed_grade: Grade | None = None
+    #: How the replay answered for the reviewers; None when the record was not replayed.
+    replay_reviews: str | None = None
+    #: What the replay reconstructed or went without, as ``what: why`` entries.
+    replay_gaps: tuple[str, ...] = ()
+    #: The trace lacks what the requested replay needs, so no replayed verdict is given.
+    replay_unavailable: bool = False
 
 
 def _genus(knowledge: KnowledgeBase, taxon: str | None, resolution: str) -> str | None:
@@ -79,6 +92,35 @@ def _genus(knowledge: KnowledgeBase, taxon: str | None, resolution: str) -> str 
             genus = card.identity_at_or_broader(Resolution.GENUS)
             return genus.taxon_id if genus is not None else None
     return taxon
+
+
+def _family(knowledge: KnowledgeBase, genus: str) -> str | None:
+    """The family the genus card places it in, for a label that does not state one."""
+    card = knowledge.try_taxon(genus)
+    family = card.identity_at_or_broader(Resolution.FAMILY) if card is not None else None
+    if family is None or family.resolution is not Resolution.FAMILY:
+        return None
+    return family.taxon_id
+
+
+def _reference(knowledge: KnowledgeBase, label: ReferenceLabel | None) -> ReferenceLabel | None:
+    if label is None or label.family is not None:
+        return label
+    return replace(label, family=_family(knowledge, label.genus))
+
+
+def _answers(rows: tuple[DecisionRow, ...]) -> tuple[SubjectAnswer, ...]:
+    """Each verdict as the grader reads it: a genus, a broader name, or nothing."""
+    answers = []
+    for row in rows:
+        genera: tuple[str, ...] = ()
+        broader: tuple[str, ...] = ()
+        if row.genus is not None:
+            genera, broader = parse_names(row.genus)
+        elif row.taxon and row.resolution != "unknown":
+            broader = (row.taxon.lower(),)
+        answers.append(SubjectAnswer(row.subject_id, genera, broader))
+    return tuple(answers)
 
 
 def _stored_rows(record: StoredRecord, knowledge: KnowledgeBase) -> tuple[DecisionRow, ...]:
@@ -118,9 +160,16 @@ async def build_reports(
     *,
     config: AppConfig,
     root: Path,
-    labels: Mapping[str, str] | None = None,
+    labels: Mapping[str, ReferenceLabel] | None = None,
     with_replay: bool = False,
+    reviews: ReviewReplay = "neutral",
 ) -> tuple[RecordReport, ...]:
+    """One report per stored record; ``reviews`` chooses how a replay answers for reviewers.
+
+    A record whose trace cannot support the requested replay is reported as such, with no
+    replayed verdict. It is never replayed another way instead: a neutral verdict filed
+    under ``recorded`` would be counted as what review did to the claim.
+    """
     reports = []
     for path in collect_paths(paths):
         try:
@@ -131,43 +180,50 @@ async def build_reports(
             continue
         packet = packet_from_trace(record.trace)
         replayed: tuple[DecisionRow, ...] = ()
+        unavailable = False
         if with_replay:
-            state = await replay(record, config=config, root=root)
-            replayed = tuple(
-                DecisionRow(
-                    decision.subject_id,
-                    decision.selected_taxon,
-                    _genus(knowledge, decision.selected_taxon, decision.resolution.value),
-                    decision.resolution.value,
-                    decision.confidence.value,
-                    decision.status.value,
+            try:
+                state = await replay(record, config=config, root=root, reviews=reviews)
+            except ReplayUnavailableError:
+                unavailable = True
+            else:
+                replayed = tuple(
+                    DecisionRow(
+                        decision.subject_id,
+                        decision.selected_taxon,
+                        _genus(knowledge, decision.selected_taxon, decision.resolution.value),
+                        decision.resolution.value,
+                        decision.confidence.value,
+                        decision.status.value,
+                    )
+                    for decision in state.decisions
                 )
-                for decision in state.decisions
-            )
+        stored = _stored_rows(record, knowledge)
+        reference = _reference(knowledge, (labels or {}).get(record.case_id))
         reports.append(
             RecordReport(
                 case_id=record.case_id,
                 source=record.source,
                 audit=audit_packet(packet, knowledge, _proposals(record)),
                 fidelity_mismatches=replay_fidelity(record),
-                stored=_stored_rows(record, knowledge),
+                stored=stored,
                 replayed=replayed,
-                label=(labels or {}).get(record.case_id),
+                label=reference.genus if reference is not None else None,
+                reference=reference,
+                stored_grade=(
+                    grade_record(_answers(stored), reference) if reference is not None else None
+                ),
+                replayed_grade=(
+                    grade_record(_answers(replayed), reference)
+                    if reference is not None and with_replay and not unavailable
+                    else None
+                ),
+                replay_reviews=reviews if with_replay else None,
+                replay_gaps=replay_gaps(record.trace, reviews) if with_replay else (),
+                replay_unavailable=unavailable,
             )
         )
     return tuple(reports)
-
-
-def _leading(rows: tuple[DecisionRow, ...]) -> DecisionRow | None:
-    """The first named subject, else the first subject: the answer a reader sees first."""
-    named = [row for row in rows if row.genus is not None]
-    return named[0] if named else (rows[0] if rows else None)
-
-
-def _grade(row: DecisionRow | None, label: str) -> str:
-    if row is None or row.genus is None:
-        return "abstained"
-    return "correct" if row.genus == label else "wrong"
 
 
 def summarise(reports: tuple[RecordReport, ...]) -> dict[str, Any]:
@@ -188,25 +244,34 @@ def summarise(reports: tuple[RecordReport, ...]) -> dict[str, Any]:
 
     def grades(key: str) -> dict[str, Any]:
         per_record: Counter[str] = Counter()
+        legacy: Counter[str] = Counter()
         per_case: dict[str, Counter[str]] = {}
+        graded: list[tuple[str, Grade, ReferenceLabel]] = []
         for report in reports:
-            if report.label is None:
+            grade = report.stored_grade if key == "stored" else report.replayed_grade
+            if grade is None or report.reference is None:
                 continue
-            rows = report.stored if key == "stored" else report.replayed
-            if key == "replayed" and not rows:
-                continue
-            grade = _grade(_leading(rows), report.label)
-            per_record[grade] += 1
-            per_case.setdefault(report.case_id, Counter())[grade] += 1
+            graded.append((report.case_id, grade, report.reference))
+            per_record[grade.outcome.value] += 1
+            legacy[
+                grade.outcome.value
+                if grade.outcome in (Outcome.CORRECT, Outcome.WRONG)
+                else "abstained"
+            ] += 1
+            per_case.setdefault(report.case_id, Counter())[grade.outcome.value] += 1
         return {
-            "records": dict(per_record),
+            # Keep the former coarse counters for existing report readers. New readers
+            # should use outcomes: family, ambiguous and unscoped are not abstentions.
+            "records": dict(legacy),
+            "outcomes": dict(per_record),
             "distinct_cases": len(per_case),
-            "cases_with_any_wrong_genus": sum(1 for c in per_case.values() if c["wrong"]),
-            "cases_correct_on_every_record": sum(
-                1
-                for c in per_case.values()
-                if c["correct"] and not c["wrong"] and not c["abstained"]
+            "cases_with_any_wrong_genus": sum(
+                1 for c in per_case.values() if c[Outcome.WRONG.value]
             ),
+            "cases_correct_on_every_record": sum(
+                1 for c in per_case.values() if c[Outcome.CORRECT.value] == sum(c.values())
+            ),
+            "grading": summarise_grades(graded),
         }
 
     total = sum(statuses.values()) or 1
@@ -220,7 +285,18 @@ def summarise(reports: tuple[RecordReport, ...]) -> dict[str, Any]:
         "top_uncovered": uncovered.most_common(15),
         "labelled_stored": grades("stored"),
         "labelled_replayed": grades("replayed"),
+        "labelled_movements": [
+            {
+                "case_id": report.case_id,
+                "source": report.source,
+                "stored": report.stored_grade.outcome.value,
+                "replayed": report.replayed_grade.outcome.value,
+            }
+            for report in reports
+            if report.stored_grade is not None and report.replayed_grade is not None
+        ],
         "replay_fidelity_mismatches": sum(1 for r in reports if r.fidelity_mismatches),
+        "replay_unavailable": sum(1 for r in reports if r.replay_unavailable),
     }
 
 
@@ -252,8 +328,23 @@ def render_text(reports: tuple[RecordReport, ...]) -> str:
                 )
         if report.label:
             lines.append(f"  label genus: {report.label}")
+        for label, grade in (("live", report.stored_grade), ("replay", report.replayed_grade)):
+            if grade is not None:
+                possible = " or ".join(outcome.value for outcome in grade.possible_outcomes)
+                lines.append(
+                    f"  {label} grade: {grade.outcome.value}"
+                    + (f" ({possible})" if possible else "")
+                    + f" [{grade.scope.value}]"
+                )
+                if grade.missing_target_ids:
+                    lines.append("    missing targets: " + ", ".join(grade.missing_target_ids))
+                for subject, genus in grade.context_names:
+                    lines.append(f"    context: {subject} -> {genus}")
         if report.fidelity_mismatches:
             lines.append(f"  replay fidelity: trust differs for {report.fidelity_mismatches}")
+        if report.replay_unavailable:
+            lines.append(f"  replay: not available with {report.replay_reviews} reviews")
+        lines.extend(f"  replay gap: {gap}" for gap in report.replay_gaps)
     lines.append(json.dumps(summarise(reports), indent=1, ensure_ascii=False))
     return "\n".join(lines)
 

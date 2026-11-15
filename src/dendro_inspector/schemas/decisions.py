@@ -113,11 +113,61 @@ ConfidenceStepSource = Literal[
 RerankSource = Literal["arbiter", "internal", "none", "withheld"]
 
 
+#: Which review pass something came from. `legacy_aggregate` is a synthesis that carried
+#: only a pooled level, with no per-reviewer bindings to attribute it to.
+ReviewStage = Literal["internal", "arbiter", "legacy_aggregate"]
+
+
+class RecommendationSource(Contract):
+    """One admitted review recommendation behind a bound or a confidence step.
+
+    Attribution only: recording it moves nothing. A `reviewer_recommendation` bound is the
+    broadest level any admitted recommendation named, and a pooled value cannot say which
+    reviewer named it or whether a finding stood behind it. Every recommendation that named
+    a level is listed, so the ones that did not set the bound are visible as well.
+    """
+
+    stage: ReviewStage
+    reviewer: str | None = Field(default=None, max_length=40)
+    resolution: Resolution | None = None
+    confidence: Confidence | None = None
+    finding_id: Identifier | None = Field(
+        default=None,
+        description=(
+            "The accepted model finding this recommendation is bound to. None is a bare "
+            "recommendation: a level with no admitted finding of that reviewer's behind it."
+        ),
+    )
+    finding_ref: str | None = Field(
+        default=None,
+        max_length=120,
+        description="Run-unique name of that finding; see `FindingAttribution.reference`.",
+    )
+    binding: bool = Field(
+        description="Whether this recommendation named the level the bound or step took."
+    )
+
+
+class FindingReference(Contract):
+    """One accepted finding named exactly: which review raised it, in which pass."""
+
+    stage: ReviewStage
+    reviewer: str | None = Field(default=None, max_length=40)
+    finding_id: Identifier
+    finding_ref: str | None = Field(default=None, max_length=120)
+    origin: str = Field(max_length=40)
+    category: str = Field(max_length=60)
+
+
 class ResolutionBound(Contract):
     """One upper bound considered while composing a taxonomic resolution."""
 
     source: ResolutionBoundSource
     value: Resolution
+    sources: tuple[RecommendationSource, ...] = Field(
+        default=(),
+        description="For `reviewer_recommendation`: every recommendation that named a level.",
+    )
 
 
 class ConfidenceStep(Contract):
@@ -133,6 +183,19 @@ class ConfidenceStep(Contract):
     before: Confidence
     after: Confidence
     applied: bool
+    stage: ReviewStage | None = Field(
+        default=None, description="For a finding step: the pass that accepted the finding."
+    )
+    reviewer: str | None = Field(
+        default=None,
+        max_length=40,
+        description="For a finding step: the review that raised the finding.",
+    )
+    finding_ref: str | None = Field(default=None, max_length=120)
+    sources: tuple[RecommendationSource, ...] = Field(
+        default=(),
+        description="For `reviewer_recommendation`: every recommendation that named a level.",
+    )
 
 
 class DecisionDerivation(Contract):
@@ -144,9 +207,21 @@ class DecisionDerivation(Contract):
     resolution_bounds: tuple[ResolutionBound, ...] = Field(min_length=1)
     resolution_binding_source: ResolutionBoundSource
     resolution_action_applied: bool
+    resolution_action_findings: tuple[FindingReference, ...] = Field(
+        default=(),
+        description=(
+            "Accepted findings whose `lower_resolution` action was still owed once the "
+            "bounds were composed. `resolution_action_applied` says whether the one step "
+            "they ask for was taken; a bound that had already broadened the claim absorbs it."
+        ),
+    )
     confidence_steps: tuple[ConfidenceStep, ...] = Field(min_length=1)
     rerank_source: RerankSource = "none"
     rerank_finding_id: Identifier | None = None
+    rerank_finding: FindingReference | None = Field(
+        default=None,
+        description="The review behind `rerank_finding_id`, when the synthesis recorded it.",
+    )
 
     @classmethod
     def terminal(cls, subject_id: str) -> DecisionDerivation:

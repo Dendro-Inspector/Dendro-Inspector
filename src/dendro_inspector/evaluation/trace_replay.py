@@ -5,25 +5,41 @@ candidate the generator proposed together with what admission did to it. That is
 ask a narrow question offline and for free: *given exactly that evidence and those
 proposals, what does the current code decide?*
 
-The replay scripts the fake provider with the recorded packet and proposals, and gives every
-reviewer a neutral pass with no findings. It therefore measures the deterministic layer —
-admission, card matching, tiers, ceilings, the claim cap — and nothing a reviewer model
-added. That is the layer a knowledge or admission change touches, which is what makes it the
-right before/after instrument for one, and the wrong instrument for judging a model.
+The replay scripts the fake provider with the recorded packet and proposals. Reviewers are
+replayed one of two ways:
 
-What a trace does not carry is reconstructed conservatively and reported, never invented:
+* ``neutral`` (the default) gives every reviewer a pass with no findings. It measures the
+  deterministic layer — admission, card matching, tiers, ceilings, the claim cap — and
+  nothing a reviewer model added. That is the layer a knowledge or admission change touches,
+  which makes it the right before/after instrument for one, and the wrong instrument for
+  judging a model.
+* ``recorded`` gives every reviewer the review it returned in the live run, read from the
+  trace's ``review_rounds``. It measures what today's adjudication and decision rules make
+  of those same reviews, which is the instrument for a change to how review binds a
+  verdict. A trace written before reviews were recorded cannot be replayed this way, and
+  the replay says so rather than substituting neutral reviewers.
 
-* Subject kinds are not recorded. They are inferred from the subject id's wording, and
+What a trace does not carry is reconstructed conservatively and reported by
+:func:`replay_gaps`, never invented:
+
+* Subject kinds are read from ``evidence_context`` where the trace has it. Older traces do
+  not record them: they are inferred from the subject id's wording, and
   :func:`replay_fidelity` checks that the rebuilt packet assigns every observation the trust
   and tier the live run recorded. A record whose trust does not reproduce is flagged.
 * Evidence the uploader vouched for (``user_attested``) is replayed as ``unknown`` with the
   record's field-context flag, so attestation is re-derived rather than copied. The subject
   it was originally filed under is not recorded, so it is replayed on the tree.
-* Inferences are not recorded, so a proposal that cited an inference id loses that id.
+* Inferences are replayed where the trace has them. From an older trace, a proposal that
+  cited an inference id loses that id.
 * Older traces omit wood surfaces. They replay as ``unknown``, never as prepared end grain;
   any resulting trust or tier change is reported by :func:`replay_fidelity`.
 * A rejected proposal's resolution and score are not recorded. Resolution is read from the
   taxon id's shape and the score is taken as ``weak``; admission recomputes both anyway.
+* Only the last internal review round is replayed. A run that retried replays that round's
+  reviews on every pass, which reaches the same verdict by a route one retry shorter or the
+  same length, never by the route it took.
+* The case's own inputs — declared object type, location, the user's claim and note — are
+  not in the trace. A record that used any of them replays without it.
 """
 
 from __future__ import annotations
@@ -33,10 +49,11 @@ import tempfile
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from dendro_inspector.config import Adapter, AppConfig, ProviderConfig, Role
 from dendro_inspector.knowledge.evidence_hierarchy import project_observation
+from dendro_inspector.observability.events import LEGACY_TRACE_SCHEMA_VERSION
 from dendro_inspector.schemas.evidence import (
     AttachmentStatus,
     EvidencePacket,
@@ -83,6 +100,24 @@ _NEUTRAL_REVIEWS = {
     "reviewer:confidence_reviewer": {"reviewer": "confidence", "status": "pass", "findings": []},
     "arbiter:arbiter": {"reviewer": "arbiter", "status": "pass", "findings": []},
 }
+
+#: Which fake-provider key answers for each recorded reviewer.
+_REVIEW_KEYS = {
+    "botanical": "reviewer:botanical_reviewer",
+    "confusion": "reviewer:confusion_reviewer",
+    "confidence": "reviewer:confidence_reviewer",
+    "arbiter": "arbiter:arbiter",
+}
+
+#: How a replay answers for the reviewers; see the module docstring.
+ReviewReplay = Literal["neutral", "recorded"]
+
+#: Marks something a replay had to do without because the trace predates its recording.
+MISSING_FROM_LEGACY_TRACE = "missing_from_legacy_trace"
+
+
+class ReplayUnavailableError(ValueError):
+    """The trace lacks what the requested replay needs, and nothing may stand in for it."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -141,7 +176,30 @@ def _observations(trace: Mapping[str, Any]) -> list[dict[str, Any]]:
     return rows
 
 
-def _subjects(observations: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
+def trace_schema_version(trace: Mapping[str, Any]) -> int:
+    """The trace's own shape version; traces written before the field existed are 1."""
+    return int(trace.get("trace_schema_version") or LEGACY_TRACE_SCHEMA_VERSION)
+
+
+def _subjects(
+    observations: Sequence[Mapping[str, Any]], trace: Mapping[str, Any] | None = None
+) -> list[dict[str, Any]]:
+    """The packet's subjects: as recorded where the trace has them, else rebuilt.
+
+    Recorded subjects include the ones nothing was observed on, each of which still gets a
+    verdict of its own. Rebuilding from observations cannot see those, and has to guess
+    every kind from the wording of its id.
+    """
+    recorded = ((trace or {}).get("evidence_context") or {}).get("subjects")
+    if recorded:
+        return [
+            {
+                "subject_id": subject["subject_id"],
+                "kind": subject["kind"],
+                "image_ids": list(subject.get("image_ids") or ()),
+            }
+            for subject in recorded
+        ]
     images: dict[str, list[str]] = {}
     for observation in observations:
         bucket = images.setdefault(str(observation["subject_id"]), [])
@@ -154,12 +212,34 @@ def _subjects(observations: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]
     ]
 
 
-def packet_from_trace(trace: Mapping[str, Any]) -> EvidencePacket:
-    """The recorded observations as an evidence packet (no inferences: none are stored)."""
+def _packet_payload(trace: Mapping[str, Any]) -> dict[str, Any]:
+    """The recorded packet as the extractor would return it, with what the trace kept."""
     observations = _observations(trace)
-    return EvidencePacket.model_validate(
-        {"subjects": _subjects(observations), "observations": observations}
-    )
+    payload: dict[str, Any] = {
+        "subjects": _subjects(observations, trace),
+        "observations": observations,
+    }
+    context = trace.get("evidence_context")
+    if context:
+        payload.update(
+            inferences=[dict(inference) for inference in context.get("inferences") or ()],
+            absent_features=list(context.get("absent_features") or ()),
+            context_limitations=list(context.get("context_limitations") or ()),
+            image_limitations=[
+                {key: value for key, value in limitation.items() if value is not None}
+                for limitation in context.get("image_limitations") or ()
+            ],
+            possible_multiple_taxa=bool(context.get("possible_multiple_taxa")),
+            instruction_like_content_detected=bool(
+                context.get("instruction_like_content_detected")
+            ),
+        )
+    return payload
+
+
+def packet_from_trace(trace: Mapping[str, Any]) -> EvidencePacket:
+    """The recorded evidence as a packet. Inferences only where the trace recorded them."""
+    return EvidencePacket.model_validate(_packet_payload(trace))
 
 
 def _original_score(taxon: str, admitted_score: str, demoted: Sequence[str]) -> str:
@@ -206,25 +286,147 @@ def proposals_from_trace(trace: Mapping[str, Any]) -> list[dict[str, Any]]:
     return sets
 
 
-def fixture_from_trace(trace: Mapping[str, Any]) -> dict[str, Any]:
-    """A fake-provider scenario that replays this trace with neutral reviewers."""
-    observations = _observations(trace)
+def _review_response(reviewer: Mapping[str, Any]) -> dict[str, Any]:
+    """One recorded review as the reviewer model returned it.
+
+    Only the model's own findings go back in. The code-raised ones were merged into the
+    review after the call, and the replayed node raises them again from the same evidence;
+    scripting them as model output would file them twice, once under the wrong origin. A
+    finding returns with the subject the reviewer named, since adjudication resolves scope
+    itself. The recorded status is the one after that merge, which a second merge leaves as
+    it is.
+    """
+    response: dict[str, Any] = {
+        "reviewer": reviewer["reviewer"],
+        "status": reviewer["status"],
+        "findings": [
+            {
+                key: value
+                for key, value in {
+                    "finding_id": finding["finding_id"],
+                    "category": finding["category"],
+                    "severity": finding["severity"],
+                    "summary": finding["summary"],
+                    "evidence_ids": list(finding.get("evidence_ids") or ()),
+                    "subject_id": finding.get("raised_subject_id"),
+                    "proposed_taxon": finding.get("proposed_taxon"),
+                    "required_action": finding["required_action"],
+                    "impact": finding["impact"],
+                }.items()
+                if value is not None
+            }
+            for finding in reviewer.get("findings") or ()
+            if finding.get("origin") == "model"
+        ],
+        "recommended_candidates": [
+            {
+                "taxon": candidate["taxon"],
+                "resolution": candidate["resolution"],
+                "supporting_evidence_ids": list(candidate.get("supporting_evidence_ids") or ()),
+                "contradicting_evidence_ids": list(
+                    candidate.get("contradicting_evidence_ids") or ()
+                ),
+                "missing_decisive_features": list(candidate.get("missing_decisive_features") or ()),
+                "score": candidate["score"],
+                "rank": candidate["rank"],
+            }
+            for candidate in reviewer.get("recommended_candidates") or ()
+        ],
+    }
+    for key in ("recommended_resolution", "recommended_confidence", "subject_id"):
+        if reviewer.get(key) is not None:
+            response[key] = reviewer[key]
+    return response
+
+
+def _replayed_rounds(trace: Mapping[str, Any]) -> tuple[Mapping[str, Any], ...]:
+    """The rounds a replay scripts: the last internal one, then the arbiter's."""
+    rounds = tuple(trace.get("review_rounds") or ())
+    internal = [item for item in rounds if item.get("stage") == "internal"]
+    arbiter = [item for item in rounds if item.get("stage") == "arbiter"]
+    last = max(internal, key=lambda item: int(item.get("round") or 0), default=None)
+    return tuple(item for item in (last, arbiter[-1] if arbiter else None) if item is not None)
+
+
+def reviews_from_trace(trace: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
+    """Fake-provider responses for the reviewers, from the reviews the trace recorded.
+
+    A reviewer the run never called keeps its neutral pass: a replay that reaches it under a
+    different policy has nothing recorded to give it, and :func:`replay_gaps` says which.
+    """
+    if trace_schema_version(trace) <= LEGACY_TRACE_SCHEMA_VERSION:
+        msg = f"review_rounds: {MISSING_FROM_LEGACY_TRACE}"
+        raise ReplayUnavailableError(msg)
+    responses: dict[str, dict[str, Any]] = {
+        key: dict(response) for key, response in _NEUTRAL_REVIEWS.items()
+    }
+    for recorded in _replayed_rounds(trace):
+        for reviewer in recorded.get("reviewers") or ():
+            key = _REVIEW_KEYS.get(str(reviewer.get("reviewer")))
+            if key is not None:
+                responses[key] = _review_response(reviewer)
+    return responses
+
+
+def replay_gaps(trace: Mapping[str, Any], reviews: ReviewReplay = "neutral") -> tuple[str, ...]:
+    """What this replay reconstructs or omits, as ``what: why`` entries. Empty when nothing."""
+    gaps: list[str] = []
+    legacy = trace_schema_version(trace) <= LEGACY_TRACE_SCHEMA_VERSION
+    if legacy:
+        gaps.extend(
+            f"{what}: {MISSING_FROM_LEGACY_TRACE}"
+            for what in ("subject_kinds", "inferences", "packet_flags", "plan")
+        )
+    if reviews != "recorded":
+        return tuple(gaps)
+    if legacy:
+        gaps.append(f"review_rounds: {MISSING_FROM_LEGACY_TRACE}")
+        return tuple(gaps)
+    rounds = tuple(trace.get("review_rounds") or ())
+    replayed = _replayed_rounds(trace)
+    internal_rounds = sum(1 for item in rounds if item.get("stage") == "internal")
+    if internal_rounds > 1:
+        gaps.append(f"review_rounds: only the last of {internal_rounds} internal rounds replays")
+    called = {str(r.get("reviewer")) for item in replayed for r in item.get("reviewers") or ()}
+    gaps.extend(
+        f"review:{reviewer}: not called in the recorded run; neutral if this replay calls it"
+        for reviewer in _REVIEW_KEYS
+        if rounds and reviewer not in called
+    )
+    gaps.extend(
+        f"review:{reviewer.get('reviewer')}: {reviewer['findings_omitted']} findings omitted"
+        for item in replayed
+        for reviewer in item.get("reviewers") or ()
+        if reviewer.get("findings_omitted")
+    )
+    return tuple(gaps)
+
+
+def fixture_from_trace(
+    trace: Mapping[str, Any], *, reviews: ReviewReplay = "neutral"
+) -> dict[str, Any]:
+    """A fake-provider scenario that replays this trace; see the module docstring."""
+    packet = _packet_payload(trace)
+    plan = trace.get("plan") or {}
     return {
         "scenario": "trace-replay",
-        "description": "Recorded evidence and proposals, replayed with neutral reviewers.",
+        "description": f"Recorded evidence and proposals, replayed with {reviews} reviewers.",
         "responses": {
             "primary:planner": {
-                "target_features": [],
-                "expect_multiple_subjects": len({o["subject_id"] for o in observations}) > 1,
-                "bark_only_input": False,
+                "target_features": list(plan.get("target_features") or ()),
+                "expect_multiple_subjects": bool(
+                    plan.get(
+                        "expect_multiple_subjects",
+                        len({o["subject_id"] for o in packet["observations"]}) > 1,
+                    )
+                ),
+                "bark_only_input": bool(plan.get("bark_only_input", False)),
+                "split_firewood_input": bool(plan.get("split_firewood_input", False)),
                 "notes": [],
             },
-            "primary:evidence_extractor": {
-                "subjects": _subjects(observations),
-                "observations": observations,
-            },
+            "primary:evidence_extractor": packet,
             "primary:candidate_generator": {"sets": proposals_from_trace(trace)},
-            **_NEUTRAL_REVIEWS,
+            **(reviews_from_trace(trace) if reviews == "recorded" else _NEUTRAL_REVIEWS),
         },
     }
 
@@ -245,13 +447,21 @@ def replay_fidelity(record: StoredRecord) -> tuple[str, ...]:
 
 
 def _case_input(record: StoredRecord) -> CaseInput:
-    images = sorted(
-        {
-            str(row["image_id"])
-            for row in record.trace["evidence_observations"]
-            if row.get("image_id")
-        }
-    ) or ["img-1"]
+    context = record.trace.get("evidence_context") or {}
+    referenced = {
+        str(row["image_id"]) for row in record.trace["evidence_observations"] if row.get("image_id")
+    }
+    # A subject or a limitation may name a photograph nothing was observed on, and the
+    # extractor refuses a packet that references an image the case does not hold.
+    referenced.update(
+        str(image_id)
+        for subject in context.get("subjects") or ()
+        for image_id in subject.get("image_ids") or ()
+    )
+    referenced.update(
+        str(limitation["image_id"]) for limitation in context.get("image_limitations") or ()
+    )
+    images = sorted(referenced) or ["img-1"]
     return CaseInput(
         case_id="trace-replay",
         images=tuple(ImageRef(image_id=image, path=Path(f"{image}.jpg")) for image in images),
@@ -259,14 +469,24 @@ def _case_input(record: StoredRecord) -> CaseInput:
     )
 
 
-async def replay(record: StoredRecord, *, config: AppConfig, root: Path) -> Any:
-    """Run the graph on the recorded evidence; returns the final graph state."""
+async def replay(
+    record: StoredRecord,
+    *,
+    config: AppConfig,
+    root: Path,
+    reviews: ReviewReplay = "neutral",
+) -> Any:
+    """Run the graph on the recorded evidence; returns the final graph state.
+
+    Raises :class:`ReplayUnavailableError` when ``reviews="recorded"`` is asked of a trace
+    that recorded no reviews.
+    """
     from dendro_inspector.runner import run_case
 
     with tempfile.TemporaryDirectory() as directory:
         fixtures = Path(directory)
         (fixtures / "trace-replay.json").write_text(
-            json.dumps(fixture_from_trace(record.trace)), encoding="utf-8"
+            json.dumps(fixture_from_trace(record.trace, reviews=reviews)), encoding="utf-8"
         )
         fake = ProviderConfig(adapter=Adapter.FAKE, scenario="trace-replay")
         replay_config = config.model_copy(

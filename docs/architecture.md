@@ -445,7 +445,9 @@ if a node wants to change something, the change is in its return value or it did
 `provisional_decisions` holds the deterministic per-subject verdicts computed at the
 escalation gate before any arbiter result exists. Final decision may later incorporate an
 admitted arbiter finding, while the run trace retains both sides and records which verdict
-fields changed.
+fields changed. Only a subject with a verdict on both sides is compared: a subject that had
+no candidates has no provisional verdict, and its absence there is not a change. The trace's
+`arbiter_comparison` lists the compared, changed and one-sided subjects.
 
 If one concurrent reviewer fails, the executor cancels unfinished siblings and awaits their
 termination before propagating the original exception. It records every member in declaration
@@ -464,6 +466,16 @@ can be audited without re-running the engine:
 | `resolution_action_applied` | whether a `lower_resolution` action was applied or skipped as already honoured |
 | `confidence_steps` | the ordered ledger: seed, tier cap, requirement cap, reviewer recommendation, each model finding, each deterministic finding, abstention |
 | `rerank_source` | `arbiter`, `internal` or `none`, with the admitted finding id that supplied the ranking |
+
+Where a review stood behind a value, the record names it. A `reviewer_recommendation` bound
+or step lists every admitted recommendation that named a level in `sources`, each with its
+reviewer, its pass and whether it set the pooled level; a source with no `finding_id` is a
+bare recommendation. A finding's confidence step, the findings whose lowering was still owed
+(`resolution_action_findings`) and the rerank's finding (`rerank_finding`) carry the reviewer
+and a `finding_ref`. The reference is needed because `finding_id` is each reviewer's own
+numbering: three reviewers each start from one. `internal-1/2-confusion/1` is the first
+finding of the second review in the first internal round, and it resolves to one entry in
+the trace's `review_rounds` ([review pipeline](review-pipeline.md#what-the-trace-keeps-of-a-review)).
 
 A step's `applied` flag says whether the operation ran, not whether the value moved. A
 verdict that arrives at `low` because one guardrail fired is indistinguishable in the result

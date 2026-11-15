@@ -44,6 +44,105 @@ prepared end grain, and any changed trust or tier is flagged. Labels must use th
 case IDs; repeated IDs do not become independent photographs. A family-level answer does
 not establish a labelled genus.
 
+## Grade stored and replayed answers against references
+
+```bash
+dendro coverage-audit runs/saved/cases --labels references.json --replay --json-out runs/scored.json
+```
+
+Reference labels use the archive's case IDs. A flat mapping such as
+`{"sample": "fagus"}` remains accepted. To declare the intended subject and whether a
+written plant name is visible, use:
+
+```json
+{
+  "labels": {
+    "sample": {
+      "genus": "fagus",
+      "family": "fagaceae",
+      "target_subject_ids": ["tree"],
+      "label_visible": false
+    }
+  }
+}
+```
+
+`family` is optional; when omitted, the report uses the genus card's family if available.
+Use `target_subject_ids: "all"` only when every subject belongs to the labelled plant or
+lot. Otherwise, list the target IDs from that record. Other subjects' genus names are
+reported as context. A declared target missing from the decisions is `missing_target`,
+including when only a background subject was returned or only some targets are present.
+
+Without declared targets, a single subject is graded. Several subjects are graded only
+when they all yield the same outcome; otherwise the result is `unscoped`, with its possible
+outcomes. The report never selects whichever named subject happens to come first.
+
+Detailed `outcomes` distinguish:
+
+- `correct` and `wrong`: a single genus claim matches or differs from the reference.
+- `ambiguous_with_label` and `ambiguous_without_label`: multiple offered names, kept out of
+  single-genus accuracy even if one is correct. Latin binomials resolve to genus; family
+  names do not match a genus by prefix.
+- `broader_only` and `wrong_broader`: a broader claim, with a conflicting family identified
+  only when the reference family is known. Broader claims are excluded from genus accuracy.
+- `no_name`, `unscoped`, and `missing_target`: no genus answer or insufficient target scope.
+
+With several declared targets, any wrong genus takes precedence over correct names; an
+ambiguous answer takes precedence over a correct one. Missing targets are reported before
+combining grades. `records` retains the deprecated coarse counters (`correct`, `wrong`,
+`abstained`) for existing consumers; all detailed outcomes other than `correct` and `wrong`
+fall into its legacy `abstained` bucket. New consumers should use `outcomes` and the
+per-record `stored_grade` and `replayed_grade` fields.
+
+The `grading` summary reports record count, distinct case count, genus coverage, conditional
+accuracy and wrong-genus rate together. A Wilson 95% interval is reported for the wrong-genus
+rate only when each case ID occurs once. Repeated runs retain their record-level rates but
+receive no interval (`interval_unavailable_reason: "repeated_case_ids"`); split model arms
+into separate reports to obtain one result per case. Distinct IDs alone do not establish an
+independent held-out sample: photograph provenance and sampling remain the dataset owner's
+responsibility. `labelled_movements` pairs stored and replayed outcomes by record, including
+unchanged grades; unavailable replays are excluded, not counted as abstentions.
+
+`label_visible` may be true, false or null. Omitted visibility is unknown. The `all` table
+includes every labelled record, while `label_not_visible` includes only explicit false
+values; `label_visibility_unknown` counts unannotated records. These are reference
+annotations, not a claim that the scorer inspected or masked the photographs.
+
+This command scores the recorded graph decisions. It does not extract hypotheses from
+baseline prose, verify a label's botanical provenance, or establish accuracy on an unseen
+dataset. The scorer's image-reference helper requires an archive adapter to supply both
+cited and supplied IDs; coverage reports do not infer image validity from trace observations.
+The implementation and synthetic regression cases are
+[`label_scoring.py`](../src/dendro_inspector/evaluation/label_scoring.py) and
+[`test_label_scoring.py`](../tests/unit/test_label_scoring.py).
+
+## Replay with the recorded reviews
+
+```bash
+dendro coverage-audit runs/saved/cases --replay --reviews recorded --json-out runs/recorded.json
+```
+
+`--reviews recorded` gives each reviewer the review its trace recorded, in place of a
+neutral pass. It measures what today's adjudication and decision rules make of the same
+evidence, proposals and reviews, which is the comparison a change to how review binds a
+verdict needs. It still calls no provider.
+
+What it does not do:
+
+- A trace written before reviews were recorded (`trace_schema_version` 1, or absent) cannot
+  be replayed this way. The report marks the record `replay_unavailable` and gives no
+  replayed verdict; it does not fall back to neutral reviewers.
+- Only the last internal round is replayed. A run that retried reaches the same verdict by a
+  shorter route.
+- A reviewer the run never called, usually the arbiter, answers with a neutral pass if the
+  replay reaches it.
+- The case's own inputs (declared object type, location, the user's claim) are not in the
+  trace, so a record that used one replays without it.
+
+Each record's `replay_gaps` lists which of these applied. The public suite's cases each
+replay to the verdict their run reached
+([`tests/unit/test_coverage_audit.py`](../tests/unit/test_coverage_audit.py)).
+
 ## What assertions check
 
 Assertions run against the **graph's decisions**, never against prose. Rewriting the tone

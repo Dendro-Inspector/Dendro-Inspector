@@ -174,5 +174,10 @@ async def run(state: GraphState, ctx: NodeContext) -> GraphState:
     )
     updated = state.evolve(provisional_decisions=provisional)
     decision = decide(updated, ctx.config.escalation, provisional)
-    ctx.recorder.record_escalation(triggered=decision.required, reasons=decision.reasons)
+    ctx.recorder.record_escalation(
+        triggered=decision.required,
+        reasons=decision.reasons,
+        hard_reasons=tuple(reason for reason in decision.reasons if reason in HARD_TRIGGERS),
+        suppressed_by=decision.suppressed_by,
+    )
     return updated.evolve(escalation=decision)

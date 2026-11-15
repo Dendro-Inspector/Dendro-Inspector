@@ -12,6 +12,29 @@ get entries.
 
 ### Added
 
+- **Offline reference scoring respects the target subject.** `coverage-audit --labels`
+  accepts target subject IDs, an optional family and visible-label annotations. It reports
+  background names separately and distinguishes missing targets, ambiguous answers,
+  broader names and no answer. Reports include genus coverage, conditional accuracy,
+  separate summaries for explicitly label-free photographs, and paired stored/replayed
+  outcomes. Wrong-genus Wilson intervals are withheld for repeated case IDs. Unknown label
+  visibility remains unknown, malformed reference metadata fails explicitly, and the old
+  coarse counters remain available alongside detailed outcomes.
+- **A trace says which review moved a verdict.** Run traces now keep every review pass in
+  `review_rounds`: each reviewer's findings with their accepted or rejected status and
+  reason, its recommended levels and its proposed ranking. That includes a pass a correction
+  retry replaced, and the arbiter's. In a decision derivation, each `reviewer_recommendation`
+  bound and each confidence step names the reviewer and finding behind it, and a
+  recommendation with no accepted finding behind it is marked as such. Traces also record why
+  a claim was withdrawn (`abstentions`), what suppressed arbitration, the plan, and the
+  packet's subject kinds, inferences and flags. `trace_schema_version` is 2; a trace without
+  the field is version 1. No verdict changes.
+- **Replay a saved run with the reviews it recorded.** With `--replay`, the new
+  `coverage-audit` option `--reviews recorded` gives each reviewer the review its trace
+  recorded, so a change to how review binds a verdict can be measured offline. The default
+  stays `neutral`. A record written before reviews were recorded is reported as not
+  replayable that way; it is never replayed with neutral reviewers instead. The report lists
+  what each replay had to reconstruct or go without (`replay_gaps`).
 - **Bridge answers can survive a pause.** `bridge.py --cache-dir` stores completed answers
   and provenance in a separate persistent directory. Pod-local requests, leases and errors
   start fresh; matching completed calls replay after the inspection restarts.
@@ -266,6 +289,13 @@ get entries.
 
 ### Fixed
 
+- **`arbiter_changed_*` no longer reports a change the arbiter did not make.** The flags
+  compared every subject found on either side. A subject with no candidates has a final
+  verdict and no provisional one, so its presence alone counted as a change of status,
+  taxon, resolution and confidence. The flags now compare only subjects with a verdict on
+  both sides, and `arbiter_comparison` lists the compared, changed and one-sided subjects.
+  `correction_changed_*` had the same defect and gains `correction_comparison`. When no
+  subject has a verdict on both sides the flags are unset.
 - **A Claude Code usage limit stops the request instead of being retried for hours.** The
   bridge worker treated "You've hit your 5-hour limit · resets …" as a short rate limit:
   it asked again every 90 seconds until the limit reset, the bridge kept the call waiting,

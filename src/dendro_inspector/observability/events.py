@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from enum import StrEnum
+from typing import Literal
 
 from pydantic import Field
 
@@ -18,11 +19,20 @@ from dendro_inspector.schemas.decisions import (
     AuthorityCheckTrace,
     DecisionDerivation,
     FinalDecision,
+    FindingReference,
 )
 from dendro_inspector.schemas.evidence import KnowledgeCoverage
 from dendro_inspector.schemas.taxon import Confidence, Resolution
 
 GRAPH_VERSION = "0.9.0"
+
+#: Version of the trace's own shape, counted separately from the release. A trace can gain
+#: a record between two releases, and a reader has to know which records to expect without
+#: inferring it from the package version. Traces written before this field existed carry no
+#: version and are version 1: they have no `review_rounds`, so an empty tuple there means
+#: "not recorded", never "no review ran".
+TRACE_SCHEMA_VERSION = 2
+LEGACY_TRACE_SCHEMA_VERSION = 1
 
 
 class NodeStatus(StrEnum):
@@ -143,6 +153,13 @@ class PromptMetadata(Contract):
 MAX_LEDGER_OBSERVATIONS = 400
 MAX_LEDGER_SUBJECTS = 32
 
+#: Bounds on the review record. A round holds three reviews, or one arbiter review; the
+#: retry budget bounds the rounds. What a bound cuts is counted in the record, never dropped
+#: silently.
+MAX_REVIEW_ROUNDS = 16
+MAX_REVIEW_FINDINGS = 100
+MAX_REVIEW_CANDIDATES = 40
+
 
 class ObservationRecord(Contract):
     """One observation as the decision rules saw it. Tokens only: no notes, no image bytes."""
@@ -173,6 +190,7 @@ class CandidateSupportRecord(Contract):
     rank: int = Field(ge=1)
     supporting_evidence_ids: tuple[str, ...] = ()
     contradicting_evidence_ids: tuple[str, ...] = ()
+    missing_decisive_features: tuple[str, ...] = ()
 
 
 class DroppedSupportRecord(Contract):
@@ -198,6 +216,226 @@ class CandidateValidationRecord(Contract):
         default=(), description="`taxon:proposed->effective` support strength changes."
     )
     malformed_evidence_ids: tuple[str, ...] = ()
+    evidence_revision: int | None = Field(
+        default=None,
+        ge=1,
+        description=(
+            "Which extraction pass these candidates were validated against. A record whose "
+            "revision is older than the trace's `evidence_context.revision` cites "
+            "observation ids from a packet a correction retry has since replaced."
+        ),
+    )
+
+
+class SubjectRecord(Contract):
+    """One identity subject of the final evidence packet."""
+
+    subject_id: str = Field(max_length=120)
+    kind: str = Field(max_length=40)
+    image_ids: tuple[str, ...] = ()
+
+
+class InferenceRecord(Contract):
+    """One inference of the final evidence packet. Tokens and ids only."""
+
+    inference_id: str = Field(max_length=120)
+    claim: str = Field(max_length=120)
+    derived_from: tuple[str, ...] = ()
+    strength: str = Field(max_length=40)
+    limitations: tuple[str, ...] = ()
+
+
+class ImageLimitationRecord(Contract):
+    """What one photograph could not show, as tokens. The free-text note is not kept."""
+
+    image_id: str = Field(max_length=120)
+    lighting: str | None = Field(default=None, max_length=120)
+    white_balance: str | None = Field(default=None, max_length=120)
+    scale: str = Field(max_length=40)
+
+
+class EvidenceContextRecord(Contract):
+    """Everything the final evidence packet carried besides its observations.
+
+    The decision rules read all of it: subject kinds decide evidence trust, inferences are
+    cited as support, and the packet flags raise escalation triggers. A replay that has to
+    guess any of them is a reconstruction rather than a replay.
+    """
+
+    revision: int = Field(
+        ge=1,
+        description=(
+            "How many extraction passes ran. The ledger and this record describe the last "
+            "one; a correction retry replaces the packet, and earlier passes are not kept."
+        ),
+    )
+    subjects: tuple[SubjectRecord, ...] = Field(default=(), max_length=MAX_LEDGER_SUBJECTS)
+    inferences: tuple[InferenceRecord, ...] = Field(default=(), max_length=MAX_LEDGER_OBSERVATIONS)
+    absent_features: tuple[str, ...] = ()
+    context_limitations: tuple[str, ...] = ()
+    image_limitations: tuple[ImageLimitationRecord, ...] = ()
+    possible_multiple_taxa: bool = False
+    instruction_like_content_detected: bool = False
+
+
+class PlanRecord(Contract):
+    """The inspection plan after deterministic facts were merged in. No planner prose."""
+
+    target_features: tuple[str, ...] = ()
+    expect_multiple_subjects: bool = False
+    bark_only_input: bool = False
+    split_firewood_input: bool = False
+
+
+class ReviewFindingRecord(Contract):
+    """One finding as adjudication left it."""
+
+    finding_ref: str | None = Field(
+        default=None,
+        max_length=120,
+        description=(
+            "Name of this finding, unique within the run. Derivations cite it, because "
+            "`finding_id` is the reviewer's own numbering and reviewers reuse numbers."
+        ),
+    )
+    finding_id: str = Field(max_length=120)
+    origin: str = Field(max_length=40)
+    category: str = Field(max_length=60)
+    severity: str = Field(max_length=40)
+    status: str = Field(max_length=40)
+    reason_code: str | None = Field(default=None, max_length=60)
+    summary: str = Field(max_length=400)
+    evidence_ids: tuple[str, ...] = ()
+    raised_subject_id: str | None = Field(
+        default=None,
+        max_length=120,
+        description="The subject the finding named as raised, before scope resolution.",
+    )
+    subject_id: str | None = Field(
+        default=None,
+        max_length=120,
+        description="The subject adjudication resolved it to; decision rules read this one.",
+    )
+    proposed_taxon: str | None = Field(default=None, max_length=120)
+    required_action: str = Field(max_length=40)
+    impact: str = Field(max_length=40)
+
+
+class ReviewerRecord(Contract):
+    """One review: what the reviewer returned and what adjudication made of it."""
+
+    reviewer: str = Field(max_length=40)
+    status: str = Field(max_length=40)
+    subject_id: str | None = Field(default=None, max_length=120)
+    recommended_resolution: Resolution | None = None
+    recommended_confidence: Confidence | None = None
+    recommendation_admitted: bool | None = Field(
+        default=None,
+        description=(
+            "Whether the recommended levels were admitted as bounds. None when the review "
+            "recommended no level. False when they bound nothing: every model finding the "
+            "review raised was rejected, or no subject could be resolved for it."
+        ),
+    )
+    recommended_candidates: tuple[CandidateSupportRecord, ...] = Field(
+        default=(),
+        max_length=MAX_REVIEW_CANDIDATES,
+        description="The ranking the reviewer proposed, as returned and before validation.",
+    )
+    findings: tuple[ReviewFindingRecord, ...] = Field(default=(), max_length=MAX_REVIEW_FINDINGS)
+    findings_omitted: int = Field(
+        default=0, ge=0, description="Findings beyond the record's bound. Zero in practice."
+    )
+
+
+class RecommendationRecord(Contract):
+    """One admitted recommendation: a level a review may hold a subject's claim to."""
+
+    reviewer: str | None = Field(default=None, max_length=40)
+    subject_id: str = Field(max_length=120)
+    resolution: Resolution | None = None
+    confidence: Confidence | None = None
+    finding_id: str | None = Field(
+        default=None,
+        max_length=120,
+        description=(
+            "The accepted model finding the recommendation is bound to. None is a bare "
+            "recommendation, which still caps the claim."
+        ),
+    )
+    finding_ref: str | None = Field(default=None, max_length=120)
+
+
+class RerankRecord(Contract):
+    """One validated ranking admitted with the finding that asked for it."""
+
+    reviewer: str = Field(max_length=40)
+    subject_id: str = Field(max_length=120)
+    finding_id: str = Field(max_length=120)
+    finding_ref: str | None = Field(default=None, max_length=120)
+    ranking: tuple[str, ...] = ()
+
+
+class ReviewRoundRecord(Contract):
+    """One review pass: every review in it, and what adjudication admitted.
+
+    Recorded per round because a correction retry clears the reviews from the graph state.
+    The round that asked for the retry is otherwise gone by the time the run ends.
+    """
+
+    stage: Literal["internal", "arbiter"]
+    round: int = Field(ge=1)
+    evidence_revision: int | None = Field(
+        default=None, ge=1, description="The extraction pass this round reviewed."
+    )
+    reviewers: tuple[ReviewerRecord, ...] = ()
+    recommendations: tuple[RecommendationRecord, ...] = ()
+    reranks: tuple[RerankRecord, ...] = ()
+    retry_required: bool = False
+    unresolvable: bool = False
+    unverified_abstention: bool = False
+    reviewer_disagreement: bool = False
+    escalation_recommended: bool = False
+
+
+AbstentionCause = Literal[
+    # A critical finding that asks to withdraw the claim and rests on code or cited evidence.
+    "unresolvable_finding",
+    # A finding asked for re-extraction and the retry budget was already spent.
+    "retry_budget_spent",
+    # A model asserted abstention without evidence and the arbiter's own findings agreed.
+    "unverified_abstention_confirmed",
+    # The same, with no arbitration to confirm or refuse it: withdrawn to fail closed.
+    "unverified_abstention_unarbitrated",
+    "unspecified",
+]
+
+
+class AbstentionRecord(Contract):
+    """Why one subject's claim was withdrawn, and which findings asked for it."""
+
+    subject_id: str = Field(max_length=120)
+    resolution: Resolution = Field(description="The bound abstention placed on the subject.")
+    cause: AbstentionCause
+    findings: tuple[FindingReference, ...] = ()
+
+
+class DecisionComparison(Contract):
+    """Two sets of per-subject verdicts, compared subject by subject.
+
+    A subject with a verdict on one side only is listed, not counted as a change. The
+    provisional verdicts exist only for subjects that had candidates, while the final ones
+    cover every subject, so a subject that never had a candidate appears on one side by
+    construction and says nothing about what the step in between did.
+    """
+
+    compared_subject_ids: tuple[str, ...] = ()
+    changed_subject_ids: tuple[str, ...] = Field(
+        default=(),
+        description="Compared subjects whose status, taxon, resolution or confidence moved.",
+    )
+    only_before_subject_ids: tuple[str, ...] = ()
+    only_after_subject_ids: tuple[str, ...] = ()
 
 
 class RunTrace(Contract):
@@ -205,6 +443,7 @@ class RunTrace(Contract):
 
     case_id: str = Field(max_length=120)
     graph_version: str = GRAPH_VERSION
+    trace_schema_version: int = Field(default=TRACE_SCHEMA_VERSION, ge=1)
     code_commit_sha: str | None = Field(
         default=None,
         min_length=40,
@@ -252,6 +491,25 @@ class RunTrace(Contract):
             "a machine-readable reason for each refusal."
         ),
     )
+    evidence_context: EvidenceContextRecord | None = Field(
+        default=None,
+        description=(
+            "The final packet's subjects, inferences, limitations and flags. None when no "
+            "packet was extracted."
+        ),
+    )
+    plan: PlanRecord | None = None
+    review_rounds: tuple[ReviewRoundRecord, ...] = Field(
+        default=(),
+        max_length=MAX_REVIEW_ROUNDS,
+        description=(
+            "Every review pass in the order it ran: each internal round, including one a "
+            "correction retry superseded, then the arbiter's. Each review's findings carry "
+            "their adjudicated status and reason, so a downgrade can be traced to the "
+            "reviewer and finding behind it."
+        ),
+    )
+    abstentions: tuple[AbstentionRecord, ...] = ()
     retries: int = Field(default=0, ge=0)
     graph_retry_count: int = Field(
         default=0,
@@ -267,10 +525,24 @@ class RunTrace(Contract):
         default=(),
         description="Deterministic verdicts immediately before any arbiter call.",
     )
+    correction_comparison: DecisionComparison | None = Field(
+        default=None,
+        description=(
+            "Which subjects the `correction_changed_*` flags compared. A re-extraction may "
+            "rename subjects, so a verdict present on one side only is listed here."
+        ),
+    )
     arbiter_changed_status: bool | None = None
     arbiter_changed_taxon: bool | None = None
     arbiter_changed_resolution: bool | None = None
     arbiter_changed_confidence: bool | None = None
+    arbiter_comparison: DecisionComparison | None = Field(
+        default=None,
+        description=(
+            "Which subjects the `arbiter_changed_*` flags compared. Those flags describe "
+            "subjects with a verdict both before and after arbitration, and nothing else."
+        ),
+    )
     authority_checks: tuple[AuthorityCheckTrace, ...] = Field(
         default=(),
         description=(
@@ -296,6 +568,14 @@ class RunTrace(Contract):
     )
     escalation_triggered: bool = False
     escalation_reasons: tuple[str, ...] = ()
+    escalation_hard_reasons: tuple[str, ...] = Field(
+        default=(),
+        description="The reasons no cost suppressor may override. A subset of the above.",
+    )
+    escalation_suppressed_by: tuple[str, ...] = Field(
+        default=(),
+        description="Why arbitration did not run although reasons were present.",
+    )
     arbiter_used: bool = False
     final_resolution: Resolution | None = None
     final_confidence: Confidence | None = None
