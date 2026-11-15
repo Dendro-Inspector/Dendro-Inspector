@@ -20,12 +20,15 @@ from typing import Any
 
 from dendro_inspector.config import AppConfig
 from dendro_inspector.evaluation.trace_replay import (
+    ReplayUnavailableError,
+    ReviewReplay,
     StoredRecord,
     load_record,
     packet_from_trace,
     proposals_from_trace,
     replay,
     replay_fidelity,
+    replay_gaps,
 )
 from dendro_inspector.knowledge.coverage_audit import CoverageAudit, audit_packet
 from dendro_inspector.knowledge.loader import KnowledgeBase
@@ -52,6 +55,12 @@ class RecordReport:
     stored: tuple[DecisionRow, ...]
     replayed: tuple[DecisionRow, ...] = ()
     label: str | None = None
+    #: How the replay answered for the reviewers; None when the record was not replayed.
+    replay_reviews: str | None = None
+    #: What the replay reconstructed or went without, as ``what: why`` entries.
+    replay_gaps: tuple[str, ...] = ()
+    #: The trace lacks what the requested replay needs, so no replayed verdict is given.
+    replay_unavailable: bool = False
 
 
 def load_labels(path: Path | None) -> dict[str, str]:
@@ -120,7 +129,14 @@ async def build_reports(
     root: Path,
     labels: Mapping[str, str] | None = None,
     with_replay: bool = False,
+    reviews: ReviewReplay = "neutral",
 ) -> tuple[RecordReport, ...]:
+    """One report per stored record; ``reviews`` chooses how a replay answers for reviewers.
+
+    A record whose trace cannot support the requested replay is reported as such, with no
+    replayed verdict. It is never replayed another way instead: a neutral verdict filed
+    under ``recorded`` would be counted as what review did to the claim.
+    """
     reports = []
     for path in collect_paths(paths):
         try:
@@ -131,19 +147,24 @@ async def build_reports(
             continue
         packet = packet_from_trace(record.trace)
         replayed: tuple[DecisionRow, ...] = ()
+        unavailable = False
         if with_replay:
-            state = await replay(record, config=config, root=root)
-            replayed = tuple(
-                DecisionRow(
-                    decision.subject_id,
-                    decision.selected_taxon,
-                    _genus(knowledge, decision.selected_taxon, decision.resolution.value),
-                    decision.resolution.value,
-                    decision.confidence.value,
-                    decision.status.value,
+            try:
+                state = await replay(record, config=config, root=root, reviews=reviews)
+            except ReplayUnavailableError:
+                unavailable = True
+            else:
+                replayed = tuple(
+                    DecisionRow(
+                        decision.subject_id,
+                        decision.selected_taxon,
+                        _genus(knowledge, decision.selected_taxon, decision.resolution.value),
+                        decision.resolution.value,
+                        decision.confidence.value,
+                        decision.status.value,
+                    )
+                    for decision in state.decisions
                 )
-                for decision in state.decisions
-            )
         reports.append(
             RecordReport(
                 case_id=record.case_id,
@@ -153,6 +174,9 @@ async def build_reports(
                 stored=_stored_rows(record, knowledge),
                 replayed=replayed,
                 label=(labels or {}).get(record.case_id),
+                replay_reviews=reviews if with_replay else None,
+                replay_gaps=replay_gaps(record.trace, reviews) if with_replay else (),
+                replay_unavailable=unavailable,
             )
         )
     return tuple(reports)
@@ -221,6 +245,7 @@ def summarise(reports: tuple[RecordReport, ...]) -> dict[str, Any]:
         "labelled_stored": grades("stored"),
         "labelled_replayed": grades("replayed"),
         "replay_fidelity_mismatches": sum(1 for r in reports if r.fidelity_mismatches),
+        "replay_unavailable": sum(1 for r in reports if r.replay_unavailable),
     }
 
 
@@ -254,6 +279,9 @@ def render_text(reports: tuple[RecordReport, ...]) -> str:
             lines.append(f"  label genus: {report.label}")
         if report.fidelity_mismatches:
             lines.append(f"  replay fidelity: trust differs for {report.fidelity_mismatches}")
+        if report.replay_unavailable:
+            lines.append(f"  replay: not available with {report.replay_reviews} reviews")
+        lines.extend(f"  replay gap: {gap}" for gap in report.replay_gaps)
     lines.append(json.dumps(summarise(reports), indent=1, ensure_ascii=False))
     return "\n".join(lines)
 

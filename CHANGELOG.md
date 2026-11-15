@@ -21,6 +21,12 @@ get entries.
   a claim was withdrawn (`abstentions`), what suppressed arbitration, the plan, and the
   packet's subject kinds, inferences and flags. `trace_schema_version` is 2; a trace without
   the field is version 1. No verdict changes.
+- **Replay a saved run with the reviews it recorded.** With `--replay`, the new
+  `coverage-audit` option `--reviews recorded` gives each reviewer the review its trace
+  recorded, so a change to how review binds a verdict can be measured offline. The default
+  stays `neutral`. A record written before reviews were recorded is reported as not
+  replayable that way; it is never replayed with neutral reviewers instead. The report lists
+  what each replay had to reconstruct or go without (`replay_gaps`).
 - **Bridge answers can survive a pause.** `bridge.py --cache-dir` stores completed answers
   and provenance in a separate persistent directory. Pod-local requests, leases and errors
   start fresh; matching completed calls replay after the inspection restarts.

@@ -284,6 +284,9 @@ The record is attribution only. No rule reads it, and a synthesis built without 
 exactly as before. Summaries are stored as the reviewer wrote them; photographs and prompts
 are not stored.
 
+`dendro coverage-audit --replay --reviews recorded` replays a stored run with these reviews
+([evaluation](evaluation.md#replay-with-the-recorded-reviews)).
+
 ## Status reflects the answer, not the history
 
 `decide_status` recomputes contradictions against the **selected final identity** rather than

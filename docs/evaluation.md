@@ -44,6 +44,33 @@ prepared end grain, and any changed trust or tier is flagged. Labels must use th
 case IDs; repeated IDs do not become independent photographs. A family-level answer does
 not establish a labelled genus.
 
+## Replay with the recorded reviews
+
+```bash
+dendro coverage-audit runs/saved/cases --replay --reviews recorded --json-out runs/recorded.json
+```
+
+`--reviews recorded` gives each reviewer the review its trace recorded, in place of a
+neutral pass. It measures what today's adjudication and decision rules make of the same
+evidence, proposals and reviews, which is the comparison a change to how review binds a
+verdict needs. It still calls no provider.
+
+What it does not do:
+
+- A trace written before reviews were recorded (`trace_schema_version` 1, or absent) cannot
+  be replayed this way. The report marks the record `replay_unavailable` and gives no
+  replayed verdict; it does not fall back to neutral reviewers.
+- Only the last internal round is replayed. A run that retried reaches the same verdict by a
+  shorter route.
+- A reviewer the run never called, usually the arbiter, answers with a neutral pass if the
+  replay reaches it.
+- The case's own inputs (declared object type, location, the user's claim) are not in the
+  trace, so a record that used one replays without it.
+
+Each record's `replay_gaps` lists which of these applied. The public suite's cases each
+replay to the verdict their run reached
+([`tests/unit/test_coverage_audit.py`](../tests/unit/test_coverage_audit.py)).
+
 ## What assertions check
 
 Assertions run against the **graph's decisions**, never against prose. Rewriting the tone

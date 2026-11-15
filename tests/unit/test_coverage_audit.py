@@ -12,13 +12,19 @@ from typer.testing import CliRunner
 
 from dendro_inspector.cli import app
 from dendro_inspector.config import DEFAULT_DOMAIN_PROMPT_PATH, DEFAULT_PROMPT_MANIFEST_PATH
+from dendro_inspector.evaluation.runner import load_cases
 from dendro_inspector.evaluation.trace_replay import (
+    MISSING_FROM_LEGACY_TRACE,
+    ReplayUnavailableError,
     StoredRecord,
     fixture_from_trace,
     packet_from_trace,
     proposals_from_trace,
     replay,
     replay_fidelity,
+    replay_gaps,
+    reviews_from_trace,
+    trace_schema_version,
 )
 from dendro_inspector.knowledge.candidate_validation import validate_candidate_set_with_report
 from dendro_inspector.knowledge.coverage_audit import (
@@ -28,6 +34,7 @@ from dendro_inspector.knowledge.coverage_audit import (
     audit_packet,
 )
 from dendro_inspector.observability.trace import TraceRecorder
+from dendro_inspector.runner import run_case
 from dendro_inspector.schemas.candidates import Candidate, CandidateSet, SupportStrength
 from dendro_inspector.schemas.evidence import (
     AttachmentStatus,
@@ -41,7 +48,9 @@ from dendro_inspector.schemas.evidence import (
     Visibility,
     WoodSurface,
 )
+from dendro_inspector.schemas.reviews import FindingStatus, ReviewResult
 from dendro_inspector.schemas.taxon import Resolution
+from tests.conftest import make_config
 
 SUBJECT = "tree_1"
 
@@ -332,6 +341,243 @@ class TestTraceReplay:
         (decision,) = state.decisions
         assert decision.selected_taxon == "pinus"
         assert decision.resolution is Resolution.GENUS
+
+
+def _recorded_finding(finding_id: str, origin: str, **updates: Any) -> dict[str, Any]:
+    return {
+        "finding_ref": f"internal-1/1-confusion/{finding_id[1:]}",
+        "finding_id": finding_id,
+        "origin": origin,
+        "category": "confidence_miscalibration",
+        "severity": "major",
+        "status": "accepted",
+        "reason_code": "references_visible_evidence",
+        "summary": "Bark texture alone is weak support for the genus.",
+        "evidence_ids": ["obs-2"],
+        "raised_subject_id": None,
+        "subject_id": "standing_tree",
+        "proposed_taxon": None,
+        "required_action": "lower_confidence",
+        "impact": "confidence_change",
+        **updates,
+    }
+
+
+def _recorded_reviewer(reviewer: str, *findings: dict[str, Any], **fields: Any) -> dict[str, Any]:
+    return {
+        "reviewer": reviewer,
+        "status": "pass_with_findings" if findings else "pass",
+        "subject_id": None,
+        "recommended_resolution": None,
+        "recommended_confidence": None,
+        "recommended_candidates": [],
+        "findings": list(findings),
+        "findings_omitted": 0,
+        **fields,
+    }
+
+
+#: `TRACE` as a run would record it today: its reviews are in it. The confusion review
+#: carries a finding the code raised and one the model raised; the confidence review holds
+#: the claim to family with no finding behind it.
+RECORDED_TRACE: dict[str, Any] = {
+    **TRACE,
+    "trace_schema_version": 2,
+    "review_rounds": [
+        {
+            "stage": "internal",
+            "round": 1,
+            "reviewers": [
+                _recorded_reviewer(
+                    "confusion",
+                    _recorded_finding("f1", "deterministic", evidence_ids=[]),
+                    _recorded_finding("f2", "model"),
+                ),
+                _recorded_reviewer("confidence", recommended_resolution="family"),
+            ],
+        }
+    ],
+}
+
+PUBLIC_CASES = load_cases(Path(__file__).resolve().parents[2] / "evals" / "public")
+
+
+def _run_public(case, root: Path):
+    return asyncio.run(run_case(case.input, config=make_config(case.scenario), root=root))
+
+
+def _stored(case, live) -> StoredRecord:
+    return StoredRecord(
+        case.case_id,
+        "inline",
+        live.trace.model_dump(mode="json"),
+        (),
+        case.input.user_has_field_context,
+    )
+
+
+def _verdicts(decisions) -> list[tuple[Any, ...]]:
+    return [
+        (d.subject_id, d.status, d.selected_taxon, d.resolution, d.confidence) for d in decisions
+    ]
+
+
+class TestRecordedReviewReplay:
+    """A trace that recorded its reviews can be re-decided with them, offline."""
+
+    @pytest.mark.parametrize("case", PUBLIC_CASES, ids=lambda case: case.case_id)
+    def test_a_trace_replays_to_the_verdict_its_run_reached(self, case, config, repo_root: Path):
+        """Trace completeness, measured: the record alone reproduces each public verdict."""
+        live = _run_public(case, repo_root)
+
+        state = asyncio.run(
+            replay(_stored(case, live), config=config, root=repo_root, reviews="recorded")
+        )
+
+        assert _verdicts(state.decisions) == _verdicts(live.state.decisions)
+
+    def test_neutral_reviewers_cannot_reproduce_a_verdict_review_decided(
+        self, config, repo_root: Path
+    ):
+        """Why the mode exists: the neutral replay names a tree the run abstained on."""
+        (case,) = [case for case in PUBLIC_CASES if case.case_id == "abstention-visible-001"]
+        live = _run_public(case, repo_root)
+        record = _stored(case, live)
+
+        neutral = asyncio.run(replay(record, config=config, root=repo_root))
+        recorded = asyncio.run(replay(record, config=config, root=repo_root, reviews="recorded"))
+
+        assert live.state.decisions[0].abstained
+        assert not neutral.decisions[0].abstained
+        assert recorded.decisions[0].abstained
+
+    def test_recorded_reviews_bind_the_replayed_verdict(self, config, repo_root: Path):
+        record = StoredRecord("replay-fixture", "inline", RECORDED_TRACE, (), False)
+
+        neutral = asyncio.run(replay(record, config=config, root=repo_root))
+        recorded = asyncio.run(replay(record, config=config, root=repo_root, reviews="recorded"))
+
+        assert neutral.decisions[0].resolution is Resolution.GENUS
+        assert recorded.decisions[0].resolution is Resolution.FAMILY
+
+    def test_only_the_models_own_findings_are_scripted_back(self):
+        """The replayed node raises the code's findings again, from the same evidence.
+
+        Scripting them as model output would file each twice, once under the wrong origin.
+        """
+        response = reviews_from_trace(RECORDED_TRACE)["reviewer:confusion_reviewer"]
+
+        assert [finding["finding_id"] for finding in response["findings"]] == ["f2"]
+        # Raised with no subject named: adjudication resolves the scope again by itself.
+        assert "subject_id" not in response["findings"][0]
+        review = ReviewResult.model_validate(response)
+        assert review.findings[0].status is FindingStatus.OPEN
+
+    def test_a_reviewer_the_run_never_called_keeps_a_neutral_pass_and_is_reported(self):
+        responses = reviews_from_trace(RECORDED_TRACE)
+
+        assert responses["reviewer:botanical_reviewer"]["findings"] == []
+        assert responses["reviewer:confidence_reviewer"]["recommended_resolution"] == "family"
+        gaps = replay_gaps(RECORDED_TRACE, "recorded")
+        assert any(gap.startswith("review:botanical: not called") for gap in gaps)
+        assert any(gap.startswith("review:arbiter: not called") for gap in gaps)
+        assert not any(gap.startswith("review:confidence") for gap in gaps)
+
+    def test_a_retried_run_replays_its_last_internal_round_and_says_so(self):
+        first = RECORDED_TRACE["review_rounds"][0]
+        second = {**first, "round": 2, "reviewers": [_recorded_reviewer("confusion")]}
+        trace = {**RECORDED_TRACE, "review_rounds": [first, second]}
+
+        responses = reviews_from_trace(trace)
+
+        assert responses["reviewer:confusion_reviewer"]["findings"] == []
+        assert "review_rounds: only the last of 2 internal rounds replays" in replay_gaps(
+            trace, "recorded"
+        )
+
+    def test_a_trace_without_recorded_reviews_is_refused_not_replayed_neutrally(
+        self, config, repo_root: Path
+    ):
+        """A neutral verdict filed as a recorded one would be read as what review decided."""
+        record = StoredRecord("replay-fixture", "inline", TRACE, (), False)
+
+        with pytest.raises(ReplayUnavailableError, match="review_rounds"):
+            asyncio.run(replay(record, config=config, root=repo_root, reviews="recorded"))
+
+    def test_a_legacy_trace_reports_what_it_never_recorded(self):
+        assert trace_schema_version(TRACE) == 1
+        assert trace_schema_version(RECORDED_TRACE) == 2
+        assert replay_gaps(TRACE) == tuple(
+            f"{what}: {MISSING_FROM_LEGACY_TRACE}"
+            for what in ("subject_kinds", "inferences", "packet_flags", "plan")
+        )
+        assert f"review_rounds: {MISSING_FROM_LEGACY_TRACE}" in replay_gaps(TRACE, "recorded")
+
+    def test_recorded_subject_kinds_are_used_instead_of_guessed_from_the_id(self):
+        trace = {
+            **RECORDED_TRACE,
+            "evidence_context": {
+                "revision": 1,
+                "subjects": [
+                    {"subject_id": "standing_tree", "kind": "log", "image_ids": ["img-1"]},
+                    # Nothing was observed on it; it still gets a verdict of its own.
+                    {"subject_id": "background", "kind": "standing_tree", "image_ids": ["img-2"]},
+                ],
+            },
+        }
+
+        packet = packet_from_trace(trace)
+
+        assert [(subject.subject_id, subject.kind) for subject in packet.subjects] == [
+            ("standing_tree", SubjectKind.LOG),
+            ("background", SubjectKind.STANDING_TREE),
+        ]
+
+
+def test_coverage_replay_with_recorded_reviews(tmp_path, monkeypatch):
+    """One report can hold records that replay with their reviews and records that cannot."""
+    monkeypatch.setenv("DENDRO_REQUIRE_DISCRIMINATING_SUPPORT", "true")
+    monkeypatch.setenv("DENDRO_DOMAIN_PROMPT_PATH", str(DEFAULT_DOMAIN_PROMPT_PATH))
+    monkeypatch.setenv("DENDRO_PROMPT_MANIFEST_PATH", str(DEFAULT_PROMPT_MANIFEST_PATH))
+    for name, trace in (("recorded", RECORDED_TRACE), ("legacy", TRACE)):
+        (tmp_path / f"{name}.json").write_text(
+            json.dumps({"case_id": name, "result": {"trace": trace}}), encoding="utf-8"
+        )
+    report = tmp_path / "out" / "report.json"
+    report.parent.mkdir()
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "coverage-audit",
+            str(tmp_path / "recorded.json"),
+            str(tmp_path / "legacy.json"),
+            "--replay",
+            "--reviews",
+            "recorded",
+            "--json-out",
+            str(report),
+        ],
+    )
+
+    assert result.exit_code == 0, result.exception
+    payload = json.loads(report.read_text(encoding="utf-8"))
+    by_case = {record["case_id"]: record for record in payload["records"]}
+    assert by_case["recorded"]["replay_reviews"] == "recorded"
+    assert by_case["recorded"]["replay_unavailable"] is False
+    assert by_case["recorded"]["replayed"][0]["resolution"] == "family"
+    assert by_case["legacy"]["replay_unavailable"] is True
+    assert by_case["legacy"]["replayed"] == []
+    assert f"review_rounds: {MISSING_FROM_LEGACY_TRACE}" in by_case["legacy"]["replay_gaps"]
+    assert payload["summary"]["replay_unavailable"] == 1
+
+
+def test_coverage_replay_rejects_an_unknown_review_mode(tmp_path):
+    result = CliRunner().invoke(
+        app, ["coverage-audit", str(tmp_path), "--replay", "--reviews", "guessed"]
+    )
+
+    assert result.exit_code != 0
 
 
 @pytest.mark.parametrize(

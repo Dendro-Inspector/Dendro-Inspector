@@ -426,17 +426,32 @@ def coverage_audit_command(
             help="Override the discriminating-support policy for offline replay only.",
         ),
     ] = None,
+    reviews: Annotated[
+        str,
+        typer.Option(
+            "--reviews",
+            help=(
+                "How --replay answers for the reviewers: 'neutral' gives each a pass with "
+                "no findings, 'recorded' gives each the review its trace recorded."
+            ),
+        ),
+    ] = "neutral",
     json_output: Annotated[
         Path | None, typer.Option("--json-out", help="Write the full report as JSON here.")
     ] = None,
 ) -> None:
     """Audit stored records: coverage of every observation, admission of every proposal.
 
-    Offline and free: no provider is called. --replay uses the fake provider with neutral
-    reviewers, so it measures the deterministic layer only. See
+    Offline and free: no provider is called. --replay uses the fake provider. With neutral
+    reviewers (the default) it measures the deterministic layer only; with --reviews
+    recorded it measures what today's rules make of the reviews the run recorded. A record
+    written before reviews were recorded is reported as not replayable that way. See
     src/dendro_inspector/evaluation/coverage_report.py.
     """
     from dendro_inspector.evaluation import coverage_report
+
+    if reviews not in ("neutral", "recorded"):
+        raise typer.BadParameter("must be 'neutral' or 'recorded'", param_hint="--reviews")
 
     config = load_config()
     if require_discriminating_support is not None:
@@ -456,6 +471,7 @@ def coverage_audit_command(
             root=Path.cwd(),
             labels=coverage_report.load_labels(labels),
             with_replay=replay_records,
+            reviews="recorded" if reviews == "recorded" else "neutral",
         )
     )
     if json_output is not None:
