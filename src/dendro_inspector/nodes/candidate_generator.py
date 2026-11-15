@@ -116,6 +116,7 @@ async def run(state: GraphState, ctx: NodeContext) -> GraphState:
         max_retries=ctx.config.provider_for(Role.PRIMARY).max_structured_retries,
     )
 
+    ctx.recorder.record_candidate_proposal(proposal)
     logger = get_logger(NODE)
     usable = set(quality.usable_subject_ids)
     proposed_sets: list[CandidateSet] = []

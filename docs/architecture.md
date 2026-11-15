@@ -454,6 +454,44 @@ termination before propagating the original exception. It records every member i
 order, retaining completed calls and projection metadata. Cancelled members carry a failed
 event with `detail="cancelled"`; no partial reviews are merged into a scientific verdict.
 
+### Evidence revisions
+
+Trace schema 3 keeps the full extraction history in `evidence_history`. Each revision holds
+the provider's validated `GeneratedEvidencePacket`, the effective `EvidencePacket` after
+component collapse and field attestation, and the original `CandidateProposal`. Raw notes,
+regions, subject descriptions, parent relationships, image limitations and inferences remain
+available even when a later extraction reuses their local IDs. A controlled empty extraction
+has an effective packet and no invented raw model response.
+
+Each raw/effective packet has a canonical JSON SHA-256. The
+[`EvidenceRevision`](../src/dendro_inspector/observability/evidence_history.py) contract checks
+those hashes when reading an artifact. They detect content changes; they are not signatures
+or proof of botanical correctness. Revisions are ordered and numbered from one. A reference
+such as `evidence:2/obs-1` selects a different reading from `evidence:1/obs-1`. Existing
+review rounds and candidate validations already carry the corresponding revision number.
+
+`candidate_validation_history` retains every recorded subject validation. The compact
+`candidate_validations` field describes only the current extraction; a retry clears that
+view without deleting its history. The original proposal also preserves candidates for
+unusable subjects and rejected taxa instead of reconstructing their score, rank or evidence
+references from the admitted result.
+
+`observation_uses` has one entry per effective observation per revision. It lists admitted
+supporting and contradicting taxa, rejected support with its reason, whether validation ran
+for that subject, and whether the original proposal cited the observation. Inference
+references resolve to their originating observations. Evidence may be admitted for one taxon
+and rejected for another; the record preserves both. An uncited observation remains visible.
+
+The compact `evidence_observations` and `evidence_context` fields still describe the final
+packet. Their historical size limits do not truncate the complete artifacts. Older traces
+have empty history fields and use the existing reconstruction path. The graph's retry budget
+bounds the number of extraction revisions.
+
+These artifacts contain model-authored notes about the photographs, so exported traces must
+be handled as inspection records. The recorder does not copy image bytes, local file paths,
+case metadata, provider credentials or hidden reasoning. Recording history changes no
+admission, attestation, review or decision policy.
+
 ### The composition record
 
 Every verdict in a run trace carries exactly one `DecisionDerivation`, so a disputed answer

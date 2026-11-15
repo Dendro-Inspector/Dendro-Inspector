@@ -14,6 +14,7 @@ from typing import Literal
 
 from pydantic import Field
 
+from dendro_inspector.observability.evidence_history import EvidenceRevision
 from dendro_inspector.schemas.base import Contract, Identifier, ShortText
 from dendro_inspector.schemas.decisions import (
     AuthorityCheckTrace,
@@ -31,7 +32,7 @@ GRAPH_VERSION = "0.9.0"
 #: inferring it from the package version. Traces written before this field existed carry no
 #: version and are version 1: they have no `review_rounds`, so an empty tuple there means
 #: "not recorded", never "no review ran".
-TRACE_SCHEMA_VERSION = 2
+TRACE_SCHEMA_VERSION = 3
 LEGACY_TRACE_SCHEMA_VERSION = 1
 
 
@@ -235,6 +236,24 @@ class SubjectRecord(Contract):
     image_ids: tuple[str, ...] = ()
 
 
+class ObservationUseRecord(Contract):
+    """How candidate validation used one observation in one extraction revision.
+
+    An observation can support one candidate and be rejected for another. Those uses are
+    independent, so the record retains both instead of assigning a misleading single state.
+    References through an inference are resolved to its originating observations.
+    """
+
+    evidence_revision: int = Field(ge=1)
+    evidence_ref: str = Field(max_length=160)
+    observation_id: str = Field(max_length=120)
+    supporting_taxa: tuple[str, ...] = ()
+    contradicting_taxa: tuple[str, ...] = ()
+    rejected_support: tuple[DroppedSupportRecord, ...] = ()
+    candidate_validation_ran: bool = False
+    cited: bool = False
+
+
 class InferenceRecord(Contract):
     """One inference of the final evidence packet. Tokens and ids only."""
 
@@ -265,8 +284,8 @@ class EvidenceContextRecord(Contract):
     revision: int = Field(
         ge=1,
         description=(
-            "How many extraction passes ran. The ledger and this record describe the last "
-            "one; a correction retry replaces the packet, and earlier passes are not kept."
+            "How many extraction passes ran. The compact ledger describes the last one; "
+            "schema version 3 also retains each pass in evidence_history."
         ),
     )
     subjects: tuple[SubjectRecord, ...] = Field(default=(), max_length=MAX_LEDGER_SUBJECTS)
@@ -498,6 +517,16 @@ class RunTrace(Contract):
             "packet was extracted."
         ),
     )
+    evidence_history: tuple[EvidenceRevision, ...] = Field(
+        default=(),
+        description=(
+            "Every extraction's raw and effective packets, with content hashes and the "
+            "original candidate proposal. Includes notes; handle as inspection artifacts. "
+            "Empty in traces written before schema version 3."
+        ),
+    )
+    candidate_validation_history: tuple[CandidateValidationRecord, ...] = ()
+    observation_uses: tuple[ObservationUseRecord, ...] = ()
     plan: PlanRecord | None = None
     review_rounds: tuple[ReviewRoundRecord, ...] = Field(
         default=(),

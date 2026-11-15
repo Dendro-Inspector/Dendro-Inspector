@@ -40,6 +40,13 @@ What a trace does not carry is reconstructed conservatively and reported by
   same length, never by the route it took.
 * The case's own inputs — declared object type, location, the user's claim and note — are
   not in the trace. A record that used any of them replays without it.
+
+Schema-3 traces also carry complete raw and effective packets by extraction revision. The
+audit reads the final effective artifact, while replay gives the fake extractor its original
+raw packet and the generator its original proposal. This preserves notes, parent/component
+attribution and rejected candidates without guessing them from the compact ledger. The
+history is retained, but this replay still starts at the final extraction; it is not a
+reproduction of the earlier retry sequence or the original case inputs.
 """
 
 from __future__ import annotations
@@ -53,6 +60,7 @@ from typing import Any, Literal
 
 from dendro_inspector.config import Adapter, AppConfig, ProviderConfig, Role
 from dendro_inspector.knowledge.evidence_hierarchy import project_observation
+from dendro_inspector.observability.evidence_history import EvidenceRevision
 from dendro_inspector.observability.events import LEGACY_TRACE_SCHEMA_VERSION
 from dendro_inspector.schemas.evidence import (
     AttachmentStatus,
@@ -237,8 +245,21 @@ def _packet_payload(trace: Mapping[str, Any]) -> dict[str, Any]:
     return payload
 
 
+def evidence_history_from_trace(trace: Mapping[str, Any]) -> tuple[EvidenceRevision, ...]:
+    """Read ordered artifacts and verify content hashes before trusting their contents."""
+    history = tuple(
+        EvidenceRevision.model_validate(row) for row in trace.get("evidence_history") or ()
+    )
+    if any(item.revision != index for index, item in enumerate(history, start=1)):
+        raise ReplayUnavailableError("evidence_history: revisions must be contiguous and ordered")
+    return history
+
+
 def packet_from_trace(trace: Mapping[str, Any]) -> EvidencePacket:
     """The recorded evidence as a packet. Inferences only where the trace recorded them."""
+    history = evidence_history_from_trace(trace)
+    if history:
+        return history[-1].effective
     return EvidencePacket.model_validate(_packet_payload(trace))
 
 
@@ -252,6 +273,11 @@ def _original_score(taxon: str, admitted_score: str, demoted: Sequence[str]) -> 
 
 def proposals_from_trace(trace: Mapping[str, Any]) -> list[dict[str, Any]]:
     """The generator's proposals, rebuilt from admitted and dropped support."""
+    history = evidence_history_from_trace(trace)
+    if history:
+        proposal = history[-1].candidate_proposal
+        if proposal is not None:
+            return [group.model_dump(mode="json") for group in proposal.sets]
     sets = []
     for validation in trace.get("candidate_validations") or ():
         admitted = {item["taxon"]: item for item in validation.get("admitted") or ()}
@@ -371,6 +397,11 @@ def reviews_from_trace(trace: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
 def replay_gaps(trace: Mapping[str, Any], reviews: ReviewReplay = "neutral") -> tuple[str, ...]:
     """What this replay reconstructs or omits, as ``what: why`` entries. Empty when nothing."""
     gaps: list[str] = []
+    history = evidence_history_from_trace(trace)
+    if history:
+        gaps.append("case_inputs: original user context and image files are not recorded")
+        if history[-1].raw is None:
+            gaps.append("raw_evidence: not recorded; reconstructed from the final ledger")
     legacy = trace_schema_version(trace) <= LEGACY_TRACE_SCHEMA_VERSION
     if legacy:
         gaps.extend(
@@ -407,6 +438,11 @@ def fixture_from_trace(
 ) -> dict[str, Any]:
     """A fake-provider scenario that replays this trace; see the module docstring."""
     packet = _packet_payload(trace)
+    history = evidence_history_from_trace(trace)
+    if history:
+        raw = history[-1].raw
+        if raw is not None:
+            packet = raw.model_dump(mode="json")
     plan = trace.get("plan") or {}
     return {
         "scenario": "trace-replay",
@@ -438,9 +474,11 @@ def replay_fidelity(record: StoredRecord) -> tuple[str, ...]:
     mismatches = []
     for observation in packet.observations:
         projection = project_observation(observation)
-        row = stored[observation.observation_id]
-        if projection.trust.name.lower() != row.get("trust") or int(projection.tier) != row.get(
-            "tier"
+        row = stored.get(observation.observation_id)
+        if (
+            row is None
+            or projection.trust.name.lower() != row.get("trust")
+            or int(projection.tier) != row.get("tier")
         ):
             mismatches.append(observation.observation_id)
     return tuple(mismatches)
@@ -461,6 +499,13 @@ def _case_input(record: StoredRecord) -> CaseInput:
     referenced.update(
         str(limitation["image_id"]) for limitation in context.get("image_limitations") or ()
     )
+    history = evidence_history_from_trace(record.trace)
+    if history:
+        raw = history[-1].raw
+        if raw is not None:
+            referenced.update(o.image_id for o in raw.observations if o.image_id is not None)
+            referenced.update(image for subject in raw.subjects for image in subject.image_ids)
+            referenced.update(limitation.image_id for limitation in raw.image_limitations)
     images = sorted(referenced) or ["img-1"]
     return CaseInput(
         case_id="trace-replay",

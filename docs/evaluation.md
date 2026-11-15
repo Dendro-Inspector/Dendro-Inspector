@@ -127,6 +127,19 @@ neutral pass. It measures what today's adjudication and decision rules make of t
 evidence, proposals and reviews, which is the comparison a change to how review binds a
 verdict needs. It still calls no provider.
 
+For schema-3 traces, replay uses the last revision's original extractor output and candidate
+proposal. The audit reads its effective packet directly, preserving component provenance,
+notes and attachment trust. Artifact hashes and revision order are validated before use;
+invalid history is reported as an error, not silently replaced with a legacy reconstruction.
+Traces without complete artifacts retain their prior reconstruction behavior.
+
+The history preserves earlier extraction passes for inspection. Replay still starts from
+the final extraction and last internal review round; it does not reproduce the original
+retry sequence or filesystem. Original case context is still absent and is explicitly
+reported in `replay_gaps`. Complete evidence history alone is not an exact replay of the
+entire request. Subject-specific attestation and visible-label handling remain separate
+policy work; storing the raw packet does not change those rules.
+
 What it does not do:
 
 - A trace written before reviews were recorded (`trace_schema_version` 1, or absent) cannot
