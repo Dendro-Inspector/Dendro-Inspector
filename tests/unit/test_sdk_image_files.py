@@ -14,11 +14,13 @@ from dendro_inspector import runner
 from dendro_inspector.config import Adapter, AppConfig, ProviderConfig, Role
 from dendro_inspector.graph.state import GraphState
 from dendro_inspector.observability.trace import TraceRecorder
+from dendro_inspector.providers.anthropic_adapter import AnthropicProvider
 from dendro_inspector.providers.anthropic_sdk_adapter import AnthropicSDKProvider
 from dendro_inspector.providers.base import (
     CACHE_PREFIX_CHARS,
     USAGE_SINK,
     ImageInput,
+    ProviderError,
     ProviderUnavailableError,
     StructuredOutputError,
     UsageSink,
@@ -150,6 +152,130 @@ def test_nearly_expired_references_are_refreshed_and_both_uploads_are_cleaned_up
 
     asyncio.run(run())
     assert set(client.deletions) == {"file-1", "file-2"}
+
+
+def test_a_forgotten_reference_is_uploaded_again_and_both_are_cleaned_up(image):
+    client = Client()
+    files = SDKImageFiles("anthropic")
+
+    async def run():
+        assert await files.get(client, image) == "file-1"
+        await files.forget((image,))
+        assert await files.get(client, image) == "file-2"
+        assert await files.get(client, image) == "file-2"
+        await files.close(client)
+
+    asyncio.run(run())
+    assert set(client.deletions) == {"file-1", "file-2"}
+
+
+class MissingError(Exception):
+    """A provider's 404, as both SDKs shape it: a status code and the server's message."""
+
+    status_code = 404
+
+
+def _expire_first_upload(client: Client, message: str) -> None:
+    """Make the client refuse any request that still references the first upload."""
+    answer = client.respond
+
+    async def respond(**kwargs):
+        if '"file-1"' in json.dumps(kwargs):
+            client.requests.append(kwargs)
+            raise MissingError(message)
+        return await answer(**kwargs)
+
+    client.messages.create = respond
+
+
+@pytest.mark.parametrize("adapter", [AnthropicProvider, AnthropicSDKProvider])
+def test_an_expired_image_is_uploaded_again_and_the_call_repeated_once(monkeypatch, adapter, image):
+    """A call can outlive its uploads: an agent behind the bridge may answer after an hour.
+
+    The reference then names a file that no longer exists, and the case used to end there
+    with `image file is unavailable`.
+    """
+    from dendro_inspector.providers import anthropic_sdk_adapter
+
+    monkeypatch.setattr(anthropic_sdk_adapter, "_sdk_errors", lambda: ((), (MissingError,), ()))
+    client = Client()
+    _expire_first_upload(client, "image file is unavailable")
+    provider = adapter(image_mode="files")
+    provider._client = client
+
+    async def run():
+        result = await provider.generate_structured(
+            role="reviewer",
+            prompt="inspect",
+            images=(image,),
+            response_model=Answer,
+            metadata={},
+        )
+        assert result.verdict == "uncertain"
+        await provider.aclose()
+
+    asyncio.run(run())
+    assert len(client.uploads) == 2
+    refused, answered = client.requests
+    assert '"file-1"' in json.dumps(refused)
+    assert '"file-2"' in json.dumps(answered)
+    assert set(client.deletions) == {"file-1", "file-2"}
+
+
+def test_an_image_that_stays_missing_fails_the_call_instead_of_looping(monkeypatch, image):
+    from dendro_inspector.providers import anthropic_sdk_adapter
+
+    monkeypatch.setattr(anthropic_sdk_adapter, "_sdk_errors", lambda: ((), (MissingError,), ()))
+    client = Client()
+
+    async def refuse(**kwargs):
+        client.requests.append(kwargs)
+        raise MissingError("File not found: file_011")
+
+    client.messages.create = refuse
+    provider = AnthropicSDKProvider(image_mode="files")
+    provider._client = client
+
+    with pytest.raises(ProviderError, match="no longer holds an uploaded image"):
+        asyncio.run(
+            provider.generate_structured(
+                role="primary",
+                prompt="inspect",
+                images=(image,),
+                response_model=Answer,
+                metadata={},
+            )
+        )
+    assert len(client.requests) == 2
+    assert len(client.uploads) == 2
+
+
+def test_an_unknown_model_is_still_reported_as_one_without_uploading_again(monkeypatch, image):
+    from dendro_inspector.providers import anthropic_sdk_adapter
+
+    monkeypatch.setattr(anthropic_sdk_adapter, "_sdk_errors", lambda: ((), (MissingError,), ()))
+    client = Client()
+
+    async def refuse(**kwargs):
+        client.requests.append(kwargs)
+        raise MissingError("model: claude-does-not-exist")
+
+    client.messages.create = refuse
+    provider = AnthropicSDKProvider(model="claude-does-not-exist", image_mode="files")
+    provider._client = client
+
+    with pytest.raises(ProviderUnavailableError, match="does not know model"):
+        asyncio.run(
+            provider.generate_structured(
+                role="primary",
+                prompt="inspect",
+                images=(image,),
+                response_model=Answer,
+                metadata={},
+            )
+        )
+    assert len(client.requests) == 1
+    assert len(client.uploads) == 1
 
 
 def test_failed_upload_is_not_cached(image):
@@ -317,7 +443,12 @@ def test_repeated_calls_reference_files_without_resending_base64(adapter, image)
             "file_id": "file-1",
             "detail": "auto",
         }
-        assert first["text"]["format"]["schema"] == Answer.model_json_schema()
+        from dendro_inspector.providers.schema_compat import to_strict_openai_schema
+
+        assert first["text"]["format"]["strict"] is True
+        assert first["text"]["format"]["schema"] == to_strict_openai_schema(
+            Answer.model_json_schema()
+        )
         assert usage.reasoning_output_tokens == 60
     else:
         blocks = first["messages"][0]["content"]

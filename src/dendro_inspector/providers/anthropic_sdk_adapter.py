@@ -28,6 +28,7 @@ from pydantic import ValidationError
 
 from dendro_inspector.providers.base import (
     ImageInput,
+    ProviderError,
     ProviderUnavailableError,
     ResponseT,
     StructuredOutputError,
@@ -35,7 +36,12 @@ from dendro_inspector.providers.base import (
     record_anthropic_usage,
     usage_sink_of,
 )
-from dendro_inspector.providers.image_files import ImageTransport, SDKImageFiles, image_transport
+from dendro_inspector.providers.image_files import (
+    ImageTransport,
+    SDKImageFiles,
+    image_transport,
+    is_missing_file_error,
+)
 from dendro_inspector.providers.schema_compat import to_anthropic_schema
 
 DEFAULT_MODEL = "claude-opus-5-5"
@@ -246,22 +252,26 @@ class AnthropicSDKProvider:
     ) -> ResponseT:
         del role
         client = self._ensure_client()
-        file_ids = (
-            [await self._image_files.get(client, image) for image in images]
-            if self._image_mode == "files"
-            else None
-        )
         name = response_model.__name__
-        native = name not in self._prompt_only
-        request = self._request(
-            prompt, images, response_model, metadata, native=native, file_ids=file_ids
-        )
         node = metadata.get("node", "?")
-
         auth_errors, missing_errors, bad_request = _sdk_errors()
-        try:
+
+        async def ask() -> Any:
+            file_ids = (
+                [await self._image_files.get(client, image) for image in images]
+                if self._image_mode == "files"
+                else None
+            )
+            request = self._request(
+                prompt,
+                images,
+                response_model,
+                metadata,
+                native=name not in self._prompt_only,
+                file_ids=file_ids,
+            )
             try:
-                response = await self._send(client, request)
+                return await self._send(client, request)
             except bad_request:
                 # A schema the API cannot compile (too large, an unsupported construct) would
                 # fail every call for this contract. Ask for it in the prompt instead, as the
@@ -272,11 +282,25 @@ class AnthropicSDKProvider:
                 request = self._request(
                     prompt, images, response_model, metadata, native=False, file_ids=file_ids
                 )
-                response = await self._send(client, request)
+                return await self._send(client, request)
+
+        try:
+            try:
+                response = await ask()
+            except missing_errors as exc:
+                # A 404 that names a file is an uploaded photograph that expired, not an
+                # unknown model: upload again and ask once more.
+                if self._image_mode != "files" or not is_missing_file_error(exc):
+                    raise
+                await self._image_files.forget(images)
+                response = await ask()
         except auth_errors as exc:
             msg = f"Claude API rejected the credential in {self._api_key_env}: {exc}"
             raise ProviderUnavailableError(msg) from exc
         except missing_errors as exc:
+            if is_missing_file_error(exc):
+                msg = f"Claude API no longer holds an uploaded image for this call: {exc}"
+                raise ProviderError(msg) from exc
             msg = f"Claude API does not know model {self.model!r}: {exc}"
             raise ProviderUnavailableError(msg) from exc
 

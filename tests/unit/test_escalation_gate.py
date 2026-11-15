@@ -491,3 +491,19 @@ def test_image_max_edge_reads_the_environment(monkeypatch, value, expected):
     else:
         monkeypatch.setenv("DENDRO_IMAGE_MAX_EDGE_PX", value)
     assert load_config().graph.image_max_edge_px == expected
+
+
+@pytest.mark.parametrize(("value", "expected"), [(None, None), ("", None), ("5400", 5400.0)])
+def test_inspection_deadline_reads_the_environment(monkeypatch, value, expected):
+    """Without it a deployment had no way to bound a case whose provider never answered."""
+    from dendro_inspector.config import load_config
+
+    if value is None:
+        monkeypatch.delenv("DENDRO_DEADLINE_SECONDS", raising=False)
+    else:
+        monkeypatch.setenv("DENDRO_DEADLINE_SECONDS", value)
+    # The image setting rebuilds the graph configuration; the deadline must survive that.
+    monkeypatch.setenv("DENDRO_IMAGE_MAX_EDGE_PX", "2048")
+    graph = load_config().graph
+    assert graph.deadline_seconds == expected
+    assert graph.image_max_edge_px == 2048

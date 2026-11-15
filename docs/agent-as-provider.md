@@ -99,8 +99,10 @@ The workers have distinct transport identities but not necessarily distinct mode
 Every worker watches the same pending directory. It first obtains its upstream capacity lease,
 then creates the answer-key claim with an exclusive file create. The first eligible worker to
 create that claim owns the job. A transient rate limit removes the claim and places that worker
-in cooldown, allowing another upstream route to take the request. An account spend or session
-quota is terminal for the current request: the worker writes a request-scoped failure marker,
+in cooldown, allowing another upstream route to take the request. An account spend, session or
+usage limit (Claude Code's "You've hit your 5-hour limit", "… weekly limit", and its
+`usage_limit_reached` error) is terminal for the current request: the worker writes a
+request-scoped failure marker,
 the bridge returns `424` on its next poll instead of waiting for its full timeout, and the old
 request is not claimed again. A later request is still eligible after the quota resets. Workers
 sharing one account must share one capacity group, so two clients cannot pretend one rate limit
@@ -130,6 +132,13 @@ canary-first execution, resume and exact-process cleanup—follow
 [Running individual private-photo experiments](individual-photo-experiments.md).
 
 ### Answers are cached, so a second dialect costs nothing
+
+`--cache-dir <path>` places completed answers and their provenance outside `--state-dir`.
+Use a persistent directory scoped to the same run, image version, model configuration and
+case to retain answers across pod replacement. Pending requests, images, leases and failure
+markers stay in the temporary state directory. Cache publication is atomic; a killed writer
+cannot expose a half-written answer. The default remains `<state-dir>/cache`.
+
 
 The cache key is a hash of the requested bridge model, prompt, schema's top-level field names,
 and SHA-256 of every photograph served. The prompt already contains every upstream node's

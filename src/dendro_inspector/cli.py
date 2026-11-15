@@ -36,8 +36,13 @@ from dendro_inspector.observability.logging import configure_logging
 from dendro_inspector.observability.trace import write_trace
 from dendro_inspector.prompts.library import DomainPromptMissingError, PromptPolicyError
 from dendro_inspector.prompts.seal import SEMANTIC_NOTICE, apply_seal, plan_seal
+from dendro_inspector.providers.base import ContentPolicyError
 from dendro_inspector.runner import run_case
 from dendro_inspector.schemas.input import CaseInput, DeclaredObjectType, ImageRef, Season
+
+#: Exit code of `dendro inspect` when a provider's content filter refused the input.
+#: 1 is any other failure, 2 a usage error and 3 a prompt-policy error.
+CONTENT_POLICY_EXIT_CODE = 4
 
 app = typer.Typer(
     name="dendro",
@@ -197,6 +202,11 @@ def inspect(
                 "trace": partial.model_dump(mode="json"),
             }
             typer.echo(json.dumps(failure, indent=2, ensure_ascii=False))
+        if isinstance(exc, ContentPolicyError):
+            # The provider refused the photographs themselves, and refuses them again on
+            # every retry. Its own exit code lets a batch runner stop instead of retrying.
+            typer.secho(str(exc), fg=typer.colors.RED, err=True)
+            raise typer.Exit(code=CONTENT_POLICY_EXIT_CODE) from exc
         raise
 
     response = result.response

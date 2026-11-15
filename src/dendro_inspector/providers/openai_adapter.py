@@ -16,6 +16,7 @@ from typing import Any
 from pydantic import ValidationError
 
 from dendro_inspector.providers.base import (
+    ContentPolicyError,
     ImageInput,
     ProviderUnavailableError,
     ResponseT,
@@ -24,6 +25,7 @@ from dendro_inspector.providers.base import (
     usage_sink_of,
 )
 from dendro_inspector.providers.image_files import ImageTransport, SDKImageFiles, image_transport
+from dendro_inspector.providers.schema_compat import to_strict_openai_schema
 
 DEFAULT_MODEL = "gpt-5.6"
 
@@ -36,6 +38,36 @@ def _accepts_metadata(client: Any) -> bool:
     """Whether the endpoint behind ``client`` accepts the chat-completions ``metadata``."""
     host = getattr(getattr(client, "base_url", None), "host", None)
     return host == OPENAI_PLATFORM_HOST
+
+
+# How a content filter refuses a request: a 400 with one of these error codes, or — on
+# Azure OpenAI / Microsoft Foundry, which does not always set a code — its own wording.
+_CONTENT_POLICY_CODES = frozenset(
+    {"content_filter", "content_policy_violation", "moderation_blocked"}
+)
+_CONTENT_POLICY_WORDING = (
+    "content safety system",
+    "content management policy",
+    "content_filter",
+    "content policy",
+)
+
+
+def _is_content_policy_refusal(exc: BaseException) -> bool:
+    """Whether ``exc`` is the endpoint's content filter refusing the input itself."""
+    if getattr(exc, "status_code", None) != 400:
+        return False
+    if getattr(exc, "code", None) in _CONTENT_POLICY_CODES:
+        return True
+    wording = str(exc).lower()
+    return any(marker in wording for marker in _CONTENT_POLICY_WORDING)
+
+
+def _content_policy_error(exc: BaseException, metadata: Mapping[str, Any]) -> ContentPolicyError:
+    return ContentPolicyError(
+        f"openai refused the input on content-policy grounds "
+        f"(node={metadata.get('node', '?')}): {exc}"
+    )
 
 
 class OpenAIProvider:
@@ -143,14 +175,19 @@ class OpenAIProvider:
                 "format": {
                     "type": "json_schema",
                     "name": response_model.__name__,
-                    "schema": response_model.model_json_schema(),
-                    "strict": False,
+                    "schema": to_strict_openai_schema(response_model.model_json_schema()),
+                    "strict": True,
                 }
             },
         }
         if _accepts_metadata(client):
             request["metadata"] = {"node": str(metadata.get("node", "")), "logical_role": role}
-        response = await responses.create(**request)
+        try:
+            response = await responses.create(**request)
+        except Exception as exc:
+            if _is_content_policy_refusal(exc):
+                raise _content_policy_error(exc, metadata) from exc
+            raise
         sink = usage_sink_of(metadata)
         usage = getattr(response, "usage", None)
         if sink is not None and usage is not None:
@@ -164,8 +201,18 @@ class OpenAIProvider:
                     getattr(usage, "output_tokens_details", None), "reasoning_tokens", None
                 ),
             )
+        if any(
+            getattr(part, "type", None) == "refusal"
+            for item in getattr(response, "output", ()) or ()
+            for part in getattr(item, "content", ()) or ()
+        ):
+            raise ContentPolicyError(
+                "openai refused to produce an answer on content-policy grounds"
+            )
         if getattr(response, "status", None) == "incomplete":
             reason = getattr(getattr(response, "incomplete_details", None), "reason", "unknown")
+            if reason == "content_filter":
+                raise ContentPolicyError("openai stopped output because of its content filter")
             raise StructuredOutputError(f"openai returned incomplete output: {reason}")
         try:
             return response_model.model_validate_json(response.output_text)
@@ -217,14 +264,19 @@ class OpenAIProvider:
                 "type": "json_schema",
                 "json_schema": {
                     "name": response_model.__name__,
-                    "schema": response_model.model_json_schema(),
-                    "strict": False,
+                    "schema": to_strict_openai_schema(response_model.model_json_schema()),
+                    "strict": True,
                 },
             },
         }
         if _accepts_metadata(client):
             request["metadata"] = {"node": str(metadata.get("node", "")), "logical_role": role}
-        response = await client.chat.completions.create(**request)
+        try:
+            response = await client.chat.completions.create(**request)
+        except Exception as exc:
+            if _is_content_policy_refusal(exc):
+                raise _content_policy_error(exc, metadata) from exc
+            raise
         sink = usage_sink_of(metadata)
         reported = getattr(response, "usage", None)
         if sink is not None and reported is not None:
@@ -237,7 +289,14 @@ class OpenAIProvider:
                     getattr(reported, "completion_tokens_details", None), "reasoning_tokens", None
                 ),
             )
-        raw = response.choices[0].message.content or ""
+        choice = response.choices[0]
+        if getattr(choice, "finish_reason", None) == "content_filter" or getattr(
+            choice.message, "refusal", None
+        ):
+            raise ContentPolicyError(
+                "openai refused to produce an answer on content-policy grounds"
+            )
+        raw = choice.message.content or ""
         try:
             return response_model.model_validate(json.loads(raw))
         except (json.JSONDecodeError, ValidationError) as exc:

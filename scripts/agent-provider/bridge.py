@@ -99,11 +99,12 @@ class DialectRejectionError(Exception):
 class State:
     """Where the conversation with the answering agent lives."""
 
-    def __init__(self, root: Path, wait_timeout: float) -> None:
+    def __init__(self, root: Path, wait_timeout: float, cache_dir: Path | None = None) -> None:
         self.root = root
         self.pending = root / "pending"
         self.answers = root / "answers"
-        self.cache = root / "cache"
+        # Persist only completed answers, never worker requests or leases.
+        self.cache = cache_dir if cache_dir is not None else root / "cache"
         self.images = root / "images"
         self.failures = root / "failures"
         self.log = root / "log.jsonl"
@@ -866,11 +867,11 @@ class Handler(BaseHTTPRequestHandler):
         while time.monotonic() < deadline:
             if answer.is_file():
                 text = answer.read_text(encoding="utf-8")
-                cached.write_text(text, encoding="utf-8")
                 answer_meta = answer.with_suffix(".meta.json")
                 cache_meta = cached.with_suffix(".meta.json")
                 if answer_meta.is_file():
-                    cache_meta.write_text(answer_meta.read_text(encoding="utf-8"), encoding="utf-8")
+                    self._publish_cache(cache_meta, answer_meta.read_text(encoding="utf-8"))
+                self._publish_cache(cached, text)
                 print(f"[bridge] req-{request_id:03d} answered ({len(text)} chars)", flush=True)
                 source, usage = self._answer_provenance(answer_meta, "live")
                 return text, source, usage
@@ -889,6 +890,17 @@ class Handler(BaseHTTPRequestHandler):
             {"error": {"message": "the model did not answer in time"}},
             f"no answer file appeared within {self.state.wait_timeout}s",
         )
+
+    @staticmethod
+    def _publish_cache(path: Path, text: str) -> None:
+        # A pause can kill this process during a write. Publish provenance first and
+        # the answer last, without exposing a partial cache entry.
+        temporary = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
+        try:
+            temporary.write_text(text, encoding="utf-8")
+            temporary.replace(path)
+        finally:
+            temporary.unlink(missing_ok=True)
 
     def _write_pending(
         self,
@@ -1150,9 +1162,18 @@ def main() -> None:
         default=3000.0,
         help="seconds to wait for an answer file before returning 504",
     )
+    parser.add_argument(
+        "--cache-dir",
+        type=Path,
+        help="optional persistent answer cache, scoped to one run and case",
+    )
     args = parser.parse_args()
 
-    Handler.state = State(args.state_dir.resolve(), args.wait_timeout)
+    Handler.state = State(
+        args.state_dir.resolve(),
+        args.wait_timeout,
+        args.cache_dir.resolve() if args.cache_dir is not None else None,
+    )
     server = BridgeServer(("127.0.0.1", args.port), Handler)
     print(f"[bridge] listening on http://127.0.0.1:{args.port}", flush=True)
     print(f"[bridge] state    {Handler.state.root}", flush=True)

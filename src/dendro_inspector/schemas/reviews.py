@@ -11,7 +11,13 @@ from enum import StrEnum
 
 from pydantic import Field, model_validator
 
-from dendro_inspector.schemas.base import Contract, Identifier, ShortText, ValueToken
+from dendro_inspector.schemas.base import (
+    IDENTIFIER_RULE,
+    Contract,
+    Identifier,
+    ShortText,
+    ValueToken,
+)
 from dendro_inspector.schemas.candidates import Candidate, CandidateSet
 from dendro_inspector.schemas.taxon import Confidence, Resolution
 
@@ -97,7 +103,7 @@ class RequiredAction(StrEnum):
 class ReviewFinding(Contract):
     """One defect claim about the current result."""
 
-    finding_id: Identifier
+    finding_id: Identifier = Field(description=IDENTIFIER_RULE)
     category: FindingCategory
     severity: Severity
     status: FindingStatus = FindingStatus.OPEN

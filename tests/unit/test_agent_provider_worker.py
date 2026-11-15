@@ -465,6 +465,95 @@ def test_claude_backend_treats_account_quota_as_terminal(tmp_path: Path, monkeyp
         backend.generate(job)
 
 
+def _claude_limit_envelope(result: str, **fields: Any) -> str:
+    """Claude Code's JSON result for a refused call, as it prints it on a non-zero exit."""
+    return json.dumps(
+        {
+            "type": "result",
+            "subtype": "success",
+            "is_error": True,
+            "api_error_status": 429,
+            "result": result,
+            "usage": {"input_tokens": 0, "output_tokens": 0},
+            **fields,
+        }
+    )
+
+
+@pytest.mark.parametrize(
+    "result",
+    [
+        "You've hit your 5-hour limit · resets 8:20am (UTC)",
+        "You've hit your weekly limit · resets Nov 17, 2am (UTC)",
+        "You've hit your Opus limit · resets 3pm (UTC)",
+    ],
+)
+def test_claude_backend_treats_a_subscription_usage_limit_as_terminal(
+    tmp_path: Path, monkeypatch, result: str
+) -> None:
+    """A usage limit arrives as HTTP 429 but cannot clear before its reset.
+
+    Classified as a short rate limit, the worker asked again every cooldown for hours: the
+    run was never paused and its cases died when their uploaded photographs expired.
+    """
+    worker = _load_script("worker")
+    _pending_request(tmp_path, route="claude-main")
+    (tmp_path / "claims").mkdir()
+    job = worker.claim_next_job(
+        state_dir=tmp_path,
+        route="claude-main",
+        worker_id="claude-main",
+        claim_ttl_seconds=60,
+    )
+    assert job is not None
+
+    monkeypatch.setattr(
+        worker.subprocess,
+        "run",
+        lambda *args, **kwargs: SimpleNamespace(
+            returncode=1,
+            stderr="",
+            stdout=_claude_limit_envelope(result, api_error="usage_limit_reached"),
+        ),
+    )
+    backend = worker.ClaudeBackend(executable=sys.executable, model="opus", timeout_seconds=60)
+
+    with pytest.raises(worker.WorkerTerminalError, match="quota exhausted") as raised:
+        backend.generate(job)
+    # The operator needs to see which limit it was and when it resets.
+    assert result in str(raised.value)
+
+
+def test_claude_usage_limit_is_recognised_from_either_signal() -> None:
+    worker = _load_script("worker")
+    wording = "You've hit your 5-hour limit · resets 8:20am (UTC)"
+
+    # The wording alone, as older Claude Code versions report it.
+    by_text = worker._claude_envelope(_claude_limit_envelope(wording))
+    assert worker._claude_terminal_quota_error("", by_text) is not None
+    # The machine-readable field alone, whatever the text says.
+    by_field = worker._claude_envelope(
+        _claude_limit_envelope("Request refused.", api_error="usage_limit_reached")
+    )
+    assert worker._claude_terminal_quota_error("", by_field) is not None
+    # No parseable result: the raw tail still carries the field name.
+    assert worker._claude_terminal_quota_error('…"api_error":"usage_limit_reached"') is not None
+
+
+def test_claude_short_rate_limit_is_not_a_usage_limit() -> None:
+    worker = _load_script("worker")
+    short = worker._claude_envelope(
+        _claude_limit_envelope(
+            "API Error: 429 rate_limit_error: this request would exceed your rate limit",
+            api_error="rate_limit_error",
+        )
+    )
+
+    assert worker._claude_terminal_quota_error("", short) is None
+    assert worker._claude_envelope("not json") is None
+    assert worker._claude_envelope("[1, 2]") is None
+
+
 def test_claude_backend_keeps_transient_rate_limit_retryable(tmp_path: Path, monkeypatch) -> None:
     worker = _load_script("worker")
     _pending_request(tmp_path, route="claude-main")
@@ -691,3 +780,46 @@ def test_describe_images_reports_size_and_missing_files(tmp_path: Path) -> None:
 
     assert "a.jpg=" in described and "10B" in described
     assert "gone.jpg=missing" in described
+
+
+def test_bridge_replays_persistent_answers_with_fresh_attempt_state(tmp_path: Path) -> None:
+    bridge = _load_script("bridge")
+    cache = tmp_path / "shared" / "run-1" / "case-0"
+    first = bridge.State(tmp_path / "pod-1", wait_timeout=1, cache_dir=cache)
+    handler = object.__new__(bridge.Handler)
+    handler.state = first
+    (first.answers / "key.json").write_text('{"status":"OK"}', encoding="utf-8")
+    (first.answers / "key.meta.json").write_text(
+        json.dumps({"worker_id": "claude-main", "upstream": {"usage": {"input_tokens": 12}}}),
+        encoding="utf-8",
+    )
+    live = handler._answer(1, "anthropic", "prompt", {}, [], "key", "Probe", "claude-main")
+    (first.failures / "req-001-terminal.json").write_text("{}", encoding="utf-8")
+    handler.state = bridge.State(tmp_path / "pod-2", wait_timeout=0, cache_dir=cache)
+    replay = handler._answer(1, "anthropic", "prompt", {}, [], "key", "Probe", "claude-main")
+    assert replay[0] == live[0]
+    assert replay[1] == "cache:claude-main"
+    assert replay[2] == live[2]
+    assert not list(handler.state.pending.iterdir())
+    assert not list(handler.state.failures.iterdir())
+    assert not list(handler.state.answers.iterdir())
+    # A different call must still ask a worker; persistence is not an unconditional replay.
+    with pytest.raises(bridge.DialectRejectionError):
+        handler._answer(2, "anthropic", "changed", {}, [], "other", "Probe", "claude-main")
+
+
+def test_bridge_interrupted_cache_publication_preserves_previous_answer(
+    tmp_path: Path, monkeypatch
+) -> None:
+    bridge = _load_script("bridge")
+    path = tmp_path / "answer.json"
+    path.write_text("original", encoding="utf-8")
+
+    def interrupted(self: Path, target: Path) -> None:
+        raise OSError("publication interrupted")
+
+    monkeypatch.setattr(Path, "replace", interrupted)
+    with pytest.raises(OSError, match="publication interrupted"):
+        bridge.Handler._publish_cache(path, "replacement")
+    assert path.read_text(encoding="utf-8") == "original"
+    assert list(tmp_path.iterdir()) == [path]

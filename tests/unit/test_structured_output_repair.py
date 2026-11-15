@@ -295,6 +295,39 @@ def test_the_short_text_limit_is_stated_in_words_in_the_undialected_schema():
     assert f"at most {SHORT_TEXT_MAX} characters" in summary["description"]
 
 
+def test_the_reviewer_fields_a_non_strict_dialect_gets_wrong_state_their_rule_in_words():
+    """With ``strict: False`` an enum and a pattern are advice the model may not take.
+
+    Across 43 inspections on one hosted model, 23 of 320 calls needed a repair call: 12 over
+    a recommended candidate's `score` and 4 over a `finding_id`.
+    The values are still rejected; what changes is that the rule is now also in words.
+    """
+    from dendro_inspector.schemas.reviews import ReviewFinding, ReviewResult
+
+    for schema in (
+        ReviewResult.model_json_schema(),
+        to_anthropic_schema(ReviewResult.model_json_schema()),
+    ):
+        assert schema is not None
+        score = schema["$defs"]["Candidate"]["properties"]["score"]["description"]
+        assert all(word in score for word in ("`weak`", "`moderate`", "`strong`"))
+        finding_id = schema["$defs"]["ReviewFinding"]["properties"]["finding_id"]["description"]
+        assert "lowercase" in finding_id
+
+    candidate = {"taxon": "betula", "resolution": Resolution.GENUS.value, "rank": 1}
+    finding = {
+        "category": "unsupported_claim",
+        "severity": "minor",
+        "summary": "The ranking cites no admitted evidence.",
+    }
+    Candidate.model_validate({**candidate, "score": "moderate"})
+    ReviewFinding.model_validate({**finding, "finding_id": "finding_1"})
+    with pytest.raises(ValidationError):
+        Candidate.model_validate({**candidate, "score": "high"})
+    with pytest.raises(ValidationError):
+        ReviewFinding.model_validate({**finding, "finding_id": "F-001"})
+
+
 def test_repair_feedback_for_an_overlong_text_says_how_long_it_was():
     """The limit alone invites a token trim; the overrun says how much has to go."""
     from pydantic import ValidationError

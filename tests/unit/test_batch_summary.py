@@ -46,6 +46,37 @@ def test_failed_case_usage_is_included_without_counting_it_as_success():
     assert result["wall_seconds"]["median"] == 2
 
 
+def test_a_failed_case_is_charged_for_the_calls_in_its_failure_report():
+    """A case that failed has no `result`: its trace sits under `failure`, as the batch
+    runners write it. Those calls were paid for, and used to be left out of the totals."""
+    failed = {
+        "case_id": "refused",
+        "exit_code": 1,
+        "wall_seconds": 9,
+        "error": "Traceback ...\nBadRequestError: refused",
+        "failure": {
+            "error": {"type": "BadRequestError", "message": "refused"},
+            "trace": {
+                "events": [
+                    {"provider_calls": [{"input_tokens": 7, "output_tokens": 2}]},
+                    {"provider_calls": [{"input_tokens": 5}]},
+                ]
+            },
+        },
+    }
+    row = summary.case_row(failed)
+    assert (row["model_calls"], row["input_tokens"], row["output_tokens"]) == (2, 12, 2)
+    assert row["selected_taxon"] == ""
+    assert row["subject_decisions"] == []
+
+    result = summary.summarize([summary.case_row(record([{"input_tokens": 10}])), row])
+    assert result["tokens"]["input_tokens"] == 22
+    assert (result["succeeded"], result["failed"]) == (1, 1)
+    # Nothing recorded stays unknown rather than becoming zero.
+    bare = summary.case_row({"case_id": "crashed", "exit_code": 2, "error": "error: x"})
+    assert bare["input_tokens"] == "" and bare["model_calls"] == ""
+
+
 def test_even_batch_duration_uses_arithmetic_median():
     rows = [summary.case_row(record([], seconds=n)) for n in (1, 3, 7, 20)]
     assert summary.summarize(rows)["wall_seconds"]["median"] == 5

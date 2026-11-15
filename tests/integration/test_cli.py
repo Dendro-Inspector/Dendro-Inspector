@@ -9,9 +9,10 @@ import shutil
 import pytest
 from typer.testing import CliRunner
 
-from dendro_inspector.cli import app
+from dendro_inspector.cli import CONTENT_POLICY_EXIT_CODE, app
 from dendro_inspector.config import DEFAULT_DOMAIN_PROMPT_PATH
 from dendro_inspector.prompts.seal import SEMANTIC_NOTICE
+from dendro_inspector.providers.base import ContentPolicyError
 
 runner = CliRunner()
 
@@ -172,6 +173,22 @@ class TestInspectCommand:
 
         assert result.exit_code == 3
         assert "policy_revision" in result.stderr
+
+    def test_a_content_filter_refusal_has_its_own_exit_code(self, monkeypatch):
+        """A batch runner must be able to tell "refused, do not retry" from "failed"."""
+
+        async def refused(case, *, config):
+            raise ContentPolicyError("openai refused the input on content-policy grounds")
+
+        monkeypatch.setattr("dendro_inspector.cli.run_case", refused)
+
+        result = runner.invoke(
+            app,
+            ["inspect", "--fake", "primary-pass", "--image", "examples/log.jpg", "--json"],
+        )
+
+        assert result.exit_code == CONTENT_POLICY_EXIT_CODE == 4
+        assert "content-policy grounds" in result.stderr
 
 
 class TestEvalCommand:

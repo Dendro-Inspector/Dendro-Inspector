@@ -215,10 +215,11 @@ def to_openai_schema(schema: Mapping[str, Any]) -> dict[str, Any]:
 def to_strict_openai_schema(schema: Mapping[str, Any]) -> dict[str, Any]:
     """Make an OpenAI schema acceptable to strict structured-output decoders.
 
-    Codex and OpenAI strict schemas require every object property to appear in that
-    object's ``required`` list and reject schema defaults. Codex constrained decoding can
-    exhaust its output budget on regex-constrained arrays, so patterns remain the original
-    Pydantic model's responsibility. Requiring a field in the decoder does not make it
+    Codex, OpenAI and Foundry strict schemas require every object property in its
+    ``required`` list and closed objects. Use the common supported subset: defaults,
+    patterns, formats and bounds remain the original Pydantic model's responsibility.
+    Bounds are restated in descriptions; open mappings fail explicitly instead of losing
+    their values. Requiring a field in the decoder does not make it
     semantically non-optional: nullable fields retain their null branch, while fields with
     Pydantic defaults must be emitted explicitly. The original Pydantic model still validates
     the returned object after transport.
@@ -231,12 +232,21 @@ def to_strict_openai_schema(schema: Mapping[str, Any]) -> dict[str, Any]:
             return node
         out: dict[str, Any] = {}
         for key, value in node.items():
-            if key in {"default", "pattern"}:
+            if key in _ANTHROPIC_DROPPED | {"format"}:
                 continue
             if key in {"properties", "$defs"} and isinstance(value, dict):
                 out[key] = {name: strict(sub) for name, sub in value.items()}
             else:
                 out[key] = strict(value)
+        # Keep limits visible where the common OpenAI/Foundry subset cannot enforce them.
+        restated = _restate_dropped(node)
+        if restated:
+            existing = out.get("description")
+            out["description"] = f"{existing} {restated}" if existing else restated
+        if "const" in out:
+            out["enum"] = [out.pop("const")]
+        if out.get("type") == "object" and out.get("additionalProperties", False) is not False:
+            raise SchemaTranslationError("strict structured output cannot express an open mapping")
         properties = out.get("properties")
         if isinstance(properties, dict):
             out["required"] = list(properties)

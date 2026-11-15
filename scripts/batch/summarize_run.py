@@ -63,14 +63,21 @@ def case_row(record: dict[str, Any]) -> dict[str, Any]:
     response = result.get("response")
     if response is None:
         response = record.get("response")
-    if response is None:
-        return row
-    decisions = response.get("decisions") or []
-    first = decisions[0] if decisions else {}
-    trace = result.get("trace") or {}
+    # A failed case has no result, but its failure report keeps the trace of the calls made
+    # before it failed, and those were paid for.
+    trace = result.get("trace") or (record.get("failure") or {}).get("trace") or {}
     calls = [
         call for event in trace.get("events", []) for call in event.get("provider_calls") or []
     ]
+    if response is None:
+        if "events" in trace:
+            row.update(
+                model_calls=len(calls),
+                **{key: _measured_total(calls, key) for key in TOKEN_KEYS},
+            )
+        return row
+    decisions = response.get("decisions") or []
+    first = decisions[0] if decisions else {}
     row.update(
         subjects=len(decisions),
         selected_taxon=first.get("selected_taxon") or "",

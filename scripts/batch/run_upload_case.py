@@ -37,6 +37,7 @@ from run_dataset_case import (
     already_done,
     configured_models,
     write_atomic,
+    write_log,
 )
 
 LANG = ("en", "uk")
@@ -123,6 +124,8 @@ def run(env: dict[str, str]) -> int:
     record["wall_seconds"] = round(time.monotonic() - started, 1)
     record["finished_at"] = _now()
     record["exit_code"] = completed.returncode
+    # The record keeps only the end of a failure's stderr; the whole log explains the rest.
+    write_log(run_dir / "logs" / f"{case_id}.log", completed.stderr)
     if completed.returncode == 0:
         record["result"] = json.loads(completed.stdout)
     else:

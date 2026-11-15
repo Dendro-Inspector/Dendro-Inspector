@@ -12,6 +12,23 @@ get entries.
 
 ### Added
 
+- **Bridge answers can survive a pause.** `bridge.py --cache-dir` stores completed answers
+  and provenance in a separate persistent directory. Pod-local requests, leases and errors
+  start fresh; matching completed calls replay after the inspection restarts.
+- **Strict OpenAI and Foundry output schemas.** Both Responses and Chat Completions now
+  request strict closed-object schemas with required fields and enums. Unsupported bounds
+  are restated in descriptions and still enforced by the original Pydantic contracts.
+  HTTP-success refusals and filtered output also use the content-policy exit code.
+
+- **An inspection can have a time limit.** `DENDRO_DEADLINE_SECONDS` sets the wall-clock
+  limit for one inspection; past it the run fails with its partial trace and no answer.
+  Unset, there is still none, and a provider that never answers holds the case as long as
+  each call's own timeout allows.
+- **A content-filter refusal is told apart from a failure.** When an OpenAI-compatible
+  endpoint refuses the photographs themselves (HTTP 400 from its content filter, as Azure
+  OpenAI / Microsoft Foundry return), `dendro inspect` now exits with code 4 and says so,
+  instead of code 1 with a traceback. The same photographs are refused on every attempt, so
+  a batch runner can stop retrying. With `--json` the partial trace is still printed.
 - **Current SDKs and bridge image uploads.** Optional extras now require OpenAI 3.51.0+
   and Anthropic 2.8.0+. The local bridge accepts temporary multipart image uploads,
   credential-scoped file references, expiry and deletion, OpenAI Responses and native
@@ -249,6 +266,27 @@ get entries.
 
 ### Fixed
 
+- **A Claude Code usage limit stops the request instead of being retried for hours.** The
+  bridge worker treated "You've hit your 5-hour limit · resets …" as a short rate limit:
+  it asked again every 90 seconds until the limit reset, the bridge kept the call waiting,
+  and the case ended with `image file is unavailable` once its uploads expired. Any "hit
+  your … limit" message, and the `usage_limit_reached` error field, are now the terminal
+  quota failure the monthly-spend and session limits already were: the bridge answers
+  `424` at once, and the failure names the limit and when it resets.
+- **An uploaded photograph that expired is uploaded again.** The `anthropic` and
+  `anthropic-sdk` adapters repeat a call once with fresh uploads when the provider answers
+  that an image file no longer exists, which happens when a call waits for its answer
+  longer than the one-hour file lifetime. A file that is still missing afterwards is
+  reported as that, no longer as an unknown model.
+- **Two reviewer fields state their rule in words.** A recommended candidate's `score`
+  (`weak`, `moderate` or `strong`) and a finding's `finding_id` format are now also given as
+  schema descriptions. On an endpoint that treats the schema as advice, 23 of 320 calls in
+  one set of runs needed a repair call, 16 of them over one of these two fields.
+  Validation is unchanged: other values are still rejected.
+- **Batch records for uploads and failures are complete.** An uploaded photo set now keeps
+  the engine's log in `<run>/logs/<case>.log`, as a dataset case already did. The run
+  summary counts the model calls and tokens of a failed case from its failure report;
+  they were left out, so a run with failures under-reported what it had spent.
 - **SDK image transport and accounting.** OpenAI places shared policy and labelled images
   before changing node instructions so the image prefix can be reused when the model and
   output format permit caching. OpenAI and the direct Anthropic SDK adapter detect the
