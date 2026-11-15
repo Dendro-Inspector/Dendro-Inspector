@@ -24,7 +24,12 @@ from dendro_inspector.providers.base import (
     record_anthropic_usage,
     usage_sink_of,
 )
-from dendro_inspector.providers.image_files import ImageTransport, SDKImageFiles, image_transport
+from dendro_inspector.providers.image_files import (
+    ImageTransport,
+    SDKImageFiles,
+    image_transport,
+    is_missing_file_error,
+)
 
 DEFAULT_MODEL = "claude-opus-5"
 MAX_TOKENS = 4096
@@ -95,6 +100,19 @@ class AnthropicProvider:
             "source": {"type": "base64", "media_type": media_type, "data": encoded},
         }
 
+    async def _image_blocks(
+        self, client: Any, images: Sequence[ImageInput]
+    ) -> list[dict[str, Any]]:
+        blocks: list[dict[str, Any]] = []
+        for image in images:
+            blocks.append({"type": "text", "text": f"Image ID: {image.image_id}"})
+            if self._image_mode == "files":
+                file_id = await self._image_files.get(client, image)
+                blocks.append({"type": "image", "source": {"type": "file", "file_id": file_id}})
+            else:
+                blocks.append(self._image_block(image))
+        return blocks
+
     async def aclose(self) -> None:
         """Delete run-scoped uploads before closing the SDK connection."""
         if self._client is not None:
@@ -114,22 +132,15 @@ class AnthropicProvider:
     ) -> ResponseT:
         del role
         client = self._ensure_client()
-        blocks: list[dict[str, Any]] = []
-        for image in images:
-            blocks.append({"type": "text", "text": f"Image ID: {image.image_id}"})
-            if self._image_mode == "files":
-                file_id = await self._image_files.get(client, image)
-                blocks.append({"type": "image", "source": {"type": "file", "file_id": file_id}})
-            else:
-                blocks.append(self._image_block(image))
         schema = json.dumps(response_model.model_json_schema(), ensure_ascii=False)
 
         # A cache breakpoint covers everything before it, so placing one after the domain
         # prompt also covers the photographs — which are byte-identical across all seven
         # calls in a case, and the largest single payload in each of them.
+        text_blocks: list[dict[str, Any]] = []
         prefix_chars = cache_prefix_of(metadata, prompt)
         if prefix_chars:
-            blocks.append(
+            text_blocks.append(
                 {
                     "type": "text",
                     "text": prompt[:prefix_chars],
@@ -137,7 +148,7 @@ class AnthropicProvider:
                 }
             )
 
-        blocks.append(
+        text_blocks.append(
             {
                 "type": "text",
                 "text": (
@@ -148,11 +159,24 @@ class AnthropicProvider:
             }
         )
 
-        response = await client.messages.create(
-            model=self.model,
-            max_tokens=MAX_TOKENS,
-            messages=[{"role": "user", "content": blocks}],
-        )
+        async def ask() -> Any:
+            blocks = [*await self._image_blocks(client, images), *text_blocks]
+            return await client.messages.create(
+                model=self.model,
+                max_tokens=MAX_TOKENS,
+                messages=[{"role": "user", "content": blocks}],
+            )
+
+        try:
+            response = await ask()
+        except Exception as exc:
+            # An uploaded photograph can expire while a call still waits for its answer: an
+            # agent behind the bridge may take longer than a file lives. Upload again and ask
+            # once more, instead of losing the case to a stale reference.
+            if self._image_mode != "files" or not is_missing_file_error(exc):
+                raise
+            await self._image_files.forget(images)
+            response = await ask()
         sink = usage_sink_of(metadata)
         reported = getattr(response, "usage", None)
         if sink is not None and reported is not None:

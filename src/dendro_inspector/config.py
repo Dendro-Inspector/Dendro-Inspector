@@ -327,9 +327,13 @@ def load_config(overrides: AppConfig | None = None) -> AppConfig:
     discriminating = (
         (_env("DENDRO_REQUIRE_DISCRIMINATING_SUPPORT", "true") or "true").strip().lower()
     )
+    # Wall-clock limit for one inspection, in seconds. Unset means none: a provider that
+    # keeps a call waiting (an agent behind the bridge, for one) then holds the case as long.
+    deadline = _env("DENDRO_DEADLINE_SECONDS")
     graph = GraphConfig(
         open_world_discovery=open_world in {"1", "true", "yes", "on"},
         require_discriminating_support=discriminating in {"1", "true", "yes", "on"},
+        deadline_seconds=float(deadline) if deadline else None,
     )
     # Longest edge of the photograph sent to models: a number of pixels, or "original" to send
     # the file untouched (no upright rotation, metadata kept).
@@ -338,6 +342,7 @@ def load_config(overrides: AppConfig | None = None) -> AppConfig:
         graph = GraphConfig(
             open_world_discovery=graph.open_world_discovery,
             require_discriminating_support=graph.require_discriminating_support,
+            deadline_seconds=graph.deadline_seconds,
             image_max_edge_px=None if max_edge in {"original", "none"} else int(max_edge),
         )
 

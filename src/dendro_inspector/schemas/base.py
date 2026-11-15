@@ -41,6 +41,13 @@ VALUE_TOKEN_RULE = (
     "join words with `_`, and put any description in a free-text `notes` field instead."
 )
 
+#: Not attached to :data:`Identifier` itself, which appears many times in every contract:
+#: stated only on the identifier fields a model has been seen to format wrongly.
+IDENTIFIER_RULE = (
+    "A lowercase identifier: letters, digits, `_` or `-`, starting with a letter or digit, "
+    "e.g. `finding_1`. No capitals, spaces or dots."
+)
+
 FeaturePath = Annotated[
     str,
     StringConstraints(pattern=FEATURE_PATH_PATTERN, max_length=120),

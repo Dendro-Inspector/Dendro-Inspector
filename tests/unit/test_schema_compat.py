@@ -194,3 +194,25 @@ class TestStrictOpenAISchema:
             _Parent.model_validate(
                 {"child": {"token": "ok"}, "name": "Not A Token", "tags": []},
             )
+
+    def test_foundry_bounds_are_described_and_still_enforced_locally(self):
+        class Bounded(BaseModel):
+            text: str = Field(max_length=4)
+            count: int = Field(ge=0, le=3)
+            items: list[str] = Field(max_length=2)
+
+        schema = to_strict_openai_schema(Bounded.model_json_schema())
+        assert "maxLength" not in repr(schema)
+        assert "minimum" not in repr(schema)
+        assert "maximum" not in repr(schema)
+        assert "maxItems" not in repr(schema)
+        assert "at most 4 characters" in schema["properties"]["text"]["description"]
+        with pytest.raises(ValueError):
+            Bounded.model_validate({"text": "too long", "count": 4, "items": ["a", "b", "c"]})
+
+    def test_an_open_mapping_is_rejected_instead_of_silently_losing_values(self):
+        class MappingAnswer(BaseModel):
+            values: dict[str, str]
+
+        with pytest.raises(SchemaTranslationError, match="open mapping"):
+            to_strict_openai_schema(MappingAnswer.model_json_schema())

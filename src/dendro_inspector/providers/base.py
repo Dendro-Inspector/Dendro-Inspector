@@ -157,6 +157,14 @@ class StructuredOutputError(ProviderError):
     """The model returned output that does not satisfy the requested contract."""
 
 
+class ContentPolicyError(ProviderError):
+    """The provider's content filter refused the input itself.
+
+    Not a transient failure: the same photographs are refused on every attempt, so a caller
+    that retries only spends the attempts. Kept apart from the other errors for that reason.
+    """
+
+
 class ImageTooLargeError(ProviderError):
     """An image file exceeds the size any provider request may carry."""
 

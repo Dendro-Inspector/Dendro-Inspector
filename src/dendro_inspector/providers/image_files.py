@@ -6,7 +6,7 @@ import asyncio
 import hashlib
 import os
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from typing import Any, Literal
 
 from dendro_inspector.observability.logging import get_logger
@@ -26,6 +26,15 @@ def image_transport(env_name: str, configured: ImageTransport | None) -> ImageTr
     if value == "inline":
         return "inline"
     raise ProviderUnavailableError(f"{env_name} must be 'files' or 'inline'")
+
+
+def is_missing_file_error(exc: BaseException) -> bool:
+    """Whether a provider refused a call because an uploaded image no longer exists.
+
+    The SDKs raise a 404 for it. A 404 also answers an unknown model, so the message has to
+    name the file as well before a caller uploads the images again.
+    """
+    return getattr(exc, "status_code", None) == 404 and "file" in str(exc).lower()
 
 
 class SDKImageFiles:
@@ -88,6 +97,18 @@ class SDKImageFiles:
             self._uploaded_ids.add(file_id)
             self._entries[key] = (file_id, created_at + _REUSE_SECONDS)
             return file_id
+
+    async def forget(self, images: Sequence[ImageInput]) -> None:
+        """Drop the references held for ``images``, so the next ``get`` uploads them again.
+
+        For a reference the provider reports as gone although this cache still trusts it:
+        a call that waited for its answer longer than a file lives, or a store that was
+        emptied. The old identifiers stay listed for deletion at teardown.
+        """
+        async with self._lock:
+            for image in images:
+                data, media_type = image.read_payload()
+                self._entries.pop((hashlib.sha256(data).hexdigest(), media_type), None)
 
     async def close(self, client: Any) -> None:
         """Attempt every deletion without hiding the inspection's result or original error."""

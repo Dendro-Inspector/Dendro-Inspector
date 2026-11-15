@@ -18,6 +18,7 @@ import base64
 import contextlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -587,7 +588,9 @@ class ClaudeBackend:
         )
         detail = (completed.stderr or completed.stdout).strip()[-2000:]
         if completed.returncode != 0:
-            terminal = _claude_terminal_quota_error(detail)
+            # Claude Code prints its JSON result on a failed run too; read all of it, since
+            # the tail kept for the log can cut the envelope in half.
+            terminal = _claude_terminal_quota_error(detail, _claude_envelope(completed.stdout))
             if terminal is not None:
                 raise terminal
             if "429" in detail or "rate limit" in detail.lower():
@@ -599,7 +602,9 @@ class ClaudeBackend:
             raise WorkerError(f"Claude returned invalid JSON envelope: {detail}") from exc
         if payload.get("is_error") or payload.get("subtype") == "error":
             message = payload.get("result") or payload.get("error") or "unknown Claude error"
-            terminal = _claude_terminal_quota_error(str(message))
+            terminal = _claude_terminal_quota_error(
+                str(message), payload if isinstance(payload, dict) else None
+            )
             if terminal is not None:
                 raise terminal
             if "429" in str(message) or "rate limit" in str(message).lower():
@@ -723,18 +728,48 @@ class ClineBackend:
         )
 
 
-def _claude_terminal_quota_error(detail: str) -> WorkerTerminalError | None:
-    """Classify account/session exhaustion separately from a short rate limit."""
-    lowered = detail.lower()
-    terminal_markers = (
-        "monthly spend limit",
-        "session limit resets",
-    )
-    if not any(marker in lowered for marker in terminal_markers):
+#: How Claude Code words an exhausted subscription or spend limit. It arrives with HTTP 429,
+#: like a short rate limit, but no retry can succeed before the reset, which may be days
+#: away: "You've hit your 5-hour limit · resets 8:20am (UTC)", "You've hit your weekly
+#: limit · resets Nov 17, 2am (UTC)". The limit's own name varies, so the phrase around it
+#: is matched instead of a list of names.
+_CLAUDE_QUOTA_TEXT = re.compile(
+    r"monthly spend limit|session limit resets|usage[ _]limit[ _]reached"
+    r"|hit your [^\"\n]{0,60}?limit",
+    re.IGNORECASE,
+)
+#: The same condition as a machine-readable field of the JSON result, where present.
+_CLAUDE_QUOTA_API_ERRORS = frozenset({"usage_limit_reached"})
+
+
+def _claude_envelope(stdout: str) -> dict[str, Any] | None:
+    """The JSON result object Claude Code printed, or None when stdout is not one."""
+    try:
+        payload = json.loads(stdout)
+    except ValueError:
         return None
-    return WorkerTerminalError(
-        "Claude route quota exhausted; retry after the account spend or session limit resets."
-    )
+    return payload if isinstance(payload, dict) else None
+
+
+def _claude_terminal_quota_error(
+    detail: str, envelope: dict[str, Any] | None = None
+) -> WorkerTerminalError | None:
+    """Classify account/session exhaustion separately from a short rate limit.
+
+    ``envelope`` is Claude Code's JSON result when it could be parsed. Its ``api_error``
+    field settles the question on its own; otherwise the wording decides, read from the
+    result text when there is one and from the raw ``detail`` when there is not.
+    """
+    result = envelope.get("result") if envelope is not None else None
+    reported = result.strip() if isinstance(result, str) else ""
+    structured = envelope is not None and envelope.get("api_error") in _CLAUDE_QUOTA_API_ERRORS
+    if not structured and not _CLAUDE_QUOTA_TEXT.search(reported or detail):
+        return None
+    message = "Claude route quota exhausted; retry after the account spend or session limit resets."
+    if reported:
+        # Which limit and when it resets: the only part an operator can act on.
+        message += f" Claude reported: {reported[:300]}"
+    return WorkerTerminalError(message)
 
 
 def _record_failure(state_dir: Path, job: Job, worker_id: str, error: Exception) -> None:

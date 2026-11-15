@@ -46,6 +46,15 @@ STRENGTH_CONFIDENCE_CEILING: dict[SupportStrength, Confidence] = {
 }
 
 
+#: The scale in words as well as in the enum, for the reason the token rules are: a dialect
+#: that is not strict treats `enum` as advice. On one hosted model a reviewer's recommended
+#: ranking failed its first attempt on this field more often than on any other.
+SUPPORT_STRENGTH_RULE = (
+    "Ordinal support strength: exactly one of `weak`, `moderate`, `strong`. Never a number "
+    "or a percentage, and not the confidence scale (`low`, `medium`, `high`)."
+)
+
+
 class Candidate(Contract):
     """One taxonomic hypothesis for one subject."""
 
@@ -61,7 +70,7 @@ class Candidate(Contract):
             "feature only — the photograph to take goes elsewhere, never `bark.peeling macro`."
         ),
     )
-    score: SupportStrength = SupportStrength.WEAK
+    score: SupportStrength = Field(default=SupportStrength.WEAK, description=SUPPORT_STRENGTH_RULE)
     rank: int = Field(ge=1, le=99)
 
 
