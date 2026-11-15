@@ -225,7 +225,7 @@ def test_unrecorded_reviewer_call_is_unavailable(retried_run, config, repo_root)
         for reviewer in trace["review_rounds"][1]["reviewers"]
         if reviewer["reviewer"] != "botanical"
     ]
-    with pytest.raises(ReplayUnavailableError, match="exhausted.*botanical_reviewer"):
+    with pytest.raises(ReplayUnavailableError, match=r"exhausted.*botanical_reviewer"):
         asyncio.run(
             replay(_record(retried_run, trace), config=config, root=repo_root, reviews="recorded")
         )
