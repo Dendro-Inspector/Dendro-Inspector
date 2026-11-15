@@ -512,6 +512,7 @@ can be audited without re-running the engine:
 | `resolution_bounds` | every upper bound considered — proposed, card cap, tier ceiling, reviewer recommendation, abstention — each with its value |
 | `resolution_binding_source` | which of those bounds produced the composed value |
 | `resolution_action_applied` | whether a `lower_resolution` action was applied or skipped as already honoured |
+| `review_authority` | the review policy the verdict was composed under; under `evidence_bound`, `advisory_recommendations` and `advisory_action_findings` list what a review asked of the level and was not applied ([review pipeline](review-pipeline.md#what-a-review-may-do-to-the-level)) |
 | `confidence_steps` | the ordered ledger: seed, tier cap, requirement cap, reviewer recommendation, each model finding, each deterministic finding, abstention |
 | `rerank_source` | `arbiter`, `internal` or `none`, with the admitted finding id that supplied the ranking |
 

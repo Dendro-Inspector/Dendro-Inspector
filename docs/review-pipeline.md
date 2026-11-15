@@ -215,6 +215,47 @@ model findings or a single-subject packet. An ambiguous bare recommendation is n
 to every tree. If all of a result's model findings were rejected, its recommendation is
 discarded too. Deterministic findings merged into that result cannot authorize it.
 
+## What a review may do to the level
+
+`GraphConfig.review_authority` (`DENDRO_REVIEW_AUTHORITY`) selects it. There are two
+policies, and the default is the released one.
+
+**`recommendation` (default).** The broadest level among a subject's admitted
+recommendations is a bound on the claim, and an accepted model finding that asks for
+`lower_resolution` takes one step. A review's recommendation is admitted once any of its
+model findings is accepted, whatever that finding is about. A reviewer who writes "no
+needles are visible, so the genus is not defensible" and recommends `unknown` therefore
+withdraws a genus that the card's own diagnostic reading supports.
+
+**`evidence_bound` (experimental, for offline comparison).** A model review moves the level
+only through an accepted finding that `final_decision.validated_ground` can check:
+
+| Ground | What code verifies |
+|---|---|
+| `card_contradiction` | a cited observation is trusted evidence that the leader's card lists under `contradictions`, or that disagrees with the card on a strong-positive path |
+| `supported_alternative` | the finding names another card taxon, and the cited observations support that card at least as well as the evidence supports the leader (strong hits first, then supporting hits) |
+| `contaminated_support` | the finding reports subject contamination and cites evidence among the leader's own support |
+
+The reviewer's category label is not what validates a contradiction: the cited reading is.
+A reading the trust boundary holds as context only, such as a leaf of unknown attachment,
+cannot validate one, for the reason it cannot support a claim. A recommendation bound to a
+validated finding joins the `reviewer_recommendation` bound at the level the reviewer named,
+and that finding's `lower_resolution` action is taken as today. Everything else is recorded
+and not applied: the decision derivation lists such recommendations in
+`advisory_recommendations` with `no_finding`, `no_cited_evidence` or `not_validated`, and
+such actions in `advisory_action_findings`.
+
+The policy changes one thing, how a model review reaches the taxonomic level. It leaves the
+rest as it is: code-raised findings, the card cap and tier ceiling, the
+discriminating-support rule, the confidence ledger (a recommended confidence still binds),
+reranks, correction retries, and abstention on a grounded critical finding. A claim a
+retry or an abstention withdrew is therefore withdrawn under both.
+
+It is not enabled anywhere. Compare the two on stored runs with
+`coverage-audit --replay --reviews recorded --review-authority evidence_bound`
+([evaluation](evaluation.md)); a run recorded before reviews were kept cannot be replayed
+this way.
+
 ## Corrections vs caps
 
 Some findings describe a problem the decision engine already fixes. `resolution_too_specific`

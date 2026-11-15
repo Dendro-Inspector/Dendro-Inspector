@@ -114,6 +114,17 @@ class EscalationPolicy(Contract):
     )
 
 
+class ReviewAuthority(StrEnum):
+    """What a model review may do to the taxonomic level of a verdict."""
+
+    RECOMMENDATION = "recommendation"
+    """The level a review recommends caps the claim once any of its findings is accepted,
+    and an accepted lower-resolution finding takes one step."""
+    EVIDENCE_BOUND = "evidence_bound"
+    """A review lowers the level only through a finding code can check against the
+    evidence. Experimental; see ``final_decision.validated_ground``."""
+
+
 class GraphConfig(Contract):
     """Execution limits. The retry budget is what makes the graph provably terminating."""
 
@@ -151,6 +162,20 @@ class GraphConfig(Contract):
             "False restores the earlier policy (a low-confidence genus from supporting "
             "features) for comparative evaluation only. See "
             "docs/reviews/EVIDENCE-COVERAGE-2026-11-11.md."
+        ),
+    )
+    review_authority: ReviewAuthority = Field(
+        default=ReviewAuthority.RECOMMENDATION,
+        description=(
+            "What a model review may do to the taxonomic level. `recommendation` (the "
+            "default) is the released policy: the broadest level any admitted review "
+            "recommends caps the claim. `evidence_bound` is experimental and for offline "
+            "comparison: a review lowers the level only through an accepted finding whose "
+            "cited observations contradict the leader's card, support a named alternative "
+            "at least as well, or are the contaminated support the claim rests on. Every "
+            "other recommended level is recorded as advisory. Deterministic findings, the "
+            "card and tier ceilings, the discriminating-support rule, confidence and "
+            "abstention are the same under both."
         ),
     )
     image_max_edge_px: int | None = Field(
@@ -330,9 +355,13 @@ def load_config(overrides: AppConfig | None = None) -> AppConfig:
     # Wall-clock limit for one inspection, in seconds. Unset means none: a provider that
     # keeps a call waiting (an agent behind the bridge, for one) then holds the case as long.
     deadline = _env("DENDRO_DEADLINE_SECONDS")
+    # Unset keeps the released policy. An unknown value fails here, at load, rather than
+    # running a paid inspection under a policy nobody asked for.
+    authority = (_env("DENDRO_REVIEW_AUTHORITY") or ReviewAuthority.RECOMMENDATION.value).strip()
     graph = GraphConfig(
         open_world_discovery=open_world in {"1", "true", "yes", "on"},
         require_discriminating_support=discriminating in {"1", "true", "yes", "on"},
+        review_authority=ReviewAuthority(authority.lower()),
         deadline_seconds=float(deadline) if deadline else None,
     )
     # Longest edge of the photograph sent to models: a number of pixels, or "original" to send
@@ -342,6 +371,7 @@ def load_config(overrides: AppConfig | None = None) -> AppConfig:
         graph = GraphConfig(
             open_world_discovery=graph.open_world_discovery,
             require_discriminating_support=graph.require_discriminating_support,
+            review_authority=graph.review_authority,
             deadline_seconds=graph.deadline_seconds,
             image_max_edge_px=None if max_edge in {"original", "none"} else int(max_edge),
         )

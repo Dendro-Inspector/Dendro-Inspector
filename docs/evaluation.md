@@ -127,6 +127,18 @@ neutral pass. It measures what today's adjudication and decision rules make of t
 evidence, proposals and reviews, which is the comparison a change to how review binds a
 verdict needs. It still calls no provider.
 
+To compare the experimental review policy with the released one, replay the same records
+under each and score both against the same reference labels:
+
+```bash
+dendro coverage-audit runs/saved/cases --replay --reviews recorded --labels references.json --json-out runs/released.json
+dendro coverage-audit runs/saved/cases --replay --reviews recorded --labels references.json --review-authority evidence_bound --json-out runs/evidence-bound.json
+```
+
+Read the pair as names recovered against wrong names added, never as one number. With
+neutral reviewers the two policies give the same result, because a review that finds
+nothing lowers nothing.
+
 For traces with schema-3 evidence history, recorded-review replay starts at the first
 extraction. Each graph attempt consumes its own raw packet, original candidate proposal
 and recorded reviewer responses. Artifact hashes, revision order and review-to-evidence
