@@ -90,7 +90,9 @@ def test_retry_reuses_local_ids_without_erasing_prior_evidence_or_candidates(scr
     assert trace.candidate_validation_history
     assert all(item.evidence_revision == 1 for item in trace.candidate_validation_history)
     assert len(trace.observation_uses) == len(raw.observations) + len(second.observations)
-    assert len({item.evidence_ref for item in trace.observation_uses}) == len(trace.observation_uses)
+    assert len({item.evidence_ref for item in trace.observation_uses}) == len(
+        trace.observation_uses
+    )
 
 
 def test_every_observation_has_a_use_record_even_when_no_candidate_cites_it(scripted, knowledge):
@@ -132,9 +134,7 @@ def test_replay_uses_original_proposals_and_raw_extraction_instead_of_reconstruc
     raw, proposal = scripted
     trace = _record(scripted, knowledge).build().model_dump(mode="json")
     assert packet_from_trace(trace) == raw.to_evidence_packet()
-    assert proposals_from_trace(trace) == [
-        group.model_dump(mode="json") for group in proposal.sets
-    ]
+    assert proposals_from_trace(trace) == [group.model_dump(mode="json") for group in proposal.sets]
     fixture = fixture_from_trace(trace)
     assert fixture["responses"]["primary:evidence_extractor"] == raw.model_dump(mode="json")
     assert fixture["responses"]["primary:candidate_generator"] == proposal.model_dump(mode="json")
