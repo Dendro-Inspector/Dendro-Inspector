@@ -12,9 +12,16 @@ outcome of this system, not a failure of it.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from dendro_inspector.graph.executor import NodeContext
 from dendro_inspector.graph.state import GraphState, SubjectAbstention
-from dendro_inspector.nodes.review_synthesizer import is_grounded, requests_abstention
+from dendro_inspector.nodes.review_synthesizer import (
+    finding_reference,
+    is_grounded,
+    requests_abstention,
+)
+from dendro_inspector.schemas.decisions import FindingReference, ReviewStage
 from dendro_inspector.schemas.reviews import (
     RequiredAction,
     ReviewFinding,
@@ -26,6 +33,9 @@ from dendro_inspector.schemas.taxon import (
     lower_resolution,
     resolution_rank,
 )
+
+if TYPE_CHECKING:
+    from dendro_inspector.observability.events import AbstentionCause
 
 NODE = "abstain"
 
@@ -73,6 +83,21 @@ def _bounds(
     return tuple(bounds)
 
 
+def _references(
+    stage: ReviewStage,
+    round_index: int,
+    synthesis: ReviewSynthesis,
+    findings: tuple[ReviewFinding, ...],
+    subject_id: str,
+) -> tuple[FindingReference, ...]:
+    """The findings that cover one subject, each named by the review that raised it."""
+    return tuple(
+        finding_reference(stage, round_index, synthesis, finding)
+        for finding in findings
+        if finding.subject_id in (None, subject_id)
+    )
+
+
 def settle_unverified_abstention(state: GraphState, ctx: NodeContext) -> GraphState:
     """Apply the abstentions a model asserted without evidence, once arbitration has had its say.
 
@@ -108,9 +133,24 @@ def settle_unverified_abstention(state: GraphState, ctx: NodeContext) -> GraphSt
         subjects = tuple(subject_id for subject_id in subjects if subject_id in confirmed)
     if not subjects:
         return state
+    bounds = _bounds(state, ctx, subjects)
+    cause: AbstentionCause = (
+        "unverified_abstention_confirmed"
+        if state.arbiter_synthesis is not None
+        else "unverified_abstention_unarbitrated"
+    )
+    for bound in bounds:
+        ctx.recorder.record_abstention(
+            subject_id=bound.subject_id,
+            resolution=bound.resolution,
+            cause=cause,
+            findings=_references(
+                "internal", state.retries + 1, synthesis, pending, bound.subject_id
+            ),
+        )
     return state.evolve(
         abstained=True,
-        abstention_bounds=(*state.abstention_bounds, *_bounds(state, ctx, subjects)),
+        abstention_bounds=(*state.abstention_bounds, *bounds),
     )
 
 
@@ -127,7 +167,29 @@ async def run(state: GraphState, ctx: NodeContext) -> GraphState:
     # An unscoped finding affects the case. Otherwise only the named subjects lose their
     # claims; another tree's weaker bound is never folded into this subject's result.
     affected = _covered(state, blocking) if blocking else state.subject_ids
+    bounds = _bounds(state, ctx, affected)
+    for bound in bounds:
+        covering = tuple(
+            finding for finding in blocking if finding.subject_id in (None, bound.subject_id)
+        )
+        cause: AbstentionCause = (
+            "unresolvable_finding"
+            if any(requests_abstention(finding) for finding in covering)
+            else "retry_budget_spent"
+            if covering
+            else "unspecified"
+        )
+        ctx.recorder.record_abstention(
+            subject_id=bound.subject_id,
+            resolution=bound.resolution,
+            cause=cause,
+            findings=(
+                _references("internal", state.retries + 1, synthesis, covering, bound.subject_id)
+                if synthesis is not None
+                else ()
+            ),
+        )
     return state.evolve(
         abstained=True,
-        abstention_bounds=_bounds(state, ctx, affected),
+        abstention_bounds=bounds,
     )

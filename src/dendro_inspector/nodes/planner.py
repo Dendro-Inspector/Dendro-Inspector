@@ -62,4 +62,10 @@ async def run(state: GraphState, ctx: NodeContext) -> GraphState:
             "split_firewood_input": plan.split_firewood_input or facts["split_firewood_input"],
         }
     )
+    ctx.recorder.record_plan(
+        target_features=merged.target_features,
+        expect_multiple_subjects=merged.expect_multiple_subjects,
+        bark_only_input=merged.bark_only_input,
+        split_firewood_input=merged.split_firewood_input,
+    )
     return state.evolve(plan=merged)

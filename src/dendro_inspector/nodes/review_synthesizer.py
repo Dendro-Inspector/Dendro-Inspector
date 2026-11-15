@@ -10,11 +10,13 @@ from dendro_inspector.knowledge.candidate_validation import (
 )
 from dendro_inspector.knowledge.loader import KnowledgeBase
 from dendro_inspector.schemas.candidates import Candidate, CandidateSet
+from dendro_inspector.schemas.decisions import FindingReference, ReviewStage
 from dendro_inspector.schemas.evidence import EvidencePacket, Observation
 from dendro_inspector.schemas.reviews import (
     AdmittedRecommendation,
     AdmittedRerank,
     CorrectionDirective,
+    FindingAttribution,
     FindingCategory,
     FindingOrigin,
     FindingStatus,
@@ -74,6 +76,27 @@ def is_grounded(finding: ReviewFinding) -> bool:
     on its category alone rests on nothing but the model's own assertion.
     """
     return finding.origin is FindingOrigin.DETERMINISTIC or bool(finding.evidence_ids)
+
+
+def finding_reference(
+    stage: ReviewStage, round_index: int, synthesis: ReviewSynthesis, finding: ReviewFinding
+) -> FindingReference:
+    """Name one accepted finding by the review that raised it, where that was recorded.
+
+    The one place a reference is built, so the decision derivation, the abstention record
+    and the review round all give the same finding the same name.
+    """
+    attribution = synthesis.attribution_of(finding)
+    return FindingReference(
+        stage=stage,
+        reviewer=attribution.reviewer.value if attribution is not None else None,
+        finding_id=finding.finding_id,
+        finding_ref=(
+            attribution.reference(stage, round_index) if attribution is not None else None
+        ),
+        origin=finding.origin.value,
+        category=finding.category.value,
+    )
 
 
 def _evidence_sources(
@@ -337,6 +360,7 @@ def adjudicate(
     """Adjudicate deterministic findings first and bind only valid exact reranks."""
     accepted: list[ReviewFinding] = []
     rejected: list[ReviewFinding] = []
+    attributions: list[FindingAttribution] = []
     admitted_reranks: list[AdmittedRerank] = []
     accepted_by_result: dict[int, list[ReviewFinding]] = {}
     seen: set[MaterialSignature] = set()
@@ -355,7 +379,7 @@ def adjudicate(
         )
     )
 
-    for result_index, _, result, finding in entries:
+    for result_index, finding_index, result, finding in entries:
         reviewed_evidence_ids = (
             None
             if result.reviewed_evidence_ids is None
@@ -394,6 +418,15 @@ def adjudicate(
                 "status": FindingStatus.ACCEPTED if admitted else FindingStatus.REJECTED,
                 "reason_code": reason,
             }
+        )
+        attributions.append(
+            FindingAttribution(
+                reviewer=result.reviewer,
+                result_index=result_index,
+                position=finding_index,
+                raised_subject_id=finding.subject_id,
+                finding=decided,
+            )
         )
         if admitted:
             seen.add(_material_signature(effective))
@@ -436,6 +469,7 @@ def adjudicate(
     return ReviewSynthesis(
         accepted_findings=tuple(accepted),
         rejected_findings=tuple(rejected),
+        attributions=tuple(attributions),
         admitted_reranks=tuple(admitted_reranks),
         recommendations=recommendations,
         required_corrections=corrections,
@@ -459,5 +493,13 @@ async def run(state: GraphState, ctx: NodeContext) -> GraphState:
         state.reviews,
         evidence=state.evidence,
         knowledge=ctx.knowledge,
+    )
+    # Recorded here, per round, because a correction retry clears these reviews from the
+    # state: by the end of the run the round that asked for the retry is gone.
+    ctx.recorder.record_review_round(
+        stage="internal",
+        round_index=state.retries + 1,
+        results=state.reviews,
+        synthesis=synthesis,
     )
     return state.evolve(synthesis=synthesis)

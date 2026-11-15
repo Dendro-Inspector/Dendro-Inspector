@@ -12,23 +12,39 @@ import subprocess
 import time
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 from dendro_inspector.observability.events import (
     GRAPH_VERSION,
     MAX_LEDGER_OBSERVATIONS,
     MAX_LEDGER_SUBJECTS,
+    MAX_REVIEW_CANDIDATES,
+    MAX_REVIEW_FINDINGS,
+    MAX_REVIEW_ROUNDS,
+    AbstentionCause,
+    AbstentionRecord,
     CandidateSupportRecord,
     CandidateValidationRecord,
     ComponentProjection,
+    DecisionComparison,
     DroppedSupportRecord,
+    EvidenceContextRecord,
+    ImageLimitationRecord,
+    InferenceRecord,
     NodeEvent,
     NodeStatus,
     ObservationRecord,
+    PlanRecord,
     PromptMetadata,
     ProviderCallRecord,
+    RecommendationRecord,
+    RerankRecord,
     ReviewerProjectionRecord,
+    ReviewerRecord,
+    ReviewFindingRecord,
+    ReviewRoundRecord,
     RunTrace,
+    SubjectRecord,
 )
 from dendro_inspector.observability.logging import get_logger
 from dendro_inspector.schemas.decisions import AuthorityCheckStatus
@@ -38,13 +54,19 @@ from dendro_inspector.schemas.taxon import Confidence, Resolution
 
 if TYPE_CHECKING:
     from dendro_inspector.knowledge.candidate_validation import CandidateValidationResult
-    from dendro_inspector.schemas.candidates import CandidateSet
+    from dendro_inspector.schemas.candidates import Candidate, CandidateSet
     from dendro_inspector.schemas.decisions import (
         AuthorityCheckTrace,
         DecisionDerivation,
         FinalDecision,
+        FindingReference,
     )
     from dendro_inspector.schemas.evidence import EvidencePacket
+    from dendro_inspector.schemas.reviews import ReviewFinding, ReviewResult, ReviewSynthesis
+
+
+#: The verdict fields a correction or an arbitration is said to have changed.
+_COMPARED_FIELDS = ("status", "selected_taxon", "resolution", "confidence")
 
 
 def _decision_field_changed(
@@ -52,14 +74,82 @@ def _decision_field_changed(
     after: tuple[FinalDecision, ...],
     field: str,
 ) -> bool | None:
+    """Whether ``field`` moved for any subject that has a verdict on both sides.
+
+    ``None`` when nothing came before, or when no subject can be compared. A subject with a
+    verdict on one side only is not a change. Provisional verdicts exist only for subjects
+    that had candidates and final verdicts for every subject, so comparing the union of the
+    two reported "the arbiter changed the taxon" whenever a subject without candidates sat
+    in the same photographs, on runs where the arbiter moved nothing.
+    """
     if not before:
         return None
-    missing = object()
     prior = {decision.subject_id: getattr(decision, field) for decision in before}
     current = {decision.subject_id: getattr(decision, field) for decision in after}
-    return any(
-        prior.get(subject_id, missing) != current.get(subject_id, missing)
-        for subject_id in prior.keys() | current.keys()
+    shared = prior.keys() & current.keys()
+    if not shared:
+        return None
+    return any(prior[subject_id] != current[subject_id] for subject_id in shared)
+
+
+def _compare_decisions(
+    before: tuple[FinalDecision, ...],
+    after: tuple[FinalDecision, ...],
+) -> DecisionComparison | None:
+    """Which subjects the change flags compared, and which had a verdict on one side only."""
+    if not before:
+        return None
+    prior = {decision.subject_id: decision for decision in before}
+    current = {decision.subject_id: decision for decision in after}
+    compared = tuple(subject_id for subject_id in prior if subject_id in current)
+    return DecisionComparison(
+        compared_subject_ids=compared,
+        changed_subject_ids=tuple(
+            subject_id
+            for subject_id in compared
+            if any(
+                getattr(prior[subject_id], field) != getattr(current[subject_id], field)
+                for field in _COMPARED_FIELDS
+            )
+        ),
+        only_before_subject_ids=tuple(s for s in prior if s not in current),
+        only_after_subject_ids=tuple(s for s in current if s not in prior),
+    )
+
+
+def _candidate_record(candidate: Candidate) -> CandidateSupportRecord:
+    return CandidateSupportRecord(
+        taxon=candidate.taxon,
+        resolution=candidate.resolution,
+        score=candidate.score.value,
+        rank=candidate.rank,
+        supporting_evidence_ids=candidate.supporting_evidence_ids,
+        contradicting_evidence_ids=candidate.contradicting_evidence_ids,
+        missing_decisive_features=candidate.missing_decisive_features,
+    )
+
+
+def _finding_record(
+    finding: ReviewFinding,
+    *,
+    finding_ref: str | None,
+    raised_subject_id: str | None,
+) -> ReviewFindingRecord:
+    return ReviewFindingRecord(
+        finding_ref=finding_ref,
+        finding_id=finding.finding_id,
+        origin=finding.origin.value,
+        category=finding.category.value,
+        severity=finding.severity.value,
+        status=finding.status.value,
+        reason_code=finding.reason_code.value if finding.reason_code is not None else None,
+        summary=finding.summary,
+        evidence_ids=finding.evidence_ids,
+        raised_subject_id=raised_subject_id,
+        subject_id=finding.subject_id,
+        proposed_taxon=finding.proposed_taxon,
+        required_action=finding.required_action.value,
+        impact=finding.impact.value,
     )
 
 
@@ -78,11 +168,18 @@ class TraceRecorder:
         self._prompt: PromptMetadata | None = None
         self._knowledge_coverage: KnowledgeCoverage | None = None
         self._evidence_observations: tuple[ObservationRecord, ...] = ()
+        self._evidence_revision = 0
+        self._evidence_context: EvidenceContextRecord | None = None
+        self._plan: PlanRecord | None = None
         self._candidate_validations: dict[str, CandidateValidationRecord] = {}
+        self._review_rounds: dict[tuple[str, int], ReviewRoundRecord] = {}
+        self._abstentions: dict[str, AbstentionRecord] = {}
         self._retries = 0
         self._escalation_triggered = False
         self._user_claim_negated = False
         self._escalation_reasons: tuple[str, ...] = ()
+        self._escalation_hard_reasons: tuple[str, ...] = ()
+        self._escalation_suppressed_by: tuple[str, ...] = ()
         self._arbiter_used = False
         self._started_at = datetime.now(UTC)
         self._started_perf = time.perf_counter()
@@ -150,6 +247,192 @@ class TraceRecorder:
             )
             for observation in evidence.observations[:MAX_LEDGER_OBSERVATIONS]
         )
+        self._evidence_revision += 1
+        self._evidence_context = EvidenceContextRecord(
+            revision=self._evidence_revision,
+            subjects=tuple(
+                SubjectRecord(
+                    subject_id=subject.subject_id,
+                    kind=subject.kind.value,
+                    image_ids=subject.image_ids,
+                )
+                for subject in evidence.subjects[:MAX_LEDGER_SUBJECTS]
+            ),
+            inferences=tuple(
+                InferenceRecord(
+                    inference_id=inference.inference_id,
+                    claim=inference.claim,
+                    derived_from=inference.derived_from,
+                    strength=inference.strength.value,
+                    limitations=inference.limitations,
+                )
+                for inference in evidence.inferences[:MAX_LEDGER_OBSERVATIONS]
+            ),
+            absent_features=evidence.absent_features,
+            context_limitations=evidence.context_limitations,
+            image_limitations=tuple(
+                ImageLimitationRecord(
+                    image_id=limitation.image_id,
+                    lighting=limitation.lighting,
+                    white_balance=limitation.white_balance,
+                    scale=limitation.scale.value,
+                )
+                for limitation in evidence.image_limitations
+            ),
+            possible_multiple_taxa=evidence.possible_multiple_taxa,
+            instruction_like_content_detected=evidence.instruction_like_content_detected,
+        )
+
+    def record_plan(
+        self,
+        *,
+        target_features: tuple[str, ...],
+        expect_multiple_subjects: bool,
+        bark_only_input: bool,
+        split_firewood_input: bool,
+    ) -> None:
+        """Keep the plan's features and flags. Its notes are planner prose and stay out."""
+        self._plan = PlanRecord(
+            target_features=target_features,
+            expect_multiple_subjects=expect_multiple_subjects,
+            bark_only_input=bark_only_input,
+            split_firewood_input=split_firewood_input,
+        )
+
+    def record_review_round(
+        self,
+        *,
+        stage: Literal["internal", "arbiter"],
+        round_index: int,
+        results: tuple[ReviewResult, ...],
+        synthesis: ReviewSynthesis,
+    ) -> None:
+        """Keep one review pass: what each reviewer returned and what adjudication admitted.
+
+        Called by the synthesizer that adjudicated the pass, so the record exists for a round
+        a correction retry goes on to discard. Findings come from the synthesis' attributions
+        and so carry their adjudicated status and reason. A synthesis built without
+        attributions still records each review's findings as returned, with no status.
+        """
+        key = (stage, round_index)
+        if key not in self._review_rounds and len(self._review_rounds) >= MAX_REVIEW_ROUNDS:
+            get_logger("trace").warning(
+                "review_round_not_recorded",
+                extra={"case_id": self._case_id, "stage": stage, "round": round_index},
+            )
+            return
+
+        def reference(finding: ReviewFinding) -> str | None:
+            attribution = synthesis.attribution_of(finding)
+            return attribution.reference(stage, round_index) if attribution is not None else None
+
+        admitted_reviewers = {
+            recommendation.reviewer
+            for recommendation in synthesis.recommendations or ()
+            if recommendation.reviewer is not None
+        }
+        reviewers = []
+        for index, result in enumerate(results):
+            if synthesis.attributions is None:
+                findings = tuple(
+                    _finding_record(finding, finding_ref=None, raised_subject_id=finding.subject_id)
+                    for finding in result.findings
+                )
+            else:
+                findings = tuple(
+                    _finding_record(
+                        attribution.finding,
+                        finding_ref=attribution.reference(stage, round_index),
+                        raised_subject_id=attribution.raised_subject_id,
+                    )
+                    for attribution in sorted(
+                        (a for a in synthesis.attributions if a.result_index == index),
+                        key=lambda a: a.position,
+                    )
+                )
+            recommends = (
+                result.recommended_resolution is not None
+                or result.recommended_confidence is not None
+            )
+            ranked = sorted(result.recommended_candidates, key=lambda candidate: candidate.rank)
+            reviewers.append(
+                ReviewerRecord(
+                    reviewer=result.reviewer.value,
+                    status=result.status.value,
+                    subject_id=result.subject_id,
+                    recommended_resolution=result.recommended_resolution,
+                    recommended_confidence=result.recommended_confidence,
+                    recommendation_admitted=(
+                        result.reviewer in admitted_reviewers if recommends else None
+                    ),
+                    recommended_candidates=tuple(
+                        _candidate_record(candidate) for candidate in ranked[:MAX_REVIEW_CANDIDATES]
+                    ),
+                    findings=findings[:MAX_REVIEW_FINDINGS],
+                    findings_omitted=max(0, len(findings) - MAX_REVIEW_FINDINGS),
+                )
+            )
+
+        self._review_rounds[key] = ReviewRoundRecord(
+            stage=stage,
+            round=round_index,
+            evidence_revision=self._evidence_revision or None,
+            reviewers=tuple(reviewers),
+            recommendations=tuple(
+                RecommendationRecord(
+                    reviewer=(
+                        recommendation.reviewer.value
+                        if recommendation.reviewer is not None
+                        else None
+                    ),
+                    subject_id=recommendation.subject_id,
+                    resolution=recommendation.resolution,
+                    confidence=recommendation.confidence,
+                    finding_id=(
+                        recommendation.finding.finding_id
+                        if recommendation.finding is not None
+                        else None
+                    ),
+                    finding_ref=(
+                        reference(recommendation.finding)
+                        if recommendation.finding is not None
+                        else None
+                    ),
+                )
+                for recommendation in synthesis.recommendations or ()
+            ),
+            reranks=tuple(
+                RerankRecord(
+                    reviewer=rerank.reviewer.value,
+                    subject_id=rerank.candidate_set.subject_id,
+                    finding_id=rerank.finding_id,
+                    finding_ref=reference(rerank.finding),
+                    ranking=tuple(candidate.taxon for candidate in rerank.candidate_set.ordered),
+                )
+                for rerank in synthesis.admitted_reranks
+            ),
+            retry_required=synthesis.retry_required,
+            unresolvable=synthesis.unresolvable,
+            unverified_abstention=synthesis.unverified_abstention,
+            reviewer_disagreement=synthesis.reviewer_disagreement,
+            escalation_recommended=synthesis.escalation_recommended,
+        )
+
+    def record_abstention(
+        self,
+        *,
+        subject_id: str,
+        resolution: Resolution,
+        cause: AbstentionCause,
+        findings: tuple[FindingReference, ...] = (),
+    ) -> None:
+        """Keep why one subject's claim was withdrawn. The latest record for a subject wins."""
+        self._abstentions[subject_id] = AbstentionRecord(
+            subject_id=subject_id,
+            resolution=resolution,
+            cause=cause,
+            findings=findings,
+        )
 
     def record_candidate_validation(
         self, proposed: CandidateSet, validation: CandidateValidationResult
@@ -164,15 +447,7 @@ class TraceRecorder:
             subject_id=proposed.subject_id,
             proposed_taxa=tuple(candidate.taxon for candidate in proposed.candidates),
             admitted=tuple(
-                CandidateSupportRecord(
-                    taxon=candidate.taxon,
-                    resolution=candidate.resolution,
-                    score=candidate.score.value,
-                    rank=candidate.rank,
-                    supporting_evidence_ids=candidate.supporting_evidence_ids,
-                    contradicting_evidence_ids=candidate.contradicting_evidence_ids,
-                )
-                for candidate in validation.candidate_set.candidates
+                _candidate_record(candidate) for candidate in validation.candidate_set.candidates
             ),
             dropped_support=tuple(
                 DroppedSupportRecord(
@@ -191,6 +466,7 @@ class TraceRecorder:
                 for taxon, proposed_strength, effective in validation.demoted_scores
             ),
             malformed_evidence_ids=validation.malformed_evidence_ids,
+            evidence_revision=self._evidence_revision or None,
         )
 
     def record_review_projection(self, node: str, projection: ReviewProjection) -> None:
@@ -237,9 +513,18 @@ class TraceRecorder:
     def record_retry(self) -> None:
         self._retries += 1
 
-    def record_escalation(self, *, triggered: bool, reasons: tuple[str, ...]) -> None:
+    def record_escalation(
+        self,
+        *,
+        triggered: bool,
+        reasons: tuple[str, ...],
+        hard_reasons: tuple[str, ...] = (),
+        suppressed_by: tuple[str, ...] = (),
+    ) -> None:
         self._escalation_triggered = triggered
         self._escalation_reasons = reasons
+        self._escalation_hard_reasons = hard_reasons
+        self._escalation_suppressed_by = suppressed_by
 
     def record_arbiter_used(self) -> None:
         self._arbiter_used = True
@@ -306,7 +591,7 @@ class TraceRecorder:
                 final_decisions,
                 field,
             )
-            for field in ("status", "selected_taxon", "resolution", "confidence")
+            for field in _COMPARED_FIELDS
         }
         changed_values = tuple(value for value in correction_changes.values() if value is not None)
         arbiter_changes = {
@@ -315,7 +600,7 @@ class TraceRecorder:
                 if self._arbiter_used
                 else None
             )
-            for field in ("status", "selected_taxon", "resolution", "confidence")
+            for field in _COMPARED_FIELDS
         }
         derivations = tuple(
             self._decision_derivations[decision.subject_id]
@@ -333,6 +618,10 @@ class TraceRecorder:
             component_projections=self._component_projections,
             evidence_observations=self._evidence_observations,
             candidate_validations=tuple(self._candidate_validations.values()),
+            evidence_context=self._evidence_context,
+            plan=self._plan,
+            review_rounds=tuple(self._review_rounds.values()),
+            abstentions=tuple(self._abstentions.values()),
             knowledge_coverage=self._knowledge_coverage,
             retries=self._retries,
             graph_retry_count=self._retries,
@@ -341,11 +630,17 @@ class TraceRecorder:
             correction_changed_taxon=correction_changes["selected_taxon"],
             correction_changed_resolution=correction_changes["resolution"],
             correction_changed_confidence=correction_changes["confidence"],
+            correction_comparison=_compare_decisions(pre_correction_decisions, final_decisions),
             provisional_decisions=provisional_decisions,
             arbiter_changed_status=arbiter_changes["status"],
             arbiter_changed_taxon=arbiter_changes["selected_taxon"],
             arbiter_changed_resolution=arbiter_changes["resolution"],
             arbiter_changed_confidence=arbiter_changes["confidence"],
+            arbiter_comparison=(
+                _compare_decisions(provisional_decisions, final_decisions)
+                if self._arbiter_used
+                else None
+            ),
             authority_checks=authority_checks,
             decision_derivations=derivations,
             evidence_authority_sensitive=any(
@@ -354,6 +649,8 @@ class TraceRecorder:
             escalation_triggered=self._escalation_triggered,
             user_claim_negated=self._user_claim_negated,
             escalation_reasons=self._escalation_reasons,
+            escalation_hard_reasons=self._escalation_hard_reasons,
+            escalation_suppressed_by=self._escalation_suppressed_by,
             arbiter_used=self._arbiter_used,
             final_resolution=final_resolution,
             final_confidence=final_confidence,

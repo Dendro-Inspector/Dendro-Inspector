@@ -24,6 +24,7 @@ review's findings or deterministic checks. A bare recommendation supplies only a
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 
 from dendro_inspector.graph.executor import NodeContext
 from dendro_inspector.graph.state import GraphState
@@ -66,6 +67,7 @@ from dendro_inspector.nodes.photo_planner import (
     effective_object_type,
     planned_attachment_request,
 )
+from dendro_inspector.nodes.review_synthesizer import finding_reference
 from dendro_inspector.schemas.base import SHORT_TEXT_MAX
 from dendro_inspector.schemas.candidates import (
     STRENGTH_CONFIDENCE_CEILING,
@@ -81,10 +83,13 @@ from dendro_inspector.schemas.decisions import (
     DecisionDerivation,
     DecisionStatus,
     FinalDecision,
+    FindingReference,
     PhotoRequest,
+    RecommendationSource,
     RerankSource,
     ResolutionBound,
     ResolutionBoundSource,
+    ReviewStage,
     UserClaimVerdict,
 )
 from dendro_inspector.schemas.evidence import (
@@ -101,6 +106,7 @@ from dendro_inspector.schemas.reference import (
 )
 from dendro_inspector.schemas.reviews import (
     AdmittedRecommendation,
+    AdmittedRerank,
     FindingCategory,
     FindingOrigin,
     RequiredAction,
@@ -301,8 +307,25 @@ def open_world_contest(
     return substituting, competing
 
 
+def _staged_syntheses(
+    state: GraphState,
+) -> tuple[tuple[ReviewStage, int, ReviewSynthesis], ...]:
+    """Each pass's synthesis with its stage and round, in the order findings are composed.
+
+    The internal synthesis in the state is the round that survived: a correction retry
+    discards its predecessor, so its number is the retries spent plus one. The arbiter runs
+    at most once.
+    """
+    staged: list[tuple[ReviewStage, int, ReviewSynthesis]] = []
+    if state.synthesis is not None:
+        staged.append(("internal", state.retries + 1, state.synthesis))
+    if state.arbiter_synthesis is not None:
+        staged.append(("arbiter", 1, state.arbiter_synthesis))
+    return tuple(staged)
+
+
 def _syntheses(state: GraphState) -> tuple[ReviewSynthesis, ...]:
-    return tuple(s for s in (state.synthesis, state.arbiter_synthesis) if s is not None)
+    return tuple(synthesis for _, _, synthesis in _staged_syntheses(state))
 
 
 def _accepted_for(state: GraphState, subject_id: str) -> tuple[FindingCategory, ...]:
@@ -323,14 +346,21 @@ def _actions_for(state: GraphState, subject_id: str) -> tuple[RequiredAction, ..
     )
 
 
-def _findings_for(state: GraphState, subject_id: str) -> tuple[ReviewFinding, ...]:
-    """Accepted findings in the order their confidence operations are composed."""
+def _staged_findings_for(
+    state: GraphState, subject_id: str
+) -> tuple[tuple[ReviewStage, int, ReviewSynthesis, ReviewFinding], ...]:
+    """Accepted findings with the pass each came from, in composition order."""
     return tuple(
-        finding
-        for synthesis in _syntheses(state)
+        (stage, round_index, synthesis, finding)
+        for stage, round_index, synthesis in _staged_syntheses(state)
         for finding in synthesis.accepted_findings
         if finding.subject_id in (None, subject_id)
     )
+
+
+def _findings_for(state: GraphState, subject_id: str) -> tuple[ReviewFinding, ...]:
+    """Accepted findings in the order their confidence operations are composed."""
+    return tuple(finding for *_, finding in _staged_findings_for(state, subject_id))
 
 
 def _deterministic_actions_for(state: GraphState, subject_id: str) -> tuple[RequiredAction, ...]:
@@ -347,7 +377,7 @@ def _deterministic_actions_for(state: GraphState, subject_id: str) -> tuple[Requ
 def _single_admitted_rerank(
     synthesis: ReviewSynthesis,
     subject_id: str,
-) -> tuple[CandidateSet, str] | None:
+) -> AdmittedRerank | None:
     admitted = tuple(
         rerank
         for rerank in synthesis.admitted_reranks
@@ -358,19 +388,19 @@ def _single_admitted_rerank(
     signatures = {candidate_ranking_signature(rerank.candidate_set) for rerank in admitted}
     if len(signatures) != 1:
         return None
-    return admitted[0].candidate_set, admitted[0].finding_id
+    return admitted[0]
 
 
 def _apply_reranking_with_source(
     state: GraphState,
     candidate_set: CandidateSet,
-) -> tuple[CandidateSet, RerankSource, str | None]:
+) -> tuple[CandidateSet, RerankSource, str | None, FindingReference | None]:
     """Return the effective ranking and the exact finding that supplied it."""
-    passes: tuple[tuple[RerankSource, ReviewSynthesis | None], ...] = (
-        ("arbiter", state.arbiter_synthesis),
-        ("internal", state.synthesis),
+    passes: tuple[tuple[RerankSource, ReviewStage, int, ReviewSynthesis | None], ...] = (
+        ("arbiter", "arbiter", 1, state.arbiter_synthesis),
+        ("internal", "internal", state.retries + 1, state.synthesis),
     )
-    for source, synthesis in passes:
+    for source, stage, round_index, synthesis in passes:
         if synthesis is None:
             continue
         for_subject = tuple(
@@ -382,10 +412,14 @@ def _apply_reranking_with_source(
             continue
         selected = _single_admitted_rerank(synthesis, candidate_set.subject_id)
         if selected is None:
-            return candidate_set, "none", None
-        ranking, finding_id = selected
-        return ranking, source, finding_id
-    return candidate_set, "none", None
+            return candidate_set, "none", None, None
+        return (
+            selected.candidate_set,
+            source,
+            selected.finding_id,
+            finding_reference(stage, round_index, synthesis, selected.finding),
+        )
+    return candidate_set, "none", None, None
 
 
 def apply_reranking(state: GraphState, candidate_set: CandidateSet) -> CandidateSet:
@@ -630,24 +664,74 @@ def _rule_on_one_taxon(
     return UserClaimVerdict.DOUBTFUL
 
 
-def _recommendations_for(state: GraphState, subject_id: str) -> tuple[AdmittedRecommendation, ...]:
-    recommendations: list[AdmittedRecommendation] = []
-    for synthesis in _syntheses(state):
+def _staged_recommendations(
+    state: GraphState, subject_id: str
+) -> tuple[tuple[ReviewStage, int, ReviewSynthesis, AdmittedRecommendation], ...]:
+    """This subject's admitted recommendations with the pass each came from."""
+    staged: list[tuple[ReviewStage, int, ReviewSynthesis, AdmittedRecommendation]] = []
+    for stage, round_index, synthesis in _staged_syntheses(state):
         if synthesis.recommendations is not None:
-            recommendations.extend(
-                item for item in synthesis.recommendations if item.subject_id == subject_id
+            staged.extend(
+                (stage, round_index, synthesis, item)
+                for item in synthesis.recommendations
+                if item.subject_id == subject_id
             )
         elif state.subject_ids == (subject_id,):
             # Released/custom synthesis can still supply conservative single-subject caps.
             # Without a finding binding, a legacy aggregate cannot waive any downgrade.
-            recommendations.append(
-                AdmittedRecommendation(
-                    subject_id=subject_id,
-                    resolution=synthesis.resolution_delta,
-                    confidence=synthesis.confidence_delta,
+            staged.append(
+                (
+                    "legacy_aggregate",
+                    round_index,
+                    synthesis,
+                    AdmittedRecommendation(
+                        subject_id=subject_id,
+                        resolution=synthesis.resolution_delta,
+                        confidence=synthesis.confidence_delta,
+                    ),
                 )
             )
-    return tuple(recommendations)
+    return tuple(staged)
+
+
+def _recommendations_for(state: GraphState, subject_id: str) -> tuple[AdmittedRecommendation, ...]:
+    return tuple(item for *_, item in _staged_recommendations(state, subject_id))
+
+
+def _recommendation_sources(
+    state: GraphState,
+    subject_id: str,
+    *,
+    resolution: Resolution | None = None,
+    confidence: Confidence | None = None,
+) -> tuple[RecommendationSource, ...]:
+    """Every admitted recommendation that named a level of the kind that was pooled.
+
+    Reads the recommendations `_broadest_recommendation` and `_lowest_recommendation` pool,
+    so the attribution cannot name a review the pooled level did not come from. Exactly one
+    of ``resolution`` and ``confidence`` is that pooled level.
+    """
+    pooled = resolution if resolution is not None else confidence
+    sources: list[RecommendationSource] = []
+    for stage, round_index, synthesis, item in _staged_recommendations(state, subject_id):
+        level = item.resolution if resolution is not None else item.confidence
+        if level is None:
+            continue
+        attribution = synthesis.attribution_of(item.finding) if item.finding is not None else None
+        sources.append(
+            RecommendationSource(
+                stage=stage,
+                reviewer=item.reviewer.value if item.reviewer is not None else None,
+                resolution=item.resolution if resolution is not None else None,
+                confidence=item.confidence if resolution is None else None,
+                finding_id=item.finding.finding_id if item.finding is not None else None,
+                finding_ref=(
+                    attribution.reference(stage, round_index) if attribution is not None else None
+                ),
+                binding=level == pooled,
+            )
+        )
+    return tuple(sources)
 
 
 def _broadest_recommendation(
@@ -679,6 +763,17 @@ def _lowest_recommendation(
     return min(recommendations, key=confidence_rank) if recommendations else None
 
 
+@dataclass(frozen=True, slots=True)
+class ResolutionComposition:
+    """What `resolve_resolution` returns, with the findings whose lowering was still owed."""
+
+    resolution: Resolution
+    bounds: tuple[ResolutionBound, ...]
+    binding_source: ResolutionBoundSource
+    action_applied: bool
+    action_findings: tuple[FindingReference, ...]
+
+
 def resolve_resolution(
     state: GraphState,
     subject_id: str,
@@ -694,6 +789,27 @@ def resolve_resolution(
     on (the default), a leader admitted on supporting features alone names nothing; off, the
     legacy policy names it at low confidence. Kept switchable for comparative evaluation.
     """
+    composed = compose_resolution(
+        state,
+        subject_id,
+        leader,
+        card,
+        tier,
+        require_discriminating_support=require_discriminating_support,
+    )
+    return composed.resolution, composed.bounds, composed.binding_source, composed.action_applied
+
+
+def compose_resolution(
+    state: GraphState,
+    subject_id: str,
+    leader: Candidate,
+    card: TaxonCard | None,
+    tier: EvidenceTier,
+    *,
+    require_discriminating_support: bool = True,
+) -> ResolutionComposition:
+    """`resolve_resolution`, also naming who stood behind each review bound and action."""
     recommended = _broadest_recommendation(state, subject_id)
     bounds = [
         ResolutionBound(source="proposed", value=leader.resolution),
@@ -701,7 +817,13 @@ def resolve_resolution(
         ResolutionBound(source="tier_ceiling", value=resolution_ceiling(tier)),
     ]
     if recommended is not None:
-        bounds.append(ResolutionBound(source="reviewer_recommendation", value=recommended))
+        bounds.append(
+            ResolutionBound(
+                source="reviewer_recommendation",
+                value=recommended,
+                sources=_recommendation_sources(state, subject_id, resolution=recommended),
+            )
+        )
     substituting, _ = open_world_contest(state, subject_id, leader, card, tier)
     if substituting:
         bounds.append(ResolutionBound(source="open_world_outranked", value=Resolution.GENUS))
@@ -743,19 +865,29 @@ def resolve_resolution(
     # one step below the answer every reviewer recommended. The recommendation is therefore a
     # floor as well as a ceiling, for that review's own accepted model findings.
     actions = list(_deterministic_actions_for(state, subject_id))
-    for finding in _findings_for(state, subject_id):
-        if finding.origin is not FindingOrigin.MODEL:
-            continue
-        own_bound = _broadest_recommendation(state, subject_id, finding)
-        if own_bound is None or resolution_rank(resolution) > resolution_rank(own_bound):
-            actions.append(finding.required_action)
+    owed: list[FindingReference] = []
+    for stage, round_index, synthesis, finding in _staged_findings_for(state, subject_id):
+        live = finding.origin is FindingOrigin.DETERMINISTIC
+        if finding.origin is FindingOrigin.MODEL:
+            own_bound = _broadest_recommendation(state, subject_id, finding)
+            live = own_bound is None or resolution_rank(resolution) > resolution_rank(own_bound)
+            if live:
+                actions.append(finding.required_action)
+        if live and finding.required_action is RequiredAction.LOWER_RESOLUTION:
+            owed.append(finding_reference(stage, round_index, synthesis, finding))
 
     # A lower-resolution finding commonly records the same overclaim already represented by
     # a card, evidence, or synthesis bound. Do not apply the same correction twice.
     action_applied = not already_broadened and RequiredAction.LOWER_RESOLUTION in actions
     if action_applied:
         resolution = lower_resolution(resolution)
-    return resolution, tuple(bounds), binding.source, action_applied
+    return ResolutionComposition(
+        resolution=resolution,
+        bounds=tuple(bounds),
+        binding_source=binding.source,
+        action_applied=action_applied,
+        action_findings=tuple(owed),
+    )
 
 
 def resolve_identity(card: TaxonCard | None, resolution: Resolution) -> TaxonIdentity | None:
@@ -1082,15 +1214,20 @@ def resolve_confidence(
         after: Confidence,
         *,
         applied: bool,
-        finding_id: str | None = None,
+        finding: FindingReference | None = None,
+        sources: tuple[RecommendationSource, ...] = (),
     ) -> None:
         steps.append(
             ConfidenceStep(
                 source=source,
-                finding_id=finding_id,
+                finding_id=finding.finding_id if finding is not None else None,
                 before=before,
                 after=after,
                 applied=applied,
+                stage=finding.stage if finding is not None else None,
+                reviewer=finding.reviewer if finding is not None else None,
+                finding_ref=finding.finding_ref if finding is not None else None,
+                sources=sources,
             )
         )
 
@@ -1155,15 +1292,21 @@ def resolve_confidence(
         before = confidence
         if lowers:
             confidence = recommended
-        step("reviewer_recommendation", before, confidence, applied=lowers)
+        step(
+            "reviewer_recommendation",
+            before,
+            confidence,
+            applied=lowers,
+            sources=_recommendation_sources(state, subject_id, confidence=recommended),
+        )
 
     # Each accepted finding costs a full step, and three reviewers writing up the same
     # overclaim cost three — which is how a claim the reviewers themselves called `high`
     # arrives as `low`. A model's own recommendation is the floor for the findings that
     # model raised; the deterministic guardrails keep biting past it, because a model must
     # never be able to waive them by recommending a comfortable number.
-    findings = _findings_for(state, subject_id)
-    for finding in findings:
+    findings = _staged_findings_for(state, subject_id)
+    for stage, round_index, synthesis, finding in findings:
         if finding.required_action is not RequiredAction.LOWER_CONFIDENCE:
             continue
         if finding.origin is FindingOrigin.DETERMINISTIC:
@@ -1180,10 +1323,10 @@ def resolve_confidence(
             before,
             confidence,
             applied=not floored,
-            finding_id=finding.finding_id,
+            finding=finding_reference(stage, round_index, synthesis, finding),
         )
 
-    for finding in findings:
+    for stage, round_index, synthesis, finding in findings:
         if finding.required_action is not RequiredAction.LOWER_CONFIDENCE:
             continue
         if finding.origin is not FindingOrigin.DETERMINISTIC:
@@ -1205,7 +1348,7 @@ def resolve_confidence(
             before,
             confidence,
             applied=not waived,
-            finding_id=finding.finding_id,
+            finding=finding_reference(stage, round_index, synthesis, finding),
         )
 
     if state.is_abstained(subject_id):
@@ -1526,8 +1669,8 @@ def decide_subject_base(
         msg = "final decision reached without an evidence packet"
         raise RuntimeError(msg)
 
-    reranked, rerank_source, rerank_finding_id = (
-        (candidate_set, "none", None)
+    reranked, rerank_source, rerank_finding_id, rerank_finding = (
+        (candidate_set, "none", None, None)
         if already_reranked
         else _apply_reranking_with_source(state, candidate_set)
     )
@@ -1552,6 +1695,7 @@ def decide_subject_base(
                 update={
                     "rerank_source": rerank_source,
                     "rerank_finding_id": rerank_finding_id,
+                    "rerank_finding": rerank_finding,
                 }
             )
         )
@@ -1585,7 +1729,7 @@ def decide_subject_base(
 
     card = ctx.knowledge.try_taxon(leader.taxon)
     tier = candidate_support_tier(leader, evidence, subject_id)
-    resolution_bound, bounds, binding_source, action_applied = resolve_resolution(
+    composed = compose_resolution(
         state,
         subject_id,
         leader,
@@ -1593,13 +1737,15 @@ def decide_subject_base(
         tier,
         require_discriminating_support=ctx.config.graph.require_discriminating_support,
     )
+    resolution_bound, binding_source = composed.resolution, composed.binding_source
     derivation = DecisionDerivation(
         subject_id=subject_id,
         proposed_strength=leader.score,
         effective_strength=leader.score,
-        resolution_bounds=bounds,
+        resolution_bounds=composed.bounds,
         resolution_binding_source=binding_source,
-        resolution_action_applied=action_applied,
+        resolution_action_applied=composed.action_applied,
+        resolution_action_findings=composed.action_findings,
         confidence_steps=(
             ConfidenceStep(
                 source="seed",
@@ -1610,6 +1756,7 @@ def decide_subject_base(
         ),
         rerank_source=rerank_source,
         rerank_finding_id=rerank_finding_id,
+        rerank_finding=rerank_finding,
     )
 
     selected = resolve_identity(card, resolution_bound)

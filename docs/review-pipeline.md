@@ -261,6 +261,29 @@ Bounds are computed from each subject's provisional result, so a weak or unknown
 cannot erase a stronger neighbour. The run-level `abstained` flag is an aggregate; each final
 decision records whether that subject abstained. Remaining subjects still pass escalation.
 
+## What the trace keeps of a review
+
+The graph state keeps one synthesis per pass, and a correction retry clears the reviews
+behind it. The run trace keeps the rest, so a downgrade can be traced to the reviewer and
+finding that asked for it:
+
+- `review_rounds` holds every pass in the order it ran: each internal round, including one
+  a retry replaced, then the arbiter's. Each review is recorded with its status, its
+  recommended levels and ranking, and every finding it raised with the adjudicated status
+  and reason code. Rejected findings are kept. `recommendation_admitted` says whether the
+  review's levels became bounds.
+- Each finding has a `finding_ref` that is unique within the run. Decision derivations and
+  abstention records cite it ([composition record](architecture.md#the-composition-record)).
+- `abstentions` records, per subject, why a claim was withdrawn: `unresolvable_finding`,
+  `retry_budget_spent`, `unverified_abstention_confirmed` or
+  `unverified_abstention_unarbitrated`, with the findings that asked for it.
+- `escalation_suppressed_by` and `escalation_hard_reasons` record why arbitration did or did
+  not run.
+
+The record is attribution only. No rule reads it, and a synthesis built without it decides
+exactly as before. Summaries are stored as the reviewer wrote them; photographs and prompts
+are not stored.
+
 ## Status reflects the answer, not the history
 
 `decide_status` recomputes contradictions against the **selected final identity** rather than
@@ -274,3 +297,5 @@ unless that broader card declares it. Status describes the answer returned, not 
 - [`src/dendro_inspector/nodes/review_synthesizer.py`](../src/dendro_inspector/nodes/review_synthesizer.py)
 - [`src/dendro_inspector/schemas/reviews.py`](../src/dendro_inspector/schemas/reviews.py)
 - [`tests/unit/test_review_synthesis.py`](../tests/unit/test_review_synthesis.py)
+- [`src/dendro_inspector/observability/events.py`](../src/dendro_inspector/observability/events.py)
+- [`tests/unit/test_review_attribution.py`](../tests/unit/test_review_attribution.py)

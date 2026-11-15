@@ -203,11 +203,63 @@ class AdmittedRecommendation(Contract):
         return self
 
 
+class FindingAttribution(Contract):
+    """Which review raised one adjudicated finding, and where it stood in that review.
+
+    Code-owned, never a model's claim. A finding id cannot do this job: three reviewers each
+    number their findings from one, so ``f1`` is three different claims in most runs. The
+    synthesis lists every adjudicated finding once, in adjudication order, bound to the
+    review it came from, so a downgrade can be traced to the reviewer that asked for it.
+    """
+
+    reviewer: Reviewer
+    result_index: int = Field(ge=0, description="Position of the review within this pass.")
+    position: int = Field(
+        ge=0,
+        description="Position of the finding within that review, code-raised findings first.",
+    )
+    raised_subject_id: Identifier | None = Field(
+        default=None,
+        description=(
+            "The subject the finding named as raised. `finding.subject_id` is the subject "
+            "adjudication resolved it to, which is the one every decision rule reads."
+        ),
+    )
+    finding: ReviewFinding
+
+    @model_validator(mode="after")
+    def _finding_is_adjudicated(self) -> FindingAttribution:
+        if self.finding.status is FindingStatus.OPEN:
+            msg = "an attributed finding must carry its adjudicated status"
+            raise ValueError(msg)
+        return self
+
+    def reference(self, stage: str, round_index: int) -> str:
+        """A name for this finding that is unique within one run.
+
+        ``internal-1/2-confusion/1`` is the first finding of the second review (the
+        confusion reviewer) in the first internal round. Stage and round come from the
+        caller because a synthesis does not know which pass it belongs to.
+        """
+        return (
+            f"{stage}-{round_index}/{self.result_index + 1}-{self.reviewer.value}"
+            f"/{self.position + 1}"
+        )
+
+
 class ReviewSynthesis(Contract):
     """The adjudicated result of all reviewer findings for one pass."""
 
     accepted_findings: tuple[ReviewFinding, ...] = ()
     rejected_findings: tuple[ReviewFinding, ...] = ()
+    attributions: tuple[FindingAttribution, ...] | None = Field(
+        default=None,
+        description=(
+            "Every adjudicated finding bound to the review that raised it, in adjudication "
+            "order. None denotes a synthesis built without that record; its findings can "
+            "still be applied, but not attributed to a reviewer."
+        ),
+    )
     admitted_reranks: tuple[AdmittedRerank, ...] = ()
     recommendations: tuple[AdmittedRecommendation, ...] | None = Field(
         default=None,
@@ -253,6 +305,29 @@ class ReviewSynthesis(Contract):
                 msg = "recommendation finding must belong to this synthesis"
                 raise ValueError(msg)
         return self
+
+    @model_validator(mode="after")
+    def _attributions_cover_the_adjudicated_findings(self) -> ReviewSynthesis:
+        if self.attributions is None:
+            return self
+        attributed = [attribution.finding for attribution in self.attributions]
+        accepted = [f for f in attributed if f.status is FindingStatus.ACCEPTED]
+        rejected = [f for f in attributed if f.status is FindingStatus.REJECTED]
+        if accepted != list(self.accepted_findings) or rejected != list(self.rejected_findings):
+            msg = "attributions must list exactly the accepted and rejected findings, in order"
+            raise ValueError(msg)
+        return self
+
+    def attribution_of(self, finding: ReviewFinding) -> FindingAttribution | None:
+        """The review behind one accepted finding, or None when nothing recorded it.
+
+        Exact for accepted findings: adjudication admits a material claim once, so no two
+        accepted findings of one pass are equal.
+        """
+        for attribution in self.attributions or ():
+            if attribution.finding == finding:
+                return attribution
+        return None
 
     @property
     def has_critical(self) -> bool:
