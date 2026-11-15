@@ -26,9 +26,12 @@ What a trace does not carry is reconstructed conservatively and reported by
   not record them: they are inferred from the subject id's wording, and
   :func:`replay_fidelity` checks that the rebuilt packet assigns every observation the trust
   and tier the live run recorded. A record whose trust does not reproduce is flagged.
-* Evidence the uploader vouched for (``user_attested``) is replayed as ``unknown`` with the
-  record's field-context flag, so attestation is re-derived rather than copied. The subject
-  it was originally filed under is not recorded, so it is replayed on the tree.
+* Evidence the uploader vouched for (``user_attested``) is re-derived rather than copied.
+  A trace with evidence history replays each statement from its recorded outcome, on the
+  raw packet. Without history the reading is replayed as ``unknown`` on the tree, because
+  the subject and status it was filed under were not recorded. Readings credited by the
+  earlier field-context rule, which needed no statement, replay uncredited;
+  :func:`replay_gaps` and :func:`replay_fidelity` report them.
 * Inferences are replayed where the trace has them. From an older trace, a proposal that
   cited an inference id loses that id.
 * Older traces omit wood surfaces. They replay as ``unknown``, never as prepared end grain;
@@ -73,7 +76,12 @@ from dendro_inspector.schemas.evidence import (
     WoodSurface,
     requires_wood_surface,
 )
-from dendro_inspector.schemas.input import CaseInput, ImageRef
+from dendro_inspector.schemas.input import (
+    AttestationSource,
+    CaseInput,
+    ImageRef,
+    PartAttestation,
+)
 
 #: Subject-id words that name a kind. Checked in order; the first hit wins.
 _KIND_WORDS: tuple[tuple[str, SubjectKind], ...] = (
@@ -181,8 +189,8 @@ def _observations(trace: Mapping[str, Any]) -> list[dict[str, Any]]:
             # explicitly, since the fake extractor validates GeneratedObservation.
             row["wood_surface"] = WoodSurface.UNKNOWN.value
         if row.get("attachment") == AttachmentStatus.USER_ATTESTED.value:
-            # Only code sets this, after extraction; replaying the field-context flag
-            # re-applies it. The model-side status it replaced was not recorded.
+            # Only code sets this, after extraction, and only from an explicit statement.
+            # The model-side status it replaced was not recorded.
             row["attachment"] = AttachmentStatus.UNKNOWN.value
         rows.append({key: value for key, value in row.items() if value is not None})
     return rows
@@ -469,6 +477,38 @@ def _response_sequences(
     return sequences
 
 
+def _credited_without_statement(
+    trace: Mapping[str, Any], history: Sequence[EvidenceRevision]
+) -> bool:
+    """Whether the run credited a reading that no recorded statement accounts for."""
+    if any(revision.attestations for revision in history):
+        return False
+    return any(
+        row.get("attachment") == AttachmentStatus.USER_ATTESTED.value
+        for row in trace.get("evidence_observations") or ()
+    )
+
+
+def _recorded_attestations(history: Sequence[EvidenceRevision]) -> tuple[PartAttestation, ...]:
+    """The uploader's statements, rebuilt from the outcomes the run recorded.
+
+    Every extraction of a run receives the same statements, so the first revision that
+    recorded any is the whole set. The author's own words are not in the trace.
+    """
+    for revision in history:
+        if revision.attestations:
+            return tuple(
+                PartAttestation(
+                    attestation_id=outcome.attestation_id,
+                    part_image_ids=outcome.part_image_ids,
+                    tree_image_ids=outcome.tree_image_ids,
+                    source=AttestationSource(outcome.source),
+                )
+                for outcome in revision.attestations
+            )
+    return ()
+
+
 def replay_gaps(trace: Mapping[str, Any], reviews: ReviewReplay = "neutral") -> tuple[str, ...]:
     """What this replay reconstructs or omits, as ``what: why`` entries. Empty when nothing."""
     gaps: list[str] = []
@@ -477,6 +517,11 @@ def replay_gaps(trace: Mapping[str, Any], reviews: ReviewReplay = "neutral") -> 
         gaps.append("case_inputs: original user context and image files are not recorded")
         if history[-1].raw is None and reviews != "recorded":
             gaps.append("raw_evidence: not recorded; reconstructed from the final ledger")
+    if _credited_without_statement(trace, history):
+        gaps.append(
+            "field_attestation: readings credited by the earlier field-context rule "
+            "replay uncredited"
+        )
     legacy = trace_schema_version(trace) <= LEGACY_TRACE_SCHEMA_VERSION
     if legacy:
         gaps.extend(
@@ -600,11 +645,16 @@ def _case_input(record: StoredRecord) -> CaseInput:
             referenced.update(o.image_id for o in raw.observations if o.image_id is not None)
             referenced.update(image for subject in raw.subjects for image in subject.image_ids)
             referenced.update(limitation.image_id for limitation in raw.image_limitations)
+    attestations = _recorded_attestations(history)
+    for attestation in attestations:
+        referenced.update(attestation.part_image_ids)
+        referenced.update(attestation.tree_image_ids)
     images = sorted(referenced) or ["img-1"]
     return CaseInput(
         case_id="trace-replay",
         images=tuple(ImageRef(image_id=image, path=Path(f"{image}.jpg")) for image in images),
         user_has_field_context=record.field_context,
+        part_attestations=attestations,
     )
 
 

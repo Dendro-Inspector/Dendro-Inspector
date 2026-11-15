@@ -458,7 +458,9 @@ event with `detail="cancelled"`; no partial reviews are merged into a scientific
 
 Trace schema 3 keeps the full extraction history in `evidence_history`. Each revision holds
 the provider's validated `GeneratedEvidencePacket`, the effective `EvidencePacket` after
-component collapse and field attestation, and the original `CandidateProposal`. Raw notes,
+component collapse and field attestation, the outcome of each uploader statement
+(`attestations`: the tree it named, the readings it credited and from which subject, the
+ones it left alone and why), and the original `CandidateProposal`. Raw notes,
 regions, subject descriptions, parent relationships, image limitations and inferences remain
 available even when a later extraction reuses their local IDs. A controlled empty extraction
 has an effective packet and no invented raw model response.

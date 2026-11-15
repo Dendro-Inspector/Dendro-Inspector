@@ -13,7 +13,11 @@ from pydantic import Field, model_validator
 
 from dendro_inspector.schemas.base import Contract
 from dendro_inspector.schemas.candidates import CandidateProposal
-from dendro_inspector.schemas.evidence import EvidencePacket, GeneratedEvidencePacket
+from dendro_inspector.schemas.evidence import (
+    AttestationOutcome,
+    EvidencePacket,
+    GeneratedEvidencePacket,
+)
 
 
 def packet_digest(packet: EvidencePacket) -> str:
@@ -31,6 +35,11 @@ class EvidenceRevision(Contract):
     The effective packet is exactly what downstream decision code received. A missing raw
     packet denotes a controlled empty extraction or a legacy recorder caller, never an
     invented provider response. Image bytes, local file paths and case metadata are absent.
+
+    ``attestations`` holds one outcome per uploader statement applied to this extraction:
+    which tree it named, which readings it credited and from where, and which it left alone
+    and why. It is empty when the case carried no statement, and in traces written before
+    statements were recorded.
     """
 
     schema_version: int = Field(default=1, ge=1, le=1)
@@ -41,6 +50,7 @@ class EvidenceRevision(Contract):
     raw_sha256: str | None = Field(default=None, min_length=64, max_length=64)
     effective_sha256: str = Field(min_length=64, max_length=64)
     candidate_proposal: CandidateProposal | None = None
+    attestations: tuple[AttestationOutcome, ...] = ()
 
     @model_validator(mode="after")
     def _content_matches_hashes(self) -> EvidenceRevision:

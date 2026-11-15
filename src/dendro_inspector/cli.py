@@ -38,7 +38,13 @@ from dendro_inspector.prompts.library import DomainPromptMissingError, PromptPol
 from dendro_inspector.prompts.seal import SEMANTIC_NOTICE, apply_seal, plan_seal
 from dendro_inspector.providers.base import ContentPolicyError
 from dendro_inspector.runner import run_case
-from dendro_inspector.schemas.input import CaseInput, DeclaredObjectType, ImageRef, Season
+from dendro_inspector.schemas.input import (
+    CaseInput,
+    DeclaredObjectType,
+    ImageRef,
+    PartAttestation,
+    Season,
+)
 
 #: Exit code of `dendro inspect` when a provider's content filter refused the input.
 #: 1 is any other failure, 2 a usage error and 3 a prompt-policy error.
@@ -70,6 +76,44 @@ def _fake_config(base: AppConfig, scenario: str) -> AppConfig:
     )
 
 
+def _photo_numbers(spec: str, side: str, count: int) -> tuple[str, ...]:
+    """Image ids for a comma-separated list of 1-based ``--image`` positions."""
+    ids = []
+    for token in spec.split(","):
+        token = token.strip()
+        if not token.isdecimal() or not 1 <= int(token) <= count:
+            msg = (
+                f"--attest-part: {token!r} in the {side} list is not a photograph number "
+                f"between 1 and {count}"
+            )
+            raise typer.BadParameter(msg)
+        ids.append(f"img-{int(token)}")
+    return tuple(ids)
+
+
+def _part_attestations(specs: list[str], image_count: int) -> tuple[PartAttestation, ...]:
+    """Read ``PARTS=TREE`` statements: photograph numbers, in the order of ``--image``."""
+    attestations = []
+    for index, spec in enumerate(specs, start=1):
+        parts, separator, tree = spec.partition("=")
+        if not separator or not parts.strip() or not tree.strip():
+            msg = f"--attest-part: expected PARTS=TREE, for example 3,4=1; got {spec!r}"
+            raise typer.BadParameter(msg)
+        part_ids = _photo_numbers(parts, "part", image_count)
+        tree_ids = _photo_numbers(tree, "tree", image_count)
+        if len(set(part_ids)) != len(part_ids) or len(set(tree_ids)) != len(tree_ids):
+            msg = f"--attest-part: {spec!r} names a photograph twice on one side"
+            raise typer.BadParameter(msg)
+        attestations.append(
+            PartAttestation(
+                attestation_id=f"attest-{index}",
+                part_image_ids=part_ids,
+                tree_image_ids=tree_ids,
+            )
+        )
+    return tuple(attestations)
+
+
 def _build_case(
     images: list[Path],
     *,
@@ -77,6 +121,7 @@ def _build_case(
     text: str | None,
     claim: str | None,
     field_context: bool,
+    attest_part: list[str] | None = None,
     location: str | None,
     season: Season,
     habitat: str | None,
@@ -98,6 +143,7 @@ def _build_case(
         user_challenges_previous_result=challenge,
         user_claim=claim,
         user_has_field_context=field_context,
+        part_attestations=_part_attestations(attest_part or [], len(images)),
         location=location,
         season=season,
         habitat=habitat,
@@ -123,9 +169,20 @@ def inspect(
         typer.Option(
             "--field-context",
             help="You know things the photo cannot show (foliage out of frame, the fruit, "
-            "where it was felled). Blocks aggressive contradiction.",
+            "where it was felled). Blocks aggressive contradiction. Credits no photographed "
+            "part to a tree: use --attest-part for that.",
         ),
     ] = False,
+    attest_part: Annotated[
+        list[str],
+        typer.Option(
+            "--attest-part",
+            metavar="PARTS=TREE",
+            help="You state that the loose parts in photographs PARTS came from the tree in "
+            "photographs TREE. Numbers follow the order of --image: 3,4=1. Repeat for "
+            "another tree. Counted as capped support, never as proof.",
+        ),
+    ] = [],
     lang: Annotated[
         str, typer.Option("--lang", help="Output language: en (default) or uk.")
     ] = "en",
@@ -178,6 +235,7 @@ def inspect(
         text=text,
         claim=claim,
         field_context=field_context,
+        attest_part=list(attest_part),
         location=location,
         season=season,
         habitat=habitat,
