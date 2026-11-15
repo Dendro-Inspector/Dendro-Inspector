@@ -545,6 +545,8 @@ def test_coverage_replay_with_recorded_reviews(tmp_path, monkeypatch):
         )
     report = tmp_path / "out" / "report.json"
     report.parent.mkdir()
+    labels = tmp_path / "labels.json"
+    labels.write_text(json.dumps({"recorded": "pinus", "legacy": "pinus"}), encoding="utf-8")
 
     result = CliRunner().invoke(
         app,
@@ -555,6 +557,8 @@ def test_coverage_replay_with_recorded_reviews(tmp_path, monkeypatch):
             "--replay",
             "--reviews",
             "recorded",
+            "--labels",
+            str(labels),
             "--json-out",
             str(report),
         ],
@@ -570,6 +574,16 @@ def test_coverage_replay_with_recorded_reviews(tmp_path, monkeypatch):
     assert by_case["legacy"]["replayed"] == []
     assert f"review_rounds: {MISSING_FROM_LEGACY_TRACE}" in by_case["legacy"]["replay_gaps"]
     assert payload["summary"]["replay_unavailable"] == 1
+    assert by_case["recorded"]["replayed_grade"]["outcome"] == "broader_only"
+    assert by_case["legacy"]["replayed_grade"] is None
+    assert payload["summary"]["labelled_movements"] == [
+        {
+            "case_id": "recorded",
+            "source": str(tmp_path / "recorded.json"),
+            "stored": "no_name",
+            "replayed": "broader_only",
+        }
+    ]
 
 
 def test_coverage_replay_rejects_an_unknown_review_mode(tmp_path):

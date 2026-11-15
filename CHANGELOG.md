@@ -12,6 +12,14 @@ get entries.
 
 ### Added
 
+- **Offline reference scoring respects the target subject.** `coverage-audit --labels`
+  accepts target subject IDs, an optional family and visible-label annotations. It reports
+  background names separately and distinguishes missing targets, ambiguous answers,
+  broader names and no answer. Reports include genus coverage, conditional accuracy,
+  separate summaries for explicitly label-free photographs, and paired stored/replayed
+  outcomes. Wrong-genus Wilson intervals are withheld for repeated case IDs. Unknown label
+  visibility remains unknown, malformed reference metadata fails explicitly, and the old
+  coarse counters remain available alongside detailed outcomes.
 - **A trace says which review moved a verdict.** Run traces now keep every review pass in
   `review_rounds`: each reviewer's findings with their accepted or rejected status and
   reason, its recommended levels and its proposed ranking. That includes a pass a correction
