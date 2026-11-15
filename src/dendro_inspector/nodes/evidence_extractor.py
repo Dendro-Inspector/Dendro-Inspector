@@ -21,7 +21,7 @@ from dendro_inspector.nodes._support import (
     evidence_value_vocabulary_context,
     locale_of,
 )
-from dendro_inspector.nodes.field_attestation import attest_one_tree
+from dendro_inspector.nodes.field_attestation import apply_part_attestations
 from dendro_inspector.providers.base import StructuredOutputError, request_structured
 from dendro_inspector.schemas.evidence import EvidencePacket, GeneratedEvidencePacket
 
@@ -119,7 +119,9 @@ async def run(state: GraphState, ctx: NodeContext) -> GraphState:
     )
 
     packet = reconcile_packet(state, generated.to_evidence_packet())
-    packet = attest_one_tree(state.case, packet)
+    packet, attestations = apply_part_attestations(state.case, packet)
     ctx.recorder.record_component_projections(packet)
-    ctx.recorder.record_evidence(packet, generated=generated, retry_index=state.retries)
+    ctx.recorder.record_evidence(
+        packet, generated=generated, retry_index=state.retries, attestations=attestations
+    )
     return state.evolve(evidence=packet)

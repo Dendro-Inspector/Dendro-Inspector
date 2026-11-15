@@ -8,7 +8,12 @@ run_dataset_case.py. Standard library only.
 
 Manifest (inputs/manifest.json):
     {"case_id": "oak-garden", "lang": "en", "note": "optional free text",
-     "photos": [{"file_name": "photo-1.jpg", "sha256": "<hex>"}, ...]}
+     "photos": [{"file_name": "photo-1.jpg", "sha256": "<hex>"}, ...],
+     "part_attestations": [{"parts": ["photo-3.jpg"], "tree": ["photo-1.jpg"]}]}
+
+`part_attestations` is optional. Each entry is the uploader's statement that the loose parts
+in the `parts` photographs came from the tree in the `tree` photographs. `field_context`
+alone credits no part to a tree.
 
 Environment:
     RUN_ID       identifier for this run
@@ -61,7 +66,31 @@ def load_manifest(inputs: Path) -> dict[str, Any]:
             raise CaseError(f"sha256 mismatch for {photo['file_name']}")
     if manifest.get("lang", "en") not in LANG:
         raise CaseError("lang must be en or uk")
+    attestation_args(manifest)
     return manifest
+
+
+def attestation_args(manifest: dict[str, Any]) -> list[str]:
+    """`--attest-part` arguments for the manifest's statements, by photograph position."""
+    position = {
+        photo["file_name"]: index for index, photo in enumerate(manifest["photos"], start=1)
+    }
+    entries = manifest.get("part_attestations") or []
+    if not isinstance(entries, list):
+        raise CaseError("part_attestations must be a list")
+    args: list[str] = []
+    for entry in entries:
+        sides = []
+        for key in ("parts", "tree"):
+            names = entry.get(key) if isinstance(entry, dict) else None
+            if not isinstance(names, list) or not names or any(n not in position for n in names):
+                raise CaseError(
+                    "each part_attestations entry needs 'parts' and 'tree': lists of photo "
+                    "file names from this manifest"
+                )
+            sides.append(",".join(str(position[name]) for name in names))
+        args += ["--attest-part", "=".join(sides)]
+    return args
 
 
 def _failure_record(stdout: str) -> dict[str, Any] | None:
@@ -101,6 +130,7 @@ def run(env: dict[str, str]) -> int:
             "photos": [p["file_name"] for p in manifest["photos"]],
             "note": manifest.get("note", ""),
             "field_context": manifest.get("field_context") is True,
+            "part_attestations": manifest.get("part_attestations") or [],
         },
         "models": configured_models(env),
         "started_at": _now(),
@@ -114,10 +144,12 @@ def run(env: dict[str, str]) -> int:
         argv += ["--location", str(manifest["location"])[:200]]
     if manifest.get("claim"):
         argv += ["--claim", str(manifest["claim"])[:200]]
-    # The uploader was at the tree: every photo shows it, and detached parts were picked
-    # up beneath it. The engine treats this as field context (domain prompt section 3).
+    # The uploader knows things the photographs cannot show (domain prompt section 3). That
+    # restrains contradiction and credits no part to a tree; an explicit statement about
+    # named photographs does that.
     if manifest.get("field_context") is True:
         argv.append("--field-context")
+    argv += attestation_args(manifest)
     argv.append("--json")
     started = time.monotonic()
     completed = subprocess.run(argv, capture_output=True, text=True, encoding="utf-8", check=False)

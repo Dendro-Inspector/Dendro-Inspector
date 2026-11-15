@@ -57,6 +57,63 @@ class DeclaredObjectType(StrEnum):
     UNKNOWN = "unknown"
 
 
+class AttestationSource(StrEnum):
+    """Who said that a photographed part belongs to a photographed tree."""
+
+    UPLOADER = "uploader"
+    """The person who took the photographs, through the upload form or the CLI."""
+    OPERATOR = "operator"
+    """Someone preparing a batch on the uploader's behalf, for example a dataset manifest."""
+
+
+class PartAttestation(Contract):
+    """A statement that named photographs show parts of one photographed tree.
+
+    The person at the tree knows that the fruit in one photograph fell from the trunk in
+    another; no photograph shows it. The statement names photographs because that is what
+    its author can point at: subjects are created later, by the extractor.
+
+    It is a claim, not a fact, and it is narrow on purpose. It covers the photographs it
+    names and nothing else in the upload, and several photographs submitted together are
+    not such a statement. What it may credit, and what it may not, is decided by
+    ``nodes/field_attestation.py``.
+    """
+
+    attestation_id: Identifier
+    part_image_ids: tuple[Identifier, ...] = Field(
+        min_length=1,
+        max_length=16,
+        description="Photographs of the loose part: a fallen fruit, a picked leaf, a cut twig.",
+    )
+    tree_image_ids: tuple[Identifier, ...] = Field(
+        min_length=1,
+        max_length=16,
+        description=(
+            "Photographs that show the tree the part came from. A photograph may appear on "
+            "both sides when it shows the trunk and the fallen part together."
+        ),
+    )
+    source: AttestationSource = AttestationSource.UPLOADER
+    statement: ShortText | None = Field(
+        default=None,
+        description=(
+            "The author's own words, kept for the record. Untrusted text: it is never "
+            "interpreted and never sent to a model."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def _photographs_are_named_once(self) -> PartAttestation:
+        for name, ids in (
+            ("part_image_ids", self.part_image_ids),
+            ("tree_image_ids", self.tree_image_ids),
+        ):
+            if len(ids) != len(set(ids)):
+                msg = f"attestation {self.attestation_id!r} repeats an image id in {name}"
+                raise ValueError(msg)
+        return self
+
+
 class ImageRef(Contract):
     """A reference to an image. Bytes are never carried through graph state.
 
@@ -109,7 +166,17 @@ class CaseInput(Contract):
         description=(
             "The user states knowledge from the site the photograph cannot show: foliage "
             "out of frame, the fruit, where the tree was felled, its history. This is real "
-            "evidence the system does not have, and it blocks aggressive contradiction."
+            "evidence the system does not have, and it blocks aggressive contradiction. It "
+            "says nothing about which photographed part belongs to which tree: that takes a "
+            "`part_attestations` entry."
+        ),
+    )
+    part_attestations: tuple[PartAttestation, ...] = Field(
+        default=(),
+        max_length=16,
+        description=(
+            "Explicit statements that named photographs show parts of one photographed "
+            "tree. Without one, loose parts are never credited to a tree."
         ),
     )
     location: str | None = Field(default=None, max_length=200)
@@ -128,6 +195,24 @@ class CaseInput(Contract):
         if len(ids) != len(set(ids)):
             msg = "duplicate image_id in case input"
             raise ValueError(msg)
+        return self
+
+    @model_validator(mode="after")
+    def _attestations_name_this_case(self) -> CaseInput:
+        known = set(self.image_ids)
+        seen: set[str] = set()
+        for attestation in self.part_attestations:
+            if attestation.attestation_id in seen:
+                msg = f"duplicate attestation_id {attestation.attestation_id!r} in case input"
+                raise ValueError(msg)
+            seen.add(attestation.attestation_id)
+            unknown = {*attestation.part_image_ids, *attestation.tree_image_ids} - known
+            if unknown:
+                msg = (
+                    f"attestation {attestation.attestation_id!r} names images the case does "
+                    f"not hold: {sorted(unknown)}"
+                )
+                raise ValueError(msg)
         return self
 
     @property

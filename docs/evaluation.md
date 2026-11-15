@@ -145,7 +145,11 @@ evidence history retain the limited reconstruction behavior described below.
 Original case context and image files are still absent and explicitly reported in
 `replay_gaps`. Unsuccessful provider repair responses are not recorded; only the successful
 response for each graph call replays. This is not an exact replay of the entire request.
-Subject-specific attestation and visible-label handling remain separate policy work.
+The uploader's part attestations are the one case input a trace does carry: replay rebuilds
+them from the recorded outcomes and applies them to the raw packet again. A run credited
+under the earlier field-context rule, which needed no statement, replays without that credit
+and lists `field_attestation` among its gaps. Visible-label handling remains separate policy
+work.
 
 What it does not do:
 

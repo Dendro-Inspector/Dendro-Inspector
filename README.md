@@ -182,6 +182,19 @@ dendro inspect --image examples/trunk.jpg --claim "дуб" --field-context
 the fruit, where the tree was felled. It blocks the system from contradicting you sharply,
 because in that situation you have evidence it does not.
 
+A fruit on the lawn or a leaf in your hand is not credited to a tree by default: a
+photograph cannot show where it fell from, and several photographs sent together are not
+proof that they show one tree. If you picked it up under the tree, say so:
+
+```bash
+dendro inspect --image trunk.jpg --image crown.jpg --image nuts.jpg --attest-part 3=1,2
+```
+
+`--attest-part PARTS=TREE` states that the loose parts in photographs `PARTS` came from the
+tree in photographs `TREE`, by their position among the `--image` options. Such evidence
+counts as capped support: it can back an identification, it cannot settle one, and the
+answer says which observations were counted on your word.
+
 To challenge a previous result, resubmit the photograph and relevant context with
 `--challenge`. API callers set `CaseInput.user_challenges_previous_result=True`. This
 requests independent review when there is a claim to review and restrains the tone; it

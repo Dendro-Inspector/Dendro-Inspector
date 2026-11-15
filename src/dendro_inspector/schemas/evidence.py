@@ -134,10 +134,11 @@ class AttachmentStatus(StrEnum):
     report and call for different photographs.
 
     ``USER_ATTESTED`` is never written by a model. Deterministic code sets it when the
-    uploader asserts field context for a case with exactly one standing tree: they were at
-    the tree, every photo shows it, and loose parts were picked up beneath it (domain prompt
-    section 3: the user may know the fruits). Such evidence counts, but only as capped
-    support — it cannot carry high confidence or settle a decisive requirement.
+    uploader states that named photographs show parts of one photographed tree
+    (``CaseInput.part_attestations``; domain prompt section 3: the user may know the
+    fruits). Such evidence counts, but only as capped support — it cannot carry high
+    confidence or settle a decisive requirement. The general field-context flag does not
+    set it, and neither does submitting several photographs together.
     """
 
     CONFIRMED_ATTACHED = "confirmed_attached"
@@ -297,7 +298,7 @@ class GeneratedObservation(Observation):
         if self.attachment is AttachmentStatus.USER_ATTESTED:
             msg = (
                 "attachment `user_attested` is set by deterministic code from the uploader's "
-                "own statement; report what the photograph shows (confirmed_attached, "
+                "explicit statement; report what the photograph shows (confirmed_attached, "
                 "confirmed_detached or unknown)"
             )
             raise ValueError(msg)
@@ -305,6 +306,67 @@ class GeneratedObservation(Observation):
             msg = "generated observations must omit source_component_id"
             raise ValueError(msg)
         return self
+
+
+class AttestationStatus(StrEnum):
+    """What one uploader statement came to once the photographs were read."""
+
+    APPLIED = "applied"
+    NO_TREE = "no_tree"
+    """No standing tree was found in the photographs the statement names as the tree."""
+    AMBIGUOUS_TREE = "ambiguous_tree"
+    """More than one standing tree was found there, so the statement names none of them."""
+    NOTHING_CREDITED = "nothing_credited"
+    """The tree was found, and no reading in the part photographs qualified."""
+
+
+class AttestationSkipReason(StrEnum):
+    """Why a reading in an attested photograph was left where the extractor filed it."""
+
+    NOT_VISIBLE = "not_visible"
+    """Obscured or not visible: the statement cannot vouch for what was not seen."""
+    ATTACHMENT_UNKNOWN = "attachment_unknown"
+    """The extractor could not tell what the part belongs to (frame edge, background)."""
+    LOW_RELIABILITY = "low_reliability"
+    """The reading itself is doubtful; whose part it is does not repair that."""
+    OTHER_IDENTITY = "other_identity"
+    """Filed under another tree, a log or a wood sample: an identity of its own."""
+
+
+class CreditedObservation(Contract):
+    """One reading credited to a tree on the uploader's word, and where it came from."""
+
+    observation_id: Identifier
+    from_subject_id: Identifier
+    read_as: AttachmentStatus = Field(
+        description="What the extractor reported before the statement was applied."
+    )
+
+
+class SkippedObservation(Contract):
+    """One reading in an attested photograph that the statement did not move."""
+
+    observation_id: Identifier
+    subject_id: Identifier
+    reason: AttestationSkipReason
+
+
+class AttestationOutcome(Contract):
+    """The record of one ``PartAttestation``: who said it, about what, and what it changed.
+
+    Kept beside the evidence revision it produced, so a credited reading can be traced to
+    the statement behind it and a refused one keeps its reason. The author's own words stay
+    with the case input and are not copied here.
+    """
+
+    attestation_id: Identifier
+    source: str = Field(max_length=40, description="`AttestationSource` of the statement.")
+    part_image_ids: tuple[Identifier, ...]
+    tree_image_ids: tuple[Identifier, ...]
+    status: AttestationStatus
+    target_subject_id: Identifier | None = None
+    credited: tuple[CreditedObservation, ...] = ()
+    skipped: tuple[SkippedObservation, ...] = ()
 
 
 class Inference(Contract):

@@ -193,6 +193,24 @@ get entries.
 
 ### Changed
 
+- **A loose part is credited to a tree only on an explicit statement.** `--field-context`
+  no longer credits fruit, leaves or twigs photographed off the tree to the single tree in
+  the upload, and submitting several photographs together never did mean they show one
+  tree. To have a fallen fruit or a picked leaf counted, say which photographs show the part
+  and which show its tree: `--attest-part 3,4=1` on the command line,
+  `CaseInput.part_attestations` for API callers, `part_attestations` in an upload manifest.
+  The statement names its tree through photographs, so it works with several trees in one
+  upload, and with none or two trees in the named photographs it credits nothing. A reading
+  the extractor could not place (frame edge, background, a neighbouring branch), could not
+  see or did not trust stays where it was filed, as does anything filed under another tree,
+  a log or a wood sample. Credited evidence is still capped support, and the answer still
+  says which observations were counted on the uploader's word. The trace keeps the outcome
+  of every statement beside the evidence it shaped: the tree it named, each reading it
+  credited and from which subject, and each one it left alone with the reason.
+  `--field-context` keeps its other effect: it restrains contradiction of your own version.
+  A stored run that was credited under the earlier rule replays without that credit, and
+  the replay report says so.
+
 - **Pine bark is read by its build, not its colour.** The layered-plate reading
   (`bark.plate_build = layered_orange_brown`) was described as orange-brown to reddish, so
   a pine trunk photographed in forest shade, where the same plates look grey-brown, was
