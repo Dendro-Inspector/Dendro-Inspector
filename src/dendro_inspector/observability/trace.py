@@ -14,7 +14,6 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
-from dendro_inspector.observability.evidence_history import EvidenceRevision, packet_digest
 from dendro_inspector.observability.events import (
     GRAPH_VERSION,
     MAX_LEDGER_OBSERVATIONS,
@@ -48,6 +47,7 @@ from dendro_inspector.observability.events import (
     RunTrace,
     SubjectRecord,
 )
+from dendro_inspector.observability.evidence_history import EvidenceRevision, packet_digest
 from dendro_inspector.observability.logging import get_logger
 from dendro_inspector.schemas.decisions import AuthorityCheckStatus
 from dendro_inspector.schemas.evidence import KnowledgeCoverage

@@ -60,8 +60,8 @@ from typing import Any, Literal
 
 from dendro_inspector.config import Adapter, AppConfig, ProviderConfig, Role
 from dendro_inspector.knowledge.evidence_hierarchy import project_observation
-from dendro_inspector.observability.evidence_history import EvidenceRevision
 from dendro_inspector.observability.events import LEGACY_TRACE_SCHEMA_VERSION
+from dendro_inspector.observability.evidence_history import EvidenceRevision
 from dendro_inspector.schemas.evidence import (
     AttachmentStatus,
     EvidencePacket,
