@@ -487,6 +487,14 @@ packet. Their historical size limits do not truncate the complete artifacts. Old
 have empty history fields and use the existing reconstruction path. The graph's retry budget
 bounds the number of extraction revisions.
 
+Recorded-review replay consumes this history from the first extraction. Fake-provider
+`response_sequences` bind each response to a graph retry index supplied at the common
+provider boundary. Sequences are finite and independent per role/node, including reviewers
+that run concurrently. Exhaustion and mismatched retry indices fail explicitly; a replay
+that finishes with unused responses is also unavailable. Static fake fixtures and neutral
+final-packet replay retain their existing behavior. See [evaluation](evaluation.md#replay-with-the-recorded-reviews)
+for the remaining input and legacy-trace limitations.
+
 These artifacts contain model-authored notes about the photographs, so exported traces must
 be handled as inspection records. The recorder does not copy image bytes, local file paths,
 case metadata, provider credentials or hidden reasoning. Recording history changes no

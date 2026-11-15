@@ -127,34 +127,43 @@ neutral pass. It measures what today's adjudication and decision rules make of t
 evidence, proposals and reviews, which is the comparison a change to how review binds a
 verdict needs. It still calls no provider.
 
-For schema-3 traces, replay uses the last revision's original extractor output and candidate
-proposal. The audit reads its effective packet directly, preserving component provenance,
-notes and attachment trust. Artifact hashes and revision order are validated before use;
-invalid history is reported as an error, not silently replaced with a legacy reconstruction.
-Traces without complete artifacts retain their prior reconstruction behavior.
+For traces with schema-3 evidence history, recorded-review replay starts at the first
+extraction. Each graph attempt consumes its own raw packet, original candidate proposal
+and recorded reviewer responses. Artifact hashes, revision order and review-to-evidence
+bindings are validated before use. Image references include earlier extractions, even
+when the final packet no longer mentions those images. The audit continues to read the
+final effective packet directly, preserving component provenance, notes and attachment
+trust. Neutral-review replay continues to use only the final extraction.
 
-The history preserves earlier extraction passes for inspection. Replay still starts from
-the final extraction and last internal review round; it does not reproduce the original
-retry sequence or filesystem. Original case context is still absent and is explicitly
-reported in `replay_gaps`. Complete evidence history alone is not an exact replay of the
-entire request. Subject-specific attestation and visible-label handling remain separate
-policy work; storing the raw packet does not change those rules.
+Full-history replay refuses missing raw packets, unbound reviews and omitted findings.
+A changed policy or retry budget may route differently: an extra call, a response assigned
+to another retry or an unconsumed recorded response produces `replay_unavailable`, without
+a substituted reviewer answer or partial verdict. Use neutral mode to compare final
+evidence admission independently of the original review route. Older traces without
+evidence history retain the limited reconstruction behavior described below.
+
+Original case context and image files are still absent and explicitly reported in
+`replay_gaps`. Unsuccessful provider repair responses are not recorded; only the successful
+response for each graph call replays. This is not an exact replay of the entire request.
+Subject-specific attestation and visible-label handling remain separate policy work.
 
 What it does not do:
 
 - A trace written before reviews were recorded (`trace_schema_version` 1, or absent) cannot
   be replayed this way. The report marks the record `replay_unavailable` and gives no
   replayed verdict; it does not fall back to neutral reviewers.
-- Only the last internal round is replayed. A run that retried reaches the same verdict by a
-  shorter route.
-- A reviewer the run never called, usually the arbiter, answers with a neutral pass if the
-  replay reaches it.
+- Without evidence history, only the last internal round is replayed, so the original
+  retry route cannot be reconstructed.
+- Without evidence history, a reviewer the run never called, usually the arbiter, answers
+  with a neutral pass if the replay reaches it. With history, that call is refused.
 - The case's own inputs (declared object type, location, the user's claim) are not in the
   trace, so a record that used one replays without it.
 
 Each record's `replay_gaps` lists which of these applied. The public suite's cases each
 replay to the verdict their run reached
 ([`tests/unit/test_coverage_audit.py`](../tests/unit/test_coverage_audit.py)).
+Retry sequence and route-divergence regressions live in
+[`tests/unit/test_retry_replay.py`](../tests/unit/test_retry_replay.py).
 
 ## What assertions check
 

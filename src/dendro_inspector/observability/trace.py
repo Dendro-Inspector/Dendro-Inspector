@@ -603,6 +603,11 @@ class TraceRecorder:
             )
         )
 
+    @property
+    def retry_index(self) -> int:
+        """The graph attempt currently being recorded (zero for the first pass)."""
+        return self._retries
+
     def record_retry(self) -> None:
         self._retries += 1
 

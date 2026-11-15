@@ -12,6 +12,11 @@ get entries.
 
 ### Added
 
+- **Replay every recorded correction attempt.** With evidence history, `coverage-audit
+  --replay --reviews recorded` now starts at the first extraction and uses each retry's
+  original evidence, candidate proposal and reviews. Missing artifacts and changed routes
+  report replay as unavailable instead of substituting an answer or skipping a round.
+  Neutral replay still uses the final packet; older traces retain their limited replay.
 - **Evidence survives correction retries.** Trace schema 3 retains each extraction's raw
   and effective evidence packets, including notes, regions, component attribution and
   inferences, with SHA-256 hashes. Revision-qualified references distinguish reused

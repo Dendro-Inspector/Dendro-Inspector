@@ -2,7 +2,9 @@
 
 Every unit, contract, integration and evaluation test in this repository runs on this
 adapter. No network, no credentials, no cost, no flake. A scenario file scripts one
-response per ``role:node`` key; an unscripted key is a loud failure rather than an
+response per ``role:node`` key, or a finite ``response_sequences`` list for repeated calls.
+Sequence entries contain ``response`` and optional expected ``metadata``. An unscripted
+key, exhausted sequence or mismatched metadata is a loud failure rather than an
 improvised answer, because a fake that quietly invents data is worse than no fake at all.
 """
 
@@ -54,6 +56,8 @@ class FakeModelProvider:
             raise ScenarioNotFoundError(msg)
         payload = json.loads(self._path.read_text(encoding="utf-8"))
         self._responses: dict[str, Any] = payload.get("responses", {})
+        self._sequences: dict[str, list[dict[str, Any]]] = payload.get("response_sequences", {})
+        self._positions: dict[str, int] = {}
         # Keys listed here fail validation on their first call and succeed on the retry,
         # which is how the malformed-output repair path is exercised without a live model.
         self._malformed_once: set[str] = set(payload.get("malformed_once", []))
@@ -83,7 +87,27 @@ class FakeModelProvider:
             msg = f"scripted malformed output for {key}"
             raise StructuredOutputError(msg)
 
-        if key not in self._responses:
+        if key in self._sequences:
+            position = self._positions.get(key, 0)
+            sequence = self._sequences[key]
+            if position >= len(sequence):
+                msg = f"scenario {self.scenario!r} exhausted response sequence for {key!r}"
+                raise UnscriptedCallError(msg)
+            entry = sequence[position]
+            for name, expected in entry.get("metadata", {}).items():
+                if metadata.get(name) != expected:
+                    msg = (
+                        f"scenario {self.scenario!r} response for {key!r} expects "
+                        f"{name}={expected!r}, got {metadata.get(name)!r}"
+                    )
+                    raise UnscriptedCallError(msg)
+            # Actual malformed entries consume a slot; a scripted malformed_once above
+            # does not. A repair may supply the next entry but never repeat the last one.
+            self._positions[key] = position + 1
+            response = entry["response"]
+        elif key in self._responses:
+            response = self._responses[key]
+        else:
             msg = (
                 f"scenario {self.scenario!r} has no scripted response for {key!r}. "
                 f"Scripted keys: {sorted(self._responses)}"
@@ -91,7 +115,7 @@ class FakeModelProvider:
             raise UnscriptedCallError(msg)
 
         try:
-            return response_model.model_validate(self._responses[key])
+            return response_model.model_validate(response)
         except ValidationError as exc:
             msg = (
                 f"scenario {self.scenario!r} response for {key!r} does not satisfy "

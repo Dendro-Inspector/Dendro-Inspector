@@ -35,9 +35,8 @@ What a trace does not carry is reconstructed conservatively and reported by
   any resulting trust or tier change is reported by :func:`replay_fidelity`.
 * A rejected proposal's resolution and score are not recorded. Resolution is read from the
   taxon id's shape and the score is taken as ``weak``; admission recomputes both anyway.
-* Only the last internal review round is replayed. A run that retried replays that round's
-  reviews on every pass, which reaches the same verdict by a route one retry shorter or the
-  same length, never by the route it took.
+* Without evidence history, only the last internal review round is replayed. A retried run
+  uses that round's reviews on every pass, so the earlier retry route is not reconstructed.
 * The case's own inputs — declared object type, location, the user's claim and note — are
   not in the trace. A record that used any of them replays without it.
 
@@ -45,14 +44,17 @@ Schema-3 traces also carry complete raw and effective packets by extraction revi
 audit reads the final effective artifact, while replay gives the fake extractor its original
 raw packet and the generator its original proposal. This preserves notes, parent/component
 attribution and rejected candidates without guessing them from the compact ledger. The
-history is retained, but this replay still starts at the final extraction; it is not a
-reproduction of the earlier retry sequence or the original case inputs.
+``recorded`` mode starts at the first extraction and consumes each revision's proposals
+and reviews in sequence, bound to its graph retry index. Missing responses and divergent
+routes fail explicitly. ``neutral`` mode still starts at the final extraction. Neither
+mode reproduces the original case inputs or unsuccessful provider repair attempts.
 """
 
 from __future__ import annotations
 
 import json
 import tempfile
+from collections import Counter
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -62,6 +64,8 @@ from dendro_inspector.config import Adapter, AppConfig, ProviderConfig, Role
 from dendro_inspector.knowledge.evidence_hierarchy import project_observation
 from dendro_inspector.observability.events import LEGACY_TRACE_SCHEMA_VERSION
 from dendro_inspector.observability.evidence_history import EvidenceRevision
+from dendro_inspector.providers.base import GRAPH_RETRY_INDEX
+from dendro_inspector.providers.fake import UnscriptedCallError
 from dendro_inspector.schemas.evidence import (
     AttachmentStatus,
     EvidencePacket,
@@ -394,13 +398,84 @@ def reviews_from_trace(trace: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
     return responses
 
 
+def _response_sequences(
+    trace: Mapping[str, Any], history: tuple[EvidenceRevision, ...]
+) -> dict[str, list[dict[str, Any]]]:
+    """Bind every recorded model response to the graph pass that produced it.
+
+    Empty sequences deliberately reject reviewers or candidate calls the recording never
+    reached. They must not acquire neutral stand-ins when a policy change alters routing.
+    """
+    sequences: dict[str, list[dict[str, Any]]] = {
+        key: []
+        for key in (
+            "primary:evidence_extractor",
+            "primary:candidate_generator",
+            *_REVIEW_KEYS.values(),
+        )
+    }
+    for index, revision in enumerate(history):
+        if revision.retry_index != index:
+            raise ReplayUnavailableError("evidence_history: graph retry indices must start at zero")
+        if revision.raw is None:
+            raise ReplayUnavailableError(
+                f"raw_evidence: revision {revision.revision} was not recorded"
+            )
+        metadata = {GRAPH_RETRY_INDEX: revision.retry_index}
+        sequences["primary:evidence_extractor"].append(
+            {"response": revision.raw.model_dump(mode="json"), "metadata": metadata}
+        )
+        if revision.candidate_proposal is not None:
+            sequences["primary:candidate_generator"].append(
+                {
+                    "response": revision.candidate_proposal.model_dump(mode="json"),
+                    "metadata": metadata,
+                }
+            )
+
+    seen: set[tuple[int, str]] = set()
+    previous = 0
+    for recorded in trace.get("review_rounds") or ():
+        revision_id = recorded.get("evidence_revision")
+        if not isinstance(revision_id, int) or not 1 <= revision_id <= len(history):
+            raise ReplayUnavailableError("review_rounds: missing or unknown evidence revision")
+        if revision_id < previous:
+            raise ReplayUnavailableError("review_rounds: evidence revisions are out of order")
+        previous = revision_id
+        revision = history[revision_id - 1]
+        if revision.candidate_proposal is None:
+            raise ReplayUnavailableError(
+                f"candidate_proposal: revision {revision_id} was not recorded"
+            )
+        for reviewer in recorded.get("reviewers") or ():
+            name = str(reviewer.get("reviewer"))
+            key = _REVIEW_KEYS.get(name)
+            if key is None or (revision_id, key) in seen:
+                raise ReplayUnavailableError("review_rounds: unknown or repeated reviewer")
+            stage = "arbiter" if name == "arbiter" else "internal"
+            if recorded.get("stage") != stage:
+                raise ReplayUnavailableError("review_rounds: reviewer is bound to the wrong stage")
+            if reviewer.get("findings_omitted"):
+                raise ReplayUnavailableError(
+                    f"review:{name}: revision {revision_id} has omitted findings"
+                )
+            seen.add((revision_id, key))
+            sequences[key].append(
+                {
+                    "response": _review_response(reviewer),
+                    "metadata": {GRAPH_RETRY_INDEX: revision.retry_index},
+                }
+            )
+    return sequences
+
+
 def replay_gaps(trace: Mapping[str, Any], reviews: ReviewReplay = "neutral") -> tuple[str, ...]:
     """What this replay reconstructs or omits, as ``what: why`` entries. Empty when nothing."""
     gaps: list[str] = []
     history = evidence_history_from_trace(trace)
     if history:
         gaps.append("case_inputs: original user context and image files are not recorded")
-        if history[-1].raw is None:
+        if history[-1].raw is None and reviews != "recorded":
             gaps.append("raw_evidence: not recorded; reconstructed from the final ledger")
     legacy = trace_schema_version(trace) <= LEGACY_TRACE_SCHEMA_VERSION
     if legacy:
@@ -409,9 +484,23 @@ def replay_gaps(trace: Mapping[str, Any], reviews: ReviewReplay = "neutral") -> 
             for what in ("subject_kinds", "inferences", "packet_flags", "plan")
         )
     if reviews != "recorded":
+        if len(history) > 1:
+            gaps.append("evidence_history: neutral replay uses only the final extraction")
         return tuple(gaps)
     if legacy:
         gaps.append(f"review_rounds: {MISSING_FROM_LEGACY_TRACE}")
+        return tuple(gaps)
+    if history:
+        try:
+            _response_sequences(trace, history)
+        except ReplayUnavailableError as exc:
+            gaps.append(str(exc))
+        if any(
+            call.get("validation_failures")
+            for event in trace.get("events") or ()
+            for call in event.get("provider_calls") or ()
+        ):
+            gaps.append("provider_repairs: unsuccessful responses were not recorded")
         return tuple(gaps)
     rounds = tuple(trace.get("review_rounds") or ())
     replayed = _replayed_rounds(trace)
@@ -444,7 +533,7 @@ def fixture_from_trace(
         if raw is not None:
             packet = raw.model_dump(mode="json")
     plan = trace.get("plan") or {}
-    return {
+    fixture: dict[str, Any] = {
         "scenario": "trace-replay",
         "description": f"Recorded evidence and proposals, replayed with {reviews} reviewers.",
         "responses": {
@@ -465,6 +554,11 @@ def fixture_from_trace(
             **(reviews_from_trace(trace) if reviews == "recorded" else _NEUTRAL_REVIEWS),
         },
     }
+    if reviews == "recorded" and history:
+        fixture["response_sequences"] = _response_sequences(trace, history)
+        # Keep only the one-time planner response. Every other call must consume history.
+        fixture["responses"] = {"primary:planner": fixture["responses"]["primary:planner"]}
+    return fixture
 
 
 def replay_fidelity(record: StoredRecord) -> tuple[str, ...]:
@@ -500,8 +594,8 @@ def _case_input(record: StoredRecord) -> CaseInput:
         str(limitation["image_id"]) for limitation in context.get("image_limitations") or ()
     )
     history = evidence_history_from_trace(record.trace)
-    if history:
-        raw = history[-1].raw
+    for revision in history:
+        raw = revision.raw
         if raw is not None:
             referenced.update(o.image_id for o in raw.observations if o.image_id is not None)
             referenced.update(image for subject in raw.subjects for image in subject.image_ids)
@@ -523,16 +617,15 @@ async def replay(
 ) -> Any:
     """Run the graph on the recorded evidence; returns the final graph state.
 
-    Raises :class:`ReplayUnavailableError` when ``reviews="recorded"`` is asked of a trace
-    that recorded no reviews.
+    Raises :class:`ReplayUnavailableError` for legacy traces without recorded reviews,
+    incomplete history, or a graph route that cannot consume the recorded responses.
     """
     from dendro_inspector.runner import run_case
 
+    fixture = fixture_from_trace(record.trace, reviews=reviews)
     with tempfile.TemporaryDirectory() as directory:
         fixtures = Path(directory)
-        (fixtures / "trace-replay.json").write_text(
-            json.dumps(fixture_from_trace(record.trace, reviews=reviews)), encoding="utf-8"
-        )
+        (fixtures / "trace-replay.json").write_text(json.dumps(fixture), encoding="utf-8")
         fake = ProviderConfig(adapter=Adapter.FAKE, scenario="trace-replay")
         replay_config = config.model_copy(
             update={
@@ -540,5 +633,21 @@ async def replay(
                 "fixtures_root": fixtures,
             }
         )
-        result = await run_case(_case_input(record), config=replay_config, root=root)
+        try:
+            result = await run_case(_case_input(record), config=replay_config, root=root)
+        except UnscriptedCallError as exc:
+            if "response_sequences" not in fixture:
+                raise
+            raise ReplayUnavailableError(f"replay_route: {exc}") from exc
+    if "response_sequences" in fixture:
+        consumed = Counter(
+            f"{call.role}:{call.node}"
+            for event in result.trace.events
+            for call in event.provider_calls
+        )
+        for key, sequence in fixture["response_sequences"].items():
+            if consumed[key] != len(sequence):
+                raise ReplayUnavailableError(
+                    f"replay_route: consumed {consumed[key]} of {len(sequence)} responses for {key}"
+                )
     return result.state
