@@ -9,10 +9,13 @@ arrives as an empty result rather than an error.
 from __future__ import annotations
 
 import re
+from enum import StrEnum
+from typing import Any
 
 import pytest
 from pydantic import BaseModel, Field
 
+from dendro_inspector.graph.state import InspectionPlan
 from dendro_inspector.providers.schema_compat import (
     SchemaTranslationError,
     inline_refs,
@@ -28,12 +31,39 @@ from dendro_inspector.schemas.base import (
     Identifier,
     ValueToken,
 )
+from dendro_inspector.schemas.candidates import CandidateProposal
 from dendro_inspector.schemas.evidence import GeneratedEvidencePacket
+from dendro_inspector.schemas.reviews import ReviewResult
 
 
 class _Child(BaseModel):
     token: ValueToken
     count: int = 0
+
+
+class _Level(StrEnum):
+    LOW = "low"
+    HIGH = "high"
+
+
+def _references_with_keywords(node: Any, path: str = "") -> list[str]:
+    """Where a schema pairs ``$ref`` with another keyword; property names are not keywords."""
+    if isinstance(node, list):
+        return [
+            found
+            for index, item in enumerate(node)
+            for found in _references_with_keywords(item, f"{path}/{index}")
+        ]
+    if not isinstance(node, dict):
+        return []
+    found = [path] if isinstance(node.get("$ref"), str) and len(node) > 1 else []
+    for key, value in node.items():
+        if key in {"properties", "$defs"} and isinstance(value, dict):
+            for name, sub in value.items():
+                found += _references_with_keywords(sub, f"{path}/{key}/{name}")
+        else:
+            found += _references_with_keywords(value, f"{path}/{key}")
+    return found
 
 
 class _Parent(BaseModel):
@@ -216,3 +246,79 @@ class TestStrictOpenAISchema:
 
         with pytest.raises(SchemaTranslationError, match="open mapping"):
             to_strict_openai_schema(MappingAnswer.model_json_schema())
+
+    def test_a_described_reference_becomes_its_definition_and_keeps_the_description(self):
+        """Foundry answers 400 to a reference that carries a keyword of its own.
+
+        Measured 2026-11-16 on gpt-5-mini, for the candidate score: "Invalid schema for
+        response_format 'CandidateProposal': context=('properties', 'score'), $ref cannot
+        have keywords {'description'}". Every inspection on that route failed at candidate
+        generation.
+        """
+
+        class Graded(BaseModel):
+            level: _Level = Field(default=_Level.LOW, description="How sure the reading is.")
+            plain: _Level
+
+        schema = to_strict_openai_schema(Graded.model_json_schema())
+
+        level = schema["properties"]["level"]
+        assert "$ref" not in level
+        assert level["enum"] == ["low", "high"]
+        assert level["description"] == "How sure the reading is."
+        assert schema["properties"]["plain"] == {"$ref": "#/$defs/_Level"}
+        assert "_Level" in schema["$defs"]  # still pointed at, so still defined
+
+    def test_a_described_model_reference_is_inlined_as_a_closed_object(self):
+        class Holder(BaseModel):
+            child: _Child = Field(description="The one child.")
+
+        schema = to_strict_openai_schema(Holder.model_json_schema())
+
+        child = schema["properties"]["child"]
+        assert child["description"] == "The one child."
+        assert child["required"] == ["token", "count"]
+        assert child["additionalProperties"] is False
+        # Nothing points at the definition any more, so it is not sent.
+        assert "$defs" not in schema
+
+    @pytest.mark.parametrize(
+        "contract", [InspectionPlan, GeneratedEvidencePacket, CandidateProposal, ReviewResult]
+    )
+    def test_no_graph_contract_sends_a_reference_with_keywords(self, contract):
+        """Each structured response the graph requests, as a strict decoder receives it."""
+        schema = to_strict_openai_schema(contract.model_json_schema())
+
+        assert _references_with_keywords(schema) == []
+
+    def test_the_candidate_score_still_tells_the_model_its_scale(self):
+        schema = to_strict_openai_schema(CandidateProposal.model_json_schema())
+
+        score = schema["$defs"]["Candidate"]["properties"]["score"]
+        assert score["enum"] == ["weak", "moderate", "strong"]
+        assert "Never a number" in score["description"]
+        assert "SupportStrength" not in schema["$defs"]
+
+    def test_a_described_reference_to_itself_is_an_error_not_an_endless_expansion(self):
+        schema = {
+            "type": "object",
+            "properties": {"node": {"$ref": "#/$defs/Node"}},
+            "$defs": {
+                "Node": {
+                    "type": "object",
+                    "properties": {"next": {"$ref": "#/$defs/Node", "description": "The next."}},
+                }
+            },
+        }
+
+        with pytest.raises(SchemaTranslationError, match="recursive"):
+            to_strict_openai_schema(schema)
+
+    def test_a_described_reference_to_nothing_is_an_error(self):
+        schema = {
+            "type": "object",
+            "properties": {"a": {"$ref": "#/$defs/Missing", "description": "Gone."}},
+        }
+
+        with pytest.raises(SchemaTranslationError, match=r"\$ref"):
+            to_strict_openai_schema(schema)

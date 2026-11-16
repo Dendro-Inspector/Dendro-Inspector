@@ -333,6 +333,13 @@ get entries.
 
 ### Fixed
 
+- **Inspections on OpenAI and Foundry no longer fail at candidate generation.** A
+  description added to the candidate score made its schema a `$ref` beside `description`,
+  which strict structured output refuses: Foundry answered 400 `$ref cannot have keywords
+  {'description'}` and every inspection on that route ended as a provider failure after
+  evidence extraction. The strict OpenAI translation, which the Codex bridge shares, now
+  replaces such a reference with its definition, keeps the description, and drops a
+  definition nothing points at any more. No contract and no verdict rule changed.
 - **`arbiter_changed_*` no longer reports a change the arbiter did not make.** The flags
   compared every subject found on either side. A subject with no candidates has a final
   verdict and no provisional one, so its presence alone counted as a change of status,
