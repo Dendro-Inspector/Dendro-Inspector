@@ -41,6 +41,26 @@ HARD_TRIGGERS: frozenset[str] = frozenset(
 )
 
 
+#: The triggers selective arbitration still calls the arbiter for: a possible overclaim, or a
+#: case a second look exists for. Every hard trigger except the operator's every-decision
+#: switch, plus the two soft triggers that guard a claim from being too strong.
+#:
+#: Left out, and why, measured over 1,450 arbitrated live cases from 2026-11-12 to 16 in
+#: which the arbiter changed the provisional answer 20 times: `reviewer_disagreement`
+#: fired in 72% of them and preceded a change 1.2% of the time; `critical_finding` is the
+#: same signal as the hard `unresolved_contradiction`; `bark_only_input` and
+#: `bark_colour_dependence` describe input the evidence hierarchy already caps. This set
+#: would have arbitrated 61% of those cases and seen 17 of the 20 changes; the three it
+#: would have missed were low-confidence answers the arbiter re-named, none an overclaim.
+SELECTIVE_TRIGGERS: frozenset[str] = frozenset(
+    {
+        *(HARD_TRIGGERS - {"review_every_decision"}),
+        "high_confidence_proposed",
+        "leading_candidates_close",
+    }
+)
+
+
 def _cost_suppressors(
     state: GraphState,
     policy: EscalationPolicy,
@@ -140,15 +160,25 @@ def decide(
 
     Precedence: blocking suppressors, then hard triggers, then cost suppressors, then any
     remaining soft trigger. A cost suppressor can never talk the gate out of a hard trigger.
+
+    Under ``selective_arbitration`` only `SELECTIVE_TRIGGERS` take part in that precedence,
+    and the every-decision switch is ignored. The reasons recorded are all that fired, so a
+    trace shows what selective arbitration chose not to send.
     """
     if not policy.enabled:
         return EscalationDecision(required=False, suppressed_by=("policy_disabled",))
 
     triggers = _triggers(state, policy, provisional)
+    every = policy.review_every_decision and not policy.selective_arbitration
+    if policy.selective_arbitration:
+        # Every trigger is still recorded; only the selective ones may call the arbiter.
+        active = tuple(reason for reason in triggers if reason in SELECTIVE_TRIGGERS)
+    else:
+        active = triggers
 
     if (
         policy.suppress_when_abstaining
-        and not policy.review_every_decision
+        and not every
         and state.abstained
         and all(state.is_abstained(subject_id) for subject_id in state.subject_ids)
     ):
@@ -156,14 +186,19 @@ def decide(
             required=False, reasons=triggers, suppressed_by=("already_abstaining",)
         )
 
-    if set(triggers) & HARD_TRIGGERS:
+    if triggers and not active:
+        return EscalationDecision(
+            required=False, reasons=triggers, suppressed_by=("selective_arbitration",)
+        )
+
+    if set(active) & HARD_TRIGGERS:
         return EscalationDecision(required=True, reasons=triggers)
 
     cost = _cost_suppressors(state, policy, provisional)
     if cost:
         return EscalationDecision(required=False, reasons=triggers, suppressed_by=cost)
 
-    return EscalationDecision(required=bool(triggers), reasons=triggers)
+    return EscalationDecision(required=bool(active), reasons=triggers)
 
 
 async def run(state: GraphState, ctx: NodeContext) -> GraphState:
@@ -177,7 +212,14 @@ async def run(state: GraphState, ctx: NodeContext) -> GraphState:
     ctx.recorder.record_escalation(
         triggered=decision.required,
         reasons=decision.reasons,
-        hard_reasons=tuple(reason for reason in decision.reasons if reason in HARD_TRIGGERS),
+        hard_reasons=tuple(
+            reason
+            for reason in decision.reasons
+            if reason in HARD_TRIGGERS
+            and not (
+                ctx.config.escalation.selective_arbitration and reason == "review_every_decision"
+            )
+        ),
         suppressed_by=decision.suppressed_by,
     )
     return updated.evolve(escalation=decision)
