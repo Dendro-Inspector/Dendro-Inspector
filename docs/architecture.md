@@ -426,7 +426,7 @@ rather than degrading to a low-confidence guess.
 
 The dendrology prompt is an **opaque, user-managed artifact**, but it is not admitted alone.
 `prompts/versions.yaml` is a frozen compatibility manifest that binds schema `1`, deterministic
-policy revision `0.9.0`, the canonical domain path/hash, node-prompt root/revision, and the
+policy revision `1.0.0a1`, the canonical domain path/hash, node-prompt root/revision, and the
 exact node-prompt file set and hashes.
 
 `runner.build_context()` validates the complete bundle before constructing

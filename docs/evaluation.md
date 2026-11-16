@@ -587,6 +587,13 @@ cases, zero failures and zero overconfidence. One decision moves on purpose.
 combination, which permits the genus and leaves confidence at the bark-tier ceiling (`low`).
 Every other frozen decision and every metric is unchanged.
 
+The 1.0.0-alpha.1 result is frozen in `evals/baselines/public-v1.0.0a1.json`: twenty-four
+passing cases, zero failures and zero overconfidence, with every decision and every metric
+identical to v0.11.0. What the pre-release adds on the default path (leaving out a subject
+that was named and never seen, and the Claude API image limit) moves no frozen verdict, and
+its spend limit is unset by default. The file was cut from the report CI wrote for the code
+it freezes.
+
 Read the result honestly: twenty-four hand-built cases over recorded fixtures can show that
 the machinery follows these contracts. It says nothing about identification accuracy on real
 photographs. That has been measured only in-sample, on the maintainers' own photographs; the

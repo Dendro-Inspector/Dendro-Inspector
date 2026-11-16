@@ -24,7 +24,7 @@ PROMPT = PromptMetadata(
     sha256="a" * 64,
     bytes=1,
     manifest_sha256="b" * 64,
-    policy_revision="0.9.0",
+    policy_revision="1.0.0a1",
 )
 
 

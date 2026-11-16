@@ -36,7 +36,7 @@ from dendro_inspector.prompts import sections
 from dendro_inspector.schemas.base import Contract
 
 #: The only deterministic policy revision compatible with this code.
-DETERMINISTIC_POLICY_REVISION = "0.9.0"
+DETERMINISTIC_POLICY_REVISION = "1.0.0a1"
 
 #: Separator between composed prompt layers. Shared by :meth:`PromptLibrary.compose` and
 #: :meth:`PromptLibrary.cacheable_prefix_chars` so the reported cache boundary cannot
@@ -114,7 +114,7 @@ class PromptPolicyManifest(Contract):
     """Closed-world manifest accepted by the current deterministic policy."""
 
     schema_version: Literal["1"]
-    policy_revision: Literal["0.9.0"]
+    policy_revision: Literal["1.0.0a1"]
     domain_prompt: DomainPromptManifest
     node_prompts: NodePromptManifest
 
