@@ -256,6 +256,53 @@ It is not enabled anywhere. Compare the two on stored runs with
 ([evaluation](evaluation.md)); a run recorded before reviews were kept cannot be replayed
 this way.
 
+## The name a review held back
+
+Under the released policy a recommended level can withdraw a name the leader's own card
+diagnosed. The verdict is still lowered. The name is no longer lost with it:
+`final_decision.held_back_hypothesis` records it on the decision as `visual_hypothesis`,
+and the answer carries it beside the verdict.
+
+It is recorded only when every row holds, and code checks each one:
+
+| Condition | Checked against |
+|---|---|
+| The verdict names less than the leader's level | `hypothesis_identity`: the level the model proposed, capped by the card and by the evidence tier exactly as a verdict is |
+| A reading the leader's card calls diagnostic of it was made, and reaches that level | the same test the discriminating-support rule uses |
+| No trusted reading contradicts the leader's card, cited by a review or not | `match_card`, over the evidence the trust boundary counts |
+| No evidence-side bound sits below that level | the composed bounds: `no_discriminating_support`, `diagnostic_combination`, `open_world_outranked` |
+| No code-raised finding asked for a broader level, and no accepted model finding has a ground from the table above | `validated_ground` |
+
+What remains is a verdict lowered by review that code could not check, and `held_back_by`
+says which: a recommended level (`reviewer_recommendation`), an unverified finding's
+`lower_resolution` action (`review_finding`), or an abstention (`abstention`).
+
+A hypothesis is not a second verdict:
+
+- It is never `selected_taxon` and never at or above the verdict's level; the
+  `FinalDecision` contract rejects both. It carries no confidence.
+- No model sees it. The arbiter is shown the provisional verdict's taxon, level, confidence
+  and status, and nothing else of the decision.
+- `dendro eval` and `coverage-audit` read `selected_taxon`, so a hypothesis is never
+  counted as an answer, right or wrong.
+- A structured result gives the two names as separate objects: `validated_identity` (the
+  confirmed name with its status, or null) and `visual_hypothesis` (the name, its status,
+  what held it back, and an explanation). The text adds one line after the verdict,
+  "Unconfirmed hypothesis. Most likely ... — not confirmed.", and a verdict that names
+  nothing then reads "no taxon is confirmed from this photograph".
+- The consistency check reports a result that confirms a name its decision did not select
+  (`validated_identity_mismatch`), that changes or drops the decision's hypothesis
+  (`hypothesis_mismatch`), or whose text omits it (`text_omits_hypothesis`).
+
+`HypothesisStatus` has one value, `evidence_supported`. Two weaker kinds of name are
+deliberately not offered. A leader its card merely fits stays where it was, listed with its
+rivals under "still consistent with this evidence": singling it out as "most likely" is the
+answer the discriminating-support rule exists to stop. A proposal admission rejected is
+not offered at all.
+
+Under `evidence_bound` an unverifiable recommendation does not lower the verdict, so the
+name is confirmed and no hypothesis is left to record; an abstention can still leave one.
+
 ## Corrections vs caps
 
 Some findings describe a problem the decision engine already fixes. `resolution_too_specific`
@@ -349,3 +396,5 @@ unless that broader card declares it. Status describes the answer returned, not 
 - [`tests/unit/test_review_synthesis.py`](../tests/unit/test_review_synthesis.py)
 - [`src/dendro_inspector/observability/events.py`](../src/dendro_inspector/observability/events.py)
 - [`tests/unit/test_review_attribution.py`](../tests/unit/test_review_attribution.py)
+- [`src/dendro_inspector/nodes/final_decision.py`](../src/dendro_inspector/nodes/final_decision.py) — `held_back_hypothesis`
+- [`tests/unit/test_visual_hypothesis.py`](../tests/unit/test_visual_hypothesis.py)

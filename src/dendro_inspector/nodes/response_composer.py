@@ -26,10 +26,14 @@ from dendro_inspector.schemas.decisions import (
     CaseResponse,
     DecisionStatus,
     FinalDecision,
+    HeldBackBy,
+    HypothesisStatement,
+    HypothesisStatus,
     ResponseFormat,
     StructuredFinalResult,
     ToneMode,
     UserClaimVerdict,
+    ValidatedIdentity,
 )
 from dendro_inspector.schemas.evidence import ScaleQuality
 from dendro_inspector.schemas.reference import ReferenceStatus
@@ -95,6 +99,67 @@ _RESOLUTION_PHRASE: dict[str, dict[Resolution, str]] = {
     },
 }
 
+#: What a confirmed name's status means, in a sentence. Only the statuses a verdict that
+#: names a taxon can have; the two no-claim statuses never reach this table.
+_VALIDATED_PHRASE: dict[str, dict[DecisionStatus, str]] = {
+    "uk": {
+        DecisionStatus.IDENTIFIED: (
+            "Підтверджено правилами картки довідника з високою впевненістю."
+        ),
+        DecisionStatus.PROBABLE: (
+            "Названо за правилами картки довідника на надійних доказах; впевненість нижча "
+            "за високу."
+        ),
+        DecisionStatus.CONFLICTING_EVIDENCE: (
+            "Названо за правилами картки довідника, але надійні докази цьому суперечать."
+        ),
+        DecisionStatus.UNSUPPORTED_USER_CLAIM: (
+            "Названо за фото; заявлений тип об'єкта ним не підтверджується."
+        ),
+    },
+    "en": {
+        DecisionStatus.IDENTIFIED: ("Confirmed by the reference card's rules at high confidence."),
+        DecisionStatus.PROBABLE: (
+            "Named by the reference card's rules from trusted evidence; confidence is below high."
+        ),
+        DecisionStatus.CONFLICTING_EVIDENCE: (
+            "Named by the reference card's rules, but trusted evidence contradicts it."
+        ),
+        DecisionStatus.UNSUPPORTED_USER_CLAIM: (
+            "Named from the photograph; the stated object type is not supported by it."
+        ),
+    },
+}
+
+#: How far the card rules took a hypothesis, in a sentence. Never the word a confirmed
+#: name gets: a hypothesis is "most likely" and "not confirmed".
+_HYPOTHESIS_PHRASE: dict[str, dict[HypothesisStatus, str]] = {
+    "uk": {
+        HypothesisStatus.EVIDENCE_SUPPORTED: (
+            "Зчитано ознаку, яку картка довідника вважає діагностичною."
+        ),
+    },
+    "en": {
+        HypothesisStatus.EVIDENCE_SUPPORTED: (
+            "A feature its reference card treats as diagnostic was read."
+        ),
+    },
+}
+
+#: What kept the verdict from naming the hypothesis.
+_HELD_BACK_PHRASE: dict[str, dict[HeldBackBy, str]] = {
+    "uk": {
+        "reviewer_recommendation": "Рецензія втримала відповідь на ширшому рівні.",
+        "review_finding": "Зауваження рецензії знизило відповідь на один рівень.",
+        "abstention": "Система утрималася від вужчої відповіді.",
+    },
+    "en": {
+        "reviewer_recommendation": "A review held the answer at a broader level.",
+        "review_finding": "A review finding lowered the answer by one level.",
+        "abstention": "The run abstained from a narrower answer.",
+    },
+}
+
 #: Internal reason codes this code emits. They are identifiers, not sentences, and a reader
 #: shown ``scale_absent`` under "what remains uncertain" is being handed a variable name.
 #: The extractor's own limitation vocabulary is open, so anything unmapped is de-coded
@@ -146,6 +211,9 @@ _LABELS: dict[str, dict[str, str]] = {
         "uncertain": "Що лишається невизначеним",
         "none_recorded": "не зафіксовано",
         "no_taxon": "по цьому фото не можна чесно визначити породу",
+        "no_confirmed_taxon": "по цьому фото жодну породу не підтверджено",
+        "hypothesis": "Непідтверджена гіпотеза",
+        "hypothesis_line": "Ймовірно, {name} ({level}) — не підтверджено.",
         "nothing_would_change": "додаткове фото вже нічого не змінить",
         "placeholder": (
             "> **Демонстраційні дані.** Довідник порід у цій збірці — мінімальний "
@@ -166,6 +234,9 @@ _LABELS: dict[str, dict[str, str]] = {
         "uncertain": "What remains uncertain",
         "none_recorded": "none recorded",
         "no_taxon": "this photograph cannot honestly carry a taxon",
+        "no_confirmed_taxon": "no taxon is confirmed from this photograph",
+        "hypothesis": "Unconfirmed hypothesis",
+        "hypothesis_line": "Most likely {name} ({level}) — not confirmed.",
         "nothing_would_change": "no further photograph would change this",
         "placeholder": (
             "> **Placeholder knowledge.** This build ships a minimal demonstration pack "
@@ -258,10 +329,59 @@ def verdict_line(decision: FinalDecision, locale: str) -> str:
     labels = _LABELS[locale]
     phrase = _STATUS_PHRASE[locale][decision.status]
     if decision.selected_taxon is None or decision.resolution is Resolution.UNKNOWN:
-        return f"{phrase} — {labels['no_taxon']}."
+        # With a hypothesis on the next line, "cannot carry a taxon" would be answered by
+        # the answer itself. What is true in both cases is that nothing was confirmed.
+        nothing = "no_taxon" if decision.visual_hypothesis is None else "no_confirmed_taxon"
+        return f"{phrase} — {labels[nothing]}."
     name = decision.selected_taxon_display_name or decision.selected_taxon
     level = _RESOLUTION_PHRASE[locale][decision.resolution]
     return f"{phrase}: {name} ({level}), {labels['confidence'].lower()} {decision.confidence_band}."
+
+
+def validated_identity(decision: FinalDecision, locale: str) -> ValidatedIdentity | None:
+    """The confirmed name as its own object, or None when the verdict names nothing."""
+    if decision.selected_taxon is None or decision.resolution is Resolution.UNKNOWN:
+        return None
+    return ValidatedIdentity(
+        taxon=decision.selected_taxon,
+        display_name=decision.selected_taxon_display_name or decision.selected_taxon,
+        resolution=decision.resolution,
+        confidence=decision.confidence,
+        confidence_band=decision.confidence_band,
+        status=decision.status,
+        explanation=_VALIDATED_PHRASE[locale].get(
+            decision.status, _STATUS_PHRASE[locale][decision.status]
+        ),
+    )
+
+
+def hypothesis_statement(decision: FinalDecision, locale: str) -> HypothesisStatement | None:
+    """The decision's hypothesis with its status and its reason in words."""
+    hypothesis = decision.visual_hypothesis
+    if hypothesis is None:
+        return None
+    reason = _HELD_BACK_PHRASE[locale][hypothesis.held_back_by]
+    return HypothesisStatement(
+        taxon=hypothesis.taxon,
+        display_name=hypothesis.display_name,
+        resolution=hypothesis.resolution,
+        status=hypothesis.status,
+        held_back_by=hypothesis.held_back_by,
+        explanation=f"{_HYPOTHESIS_PHRASE[locale][hypothesis.status]} {reason}",
+    )
+
+
+def hypothesis_line(statement: HypothesisStatement, locale: str) -> str:
+    """The one reader-facing sentence pair for a hypothesis: the name, then why it is not more.
+
+    It says "most likely" and "not confirmed" and never borrows a verdict's status word,
+    so the line cannot be read as the answer above it.
+    """
+    labels = _LABELS[locale]
+    named = labels["hypothesis_line"].format(
+        name=statement.display_name, level=_RESOLUTION_PHRASE[locale][statement.resolution]
+    )
+    return f"**{labels['hypothesis']}.** {named} {statement.explanation}"
 
 
 def build_result(
@@ -275,6 +395,8 @@ def build_result(
         reason = decision.strongest_contradiction or _LABELS[locale]["none_recorded"]
         ruled_out = (f"{decision.nearest_alternative}: {reason}",)
     return StructuredFinalResult(
+        validated_identity=validated_identity(decision, locale),
+        visual_hypothesis=hypothesis_statement(decision, locale),
         verdict=verdict_line(decision, locale),
         subject=decision.subject_id,
         taxonomic_resolution=decision.resolution,
@@ -473,6 +595,10 @@ def _render_block(
 
     lines.append(f"**{labels['verdict']}.** {result.verdict}")
     lines.append("")
+
+    if result.visual_hypothesis is not None:
+        lines.append(hypothesis_line(result.visual_hypothesis, locale))
+        lines.append("")
 
     lines.append(f"**{labels['features']}:**")
     if result.supporting_evidence:

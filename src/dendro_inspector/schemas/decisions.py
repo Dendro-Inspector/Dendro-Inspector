@@ -16,7 +16,7 @@ from dendro_inspector.schemas.base import Contract, Identifier, ShortText, Value
 from dendro_inspector.schemas.candidates import OpenWorldCandidate, SupportStrength
 from dendro_inspector.schemas.evidence import AttachmentStatus
 from dendro_inspector.schemas.reference import LOCAL_STATUSES, ReferenceStatus
-from dendro_inspector.schemas.taxon import Confidence, Resolution
+from dendro_inspector.schemas.taxon import Confidence, Resolution, resolution_rank
 
 
 class DecisionStatus(StrEnum):
@@ -423,6 +423,61 @@ class PhotoRequest(Contract):
     subject_id: Identifier | None = None
 
 
+class HypothesisStatus(StrEnum):
+    """How far the reference cards took a name the verdict does not confirm.
+
+    One value today, and deliberately. Two weaker kinds of name exist in a run: a leader
+    its card merely fits, and a proposal no card rule accepted. Neither is offered as a
+    hypothesis. A leader with no diagnostic reading is the model's pick among trees the
+    same evidence fits equally, and "most likely poplar" on evidence an alder also fits is
+    the answer the discriminating-support rule was written to stop. Such a leader is still
+    named to the reader, with its rivals, under "still consistent with this evidence". A
+    card-free reading of the photograph would be a third kind; it does not exist in this
+    graph yet.
+    """
+
+    EVIDENCE_SUPPORTED = "evidence_supported"
+    """A reading its card calls diagnostic was made; review still held the verdict broader."""
+
+
+#: What kept the verdict from naming the hypothesis. Always review, and always review that
+#: code could not verify: a recommended level, an accepted finding's lower-resolution
+#: action, or an abstention.
+HeldBackBy = Literal["reviewer_recommendation", "review_finding", "abstention"]
+
+
+class VisualHypothesis(Contract):
+    """The name the evidence supports and the verdict does not confirm.
+
+    A genus the cards had diagnosed used to disappear whenever a review recommended a
+    broader level: the answer said "insufficient evidence", or named only the family, and
+    the name was nowhere in it. This keeps the name, beside the verdict and never inside it.
+
+    It is not a second verdict. It never becomes ``selected_taxon`` and carries no
+    confidence. It is recorded only for a leader with a reading its own card calls
+    diagnostic, at a level this kind of evidence can carry, with no contradicting evidence
+    on record, and only where what lowered the verdict is review that code could not check.
+    Every one of those conditions is decided by code.
+    """
+
+    taxon: Identifier
+    display_name: str = Field(min_length=1, max_length=120)
+    resolution: Resolution
+    status: HypothesisStatus = HypothesisStatus.EVIDENCE_SUPPORTED
+    held_back_by: HeldBackBy
+    diagnostic_evidence_ids: tuple[Identifier, ...] = Field(
+        min_length=1,
+        description="The observations its card calls diagnostic of it, as the verdict rules do.",
+    )
+
+    @model_validator(mode="after")
+    def _names_a_level(self) -> VisualHypothesis:
+        if self.resolution is Resolution.UNKNOWN:
+            msg = "a hypothesis must name a taxonomic level"
+            raise ValueError(msg)
+        return self
+
+
 class FinalDecision(Contract):
     """The per-subject scientific verdict. Immutable once produced."""
 
@@ -518,6 +573,31 @@ class FinalDecision(Contract):
             "stands on card-validated evidence; the conflict is unresolved, not dismissed."
         ),
     )
+    visual_hypothesis: VisualHypothesis | None = Field(
+        default=None,
+        description=(
+            "The model's leading name for this subject where the verdict confirms less: a "
+            "narrower level than `resolution`, or a name where the verdict has none. Never "
+            "the selected taxon and never a confirmation. None when the verdict already "
+            "names it, when the leader has no diagnostic support, or when anything in the "
+            "evidence stands against it."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def _hypothesis_is_narrower_than_the_verdict(self) -> FinalDecision:
+        hypothesis = self.visual_hypothesis
+        if hypothesis is None:
+            return self
+        if hypothesis.taxon == self.selected_taxon:
+            msg = "the selected taxon is the verdict, not a hypothesis beside it"
+            raise ValueError(msg)
+        if self.resolution is not Resolution.UNKNOWN and resolution_rank(
+            hypothesis.resolution
+        ) <= resolution_rank(self.resolution):
+            msg = "a hypothesis is recorded only at a narrower level than the verdict names"
+            raise ValueError(msg)
+        return self
 
     @model_validator(mode="after")
     def _open_world_candidates_belong_to_this_subject(self) -> FinalDecision:
@@ -590,6 +670,34 @@ class FinalDecision(Contract):
         return self.resolution is Resolution.SPECIES
 
 
+class ValidatedIdentity(Contract):
+    """The name the deterministic rules confirmed for a subject, as a consumer reads it.
+
+    The same facts as the decision's ``selected_taxon``, ``resolution``, ``confidence`` and
+    ``status``, gathered into one object so that it sits beside
+    :class:`HypothesisStatement` and the two cannot be mistaken for each other.
+    """
+
+    taxon: Identifier
+    display_name: str = Field(min_length=1, max_length=120)
+    resolution: Resolution
+    confidence: Confidence
+    confidence_band: str = Field(max_length=16)
+    status: DecisionStatus
+    explanation: ShortText
+
+
+class HypothesisStatement(Contract):
+    """A :class:`VisualHypothesis` as a consumer reads it, with its reason in words."""
+
+    taxon: Identifier
+    display_name: str = Field(min_length=1, max_length=120)
+    resolution: Resolution
+    status: HypothesisStatus
+    held_back_by: HeldBackBy
+    explanation: ShortText
+
+
 class StructuredFinalResult(Contract):
     """Machine-readable answer for one subject."""
 
@@ -613,6 +721,17 @@ class StructuredFinalResult(Contract):
         description=(
             "Taxa the model proposed that no knowledge card describes, retained because their "
             "support was trusted (open-world discovery). Never the verdict; see `limitations`."
+        ),
+    )
+    validated_identity: ValidatedIdentity | None = Field(
+        default=None,
+        description="The confirmed name, with its status. None when the verdict names nothing.",
+    )
+    visual_hypothesis: HypothesisStatement | None = Field(
+        default=None,
+        description=(
+            "The model's leading name where the verdict confirms less, with its own status "
+            "and the reason it is not confirmed. Never a confirmed identification."
         ),
     )
 
