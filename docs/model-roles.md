@@ -296,6 +296,12 @@ requests makes recorded-review replay unavailable. Compare it on live runs.
   be reached on a model's word alone. See
   [`docs/review-pipeline.md`](review-pipeline.md#an-abstention-needs-a-basis-or-a-second-opinion).
 
+* `spend_limit_reached` — the inspection's spend limit leaves no room for the call
+  (`DENDRO_MAX_MODEL_CALLS`, `DENDRO_MAX_TOKENS`; unset by default). Applied after the
+  decision above, so the reasons that asked for the arbiter stay recorded. The answer is
+  the provisional verdict and says the review was not run. See
+  [`docs/agent-graph.md`](agent-graph.md#spend-limit).
+
 Insufficient evidence never reaches this gate: the quality branch routes directly to the
 photo planner. The old `suppress_when_insufficient_evidence` field is deprecated and ignored,
 retained only so existing configurations still load. The routing contract and end-to-end

@@ -7,7 +7,9 @@ rather than hoped for:
 * a corrupted or empty case short-circuits to an empty packet **without** a model call —
   a controlled failure, not an improvised answer;
 * on a retry pass, the accepted corrections are appended to the prompt so the second
-  extraction is actually different from the first.
+  extraction is actually different from the first;
+* a subject the model named and then recorded nothing about, on no photograph, is not
+  carried into the packet, so it cannot become a verdict about nothing.
 """
 
 from __future__ import annotations
@@ -22,6 +24,7 @@ from dendro_inspector.nodes._support import (
     locale_of,
 )
 from dendro_inspector.nodes.field_attestation import apply_part_attestations
+from dendro_inspector.observability.logging import get_logger
 from dendro_inspector.providers.base import StructuredOutputError, request_structured
 from dendro_inspector.schemas.evidence import (
     EvidencePacket,
@@ -69,6 +72,37 @@ def _empty_packet(state: GraphState) -> EvidencePacket:
         context_limitations=("input_unusable",),
         instruction_like_content_detected=bool(guard and guard.instruction_like_detected),
     )
+
+
+def drop_unseen_subjects(packet: EvidencePacket) -> tuple[EvidencePacket, tuple[str, ...]]:
+    """Leave out subjects that were named and never seen; return their ids as well.
+
+    A subject with no observation and no photograph it is said to appear in is a name,
+    not something the extraction saw. Left in the packet it gets a verdict section of its
+    own ("insufficient evidence") and makes a photograph of one tree look like a case with
+    several subjects, so the one real subject is no longer treated as what was asked
+    about. A subject that names a photograph is kept even with nothing read on it: it was
+    seen, and saying that it could not be read is an answer.
+
+    Runs on the collapsed packet, where a component's readings already sit on its
+    identity root, and after the uploader's statements have been applied, so a tree that
+    only holds credited parts counts as observed. When every subject is unseen the packet
+    is returned as it is: there is then no real subject to protect, and the empty-case
+    paths downstream expect the subjects they were given.
+    """
+    observed = {observation.subject_id for observation in packet.observations}
+    unseen = tuple(
+        subject.subject_id
+        for subject in packet.subjects
+        if subject.subject_id not in observed and not subject.image_ids
+    )
+    if not unseen or len(unseen) == len(packet.subjects):
+        return packet, ()
+    payload = packet.model_dump(mode="python")
+    payload["subjects"] = tuple(
+        subject for subject in packet.subjects if subject.subject_id not in unseen
+    )
+    return EvidencePacket.model_validate(payload), unseen
 
 
 def reconcile_packet(state: GraphState, packet: EvidencePacket) -> EvidencePacket:
@@ -145,6 +179,15 @@ async def run(state: GraphState, ctx: NodeContext) -> GraphState:
 
     packet = reconcile_packet(state, generated.to_evidence_packet())
     packet, attestations = apply_part_attestations(state.case, packet)
+    packet, unseen = drop_unseen_subjects(packet)
+    if unseen:
+        # The raw packet in the trace's evidence history still lists them.
+        get_logger(NODE).warning(
+            "unseen_subjects_dropped",
+            extra={"case_id": state.case.case_id, "subject_ids": list(unseen)},
+        )
+        if proposed_target in unseen:
+            proposed_target = None
     ctx.recorder.record_component_projections(packet)
     ctx.recorder.record_evidence(
         packet, generated=generated, retry_index=state.retries, attestations=attestations

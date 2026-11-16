@@ -13,6 +13,7 @@ from dendro_inspector.config import Adapter, ProviderConfig, Role
 from dendro_inspector.evaluation.trace_replay import (
     ReplayUnavailableError,
     StoredRecord,
+    config_as_recorded,
     fixture_from_trace,
     replay,
     replay_gaps,
@@ -216,6 +217,70 @@ def test_shorter_route_is_unavailable_instead_of_claiming_a_complete_replay(
     )
     with pytest.raises(ReplayUnavailableError, match="replay_route: consumed 1 of 2"):
         asyncio.run(replay(_record(retried_run), config=config, root=repo_root, reviews="recorded"))
+
+
+def test_a_route_this_replay_does_not_follow_names_the_settings_that_differ(
+    retried_run, config, repo_root
+):
+    config = config.model_copy(
+        update={"graph": config.graph.model_copy(update={"retry_budget": 0})}
+    )
+    with pytest.raises(ReplayUnavailableError, match=r"other settings.*graph\.retry_budget"):
+        asyncio.run(replay(_record(retried_run), config=config, root=repo_root, reviews="recorded"))
+
+
+def test_recorded_settings_follow_the_recorded_route(retried_run, config, repo_root):
+    """The run retried once; a replay configured for no retry still reproduces it."""
+    config = config.model_copy(
+        update={"graph": config.graph.model_copy(update={"retry_budget": 0})}
+    )
+    state = asyncio.run(
+        replay(
+            _record(retried_run),
+            config=config,
+            root=repo_root,
+            reviews="recorded",
+            settings="recorded",
+        )
+    )
+    assert state.retries == retried_run.state.retries == 1
+    assert state.decisions == retried_run.state.decisions
+
+
+def test_an_override_wins_over_the_recorded_setting(retried_run, config):
+    trace = retried_run.trace.model_dump(mode="json")
+    recorded = config_as_recorded(trace, config)
+    assert (
+        recorded.graph.retry_budget
+        == retried_run.trace.runtime_identity.config["graph"]["retry_budget"]
+    )
+    overridden = config_as_recorded(trace, config, {"retry_budget": 0})
+    assert overridden.graph.retry_budget == 0
+    # Never taken from a recording: an extra call that decides nothing, and a wall clock.
+    assert overridden.graph.vision_shadow is False
+    assert overridden.graph.deadline_seconds is None
+
+
+def test_a_trace_without_settings_is_not_replayed_under_the_callers(retried_run, config, repo_root):
+    trace = retried_run.trace.model_dump(mode="json")
+    trace["runtime_identity"] = None
+    with pytest.raises(ReplayUnavailableError, match="settings: the trace records no run"):
+        asyncio.run(
+            replay(
+                _record(retried_run, trace),
+                config=config,
+                root=repo_root,
+                reviews="recorded",
+                settings="recorded",
+            )
+        )
+
+
+def test_recorded_settings_this_version_cannot_read_are_refused(retried_run, config):
+    trace = retried_run.trace.model_dump(mode="json")
+    trace["runtime_identity"]["config"]["graph"]["setting_from_another_version"] = True
+    with pytest.raises(ReplayUnavailableError, match="setting_from_another_version"):
+        config_as_recorded(trace, config)
 
 
 def test_unrecorded_reviewer_call_is_unavailable(retried_run, config, repo_root):

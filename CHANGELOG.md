@@ -12,6 +12,30 @@ get entries.
 
 ### Added
 
+- **A spend limit for one inspection that degrades the answer instead of failing it.**
+  `DENDRO_MAX_MODEL_CALLS` (`GraphConfig.max_model_calls`) and `DENDRO_MAX_TOKENS`
+  (`GraphConfig.max_tokens`) are unset by default. They bound the stages a run may add: a
+  correction retry and the arbiter. The first pass always runs. A stage starts only while
+  it fits, decided before it starts: requests are counted from the graph (five for a retry,
+  one for the arbiter, repair attempts included in what is spent), tokens from the same
+  run's last round. A retry that does not fit abstains, with the recorded cause
+  `spend_limit_reached`; an arbiter call that does not fit is recorded with its reasons and
+  `suppressed_by: [spend_limit_reached]`, and the answer is the provisional verdict. The
+  answer's limitations say which stage was not run. A trace can therefore carry a new
+  abstention cause. Until now the only ceiling was the wall-clock deadline, which fails the
+  run with no answer. See `docs/agent-graph.md`.
+- **`coverage-audit --settings recorded` replays a stored run under the settings it ran
+  with, and an unavailable replay says why.** A replay ran only under the settings of the
+  environment it was started in. Records from a deployment configured differently then
+  took another route, most often because the arbiter had been called on every decision and
+  the replay never called it, and were reported `replay_unavailable` with no reason. With
+  `--settings recorded` each record replays under the escalation and graph settings in its
+  own trace (`runtime_identity`), with the command's policy options applied on top, so the
+  recorded route is followed and only the policy under test differs. Every unavailable
+  record now carries `replay_unavailable_reason`, the text report prints it, the summary
+  counts the reasons, and where the settings differ the reason names them. On 36 stored
+  runs of one deployment, 8 were unavailable under default settings and all 36 replayed to
+  their stored answers under their own. The default, `--settings configured`, is unchanged.
 - **A trace names the knowledge and settings it ran with, and `dendro release-manifest`
   states them for an installation.** Trace schema 5 adds `runtime_identity`: one digest over
   every knowledge file the loader reads (line endings normalised, `review-queue/` excluded),
@@ -310,6 +334,16 @@ get entries.
 
 ### Changed
 
+- **A subject the extraction named and never saw no longer gets a verdict.** An
+  extraction sometimes lists a subject that has no observation and appears on no
+  photograph, beside the one tree the photographs show. Each got its own "insufficient
+  evidence" section, and its presence made a single-subject case read as one with several
+  subjects and no designated target. Such a subject is now left out of the evidence
+  packet when another subject has evidence; the trace's raw packet still lists it. A
+  subject that names a photograph is kept even with nothing read on it, and a packet in
+  which every subject is unseen is unchanged. No verdict about an observed subject moves:
+  on 36 stored runs, four such sections disappear in three and every other answer is the
+  same.
 - **A heart-shaped leaf no longer counts against linden.** `knowledge/vocabulary.yaml` now
   declares linden's serrate heart-shaped leaf (`cordate_serrate`) a narrower reading of a
   heart-shaped leaf (`cordate`), as the domain prompt describes both. A leaf read as
@@ -444,6 +478,13 @@ get entries.
 
 ### Fixed
 
+- **A photograph edge above 8,000 px no longer fails an inspection on the Claude API.**
+  The API answers 400 to the whole call for one image with an edge above 8,000 px, and
+  `DENDRO_IMAGE_MAX_EDGE_PX` accepts more, because other providers take it: a deployment
+  set to 8192 lost every `anthropic-sdk` inspection that held one such photograph. That
+  adapter now sends a configured edge above the limit as 8,000 px. Other adapters are
+  unchanged, and so is `original`, which is still sent untouched and still refused there
+  when the file is larger.
 - **Inspections on OpenAI and Foundry no longer fail at candidate generation.** A
   description added to the candidate score made its schema a `$ref` beside `description`,
   which strict structured output refuses: Foundry answered 400 `$ref cannot have keywords

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dendro_inspector.graph.budget import Stage, affords
 from dendro_inspector.graph.executor import NodeContext
 from dendro_inspector.graph.state import GraphState
 from dendro_inspector.knowledge.candidate_validation import (
@@ -521,4 +522,14 @@ async def run(state: GraphState, ctx: NodeContext) -> GraphState:
         results=state.reviews,
         synthesis=synthesis,
     )
-    return state.evolve(synthesis=synthesis)
+    stops = state.budget_stops
+    if (
+        synthesis.retry_required
+        and not synthesis.unresolvable
+        and state.retries < ctx.config.graph.retry_budget
+        and not affords(ctx.config.graph, ctx.recorder.spend(), Stage.CORRECTION_RETRY)
+    ):
+        # Routing reads this and abstains instead of retrying; the abstain node records
+        # the limit, not a spent retry budget, as the cause.
+        stops = (*stops, Stage.CORRECTION_RETRY.value)
+    return state.evolve(synthesis=synthesis, budget_stops=stops)

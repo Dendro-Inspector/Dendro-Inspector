@@ -532,6 +532,17 @@ def coverage_audit_command(
             ),
         ),
     ] = "neutral",
+    settings: Annotated[
+        str,
+        typer.Option(
+            "--settings",
+            help=(
+                "Whose escalation and graph settings --replay runs under: 'configured' is "
+                "this environment's, 'recorded' is each record's own from its trace, with "
+                "this command's policy options applied on top."
+            ),
+        ),
+    ] = "configured",
     json_output: Annotated[
         Path | None, typer.Option("--json-out", help="Write the full report as JSON here.")
     ] = None,
@@ -548,27 +559,23 @@ def coverage_audit_command(
 
     if reviews not in ("neutral", "recorded"):
         raise typer.BadParameter("must be 'neutral' or 'recorded'", param_hint="--reviews")
+    if settings not in ("configured", "recorded"):
+        raise typer.BadParameter("must be 'configured' or 'recorded'", param_hint="--settings")
 
     config = load_config()
+    # The policy options this command was given. They override the configured settings
+    # here, and each record's recorded settings when the replay runs under those.
+    overrides: dict[str, object] = {}
     if require_discriminating_support is not None:
-        config = config.model_copy(
-            update={
-                "graph": config.graph.model_copy(
-                    update={"require_discriminating_support": require_discriminating_support}
-                )
-            }
-        )
+        overrides["require_discriminating_support"] = require_discriminating_support
     if review_authority is not None:
-        config = config.model_copy(
-            update={"graph": config.graph.model_copy(update={"review_authority": review_authority})}
-        )
-    routing: dict[str, object] = {}
+        overrides["review_authority"] = review_authority
     if adaptive_routing is not None:
-        routing["adaptive_routing"] = adaptive_routing
+        overrides["adaptive_routing"] = adaptive_routing
     if adaptive_fast_path is not None:
-        routing["adaptive_fast_path"] = adaptive_fast_path
-    if routing:
-        config = config.model_copy(update={"graph": config.graph.model_copy(update=routing)})
+        overrides["adaptive_fast_path"] = adaptive_fast_path
+    if overrides:
+        config = config.model_copy(update={"graph": config.graph.model_copy(update=overrides)})
     try:
         references = label_scoring.load_labels(labels)
     except (OSError, ValueError) as exc:
@@ -583,6 +590,8 @@ def coverage_audit_command(
             labels=references,
             with_replay=replay_records,
             reviews="recorded" if reviews == "recorded" else "neutral",
+            settings="recorded" if settings == "recorded" else "configured",
+            graph_overrides=overrides,
         )
     )
     if json_output is not None:

@@ -181,6 +181,14 @@ class GraphState(Contract):
     response: CaseResponse | None = None
     final_response: CaseResponse | None = None
     retries: int = Field(default=0, ge=0)
+    budget_stops: tuple[ValueToken, ...] = Field(
+        default=(),
+        description=(
+            "Stages the run's spend limit left out (`graph.budget.Stage` values). Set by "
+            "the node that would have led into the stage, read by routing and by the "
+            "answer, which says that the stage was not run."
+        ),
+    )
     abstained: bool = False
     abstention_bounds: tuple[SubjectAbstention, ...] = ()
 

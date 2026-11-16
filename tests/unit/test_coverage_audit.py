@@ -574,6 +574,13 @@ def test_coverage_replay_with_recorded_reviews(tmp_path, monkeypatch):
     assert by_case["legacy"]["replayed"] == []
     assert f"review_rounds: {MISSING_FROM_LEGACY_TRACE}" in by_case["legacy"]["replay_gaps"]
     assert payload["summary"]["replay_unavailable"] == 1
+    # The reason a record did not replay is reported, never only the fact.
+    reason = f"review_rounds: {MISSING_FROM_LEGACY_TRACE}"
+    assert by_case["legacy"]["replay_unavailable_reason"] == reason
+    assert by_case["recorded"]["replay_unavailable_reason"] is None
+    assert payload["summary"]["replay_unavailable_reasons"] == {reason: 1}
+    assert f"replay unavailable because: {reason}" in result.output
+    assert by_case["recorded"]["replay_settings"] == "configured"
     assert by_case["recorded"]["replayed_grade"]["outcome"] == "broader_only"
     assert by_case["legacy"]["replayed_grade"] is None
     assert payload["summary"]["labelled_movements"] == [
@@ -592,6 +599,49 @@ def test_coverage_replay_rejects_an_unknown_review_mode(tmp_path):
     )
 
     assert result.exit_code != 0
+
+
+def test_coverage_replay_rejects_an_unknown_settings_source(tmp_path):
+    result = CliRunner().invoke(
+        app, ["coverage-audit", str(tmp_path), "--replay", "--settings", "guessed"]
+    )
+
+    assert result.exit_code != 0
+
+
+def test_coverage_replay_under_recorded_settings_refuses_a_trace_without_them(
+    tmp_path, monkeypatch
+):
+    """A trace that records no settings is not replayed under the caller's instead."""
+    monkeypatch.setenv("DENDRO_DOMAIN_PROMPT_PATH", str(DEFAULT_DOMAIN_PROMPT_PATH))
+    monkeypatch.setenv("DENDRO_PROMPT_MANIFEST_PATH", str(DEFAULT_PROMPT_MANIFEST_PATH))
+    (tmp_path / "recorded.json").write_text(
+        json.dumps({"case_id": "recorded", "result": {"trace": RECORDED_TRACE}}),
+        encoding="utf-8",
+    )
+    report = tmp_path / "report.json"
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "coverage-audit",
+            str(tmp_path / "recorded.json"),
+            "--replay",
+            "--reviews",
+            "recorded",
+            "--settings",
+            "recorded",
+            "--json-out",
+            str(report),
+        ],
+    )
+
+    assert result.exit_code == 0, result.exception
+    record = json.loads(report.read_text(encoding="utf-8"))["records"][0]
+    assert record["replay_settings"] == "recorded"
+    assert record["replay_unavailable"] is True
+    assert record["replay_unavailable_reason"].startswith("settings: the trace records no")
+    assert record["replayed"] == []
 
 
 @pytest.mark.parametrize(

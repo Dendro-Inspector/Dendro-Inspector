@@ -22,6 +22,7 @@ import base64
 import json
 import os
 from collections.abc import Mapping, Sequence
+from dataclasses import replace
 from typing import Any
 
 from pydantic import ValidationError
@@ -52,6 +53,25 @@ DEFAULT_TIMEOUT_SECONDS = 600.0
 DEFAULT_EFFORT = "high"
 EFFORTS = ("low", "medium", "high", "xhigh", "max")
 FALLBACK_BETA = "server-side-fallback-2026-07-01"
+#: The Claude API refuses an image with an edge above this (a lower limit applies only to
+#: a request with more than 20 images, and a case holds at most 16).
+MAX_IMAGE_EDGE_PX = 8000
+
+
+def within_image_limit(images: Sequence[ImageInput]) -> tuple[ImageInput, ...]:
+    """Lower a configured edge the Claude API would refuse to the largest it accepts.
+
+    A deployment may ask for more than this API takes, because another provider it
+    serves does: 8192 px is sent as it is to an OpenAI-compatible endpoint and answered
+    here with a 400 for the whole call. An image sent as its original
+    (``max_edge_px`` of ``None``) stays the original, as its operator asked.
+    """
+    return tuple(
+        replace(image, max_edge_px=MAX_IMAGE_EDGE_PX)
+        if image.max_edge_px is not None and image.max_edge_px > MAX_IMAGE_EDGE_PX
+        else image
+        for image in images
+    )
 
 
 def _env_float(name: str, default: float) -> float:
@@ -251,6 +271,7 @@ class AnthropicSDKProvider:
         metadata: Mapping[str, Any],
     ) -> ResponseT:
         del role
+        images = within_image_limit(images)
         client = self._ensure_client()
         name = response_model.__name__
         node = metadata.get("node", "?")

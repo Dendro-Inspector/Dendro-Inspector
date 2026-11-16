@@ -16,6 +16,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from dendro_inspector.config import EscalationPolicy
+from dendro_inspector.graph.budget import SPEND_LIMIT_REACHED, Stage, affords
 from dendro_inspector.graph.executor import NodeContext
 from dendro_inspector.graph.state import EscalationDecision, GraphState
 from dendro_inspector.schemas.taxon import Confidence, Resolution, resolution_rank
@@ -209,6 +210,16 @@ async def run(state: GraphState, ctx: NodeContext) -> GraphState:
     )
     updated = state.evolve(provisional_decisions=provisional)
     decision = decide(updated, ctx.config.escalation, provisional)
+    stops = updated.budget_stops
+    if decision.required and not affords(ctx.config.graph, ctx.recorder.spend(), Stage.ARBITRATION):
+        # The one suppressor that may stand against a hard trigger: an operator's limit,
+        # not a judgement that the call is unnecessary. The reasons stay recorded, so the
+        # trace shows a call that was due and not made. An abstention that was waiting
+        # for the arbiter then fails closed, as for any arbitration that did not run.
+        decision = EscalationDecision(
+            required=False, reasons=decision.reasons, suppressed_by=(SPEND_LIMIT_REACHED,)
+        )
+        stops = (*stops, Stage.ARBITRATION.value)
     ctx.recorder.record_escalation(
         triggered=decision.required,
         reasons=decision.reasons,
@@ -222,4 +233,4 @@ async def run(state: GraphState, ctx: NodeContext) -> GraphState:
         ),
         suppressed_by=decision.suppressed_by,
     )
-    return updated.evolve(escalation=decision)
+    return updated.evolve(escalation=decision, budget_stops=stops)
