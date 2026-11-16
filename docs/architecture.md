@@ -378,6 +378,39 @@ conversation history. It requests reconsideration and restrained tone, not an ad
 an earlier answer was wrong. See [escalation policy](model-roles.md#escalation-policy) for
 precedence and the insufficient-evidence short circuit.
 
+### Per-node sections (experimental)
+
+`PromptConfig.domain_sections` (`DENDRO_DOMAIN_PROMPT_SECTIONS`) is `full` by default:
+every model call carries the whole domain prompt, as above. `per_node` sends each model
+node only the sections `prompts/sections.py` lists for it (`NODE_SECTIONS`). The prompt is
+cut at its own fenced headings and never rewritten; a node receives the chosen sections as
+the exact bytes on disk, in their order. The seal still hashes the whole file, and a prompt
+whose headings do not read as sections 1 to 18 in order raises `PromptPolicyError` before
+any call, rather than being sent whole or in part by guesswork. Both locales have the same
+structure.
+
+Every node keeps the preamble, the core algorithm, the evidence hierarchy (§2), the
+confidence scale (§6), the key failure cases (§13) and the final rule (§18). No node is
+sent tone and jokes (§4, §5), the response formats (§7-§11) or admitting a mistake (§12):
+deterministic code implements those, and no model writes the answer. The other cuts
+follow what a node does:
+
+| Node | Also sent | Share of the English prompt |
+|---|---|---|
+| `planner` | §15 cross-sections and firewood, §16 when to ask for photographs | 33% |
+| `evidence_extractor` | §14 base species, §15, §17 special examples | 75% |
+| `candidate_generator`, `botanical_reviewer`, `confusion_reviewer`, `arbiter` | §3 checking the user's version, §14, §15, §17 | 79% |
+| `confidence_reviewer` | §3, §16 | 32% |
+
+A node not in the table, and any node under `full`, gets the whole prompt. The trace's
+`domain_prompt.domain_sections` records which mode ran.
+
+Shorter is not assumed to be better. Two costs pull the other way: the sections every node
+shares are only the first three (about 2,400 characters), so the prompt-cache boundary moves
+from the whole domain prompt to that prefix, and a node loses rules it may have been using
+indirectly. Whether it is worth turning on is a measurement on live runs: correctness,
+candidate recall, tokens and latency against `full`.
+
 ### Re-sealing
 
 Fail-closed hashing needs a supported way to attest new bytes, or replacing the user-managed

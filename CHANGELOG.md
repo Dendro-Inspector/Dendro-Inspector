@@ -31,6 +31,15 @@ get entries.
   by `dendro eval` or `coverage-audit`. Three consistency codes report a result that
   disagrees with its decision: `validated_identity_mismatch`, `hypothesis_mismatch` and
   `text_omits_hypothesis`.
+- **An experimental per-node domain prompt, off by default.** With
+  `DENDRO_DOMAIN_PROMPT_SECTIONS=per_node` (`PromptConfig.domain_sections`) each model node
+  is sent only the domain prompt sections listed for it in `prompts/sections.py`, cut at the
+  prompt's own headings and never rewritten: none receives tone, jokes, the response formats
+  or admitting a mistake, which code implements, and the planner and confidence reviewer
+  receive about a third of the prompt. The seal still covers the whole file, a prompt whose
+  sections cannot be read fails closed, and the trace records the mode in
+  `domain_prompt.domain_sections`. The prompt-cache boundary under it is the three sections
+  every node shares. The default sends the whole prompt to every node as before.
 - **An experimental review policy, off by default, for offline comparison.** Under the
   released policy the broadest level any admitted review recommends caps the claim, so a
   reviewer's stated doubt can withdraw a name the evidence supports. Setting
