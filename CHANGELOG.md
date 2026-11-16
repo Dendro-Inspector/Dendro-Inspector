@@ -272,6 +272,14 @@ get entries.
 
 ### Changed
 
+- **A heart-shaped leaf no longer counts against linden.** `knowledge/vocabulary.yaml` now
+  declares linden's serrate heart-shaped leaf (`cordate_serrate`) a narrower reading of a
+  heart-shaped leaf (`cordate`), as the domain prompt describes both. A leaf read as
+  heart-shaped, with its margin unread, used to disagree with the linden card's own strong
+  feature and remove the card from play; now it is compatible with it. It still does not
+  support linden, which needs the serrate reading. With
+  `DENDRO_SEMANTIC_RETRIEVAL=true` the same reading shows the linden card to the candidate
+  generator.
 - **A loose part is credited to a tree only on an explicit statement.** `--field-context`
   no longer credits fruit, leaves or twigs photographed off the tree to the single tree in
   the upload, and submitting several photographs together never did mean they show one

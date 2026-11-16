@@ -36,6 +36,10 @@ refinements:
     # Prompt lines 460-461 give Acer palmate lobed leaves; lines 484-486 describe the
     # sycamore leaf as the broad five-lobed palmate form of the same leaf.
     broad_palmate_five_lobed: palmate_lobed
+    # Prompt lines 517-519 give linden heart-shaped leaves with a serrate margin. Lines
+    # 449-450 name the same heart shape, with no margin stated, among poplar's leaf forms.
+    # Owner-approved on 2026-11-16. A heart-shaped reading does not establish the margin.
+    cordate_serrate: cordate
 
   leaf.type:
     # Prompt lines 550-552: walnut's leaf is compound pinnate, with large oval leaflets.

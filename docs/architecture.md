@@ -239,8 +239,14 @@ why a card is visible; it grants no diagnostic credit. Candidate admission, cont
 attachment trust and confidence ceilings retain their exact matching rules. Word overlap,
 sibling refinements and another subject's readings do not establish a relation.
 
-No new botanical refinement pairs are added by this implementation. In particular the
-roadmap's `cordate_serrate -> cordate` example needs a separately reviewed knowledge change.
+One refinement pair was added alongside it, with the owner's approval:
+`leaf.shape: cordate_serrate -> cordate`. Linden's serrate heart-shaped leaf is a narrower
+reading of a heart-shaped leaf, which the domain prompt also lists among poplar's leaf
+forms. With retrieval on, a heart-shaped reading opens the linden card beside poplar. It
+cannot support linden, whose card asks for the serrate reading. Like every pair in that
+file it applies with retrieval off as well: a heart-shaped reading no longer counts as
+disagreement with linden's own strong feature, where before it removed the card from play.
+
 Older trace readers must negotiate schema support before accepting schema 4 records.
 
 ### Open-world candidates

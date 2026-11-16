@@ -11,6 +11,7 @@ from dendro_inspector.knowledge.candidate_validation import (
     validate_candidate_set,
 )
 from dendro_inspector.knowledge.loader import KnowledgeBase
+from dendro_inspector.knowledge.taxon_cards import self_contradiction_hits
 from dendro_inspector.schemas.candidates import CandidateSet
 from dendro_inspector.schemas.taxon import ValueVocabulary
 from tests.unit.test_candidate_validation import _candidate, _obs, _packet
@@ -81,6 +82,45 @@ def test_existing_relations_are_directional_and_feature_scoped(knowledge):
     assert vocabulary.retrieval_relation("fruit.type", "apricot", "small_round_drupe") is None
     assert vocabulary.retrieval_relation("leaf.shape", "apricot", "drupe") is None
     assert isinstance(vocabulary, ValueVocabulary)
+
+
+def test_a_heart_shaped_leaf_opens_linden_without_supporting_it(knowledge):
+    """Linden's card names the serrate heart-shaped leaf, and the margin was not read.
+
+    The relation makes the card visible to the generator. It grants no credit for the
+    serration nobody observed, so a proposal resting on that leaf alone is not admitted.
+    """
+    packet = _packet(_obs("leaf", "leaf.shape", "cordate"))
+    assert cards_in_play(packet, knowledge, ("log_1",)) == ("populus",)
+    assert cards_in_play(packet, knowledge, ("log_1",), semantic=True) == ("populus", "tilia")
+
+    linden = next(
+        record
+        for record in retrieve_cards(packet, knowledge, ("log_1",), semantic=True)
+        if record.taxon == "tilia"
+    )
+    assert linden.semantic_only
+    assert [(r.observed, r.declared, r.relation) for r in linden.reasons] == [
+        ("cordate", "cordate_serrate", "observed_broader")
+    ]
+
+    proposed = CandidateSet(subject_id="log_1", candidates=(_candidate("tilia", 1, "leaf"),))
+    assert not validate_candidate_set(proposed, packet, knowledge).candidates
+
+
+def test_a_heart_shaped_leaf_does_not_contradict_linden(knowledge):
+    """The general word for a detail the card names precisely is not a denial of it.
+
+    Without the declared relation this reading disagreed with linden's own strong feature
+    and removed the card from play for any leaf whose margin was not read.
+    """
+    observation = _obs("leaf", "leaf.shape", "cordate")
+    linden = knowledge.taxon("tilia")
+    assert self_contradiction_hits(linden, (observation,)) == ()
+
+    no_relations = knowledge.vocabulary().model_copy(update={"refinements": ()})
+    unrelated = linden.model_copy(update={"value_vocabulary": no_relations})
+    assert self_contradiction_hits(unrelated, (observation,)) == ("leaf",)
 
 
 def test_default_off_and_image_override_keeps_flag(monkeypatch):
