@@ -17,6 +17,7 @@ from dendro_inspector.knowledge.loader import KnowledgeBase
 from dendro_inspector.knowledge.references import RecordedReferenceSource, ReferenceSource
 from dendro_inspector.nodes import build_registry
 from dendro_inspector.observability.events import RunTrace
+from dendro_inspector.observability.identity import runtime_identity
 from dendro_inspector.observability.trace import TraceRecorder
 from dendro_inspector.prompts.library import PromptLibrary
 from dendro_inspector.providers.registry import ProviderRegistry
@@ -51,6 +52,7 @@ def build_context(
     recorder = TraceRecorder(case_id, root=base)
 
     recorder.set_prompt_metadata(prompts.metadata())
+    recorder.set_runtime_identity(runtime_identity(resolved_config, root=base))
     for role in Role:
         provider = providers.get(role)
         recorder.set_provider(role.value, provider.adapter_name, provider.model)

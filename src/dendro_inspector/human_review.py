@@ -181,6 +181,10 @@ class SourceRecord(Contract):
     code_dirty: bool | None = None
     domain_prompt_version: str | None = Field(default=None, max_length=80)
     domain_prompt_sha256: str | None = Field(default=None, max_length=64)
+    knowledge_sha256: str | None = Field(
+        default=None, max_length=64, description="From the trace's runtime identity (schema 5)."
+    )
+    config_sha256: str | None = Field(default=None, max_length=64)
     providers: dict[str, str] = Field(default_factory=dict)
 
 
@@ -608,6 +612,7 @@ def build_package(
         if isinstance(subject_id, str)
     )
     prompt = (trace or {}).get("domain_prompt") or {}
+    runtime = (trace or {}).get("runtime_identity") or {}
     source = SourceRecord(
         result_sha256=_sha256(raw),
         response_schema_version=int(response.get("schema_version") or 1),
@@ -618,6 +623,8 @@ def build_package(
         code_dirty=(trace or {}).get("code_dirty"),
         domain_prompt_version=prompt.get("version"),
         domain_prompt_sha256=prompt.get("sha256"),
+        knowledge_sha256=runtime.get("knowledge_sha256"),
+        config_sha256=runtime.get("config_sha256"),
         providers={
             str(role): str(name) for role, name in ((trace or {}).get("providers") or {}).items()
         },

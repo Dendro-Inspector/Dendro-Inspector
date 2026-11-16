@@ -50,6 +50,12 @@ not establish a labelled genus.
 dendro coverage-audit runs/saved/cases --labels references.json --replay --json-out runs/scored.json
 ```
 
+Pool answers only from runs that share an identity. `dendro release-manifest --compare
+ANSWER` says whether an answer was made with the same code, prompts, knowledge and settings
+as the current installation, and names each setting that differs; traces before schema 5
+record no knowledge or settings identity
+([architecture](architecture.md#what-a-run-depended-on)).
+
 Reference labels use the archive's case IDs. A flat mapping such as
 `{"sample": "fagus"}` remains accepted. To declare the intended subject and whether a
 written plant name is visible, use:

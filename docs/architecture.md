@@ -660,6 +660,27 @@ The executor (`graph/executor.py`) walks a pure routing function, runs the three
 concurrently, records an event per node, and refuses to exceed `max_steps`. It is about a
 hundred lines and knows nothing about dendrology.
 
+### What a run depended on
+
+An answer depends on its input and on four things the run brings: the code
+(`code_commit_sha`, or the commit an image was built from), the prompts (`domain_prompt`),
+the knowledge, and the settings. Trace schema 5 records the last two in `runtime_identity`
+([`observability/identity.py`](../src/dendro_inspector/observability/identity.py)):
+
+| Field | Records |
+| --- | --- |
+| `knowledge_sha256`, `knowledge_files` | One digest over every file the loader reads (taxon, comparison and region cards, vocabulary, value sets), by path, with line endings normalised; `review-queue/` is not read and not counted |
+| `reference_records_sha256` | The operator's reference records, when configured |
+| `config`, `config_sha256` | Escalation and graph settings, tone and domain sections, the region pack, and each role's adapter, model and retry setting, with a digest of that canonical form. Paths, credential names and logging settings are left out: they differ between machines without changing an answer |
+| `package_version` | The installed release |
+
+Two answers from one image can therefore still be told apart when the deployment's
+settings changed between them, and an answer can be matched to a release.
+`dendro release-manifest` prints the same identities for an installation or an image;
+`--compare ANSWER` reports, for a stored answer, case record or trace, which of them it
+shares (`same`, `differs`, or `not recorded` for an older trace), lists each setting that
+differs, and exits 1 when one does. A digest detects a difference; it is not a signature.
+
 ## Termination
 
 Provable from `graph/routing.py` alone:

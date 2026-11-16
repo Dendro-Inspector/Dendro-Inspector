@@ -44,6 +44,7 @@ from dendro_inspector.observability.events import (
     ReviewerRecord,
     ReviewFindingRecord,
     ReviewRoundRecord,
+    RuntimeIdentity,
     RunTrace,
     SubjectRecord,
 )
@@ -179,6 +180,7 @@ class TraceRecorder:
         self._component_projections: tuple[ComponentProjection, ...] = ()
         self._decision_derivations: dict[str, DecisionDerivation] = {}
         self._prompt: PromptMetadata | None = None
+        self._runtime_identity: RuntimeIdentity | None = None
         self._knowledge_coverage: KnowledgeCoverage | None = None
         self._evidence_observations: tuple[ObservationRecord, ...] = ()
         self._evidence_revision = 0
@@ -203,6 +205,9 @@ class TraceRecorder:
 
     def set_prompt_metadata(self, metadata: PromptMetadata) -> None:
         self._prompt = metadata
+
+    def set_runtime_identity(self, identity: RuntimeIdentity) -> None:
+        self._runtime_identity = identity
 
     def record_routing(self, plan: RoutingAssessment) -> None:
         """Keep one round's review plan, whether the graph follows it or only measures it."""
@@ -748,6 +753,7 @@ class TraceRecorder:
             code_commit_sha=self._code_commit_sha,
             code_dirty=self._code_dirty,
             domain_prompt=self._prompt,
+            runtime_identity=self._runtime_identity,
             providers=dict(self._providers),
             events=tuple(self._events),
             component_projections=self._component_projections,

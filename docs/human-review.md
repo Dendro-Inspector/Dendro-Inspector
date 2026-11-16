@@ -40,7 +40,7 @@ The folder holds:
 | File | Contains |
 | --- | --- |
 | `photos/photo-N.*` | The photographs, unchanged |
-| `package.json` | The photographs' SHA-256, the answer per subject (verdict, level, status, confidence band, evidence, limitations, nearest alternative, contradiction, hypothesis), the answer text, the questions, and the engine commit, graph and domain prompt version the answer came from |
+| `package.json` | The photographs' SHA-256, the answer per subject (verdict, level, status, confidence band, evidence, limitations, nearest alternative, contradiction, hypothesis), the answer text, the questions, and the engine commit, graph and domain prompt version, and knowledge and settings digests the answer came from |
 | `README.txt` | Instructions for the reviewer, the answer text and the questions |
 | `answers.template.json` | The response to fill in |
 

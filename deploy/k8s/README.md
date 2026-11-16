@@ -28,11 +28,36 @@ The batch scripts are standard library only and call `dendro inspect --json`:
 - `run_upload_case.py`: one uploaded case from `RESULTS_DIR/<run>/inputs/`.
 - `summarize_run.py`: collects the per-case records of a run.
 
+## What an image is, and what it runs with
+
+The image is identified by the commit it was built from (`DENDRO_CODE_COMMIT_SHA`, set by the
+build), and its prompts and knowledge are in `/app`. Print all of them, with the settings the
+container sees:
+
+```bash
+docker run --rm dendro-inspector:local release-manifest
+```
+
+The settings a cluster runs with (providers, models, experiment flags, image transport) are
+kept with its control plane, outside this repository, and can differ from the defaults here.
+Every answer's trace records the ones it actually ran with in `runtime_identity.config`
+([architecture](../../docs/architecture.md#what-a-run-depended-on)). To check a stored answer
+against an image:
+
+```bash
+docker run --rm -v "$PWD/answer.json:/tmp/answer.json:ro" dendro-inspector:local \
+  release-manifest --compare /tmp/answer.json
+```
+
+Run with the cluster's environment, the comparison also shows settings drift: any setting
+whose value differs from the one the answer recorded is listed by name.
+
 ## Continuous integration
 
 [`container-images.yml`](../../.github/workflows/container-images.yml) builds both images on
 every push and pull request and smoke-tests them, including the public evaluation suite run
-from inside the batch image. It needs no secrets and pushes nothing.
+from inside the batch image and the image's release manifest. It needs no secrets and pushes
+nothing.
 
 ## Deploying from GitHub
 

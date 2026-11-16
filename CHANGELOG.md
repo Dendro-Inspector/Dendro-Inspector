@@ -12,9 +12,20 @@ get entries.
 
 ### Added
 
+- **A trace names the knowledge and settings it ran with, and `dendro release-manifest`
+  states them for an installation.** Trace schema 5 adds `runtime_identity`: one digest over
+  every knowledge file the loader reads (line endings normalised, `review-queue/` excluded),
+  the reference records' digest when configured, and the escalation, graph, prompt-shaping,
+  region and provider settings with a digest of their canonical form. Paths, credential
+  names and logging settings are left out. `dendro release-manifest` prints the package,
+  graph, trace and response versions, the commit, the domain prompt identity and the same
+  runtime identity; `--compare ANSWER` reports for a stored answer, case record or trace
+  which identities it shares, lists each setting that differs, and exits 1 when one does.
+  The container smoke test prints the image's manifest. No answer changes.
 - **`dendro review-export` and `dendro review-import`: a case reviewed by a specialist.**
   Export writes a folder with the photographs byte for byte, their SHA-256, the answer per
-  subject, the engine commit and prompt version it came from, and questions code derives
+  subject, the engine commit, prompt version and knowledge and settings digests it came
+  from, and questions code derives
   from the answer (which subject is the target, whether the named taxon is right, what an
   unnamed subject is, whether a held-back hypothesis or the strongest contradiction is
   right), with a template to fill in. Photographs whose metadata carries GPS coordinates or

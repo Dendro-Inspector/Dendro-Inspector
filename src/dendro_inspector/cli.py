@@ -697,5 +697,52 @@ def review_import_command(
     typer.echo(human_review.render_revision(revision, history))
 
 
+@app.command(name="release-manifest")
+def release_manifest_command(
+    out: Annotated[
+        Path | None, typer.Option("--out", help="Also write the manifest to this file.")
+    ] = None,
+    compare: Annotated[
+        Path | None,
+        typer.Option(
+            "--compare",
+            help="A stored answer, case record or trace: which identities it shares with this "
+            "installation, and which settings differ.",
+        ),
+    ] = None,
+) -> None:
+    """State what this installation's answers depend on: code, prompts, knowledge, settings.
+
+    No model is called. With --compare, exits 1 when a recorded identity differs.
+    """
+    from dendro_inspector.observability import identity
+    from dendro_inspector.prompts.library import PromptLibrary
+
+    config = load_config()
+    try:
+        prompt = PromptLibrary(config.prompts).metadata()
+    except (DomainPromptMissingError, PromptPolicyError) as exc:
+        typer.secho(str(exc), fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=3) from exc
+    manifest = identity.release_manifest(config, prompt)
+    text = json.dumps(manifest, indent=2, ensure_ascii=False)
+    if out is not None:
+        out.write_text(text + "\n", encoding="utf-8")
+    if compare is None:
+        typer.echo(text)
+        return
+    try:
+        stored = json.loads(compare.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise typer.BadParameter(str(exc), param_hint="--compare") from exc
+    rows, settings = identity.compare(manifest, stored)
+    for name, state in rows:
+        typer.echo(f"{name:<16} {state}")
+    for line in settings:
+        typer.echo(f"  {line}")
+    if any(state == "differs" for _, state in rows):
+        raise typer.Exit(1)
+
+
 if __name__ == "__main__":  # pragma: no cover
     app()
