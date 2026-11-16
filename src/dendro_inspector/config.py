@@ -157,6 +157,10 @@ class GraphConfig(Contract):
         description="Retrieve related cards through declared refinements; admission stays exact.",
     )
     semantic_retrieval_limit: int = Field(default=8, ge=1, le=64)
+    vision_shadow: bool = False
+    vision_shadow_max_images: int = Field(default=4, ge=1, le=16)
+    vision_shadow_max_bytes: int = Field(default=16 * 1024 * 1024, ge=1)
+    vision_shadow_timeout_seconds: float = Field(default=60, gt=0, le=300)
     open_world_discovery: bool = Field(
         default=False,
         description=(
@@ -386,6 +390,8 @@ def load_config(overrides: AppConfig | None = None) -> AppConfig:
     # running a paid inspection under a policy nobody asked for.
     authority = (_env("DENDRO_REVIEW_AUTHORITY") or ReviewAuthority.RECOMMENDATION.value).strip()
     graph = GraphConfig(
+        vision_shadow=(_env("DENDRO_VISION_SHADOW", "false") or "false").lower()
+        in {"1", "true", "yes", "on"},
         semantic_retrieval=(_env("DENDRO_SEMANTIC_RETRIEVAL", "false") or "false").lower()
         in {"1", "true", "yes", "on"},
         semantic_retrieval_limit=int(_env("DENDRO_SEMANTIC_RETRIEVAL_LIMIT", "8") or "8"),
@@ -399,6 +405,7 @@ def load_config(overrides: AppConfig | None = None) -> AppConfig:
     max_edge = (_env("DENDRO_IMAGE_MAX_EDGE_PX") or "").strip().lower()
     if max_edge:
         graph = GraphConfig(
+            vision_shadow=graph.vision_shadow,
             semantic_retrieval=graph.semantic_retrieval,
             semantic_retrieval_limit=graph.semantic_retrieval_limit,
             open_world_discovery=graph.open_world_discovery,

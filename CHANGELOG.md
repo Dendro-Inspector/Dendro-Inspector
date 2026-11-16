@@ -12,6 +12,10 @@ get entries.
 
 ### Added
 
+- **Optional card-independent vision assessment in shadow mode.** The extra assessment
+  is stored separately after the production answer is frozen, with scoped evidence and
+  image references, workload limits and its own usage record. It never changes the answer
+  and is disabled unless `DENDRO_VISION_SHADOW=true`.
 - **Experimental bounded semantic retrieval**, disabled by default. Declared vocabulary
   refinements can open related cards without turning those relations into supporting
   evidence. Additional cards are capped per subject, and trace schema 4 records retrieval

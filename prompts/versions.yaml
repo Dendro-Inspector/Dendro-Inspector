@@ -33,3 +33,5 @@ node_prompts:
       sha256: c019496ccbd4d81124de4a5ad55d264d6e5ed294cab87f66f4b7f5fa84e9cf50
     - file: response-composer.md
       sha256: 883c7535cff82ca448234101189e1ea504b227566393345e7b66bee56a303cc2
+    - file: vision-assessment.md
+      sha256: 5b8f2676be8468e649a56bd74b6366d1f20bcb404278cee364662a6a00f4411c

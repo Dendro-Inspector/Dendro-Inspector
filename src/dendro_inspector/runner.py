@@ -22,6 +22,7 @@ from dendro_inspector.prompts.library import PromptLibrary
 from dendro_inspector.providers.registry import ProviderRegistry
 from dendro_inspector.schemas.decisions import CaseResponse
 from dendro_inspector.schemas.input import CaseInput
+from dendro_inspector.vision_shadow import assess_shadow
 
 
 @dataclass(frozen=True, slots=True)
@@ -81,6 +82,10 @@ async def run_case(
     ctx = build_context(config, root=root, case_id=case.case_id)
     try:
         result = await run_graph(case, ctx, build_registry())
-        return CaseRunResult(state=result.state, trace=result.trace)
+        trace = result.trace
+        if ctx.config.graph.vision_shadow:
+            shadow = await assess_shadow(case, ctx)
+            trace = trace.model_copy(update={"vision_shadow": shadow})
+        return CaseRunResult(state=result.state, trace=trace)
     finally:
         await ctx.providers.aclose()

@@ -25,6 +25,7 @@ from dendro_inspector.schemas.decisions import (
 )
 from dendro_inspector.schemas.evidence import KnowledgeCoverage
 from dendro_inspector.schemas.taxon import Confidence, Resolution
+from dendro_inspector.schemas.vision import VisionShadowResult
 
 GRAPH_VERSION = "0.9.0"
 
@@ -530,6 +531,7 @@ class RunTrace(Contract):
     )
     candidate_validation_history: tuple[CandidateValidationRecord, ...] = ()
     card_retrievals: tuple[CardRetrieval, ...] = ()
+    vision_shadow: VisionShadowResult | None = None
     observation_uses: tuple[ObservationUseRecord, ...] = ()
     plan: PlanRecord | None = None
     review_rounds: tuple[ReviewRoundRecord, ...] = Field(

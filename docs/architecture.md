@@ -207,6 +207,23 @@ covers every detected identity root, including subjects the quality gate found u
 each receives either a supported verdict or an explicit insufficient-evidence result and
 photo request. A model's omission cannot silently remove a subject from the answer.
 
+### Independent vision assessment (shadow experiment)
+
+`DENDRO_VISION_SHADOW=true` records a card-independent `VisionAssessment` under
+`trace.vision_shadow`. It defaults off. The measurement runs after the normal answer is
+frozen, using the original case and photographs, with no extracted evidence or retrieved
+cards. Its local subject/observation references are validated, including image ownership.
+Nothing reads its hypotheses into candidate generation, evidence extraction or the answer.
+Failures produce a shadow failure record while preserving the production result.
+
+The default limits are four images, 16 MiB of original image bytes, 60 seconds and one
+structured generation attempt with no repair retry. Over-budget cases are recorded as
+skipped rather than sampling away context. These are workload limits, not a dollar cap;
+SDK transport retries and provider billing require an approved pilot budget before live
+activation. Shadow time and usage are recorded separately from production graph totals.
+Missing provider token accounting remains unknown. The experiment is temporary measurement
+overhead, not a permanent extra graph stage.
+
 ### Bounded semantic retrieval (experimental)
 
 `DENDRO_SEMANTIC_RETRIEVAL=true` lets the candidate generator see cards related through
