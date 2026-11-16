@@ -148,6 +148,8 @@ class PromptMetadata(Contract):
     manifest_path: str | None = Field(default=None, max_length=400)
     manifest_sha256: str | None = Field(default=None, min_length=64, max_length=64)
     compatibility_status: PromptCompatibilityStatus = PromptCompatibilityStatus.UNVALIDATED
+    #: `full` or `per_node`: whether model calls were sent the whole domain prompt.
+    domain_sections: str = Field(default="full", max_length=16)
 
 
 #: Bounds on the evidence ledger, so a pathological extraction cannot bloat a case record.

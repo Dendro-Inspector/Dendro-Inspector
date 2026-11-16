@@ -220,12 +220,22 @@ class ToneProfile(StrEnum):
     DIRECT = "direct"
 
 
+class DomainSections(StrEnum):
+    """How much of the domain prompt each model call is sent."""
+
+    FULL = "full"
+    """The whole prompt on every call, as released."""
+    PER_NODE = "per_node"
+    """Experimental: each node its sections from ``prompts.sections.NODE_SECTIONS``."""
+
+
 class PromptConfig(Contract):
     domain_prompt_path: Path = DEFAULT_DOMAIN_PROMPT_PATH
     manifest_path: Path = DEFAULT_PROMPT_MANIFEST_PATH
     node_prompt_root: Path = DEFAULT_NODE_PROMPT_ROOT
     personality_root: Path = DEFAULT_PERSONALITY_ROOT
     tone_profile: ToneProfile = ToneProfile.STANDARD
+    domain_sections: DomainSections = DomainSections.FULL
 
 
 class KnowledgeConfig(Contract):
@@ -407,6 +417,10 @@ def load_config(overrides: AppConfig | None = None) -> AppConfig:
             tone_profile=ToneProfile(
                 _env("DENDRO_TONE_PROFILE", ToneProfile.STANDARD.value)
                 or ToneProfile.STANDARD.value
+            ),
+            # An unknown value fails here, at load, like every other policy setting.
+            domain_sections=DomainSections(
+                (_env("DENDRO_DOMAIN_PROMPT_SECTIONS") or DomainSections.FULL.value).strip().lower()
             ),
         ),
         knowledge=KnowledgeConfig(
