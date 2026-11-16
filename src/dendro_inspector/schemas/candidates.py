@@ -8,10 +8,11 @@ honest resolution of the underlying evidence.
 from __future__ import annotations
 
 from enum import StrEnum
+from typing import Literal
 
 from pydantic import Field, model_validator
 
-from dendro_inspector.schemas.base import Contract, EvidenceRef, Identifier, ValueToken
+from dendro_inspector.schemas.base import Contract, EvidenceRef, FeaturePath, Identifier, ValueToken
 from dendro_inspector.schemas.reference import (
     LOCAL_STATUSES,
     ReferenceCitation,
@@ -218,3 +219,24 @@ class CandidateProposal(Contract):
             msg = "duplicate subject_id in candidate proposal"
             raise ValueError(msg)
         return self
+
+
+class CardRetrievalReason(Contract):
+    """Why a card was shown; a semantic relation is never admitted support."""
+
+    observation_id: Identifier
+    feature: FeaturePath
+    observed: ValueToken
+    declared: ValueToken
+    relation: Literal["exact", "observed_broader", "observed_narrower"]
+
+
+class CardRetrieval(Contract):
+    subject_id: Identifier
+    taxon: Identifier
+    reasons: tuple[CardRetrievalReason, ...] = Field(min_length=1)
+    evidence_revision: int = Field(default=0, ge=0)
+
+    @property
+    def semantic_only(self) -> bool:
+        return all(reason.relation != "exact" for reason in self.reasons)

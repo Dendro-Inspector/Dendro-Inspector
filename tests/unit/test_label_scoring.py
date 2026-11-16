@@ -271,7 +271,7 @@ def test_completed_replay_without_decisions_still_counts_in_the_denominator(
     tmp_path, monkeypatch, knowledge, config, repo_root
 ):
     async def empty_replay(*args, **kwargs):
-        return SimpleNamespace(decisions=())
+        return SimpleNamespace(decisions=(), routing_assessment=None)
 
     monkeypatch.setattr(coverage_report, "replay", empty_replay)
     path = _archive(tmp_path, "empty", [])

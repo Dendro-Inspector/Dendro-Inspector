@@ -359,7 +359,12 @@ finding that asked for it:
   a retry replaced, then the arbiter's. Each review is recorded with its status, its
   recommended levels and ranking, and every finding it raised with the adjudicated status
   and reason code. Rejected findings are kept. `recommendation_admitted` says whether the
-  review's levels became bounds.
+  review's levels became bounds. `model_called` is false for a reviewer an applied
+  [review plan](model-roles.md#adaptive-routing-experimental) did not call: that record
+  holds only what the reviewer's code raised, and its status is not a model's judgement.
+- `routing_history` holds one review plan per internal round when adaptive routing is on:
+  the route, every rule evaluated, the reviewer models called and skipped, the questions
+  asked, and the verdict code alone had composed.
 - Each finding has a `finding_ref` that is unique within the run. Decision derivations and
   abstention records cite it ([composition record](architecture.md#the-composition-record)).
 - `abstentions` records, per subject, why a claim was withdrawn: `unresolvable_finding`,

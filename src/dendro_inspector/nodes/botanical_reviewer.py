@@ -97,7 +97,12 @@ def card_contradiction_findings(state: GraphState, ctx: NodeContext) -> tuple[Re
     return tuple(findings)
 
 
+def code_findings(state: GraphState, ctx: NodeContext) -> tuple[ReviewFinding, ...]:
+    """Every finding this reviewer's code raises, with or without its model call."""
+    return card_contradiction_findings(state, ctx)
+
+
 async def run(state: GraphState, ctx: NodeContext) -> GraphState:
     result = await review_call(ctx, node=NODE, reviewer=Reviewer.BOTANICAL)
-    result = merge_findings(result, card_contradiction_findings(state, ctx))
+    result = merge_findings(result, code_findings(state, ctx))
     return state.evolve(reviews=(*state.reviews, result))

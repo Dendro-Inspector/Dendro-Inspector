@@ -10,12 +10,13 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import Field
 
 from dendro_inspector.observability.evidence_history import EvidenceRevision
 from dendro_inspector.schemas.base import Contract, Identifier, ShortText
+from dendro_inspector.schemas.candidates import CardRetrieval
 from dendro_inspector.schemas.decisions import (
     AuthorityCheckTrace,
     DecisionDerivation,
@@ -23,7 +24,9 @@ from dendro_inspector.schemas.decisions import (
     FindingReference,
 )
 from dendro_inspector.schemas.evidence import KnowledgeCoverage
+from dendro_inspector.schemas.routing import RoutingAssessment
 from dendro_inspector.schemas.taxon import Confidence, Resolution
+from dendro_inspector.schemas.vision import VisionShadowResult
 
 GRAPH_VERSION = "0.9.0"
 
@@ -31,8 +34,8 @@ GRAPH_VERSION = "0.9.0"
 #: a record between two releases, and a reader has to know which records to expect without
 #: inferring it from the package version. Traces written before this field existed carry no
 #: version and are version 1: they have no `review_rounds`, so an empty tuple there means
-#: "not recorded", never "no review ran".
-TRACE_SCHEMA_VERSION = 3
+#: "not recorded", never "no review ran". Version 5 adds `runtime_identity`.
+TRACE_SCHEMA_VERSION = 5
 LEGACY_TRACE_SCHEMA_VERSION = 1
 
 
@@ -347,6 +350,14 @@ class ReviewerRecord(Contract):
 
     reviewer: str = Field(max_length=40)
     status: str = Field(max_length=40)
+    model_called: bool = Field(
+        default=True,
+        description=(
+            "False when an applied review plan did not call this reviewer's model. The "
+            "record then holds only what the reviewer's code raised: its status is not a "
+            "model's judgement and must never be replayed as one."
+        ),
+    )
     subject_id: str | None = Field(default=None, max_length=120)
     recommended_resolution: Resolution | None = None
     recommended_confidence: Confidence | None = None
@@ -459,6 +470,30 @@ class DecisionComparison(Contract):
     only_after_subject_ids: tuple[str, ...] = ()
 
 
+class RuntimeIdentity(Contract):
+    """What an answer depends on besides its input and the code and prompts named beside it.
+
+    The knowledge the loader can read and the configuration that changes decisions, each as a
+    digest a release manifest can be compared with. The configuration is also kept as it was,
+    so a reader sees which experiments were on without the deployment's environment. A
+    digest detects a difference; it is not a signature.
+    """
+
+    package_version: str = Field(max_length=40)
+    knowledge_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    knowledge_files: int = Field(ge=0)
+    reference_records_sha256: str | None = Field(
+        default=None,
+        pattern=r"^[0-9a-f]{64}$",
+        description="The operator's reference records, when configured and readable.",
+    )
+    config_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    config: dict[str, Any] = Field(
+        description="Escalation, graph, prompt-shaping, region and provider settings. No paths, "
+        "no credentials, no logging settings."
+    )
+
+
 class RunTrace(Contract):
     """The inspectable record of one graph run."""
 
@@ -480,6 +515,10 @@ class RunTrace(Contract):
         ),
     )
     domain_prompt: PromptMetadata | None = None
+    runtime_identity: RuntimeIdentity | None = Field(
+        default=None,
+        description="Knowledge and configuration identity. None before trace schema 5.",
+    )
     providers: dict[str, str] = Field(
         default_factory=dict,
         description="role -> 'adapter:model'. Never a credential.",
@@ -528,6 +567,16 @@ class RunTrace(Contract):
         ),
     )
     candidate_validation_history: tuple[CandidateValidationRecord, ...] = ()
+    card_retrievals: tuple[CardRetrieval, ...] = ()
+    vision_shadow: VisionShadowResult | None = None
+    routing_history: tuple[RoutingAssessment, ...] = Field(
+        default=(),
+        description=(
+            "One review plan per internal round, in order, when adaptive routing is on: the "
+            "route, every rule evaluated, the reviewer models called and skipped, and the "
+            "verdict code alone had composed. Empty when it is off."
+        ),
+    )
     observation_uses: tuple[ObservationUseRecord, ...] = ()
     plan: PlanRecord | None = None
     review_rounds: tuple[ReviewRoundRecord, ...] = Field(

@@ -44,14 +44,17 @@ from dendro_inspector.observability.events import (
     ReviewerRecord,
     ReviewFindingRecord,
     ReviewRoundRecord,
+    RuntimeIdentity,
     RunTrace,
     SubjectRecord,
 )
 from dendro_inspector.observability.evidence_history import EvidenceRevision, packet_digest
 from dendro_inspector.observability.logging import get_logger
+from dendro_inspector.schemas.candidates import CardRetrieval
 from dendro_inspector.schemas.decisions import AuthorityCheckStatus
 from dendro_inspector.schemas.evidence import KnowledgeCoverage
 from dendro_inspector.schemas.review_context import ReviewProjection
+from dendro_inspector.schemas.routing import RoutingAssessment
 from dendro_inspector.schemas.taxon import Confidence, Resolution
 
 if TYPE_CHECKING:
@@ -68,7 +71,12 @@ if TYPE_CHECKING:
         EvidencePacket,
         GeneratedEvidencePacket,
     )
-    from dendro_inspector.schemas.reviews import ReviewFinding, ReviewResult, ReviewSynthesis
+    from dendro_inspector.schemas.reviews import (
+        Reviewer,
+        ReviewFinding,
+        ReviewResult,
+        ReviewSynthesis,
+    )
 
 
 #: The verdict fields a correction or an arbitration is said to have changed.
@@ -172,11 +180,14 @@ class TraceRecorder:
         self._component_projections: tuple[ComponentProjection, ...] = ()
         self._decision_derivations: dict[str, DecisionDerivation] = {}
         self._prompt: PromptMetadata | None = None
+        self._runtime_identity: RuntimeIdentity | None = None
         self._knowledge_coverage: KnowledgeCoverage | None = None
         self._evidence_observations: tuple[ObservationRecord, ...] = ()
         self._evidence_revision = 0
         self._evidence_history: list[EvidenceRevision] = []
         self._candidate_validation_history: list[CandidateValidationRecord] = []
+        self._card_retrievals: list[CardRetrieval] = []
+        self._routing_history: list[RoutingAssessment] = []
         self._evidence_context: EvidenceContextRecord | None = None
         self._plan: PlanRecord | None = None
         self._candidate_validations: dict[str, CandidateValidationRecord] = {}
@@ -194,6 +205,29 @@ class TraceRecorder:
 
     def set_prompt_metadata(self, metadata: PromptMetadata) -> None:
         self._prompt = metadata
+
+    def set_runtime_identity(self, identity: RuntimeIdentity) -> None:
+        self._runtime_identity = identity
+
+    def record_routing(self, plan: RoutingAssessment) -> None:
+        """Keep one round's review plan, whether the graph follows it or only measures it."""
+        self._routing_history.append(plan)
+
+    def _model_called(self, stage: str, round_index: int, reviewer: Reviewer) -> bool:
+        """Whether a recorded review came from a model call or from code alone."""
+        if stage != "internal":
+            return True
+        return all(
+            plan.calls(reviewer)
+            for plan in self._routing_history
+            if plan.round_index == round_index
+        )
+
+    def record_card_retrievals(self, records: tuple[CardRetrieval, ...]) -> None:
+        self._card_retrievals.extend(
+            record.model_copy(update={"evidence_revision": self._evidence_revision})
+            for record in records
+        )
 
     def set_provider(self, role: str, adapter: str, model: str | None) -> None:
         self._providers[role] = f"{adapter}:{model}" if model else adapter
@@ -395,6 +429,7 @@ class TraceRecorder:
                 ReviewerRecord(
                     reviewer=result.reviewer.value,
                     status=result.status.value,
+                    model_called=self._model_called(stage, round_index, result.reviewer),
                     subject_id=result.subject_id,
                     recommended_resolution=result.recommended_resolution,
                     recommended_confidence=result.recommended_confidence,
@@ -718,6 +753,7 @@ class TraceRecorder:
             code_commit_sha=self._code_commit_sha,
             code_dirty=self._code_dirty,
             domain_prompt=self._prompt,
+            runtime_identity=self._runtime_identity,
             providers=dict(self._providers),
             events=tuple(self._events),
             component_projections=self._component_projections,
@@ -726,6 +762,8 @@ class TraceRecorder:
             evidence_context=self._evidence_context,
             evidence_history=tuple(self._evidence_history),
             candidate_validation_history=tuple(self._candidate_validation_history),
+            card_retrievals=tuple(self._card_retrievals),
+            routing_history=tuple(self._routing_history),
             observation_uses=self._observation_uses(),
             plan=self._plan,
             review_rounds=tuple(self._review_rounds.values()),

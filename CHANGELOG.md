@@ -12,6 +12,64 @@ get entries.
 
 ### Added
 
+- **A trace names the knowledge and settings it ran with, and `dendro release-manifest`
+  states them for an installation.** Trace schema 5 adds `runtime_identity`: one digest over
+  every knowledge file the loader reads (line endings normalised, `review-queue/` excluded),
+  the reference records' digest when configured, and the escalation, graph, prompt-shaping,
+  region and provider settings with a digest of their canonical form. Paths, credential
+  names and logging settings are left out. `dendro release-manifest` prints the package,
+  graph, trace and response versions, the commit, the domain prompt identity and the same
+  runtime identity; `--compare ANSWER` reports for a stored answer, case record or trace
+  which identities it shares, lists each setting that differs, and exits 1 when one does.
+  The container smoke test prints the image's manifest. No answer changes.
+- **`dendro review-export` and `dendro review-import`: a case reviewed by a specialist.**
+  Export writes a folder with the photographs byte for byte, their SHA-256, the answer per
+  subject, the engine commit, prompt version and knowledge and settings digests it came
+  from, and questions code derives
+  from the answer (which subject is the target, whether the named taxon is right, what an
+  unnamed subject is, whether a held-back hypothesis or the strongest contradiction is
+  right), with a template to fill in. Photographs whose metadata carries GPS coordinates or
+  cannot be read are refused unless `--allow-location` is given. Import treats the filled-in
+  answers as untrusted: size-limited, schema-checked, bound to the package by its
+  content-derived id, refused for a changed package. An accepted response is appended to the
+  package's `revisions.jsonl` as the case's next revision, with per-subject outcomes
+  (`confirmed`, `refined`, `corrected`, `rejected`, `named`, `undecided`). Nothing outside the
+  package is written: no card, prompt or policy changes. See `docs/human-review.md`.
+- **An answer says which subject it is about.** Each result has a `subject_role`
+  (`target`, `context` or `unspecified`), and the response lists `target_subject_ids` with a
+  `target_source`. A lone subject is the target. When the photographs show several, none is
+  designated: the results are `unspecified`, the text opens by saying so, and no result
+  should be presented as "the" answer. `scripts/batch/summarize_run.py` now reports the
+  designated target in its per-case verdict columns (new `target_subject` column, and a
+  `role` on every subject row) and falls back to the first subject only where none is
+  designated. The response carries `schema_version: 2`; nothing was renamed or removed, so
+  a reader of the earlier shape that ignores unknown fields is unaffected.
+- **Experimental: the extractor can name the photographs' main subject**, off by default.
+  With `DENDRO_TARGET_SELECTION=extractor` the evidence extractor is also asked which
+  subject the photographs are of; that subject becomes the `target`, the others `context`,
+  and the text leads with it. No verdict, level or confidence depends on it. It adds one
+  optional field to that call's response schema, which is unchanged while the setting is
+  off. Not yet run against a live provider.
+- **Experimental adaptive routing of the reviewers**, off by default. With
+  `DENDRO_ADAPTIVE_ROUTING=shadow` a run's trace records, for each review round, which
+  reviewer models deterministic rules would have called and why (`routing_history`); no
+  model call and no answer changes. With `enabled` only those reviewers are called: any
+  ambiguity keeps all three, a specific open question calls the reviewer that owns it and
+  tells it the question, and a subject with nothing admitted calls none.
+  `DENDRO_ADAPTIVE_FAST_PATH=true` also calls none for a single subject that code alone
+  names at genus level with high confidence and nothing recorded against it. A reviewer
+  that is not called still contributes the findings its code raises (its review is recorded
+  with `model_called: false`), and the arbiter keeps its own policy. `dendro coverage-audit
+  --replay --reviews recorded --adaptive-routing enabled` compares a plan with the recorded
+  reviews offline. No route has been measured yet; see `docs/model-roles.md`.
+- **Optional card-independent vision assessment in shadow mode.** The extra assessment
+  is stored separately after the production answer is frozen, with scoped evidence and
+  image references, workload limits and its own usage record. It never changes the answer
+  and is disabled unless `DENDRO_VISION_SHADOW=true`.
+- **Experimental bounded semantic retrieval**, disabled by default. Declared vocabulary
+  refinements can open related cards without turning those relations into supporting
+  evidence. Additional cards are capped per subject, and trace schema 4 records retrieval
+  reasons and their evidence revision. Enable with `DENDRO_SEMANTIC_RETRIEVAL=true`.
 - **`dendro heldout-check` validates a held-out evaluation set.** A YAML manifest kept
   beside the photographs lists each unit with its physical tree or wood lot, categories, the
   owner's preliminary label and specialist reviews. The check fails on a photograph shared
@@ -252,6 +310,14 @@ get entries.
 
 ### Changed
 
+- **A heart-shaped leaf no longer counts against linden.** `knowledge/vocabulary.yaml` now
+  declares linden's serrate heart-shaped leaf (`cordate_serrate`) a narrower reading of a
+  heart-shaped leaf (`cordate`), as the domain prompt describes both. A leaf read as
+  heart-shaped, with its margin unread, used to disagree with the linden card's own strong
+  feature and remove the card from play; now it is compatible with it. It still does not
+  support linden, which needs the serrate reading. With
+  `DENDRO_SEMANTIC_RETRIEVAL=true` the same reading shows the linden card to the candidate
+  generator.
 - **A loose part is credited to a tree only on an explicit statement.** `--field-context`
   no longer credits fruit, leaves or twigs photographed off the tree to the single tree in
   the upload, and submitting several photographs together never did mean they show one

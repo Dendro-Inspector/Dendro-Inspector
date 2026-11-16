@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from datetime import date
 from enum import StrEnum
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import Field, model_validator
 
@@ -309,6 +309,22 @@ class ValueVocabulary(Contract):
             or declared in self._with_broader_readings(feature, observed)
             or observed in self._with_broader_readings(feature, declared)
         )
+
+    def retrieval_relation(
+        self, feature: str, observed: str, declared: str
+    ) -> Literal["exact", "observed_broader", "observed_narrower"] | None:
+        """Explain a declared relation for retrieval, without granting a matching hit.
+
+        Siblings and word overlap are deliberately unrelated. Only the existing,
+        directional refinement chain can broaden the cards a model is allowed to see.
+        """
+        if observed == declared:
+            return "exact"
+        if observed in self._with_broader_readings(feature, declared):
+            return "observed_broader"
+        if declared in self._with_broader_readings(feature, observed):
+            return "observed_narrower"
+        return None
 
 
 class ValueSets(Contract):

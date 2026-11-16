@@ -253,7 +253,15 @@ async def run(state: GraphState, ctx: NodeContext) -> GraphState:
         the gate cannot conclude "nothing to rank" while the generator would have found
         something to rank.
         """
-        return bool(cards_in_play(evidence, ctx.knowledge, (subject_id,)))
+        return bool(
+            cards_in_play(
+                evidence,
+                ctx.knowledge,
+                (subject_id,),
+                semantic=ctx.config.graph.semantic_retrieval,
+                semantic_limit=ctx.config.graph.semantic_retrieval_limit,
+            )
+        )
 
     report = assess(
         evidence,

@@ -566,7 +566,9 @@ def test_case_runner_cleans_up_on_success_failure_and_cancellation(monkeypatch, 
     provider._client = client
     providers = ProviderRegistry({Role.PRIMARY: provider})
     monkeypatch.setattr(
-        runner, "build_context", lambda *a, **kw: SimpleNamespace(providers=providers)
+        runner,
+        "build_context",
+        lambda *a, **kw: SimpleNamespace(providers=providers, config=AppConfig()),
     )
     case = CaseInput(case_id="cleanup-case")
 

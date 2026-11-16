@@ -28,6 +28,8 @@ from dendro_inspector.schemas.candidates import (
     STRENGTH_CONFIDENCE_CEILING,
     Candidate,
     CandidateSet,
+    CardRetrieval,
+    CardRetrievalReason,
     OpenWorldCandidate,
     SupportStrength,
     strength_rank,
@@ -133,6 +135,9 @@ def cards_in_play(
     evidence: EvidencePacket,
     knowledge: KnowledgeBase,
     subject_ids: tuple[str, ...],
+    *,
+    semantic: bool = False,
+    semantic_limit: int = 8,
 ) -> tuple[str, ...]:
     """Retrieve cards any eligible subject could support before a model ranks them.
 
@@ -150,6 +155,38 @@ def cards_in_play(
     positively supports, which is the multi-subject bleed the packet's subject scoping
     exists to prevent.
     """
+    return tuple(
+        sorted(
+            {
+                record.taxon
+                for record in retrieve_cards(
+                    evidence,
+                    knowledge,
+                    subject_ids,
+                    semantic=semantic,
+                    semantic_limit=semantic_limit,
+                )
+            }
+        )
+    )
+
+
+def retrieve_cards(
+    evidence: EvidencePacket,
+    knowledge: KnowledgeBase,
+    subject_ids: tuple[str, ...],
+    *,
+    semantic: bool = False,
+    semantic_limit: int = 8,
+) -> tuple[CardRetrieval, ...]:
+    """Retrieve exact cards plus a bounded set of declared relatives, per subject.
+
+    Exact retrieval is never truncated. Additional cards are ordered by distinct
+    observation count then taxon ID; reasons survive independently of admission. The
+    limit applies per subject, so a background tree cannot consume the target's quota.
+    """
+    if semantic_limit < 1:
+        raise ValueError("semantic_limit must be positive")
     eligible: dict[str, tuple[Observation, ...]] = {
         subject_id: tuple(
             observation
@@ -160,21 +197,49 @@ def cards_in_play(
         )
         for subject_id in subject_ids
     }
-    return tuple(
-        taxon_id
-        for taxon_id in knowledge.available_taxon_ids()
-        if (card := knowledge.try_taxon(taxon_id)) is not None
-        and any(
-            not self_contradiction_hits(card, observations)
-            and any(
-                _matches_expectation(
-                    observation, (*card.strong_positive_features, *card.supporting_features)
+    records: list[CardRetrieval] = []
+    vocabulary = knowledge.vocabulary()
+    for subject_id, observations in eligible.items():
+        exact: list[CardRetrieval] = []
+        related: list[CardRetrieval] = []
+        for taxon_id in knowledge.available_taxon_ids():
+            card = knowledge.try_taxon(taxon_id)
+            if card is None or self_contradiction_hits(card, observations):
+                continue
+            reasons: list[CardRetrievalReason] = []
+            for observation in observations:
+                for expectation in (*card.strong_positive_features, *card.supporting_features):
+                    if observation.feature != expectation.feature:
+                        continue
+                    for declared in expectation.values:
+                        relation = vocabulary.retrieval_relation(
+                            observation.feature, observation.value, declared
+                        )
+                        if relation is None or (relation != "exact" and not semantic):
+                            continue
+                        reason = CardRetrievalReason(
+                            observation_id=observation.observation_id,
+                            feature=observation.feature,
+                            observed=observation.value,
+                            declared=declared,
+                            relation=relation,
+                        )
+                        if reason not in reasons:
+                            reasons.append(reason)
+            if reasons:
+                record = CardRetrieval(
+                    subject_id=subject_id, taxon=taxon_id, reasons=tuple(reasons)
                 )
-                for observation in observations
+                (related if record.semantic_only else exact).append(record)
+        related.sort(
+            key=lambda record: (
+                -len({reason.observation_id for reason in record.reasons}),
+                record.taxon,
             )
-            for observations in eligible.values()
         )
-    )
+        records.extend(exact)
+        records.extend(related[:semantic_limit])
+    return tuple(records)
 
 
 def _covered_reference_status(

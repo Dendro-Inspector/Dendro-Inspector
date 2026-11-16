@@ -23,6 +23,7 @@ from dendro_inspector.schemas.reviews import (
     Impact,
     ReasonCode,
     RequiredAction,
+    Reviewer,
     ReviewFinding,
     ReviewResult,
     ReviewStatus,
@@ -356,8 +357,15 @@ def adjudicate(
     *,
     evidence: EvidencePacket | None,
     knowledge: KnowledgeBase,
+    without_opinion: frozenset[Reviewer] = frozenset(),
 ) -> ReviewSynthesis:
-    """Adjudicate deterministic findings first and bind only valid exact reranks."""
+    """Adjudicate deterministic findings first and bind only valid exact reranks.
+
+    ``without_opinion`` names reviewers whose model an applied review plan did not call.
+    Their code-raised findings are adjudicated like any other, but their result is not a
+    reviewer's judgement, so it takes no part in deciding whether reviewers disagree: a
+    pass nobody gave must not be read as dissent from a reviewer that failed the result.
+    """
     accepted: list[ReviewFinding] = []
     rejected: list[ReviewFinding] = []
     attributions: list[FindingAttribution] = []
@@ -462,7 +470,9 @@ def adjudicate(
         f"{rerank.candidate_set.subject_id}: finding {rerank.finding_id} admitted rerank"
         for rerank in admitted_reranks
     )
-    reviewer_disagreement = _reviewers_disagree(results) or _reranks_conflict(admitted_reranks)
+    reviewer_disagreement = _reviewers_disagree(
+        tuple(result for result in results if result.reviewer not in without_opinion)
+    ) or _reranks_conflict(admitted_reranks)
     critical_finding = any(finding.severity is Severity.CRITICAL for finding in accepted)
     recommendations = _admit_recommendations(results, accepted_by_result, evidence)
 
@@ -488,11 +498,20 @@ def adjudicate(
     )
 
 
+def reviewers_without_opinion(state: GraphState) -> frozenset[Reviewer]:
+    """Reviewers whose model the round's applied plan did not call."""
+    plan = state.routing_assessment
+    if plan is None:
+        return frozenset()
+    return frozenset(result.reviewer for result in state.reviews if not plan.calls(result.reviewer))
+
+
 async def run(state: GraphState, ctx: NodeContext) -> GraphState:
     synthesis = adjudicate(
         state.reviews,
         evidence=state.evidence,
         knowledge=ctx.knowledge,
+        without_opinion=reviewers_without_opinion(state),
     )
     # Recorded here, per round, because a correction retry clears these reviews from the
     # state: by the end of the run the round that asked for the retry is gone.

@@ -52,6 +52,7 @@ flowchart TD
     PHOTO_PLANNER[Additional photo planner]
     CANDIDATE_GENERATOR[Candidate generator]
     ATTACHMENT_AUTHORITY_GATE[Attachment authority gate]
+    ADAPTIVE_GATE{Which reviewers are needed?}
     BOTANICAL_REVIEWER[Botanical reviewer]
     CONFUSION_REVIEWER[Confusion reviewer]
     CONFIDENCE_REVIEWER[Confidence reviewer]
@@ -79,6 +80,11 @@ flowchart TD
     ATTACHMENT_AUTHORITY_GATE --> BOTANICAL_REVIEWER
     ATTACHMENT_AUTHORITY_GATE --> CONFUSION_REVIEWER
     ATTACHMENT_AUTHORITY_GATE --> CONFIDENCE_REVIEWER
+    ATTACHMENT_AUTHORITY_GATE -->|adaptive routing on| ADAPTIVE_GATE
+    ADAPTIVE_GATE -->|if planned| BOTANICAL_REVIEWER
+    ADAPTIVE_GATE -->|if planned| CONFUSION_REVIEWER
+    ADAPTIVE_GATE -->|if planned| CONFIDENCE_REVIEWER
+    ADAPTIVE_GATE -->|no reviewer model planned| REVIEW_SYNTHESIZER
     BOTANICAL_REVIEWER --> REVIEW_SYNTHESIZER
     CONFUSION_REVIEWER --> REVIEW_SYNTHESIZER
     CONFIDENCE_REVIEWER --> REVIEW_SYNTHESIZER
@@ -334,6 +340,7 @@ bundle.
 | [docs/evaluation.md](docs/evaluation.md) | Public conformance cases, metrics, how to add one |
 | [docs/review-pipeline.md](docs/review-pipeline.md) | Finding admissibility and reason codes |
 | [docs/regional-packs.md](docs/regional-packs.md) | Regional priors and how they are constrained |
+| [docs/human-review.md](docs/human-review.md) | Exporting a case for a specialist and recording their answers |
 | [docs/dataset-policy.md](docs/dataset-policy.md) | Placeholder content, images, licensing, PII |
 | [SECURITY.md](SECURITY.md) | Vulnerability reporting and prompt-injection handling |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Setup, gates, PR expectations |

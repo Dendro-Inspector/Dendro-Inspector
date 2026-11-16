@@ -30,6 +30,7 @@ from dendro_inspector.schemas.reviews import (
     ReviewResult,
     ReviewStatus,
 )
+from dendro_inspector.schemas.routing import ReviewQuestion
 from dendro_inspector.schemas.taxon import Resolution
 
 UNTRUSTED_HEADER = (
@@ -237,6 +238,8 @@ async def review_call(
     declared = declared_diagnostic_context(ctx, projection)
     if declared is not None:
         context_parts.append(declared)
+    if projection.questions:
+        context_parts.append(review_questions_context(projection.questions))
     context = "\n\n".join(context_parts)
     locale = locale_of_case(projection.case)
     result = await request_structured(
@@ -269,6 +272,48 @@ def merge_findings(result: ReviewResult, extra: tuple[ReviewFinding, ...]) -> Re
         status = ReviewStatus.PASS_WITH_FINDINGS
     return result.model_copy(
         update={"findings": (*deterministic, *result.findings), "status": status}
+    )
+
+
+def code_only_review(reviewer: Reviewer, findings: tuple[ReviewFinding, ...]) -> ReviewResult:
+    """The review a reviewer still owes when its model is not called: what its code raises.
+
+    It recommends no level and marks no evidence as reviewed, because no model looked. The
+    findings are the ones the reviewer's node would have merged into a model review, so a
+    plan that skips the call cannot skip the checks.
+    """
+    return merge_findings(
+        ReviewResult(reviewer=reviewer, status=ReviewStatus.PASS, reviewed_evidence_ids=()),
+        findings,
+    )
+
+
+def review_questions_context(questions: tuple[ReviewQuestion, ...]) -> str:
+    """Render the open questions deterministic routing called this reviewer for.
+
+    The reviewer's whole context is unchanged and still in front of it; the questions say
+    why it was called, they do not narrow what it may report.
+    """
+    body = json.dumps(
+        [
+            {
+                "code": question.code,
+                "subject_id": question.subject_id,
+                "question": question.question,
+                "evidence_ids": list(question.evidence_ids),
+            }
+            for question in questions
+        ],
+        indent=2,
+        ensure_ascii=False,
+    )
+    return (
+        "## Review questions (deterministic routing)\n\n"
+        "This system's routing code called this review for the questions below, derived from "
+        "the evidence packet and candidate sets above. Answer them first, as findings that "
+        "cite evidence ids. Nothing was removed from your context: report any other defect "
+        "you find as well.\n\n"
+        f"```json\n{body}\n```"
     )
 
 

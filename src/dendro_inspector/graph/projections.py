@@ -8,6 +8,9 @@ Case and evidence selection are deliberately pass-through in this first boundary
 candidate generator is one of the things under review, so its output must not decide which
 subjects, observations, or photographs a reviewer is allowed to inspect. Narrowing belongs
 in a separate policy change with an evaluation delta attached.
+
+An applied targeted review plan adds one thing and removes nothing: the open questions
+routing called this reviewer for. A plan that was only recorded adds nothing.
 """
 
 from __future__ import annotations
@@ -19,6 +22,7 @@ from dendro_inspector.graph.state import GraphState
 from dendro_inspector.schemas.evidence import EvidencePacket
 from dendro_inspector.schemas.review_context import ProposedAssessment, ReviewProjection
 from dendro_inspector.schemas.reviews import Reviewer
+from dendro_inspector.schemas.routing import ReviewQuestion, ReviewRoute
 
 if TYPE_CHECKING:
     from dendro_inspector.graph.executor import NodeContext
@@ -36,6 +40,23 @@ _REVIEWER_BY_NODE: dict[NodeName, Reviewer] = {
 }
 
 REVIEWER_NODES: frozenset[NodeName] = frozenset(_REVIEWER_BY_NODE)
+
+
+def reviewer_of(node: NodeName) -> Reviewer | None:
+    """The reviewer a node runs, or None for a node that is not a reviewer."""
+    return _REVIEWER_BY_NODE.get(node)
+
+
+def _questions_for(state: GraphState, reviewer: Reviewer) -> tuple[ReviewQuestion, ...]:
+    """The questions an applied targeted plan addressed to this reviewer.
+
+    A plan that was only recorded asks nothing: in shadow mode every reviewer must see
+    exactly the context it would have seen without the experiment.
+    """
+    plan = state.routing_assessment
+    if plan is None or not plan.applied or plan.route is not ReviewRoute.TARGETED_REVIEW:
+        return ()
+    return tuple(question for question in plan.questions if question.reviewer is reviewer)
 
 
 def _proposed_taxa(state: GraphState) -> tuple[str, ...]:
@@ -94,4 +115,5 @@ def build_review_projection(
         include_comparison_cards=True,
         include_regional_pack=True,
         proposed_assessments=(_proposed_assessments(state) if reviewer is Reviewer.ARBITER else ()),
+        questions=_questions_for(state, reviewer),
     )

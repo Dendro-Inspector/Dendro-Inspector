@@ -13,6 +13,7 @@ from dendro_inspector.schemas.decisions import DecisionStatus
 from dendro_inspector.schemas.evidence import EvidencePacket
 from dendro_inspector.schemas.input import CaseInput
 from dendro_inspector.schemas.reviews import Reviewer
+from dendro_inspector.schemas.routing import ReviewQuestion
 from dendro_inspector.schemas.taxon import Confidence, Resolution
 
 
@@ -43,6 +44,8 @@ class ReviewProjection(Contract):
     include_comparison_cards: bool = True
     include_regional_pack: bool = True
     proposed_assessments: tuple[ProposedAssessment, ...] = ()
+    questions: tuple[ReviewQuestion, ...] = ()
+    """Open questions a targeted review plan addressed to this reviewer. Empty otherwise."""
 
     @property
     def evidence_ids(self) -> tuple[str, ...]:

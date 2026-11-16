@@ -19,6 +19,7 @@ from dendro_inspector.graph.executor import NodeContext
 from dendro_inspector.graph.state import GraphState
 from dendro_inspector.knowledge.candidate_validation import (
     cards_in_play,
+    retrieve_cards,
     validate_candidate_set_with_report,
 )
 from dendro_inspector.knowledge.references import verify_open_world
@@ -65,7 +66,13 @@ def open_world_context(
         "subjects_without_cards": [
             subject_id
             for subject_id in subject_ids
-            if not cards_in_play(evidence, ctx.knowledge, (subject_id,))
+            if not cards_in_play(
+                evidence,
+                ctx.knowledge,
+                (subject_id,),
+                semantic=ctx.config.graph.semantic_retrieval,
+                semantic_limit=ctx.config.graph.semantic_retrieval_limit,
+            )
         ],
     }
     body = json.dumps(payload, indent=2)
@@ -79,6 +86,22 @@ async def run(state: GraphState, ctx: NodeContext) -> GraphState:
         return state
 
     provider = ctx.providers.get(Role.PRIMARY)
+    retrieved = retrieve_cards(
+        evidence,
+        ctx.knowledge,
+        quality.usable_subject_ids,
+        semantic=ctx.config.graph.semantic_retrieval,
+        semantic_limit=ctx.config.graph.semantic_retrieval_limit,
+    )
+    retrieval_context = ""
+    if ctx.config.graph.semantic_retrieval:
+        ctx.recorder.record_card_retrievals(retrieved)
+        retrieval_context = (
+            "## Card retrieval reasons (project data)\n\n"
+            "A related value only explains why a card is shown. It is not evidence of an "
+            "unobserved detail; supporting references must still match the card exactly.\n\n"
+            + json.dumps([record.model_dump(mode="json") for record in retrieved], indent=2)
+        )
     proposal = await request_structured(
         provider=provider,
         role=Role.PRIMARY.value,
@@ -90,9 +113,8 @@ async def run(state: GraphState, ctx: NodeContext) -> GraphState:
                 for section in (
                     case_context(state.case),
                     evidence_context(evidence),
-                    knowledge_context(
-                        ctx, cards_in_play(evidence, ctx.knowledge, quality.usable_subject_ids)
-                    ),
+                    knowledge_context(ctx, tuple(sorted({record.taxon for record in retrieved}))),
+                    retrieval_context,
                     open_world_context(evidence, ctx, quality.usable_subject_ids),
                 )
                 if section

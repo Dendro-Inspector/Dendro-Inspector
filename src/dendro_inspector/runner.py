@@ -17,11 +17,13 @@ from dendro_inspector.knowledge.loader import KnowledgeBase
 from dendro_inspector.knowledge.references import RecordedReferenceSource, ReferenceSource
 from dendro_inspector.nodes import build_registry
 from dendro_inspector.observability.events import RunTrace
+from dendro_inspector.observability.identity import runtime_identity
 from dendro_inspector.observability.trace import TraceRecorder
 from dendro_inspector.prompts.library import PromptLibrary
 from dendro_inspector.providers.registry import ProviderRegistry
 from dendro_inspector.schemas.decisions import CaseResponse
 from dendro_inspector.schemas.input import CaseInput
+from dendro_inspector.vision_shadow import assess_shadow
 
 
 @dataclass(frozen=True, slots=True)
@@ -50,6 +52,7 @@ def build_context(
     recorder = TraceRecorder(case_id, root=base)
 
     recorder.set_prompt_metadata(prompts.metadata())
+    recorder.set_runtime_identity(runtime_identity(resolved_config, root=base))
     for role in Role:
         provider = providers.get(role)
         recorder.set_provider(role.value, provider.adapter_name, provider.model)
@@ -81,6 +84,10 @@ async def run_case(
     ctx = build_context(config, root=root, case_id=case.case_id)
     try:
         result = await run_graph(case, ctx, build_registry())
-        return CaseRunResult(state=result.state, trace=result.trace)
+        trace = result.trace
+        if ctx.config.graph.vision_shadow:
+            shadow = await assess_shadow(case, ctx)
+            trace = trace.model_copy(update={"vision_shadow": shadow})
+        return CaseRunResult(state=result.state, trace=trace)
     finally:
         await ctx.providers.aclose()

@@ -106,6 +106,11 @@ def mixed_record():
     return item
 
 
+def with_roles(decisions, role="unspecified"):
+    """Each subject row carries its role; a record that names none has none designated."""
+    return [{**decision, "role": role} for decision in decisions]
+
+
 def test_subject_summary_counts_all_subjects_without_multiplying_usage():
     item = mixed_record()
     row = summary.case_row(item)
@@ -121,7 +126,43 @@ def test_subject_summary_counts_all_subjects_without_multiplying_usage():
     assert result["status"] == {"insufficient_evidence": 1}
     assert result["cases"] == 2
     assert result["tokens"]["input_tokens"] == 24
-    assert row["subject_decisions"] == item["result"]["response"]["decisions"]
+    assert row["subject_decisions"] == with_roles(item["result"]["response"]["decisions"])
+    assert row["target_subject"] == ""
+    assert result["target_designated"] == 0
+
+
+def test_the_verdict_fields_describe_the_designated_target_not_the_first_subject():
+    """A tree in the background must not be reported as the tree that was asked about."""
+    item = mixed_record()
+    response = item["result"]["response"]
+    response["target_subject_ids"] = ["piece"]
+    response["results"] = [
+        {"subject": "pile", "subject_role": "context"},
+        {"subject": "piece", "subject_role": "target"},
+    ]
+    row = summary.case_row(item)
+    assert row["target_subject"] == "piece"
+    assert (row["selected_taxon"], row["status"], row["resolution"]) == (
+        "pinus",
+        "probable",
+        "genus",
+    )
+    assert [decision["role"] for decision in row["subject_decisions"]] == ["context", "target"]
+    result = summary.summarize([row])
+    assert result["target_designated"] == 1
+    assert result["top_taxa"] == {"pinus": 1}
+    assert result["subject_summary"]["subjects"] == 2
+
+
+def test_no_designated_target_falls_back_to_the_first_subject_and_says_so():
+    item = mixed_record()
+    item["result"]["response"]["target_subject_ids"] = []
+    row = summary.case_row(item)
+    assert row["target_subject"] == ""
+    assert row["status"] == "insufficient_evidence"
+    # Two targets are not one answer either.
+    item["result"]["response"]["target_subject_ids"] = ["pile", "piece"]
+    assert summary.case_row(item)["target_subject"] == ""
 
 
 def test_projected_api_record_retains_decisions_but_not_invented_usage():
@@ -148,7 +189,9 @@ def test_upload_summary_writes_csv_and_null_dataset(tmp_path):
     with (tmp_path / "cases.csv").open(encoding="utf-8", newline="") as handle:
         rows = list(csv.DictReader(handle))
     assert len(rows) == 1
-    assert json.loads(rows[0]["subject_decisions"]) == item["result"]["response"]["decisions"]
+    assert json.loads(rows[0]["subject_decisions"]) == with_roles(
+        item["result"]["response"]["decisions"]
+    )
     assert json.loads((tmp_path / "summary.json").read_text())["subject_summary"]["subjects"] == 2
 
 

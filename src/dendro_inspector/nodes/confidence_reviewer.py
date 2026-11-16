@@ -183,12 +183,16 @@ def invalid_negative_evidence_findings(state: GraphState) -> tuple[ReviewFinding
     )
 
 
-async def run(state: GraphState, ctx: NodeContext) -> GraphState:
-    result = await review_call(ctx, node=NODE, reviewer=Reviewer.CONFIDENCE)
-    result = merge_findings(
-        result,
+def code_findings(state: GraphState, ctx: NodeContext) -> tuple[ReviewFinding, ...]:
+    """Every finding this reviewer's code raises, with or without its model call."""
+    return (
         unsupported_resolution_findings(state, ctx)
         + evidence_tier_findings(state)
-        + invalid_negative_evidence_findings(state),
+        + invalid_negative_evidence_findings(state)
     )
+
+
+async def run(state: GraphState, ctx: NodeContext) -> GraphState:
+    result = await review_call(ctx, node=NODE, reviewer=Reviewer.CONFIDENCE)
+    result = merge_findings(result, code_findings(state, ctx))
     return state.evolve(reviews=(*state.reviews, result))

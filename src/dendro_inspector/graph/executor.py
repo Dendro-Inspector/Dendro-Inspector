@@ -21,7 +21,11 @@ from dendro_inspector.graph.definition import (
     TERMINAL_NODE,
     NodeName,
 )
-from dendro_inspector.graph.projections import REVIEWER_NODES, build_review_projection
+from dendro_inspector.graph.projections import (
+    REVIEWER_NODES,
+    build_review_projection,
+    reviewer_of,
+)
 from dendro_inspector.graph.routing import next_step
 from dendro_inspector.graph.state import GraphState
 from dendro_inspector.knowledge.loader import KnowledgeBase
@@ -73,6 +77,27 @@ def _context_for_node(node: NodeName, state: GraphState, ctx: NodeContext) -> No
     projection = build_review_projection(node, state, ctx)
     ctx.recorder.record_review_projection(node.value, projection)
     return replace(ctx, review_projection=projection)
+
+
+def planned_fanout(state: GraphState) -> tuple[NodeName, ...]:
+    """The reviewers this round calls: all of them, unless an applied plan names fewer.
+
+    The adaptive gate has already put the skipped reviewers' code-raised findings in the
+    state, so leaving a member out here drops a model call and nothing else. A plan that
+    calls no reviewer never reaches the fan-out: routing sends it to the synthesizer.
+    """
+    plan = state.routing_assessment
+    if plan is None or not plan.applied:
+        return REVIEW_FANOUT
+    members = tuple(
+        member
+        for member in REVIEW_FANOUT
+        if (reviewer := reviewer_of(member)) is not None and plan.calls(reviewer)
+    )
+    if not members:
+        msg = "review fan-out reached under a plan that calls no reviewer"
+        raise GraphExecutionError(msg)
+    return members
 
 
 async def _run_fanout(
@@ -224,7 +249,7 @@ async def _walk(
         steps += 1
 
         if current in REVIEW_FANOUT:
-            state = await _run_fanout(REVIEW_FANOUT, registry, state, ctx)
+            state = await _run_fanout(planned_fanout(state), registry, state, ctx)
             current = next_step(REVIEW_FANOUT[0], state, ctx.config.graph)
             continue
 

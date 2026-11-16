@@ -16,6 +16,7 @@ import typer
 
 from dendro_inspector.config import (
     Adapter,
+    AdaptiveMode,
     AppConfig,
     ProviderConfig,
     ReviewAuthority,
@@ -503,6 +504,24 @@ def coverage_audit_command(
             ),
         ),
     ] = None,
+    adaptive_routing: Annotated[
+        AdaptiveMode | None,
+        typer.Option(
+            "--adaptive-routing",
+            help=(
+                "Override the review-plan mode for offline replay only. 'enabled' replays "
+                "each record calling only the reviewer models its plan names; pair it with "
+                "--reviews recorded and compare against the same replay without it."
+            ),
+        ),
+    ] = None,
+    adaptive_fast_path: Annotated[
+        bool | None,
+        typer.Option(
+            "--adaptive-fast-path/--no-adaptive-fast-path",
+            help="Override the fast-path switch of adaptive routing, for offline replay only.",
+        ),
+    ] = None,
     reviews: Annotated[
         str,
         typer.Option(
@@ -543,6 +562,13 @@ def coverage_audit_command(
         config = config.model_copy(
             update={"graph": config.graph.model_copy(update={"review_authority": review_authority})}
         )
+    routing: dict[str, object] = {}
+    if adaptive_routing is not None:
+        routing["adaptive_routing"] = adaptive_routing
+    if adaptive_fast_path is not None:
+        routing["adaptive_fast_path"] = adaptive_fast_path
+    if routing:
+        config = config.model_copy(update={"graph": config.graph.model_copy(update=routing)})
     try:
         references = label_scoring.load_labels(labels)
     except (OSError, ValueError) as exc:
@@ -602,6 +628,119 @@ def heldout_check_command(
         labels_out.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
         typer.echo(f"wrote {len(payload['labels'])} labels to {labels_out}")
     if not report.ok:
+        raise typer.Exit(1)
+
+
+@app.command(name="review-export")
+def review_export_command(
+    result: Annotated[
+        Path,
+        typer.Argument(help="A stored answer: `dendro inspect --json` output or a case record."),
+    ],
+    out: Annotated[Path, typer.Option("--out", help="A new folder for the package.")],
+    image: Annotated[
+        list[Path],
+        typer.Option(
+            "--image",
+            "-i",
+            help="The photographs, in the order they were given to `dendro inspect`.",
+        ),
+    ] = [],
+    allow_location: Annotated[
+        bool,
+        typer.Option(
+            "--allow-location",
+            help="Include photographs whose metadata carries GPS coordinates or cannot be read.",
+        ),
+    ] = False,
+) -> None:
+    """Write a package for a specialist: the photographs, the answer and precise questions.
+
+    No model is called and nothing is sent anywhere. Sharing the folder is your decision.
+    """
+    from pydantic import ValidationError
+
+    from dendro_inspector import human_review
+
+    try:
+        package, payloads = human_review.build_package(
+            result, list(image), allow_location=allow_location
+        )
+        human_review.write_package(package, payloads, out)
+    except (human_review.HumanReviewError, ValidationError) as exc:
+        typer.secho(str(exc), fg=typer.colors.RED, err=True)
+        raise typer.Exit(1) from exc
+    typer.echo(
+        f"package {package.package_id}: {len(package.photos)} photographs, "
+        f"{len(package.questions)} questions, in {out}"
+    )
+    typer.echo(f"The reviewer fills in {out / human_review.TEMPLATE_FILE}; see the README there.")
+
+
+@app.command(name="review-import")
+def review_import_command(
+    package: Annotated[Path, typer.Argument(help="The folder `dendro review-export` wrote.")],
+    answers: Annotated[Path, typer.Argument(help="The specialist's filled-in answers (JSON).")],
+) -> None:
+    """Record a specialist's answers as a revision of this one case.
+
+    The answers are checked against the package and appended to its revisions.jsonl. No
+    knowledge card, prompt or policy is changed.
+    """
+    from dendro_inspector import human_review
+
+    try:
+        revision, history = human_review.import_answers(package, answers)
+    except human_review.HumanReviewError as exc:
+        typer.secho(str(exc), fg=typer.colors.RED, err=True)
+        raise typer.Exit(1) from exc
+    typer.echo(human_review.render_revision(revision, history))
+
+
+@app.command(name="release-manifest")
+def release_manifest_command(
+    out: Annotated[
+        Path | None, typer.Option("--out", help="Also write the manifest to this file.")
+    ] = None,
+    compare: Annotated[
+        Path | None,
+        typer.Option(
+            "--compare",
+            help="A stored answer, case record or trace: which identities it shares with this "
+            "installation, and which settings differ.",
+        ),
+    ] = None,
+) -> None:
+    """State what this installation's answers depend on: code, prompts, knowledge, settings.
+
+    No model is called. With --compare, exits 1 when a recorded identity differs.
+    """
+    from dendro_inspector.observability import identity
+    from dendro_inspector.prompts.library import PromptLibrary
+
+    config = load_config()
+    try:
+        prompt = PromptLibrary(config.prompts).metadata()
+    except (DomainPromptMissingError, PromptPolicyError) as exc:
+        typer.secho(str(exc), fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=3) from exc
+    manifest = identity.release_manifest(config, prompt)
+    text = json.dumps(manifest, indent=2, ensure_ascii=False)
+    if out is not None:
+        out.write_text(text + "\n", encoding="utf-8")
+    if compare is None:
+        typer.echo(text)
+        return
+    try:
+        stored = json.loads(compare.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise typer.BadParameter(str(exc), param_hint="--compare") from exc
+    rows, settings = identity.compare(manifest, stored)
+    for name, state in rows:
+        typer.echo(f"{name:<16} {state}")
+    for line in settings:
+        typer.echo(f"  {line}")
+    if any(state == "differs" for _, state in rows):
         raise typer.Exit(1)
 
 

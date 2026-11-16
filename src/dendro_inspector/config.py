@@ -136,6 +136,30 @@ class ReviewAuthority(StrEnum):
     evidence. Experimental; see ``final_decision.validated_ground``."""
 
 
+class AdaptiveMode(StrEnum):
+    """Whether the review plan of ``nodes/adaptive_gate.py`` is derived, and followed."""
+
+    OFF = "off"
+    """The gate does not run. Every case gets all three reviewers, as released."""
+    SHADOW = "shadow"
+    """The plan is derived and recorded in the trace; the full review still runs. No model
+    call is added or removed, and no reviewer's context changes."""
+    ENABLED = "enabled"
+    """The graph follows the plan. Experimental: it changes which reviewer models see a
+    case, and so can change the answer."""
+
+
+class TargetSelection(StrEnum):
+    """What may designate the subject a request is about, among several in the frame."""
+
+    SINGLE_SUBJECT = "single_subject"
+    """Only a lone subject is a target. With several, none is designated."""
+    EXTRACTOR = "extractor"
+    """Experimental. The evidence extractor is also asked which subject the photographs
+    are of, and code designates it. One optional field is added to that call's response
+    schema, so a provider must be shown to accept it before this is used live."""
+
+
 class GraphConfig(Contract):
     """Execution limits. The retry budget is what makes the graph provably terminating."""
 
@@ -152,6 +176,43 @@ class GraphConfig(Contract):
     )
     min_observations_for_candidates: int = Field(default=2, ge=1)
     require_non_colour_evidence: bool = True
+    semantic_retrieval: bool = Field(
+        default=False,
+        description="Retrieve related cards through declared refinements; admission stays exact.",
+    )
+    semantic_retrieval_limit: int = Field(default=8, ge=1, le=64)
+    vision_shadow: bool = False
+    vision_shadow_max_images: int = Field(default=4, ge=1, le=16)
+    vision_shadow_max_bytes: int = Field(default=16 * 1024 * 1024, ge=1)
+    vision_shadow_timeout_seconds: float = Field(default=60, gt=0, le=300)
+    adaptive_routing: AdaptiveMode = Field(
+        default=AdaptiveMode.OFF,
+        description=(
+            "Experimental. `shadow` records, per review round, which reviewer models "
+            "deterministic rules would have called; `enabled` calls only those. Reviewers "
+            "that are not called still contribute their code-raised findings, and the "
+            "arbiter keeps its own policy. Unmeasured: enable only for an evaluation."
+        ),
+    )
+    adaptive_fast_path: bool = Field(
+        default=False,
+        description=(
+            "Experimental, and separate on purpose. With `adaptive_routing=enabled`, call no "
+            "reviewer model for a single-subject case in which code alone supports an "
+            "uncontested genus at high confidence. Off, such a case still gets the "
+            "confidence reviewer. Eligibility is recorded in the trace either way."
+        ),
+    )
+    target_selection: TargetSelection = Field(
+        default=TargetSelection.SINGLE_SUBJECT,
+        description=(
+            "What designates the target subject of an answer. `single_subject` (the "
+            "default) calls a lone subject the target and designates none among several. "
+            "`extractor` is experimental: the extractor proposes the photographs' main "
+            "subject and the other subjects are reported as context. No verdict, level or "
+            "confidence depends on it; only which result is presented as the answer."
+        ),
+    )
     open_world_discovery: bool = Field(
         default=False,
         description=(
@@ -381,6 +442,17 @@ def load_config(overrides: AppConfig | None = None) -> AppConfig:
     # running a paid inspection under a policy nobody asked for.
     authority = (_env("DENDRO_REVIEW_AUTHORITY") or ReviewAuthority.RECOMMENDATION.value).strip()
     graph = GraphConfig(
+        adaptive_routing=AdaptiveMode((_env("DENDRO_ADAPTIVE_ROUTING", "off") or "off").lower()),
+        target_selection=TargetSelection(
+            (_env("DENDRO_TARGET_SELECTION") or TargetSelection.SINGLE_SUBJECT.value).lower()
+        ),
+        adaptive_fast_path=(_env("DENDRO_ADAPTIVE_FAST_PATH", "false") or "false").lower()
+        in {"1", "true", "yes", "on"},
+        vision_shadow=(_env("DENDRO_VISION_SHADOW", "false") or "false").lower()
+        in {"1", "true", "yes", "on"},
+        semantic_retrieval=(_env("DENDRO_SEMANTIC_RETRIEVAL", "false") or "false").lower()
+        in {"1", "true", "yes", "on"},
+        semantic_retrieval_limit=int(_env("DENDRO_SEMANTIC_RETRIEVAL_LIMIT", "8") or "8"),
         open_world_discovery=open_world in {"1", "true", "yes", "on"},
         require_discriminating_support=discriminating in {"1", "true", "yes", "on"},
         review_authority=ReviewAuthority(authority.lower()),
@@ -390,12 +462,12 @@ def load_config(overrides: AppConfig | None = None) -> AppConfig:
     # the file untouched (no upright rotation, metadata kept).
     max_edge = (_env("DENDRO_IMAGE_MAX_EDGE_PX") or "").strip().lower()
     if max_edge:
-        graph = GraphConfig(
-            open_world_discovery=graph.open_world_discovery,
-            require_discriminating_support=graph.require_discriminating_support,
-            review_authority=graph.review_authority,
-            deadline_seconds=graph.deadline_seconds,
-            image_max_edge_px=None if max_edge in {"original", "none"} else int(max_edge),
+        # Every other setting is carried over as it is, so a new one cannot be lost here.
+        graph = GraphConfig.model_validate(
+            {
+                **graph.model_dump(),
+                "image_max_edge_px": None if max_edge in {"original", "none"} else int(max_edge),
+            }
         )
 
     return AppConfig(

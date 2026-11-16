@@ -17,6 +17,7 @@ from dendro_inspector.schemas.decisions import (
     CaseResponse,
     FinalDecision,
     StructuredFinalResult,
+    SubjectRole,
     ToneMode,
 )
 from dendro_inspector.schemas.taxon import Confidence
@@ -32,6 +33,7 @@ TEXT_OMITS_VERDICT = "text_omits_verdict"
 VALIDATED_IDENTITY_MISMATCH = "validated_identity_mismatch"
 HYPOTHESIS_MISMATCH = "hypothesis_mismatch"
 TEXT_OMITS_HYPOTHESIS = "text_omits_hypothesis"
+TARGET_MISMATCH = "target_mismatch"
 RESTRAINT_VOICE_WITH_DECISIVE_BAND = "restraint_voice_with_decisive_band"
 
 
@@ -106,6 +108,12 @@ def explanation_conflicts(
             and result.visual_hypothesis.explanation not in response.human_readable
         ):
             issues.append(f"{TEXT_OMITS_HYPOTHESIS}:{subject}")
+
+    # The subjects named as the answer are exactly the results marked as the target. A
+    # consumer may read either, and they must not point at different trees.
+    marked = {r.subject for r in response.results if r.subject_role is SubjectRole.TARGET}
+    if marked != set(response.target_subject_ids):
+        issues.append(TARGET_MISMATCH)
 
     # The cautious voice opens by declining a 95+ claim; it cannot frame one.
     mode = delivered_mode or response.tone_mode

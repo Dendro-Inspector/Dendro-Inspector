@@ -207,6 +207,48 @@ covers every detected identity root, including subjects the quality gate found u
 each receives either a supported verdict or an explicit insufficient-evidence result and
 photo request. A model's omission cannot silently remove a subject from the answer.
 
+### Independent vision assessment (shadow experiment)
+
+`DENDRO_VISION_SHADOW=true` records a card-independent `VisionAssessment` under
+`trace.vision_shadow`. It defaults off. The measurement runs after the normal answer is
+frozen, using the original case and photographs, with no extracted evidence or retrieved
+cards. Its local subject/observation references are validated, including image ownership.
+Nothing reads its hypotheses into candidate generation, evidence extraction or the answer.
+Failures produce a shadow failure record while preserving the production result.
+
+The default limits are four images, 16 MiB of original image bytes, 60 seconds and one
+structured generation attempt with no repair retry. Over-budget cases are recorded as
+skipped rather than sampling away context. These are workload limits, not a dollar cap;
+SDK transport retries and provider billing require an approved pilot budget before live
+activation. Shadow time and usage are recorded separately from production graph totals.
+Missing provider token accounting remains unknown. The experiment is temporary measurement
+overhead, not a permanent extra graph stage.
+
+### Bounded semantic retrieval (experimental)
+
+`DENDRO_SEMANTIC_RETRIEVAL=true` lets the candidate generator see cards related through
+the explicit refinement chains in `knowledge/vocabulary.yaml`. It defaults to false.
+`DENDRO_SEMANTIC_RETRIEVAL_LIMIT` bounds additional cards per subject (default 8); exact
+matches are never removed by this limit. The evidence-quality gate uses the same retrieval
+policy, so it does not stop a subject whose related cards could be inspected.
+
+Retrieval records identify the subject, observation, feature, observed and declared values,
+relation (`exact`, `observed_broader`, `observed_narrower`) and evidence revision. These are
+stored as `card_retrievals` in trace schema 4 and shown to the generator. A relation explains
+why a card is visible; it grants no diagnostic credit. Candidate admission, contradictions,
+attachment trust and confidence ceilings retain their exact matching rules. Word overlap,
+sibling refinements and another subject's readings do not establish a relation.
+
+One refinement pair was added alongside it, with the owner's approval:
+`leaf.shape: cordate_serrate -> cordate`. Linden's serrate heart-shaped leaf is a narrower
+reading of a heart-shaped leaf, which the domain prompt also lists among poplar's leaf
+forms. With retrieval on, a heart-shaped reading opens the linden card beside poplar. It
+cannot support linden, whose card asks for the serrate reading. Like every pair in that
+file it applies with retrieval off as well: a heart-shaped reading no longer counts as
+disagreement with linden's own strong feature, where before it removed the card from play.
+
+Older trace readers must negotiate schema support before accepting schema 4 records.
+
 ### Open-world candidates
 
 All of this is behind `GraphConfig.open_world_discovery`, off by default. Off, the
@@ -260,6 +302,40 @@ no model, and is not scored. `StructuredFinalResult` gives a consumer two separa
 `validated_identity` for the confirmed name and `visual_hypothesis` for this one, each with
 its own status and explanation. When one is recorded, and what ends it, is in
 [the review pipeline](review-pipeline.md#the-name-a-review-held-back).
+
+### Whose answer a result is
+
+Every subject gets its own verdict, and a photograph of one tree often shows another behind
+it. The composed answer therefore says which result the request is about:
+
+- each `StructuredFinalResult` has a `subject_role`: `target`, `context` or `unspecified`;
+- `CaseResponse.target_subject_ids` lists the target subjects, and `target_source` says what
+  designated them.
+
+The rule is code, in `response_composer.designate_targets`. A lone subject is the target
+(`single_subject`). Among several, nothing code can check says which one was meant, so none
+is designated: every result is `unspecified`, `target_subject_ids` is empty, and the text
+opens by saying so. A consumer must not then present the first result as the answer.
+
+`GraphConfig.target_selection = extractor` (env `DENDRO_TARGET_SELECTION`) is an experiment,
+off by default. The evidence extractor is also asked which subject the photographs are of.
+Its proposal designates that subject `target` (`extractor_proposal`) and the others
+`context`, and the text leads with the target. A proposal that names a component stands for
+its tree; one that names nothing here is dropped. The proposal is a reading of how the
+photographs are framed and is used for nothing else: no verdict, level or confidence depends
+on it. It adds one optional field to that one call's response schema, which stays the
+released schema while the setting is off, so one real inspection against the live provider
+is owed before it is used there.
+
+The proposal is kept in the composed answer, not in the trace's evidence history, so a
+replay of a stored trace designates no target among several subjects.
+
+A role never changes a decision, and `results` and `decisions` keep the extractor's order.
+The batch summary (`scripts/batch/summarize_run.py`) reports the designated target in its
+per-case verdict columns, and the first subject only where none is designated.
+
+`CaseResponse.schema_version` is `2` since these fields were added. Version 2 removed and
+renamed nothing; an answer stored before the field existed has no version and is version 1.
 
 ### Ordinal scores, not percentages
 
@@ -583,6 +659,27 @@ belongs to a different evidence world than the one this answer was composed in.
 The executor (`graph/executor.py`) walks a pure routing function, runs the three reviewers
 concurrently, records an event per node, and refuses to exceed `max_steps`. It is about a
 hundred lines and knows nothing about dendrology.
+
+### What a run depended on
+
+An answer depends on its input and on four things the run brings: the code
+(`code_commit_sha`, or the commit an image was built from), the prompts (`domain_prompt`),
+the knowledge, and the settings. Trace schema 5 records the last two in `runtime_identity`
+([`observability/identity.py`](../src/dendro_inspector/observability/identity.py)):
+
+| Field | Records |
+| --- | --- |
+| `knowledge_sha256`, `knowledge_files` | One digest over every file the loader reads (taxon, comparison and region cards, vocabulary, value sets), by path, with line endings normalised; `review-queue/` is not read and not counted |
+| `reference_records_sha256` | The operator's reference records, when configured |
+| `config`, `config_sha256` | Escalation and graph settings, tone and domain sections, the region pack, and each role's adapter, model and retry setting, with a digest of that canonical form. Paths, credential names and logging settings are left out: they differ between machines without changing an answer |
+| `package_version` | The installed release |
+
+Two answers from one image can therefore still be told apart when the deployment's
+settings changed between them, and an answer can be matched to a release.
+`dendro release-manifest` prints the same identities for an installation or an image;
+`--compare ANSWER` reports, for a stored answer, case record or trace, which of them it
+shares (`same`, `differs`, or `not recorded` for an older trace), lists each setting that
+differs, and exits 1 when one does. A digest detects a difference; it is not a signature.
 
 ## Termination
 

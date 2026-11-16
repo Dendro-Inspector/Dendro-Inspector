@@ -324,6 +324,95 @@ the mixed-taxa flag had correctly requested. A cost suppressor must never talk t
 of a safety trigger. Regression-tested in
 `tests/unit/test_escalation_gate.py::TestPrecedence`.
 
+## Adaptive routing (experimental)
+
+`GraphConfig.adaptive_routing` (env `DENDRO_ADAPTIVE_ROUTING`) decides which of the three
+internal reviewer models a case needs. It is `off` by default. The arbiter is not part of
+it: whether the arbiter runs stays with the escalation policy above.
+
+| Mode | What happens |
+| --- | --- |
+| `off` | The gate does not run. All three reviewer models see every case. |
+| `shadow` | The gate derives a review plan and records it in the trace's `routing_history`. The full review runs and each reviewer gets the context it would have had. No model call is added or removed. |
+| `enabled` | The graph follows the plan: only the reviewer models it names are called. |
+
+The gate (`nodes/adaptive_gate.py`) calls no model. It computes every reviewer's
+code-raised findings, adjudicates them, composes the verdict they leave standing, and
+chooses a route:
+
+| Route | When | Reviewer models called |
+| --- | --- | --- |
+| `full_review` | A case rule fails, or every reviewer has an open question | all three |
+| `request_photos` | The case rules hold and nothing was admitted for the subject | none |
+| `fast_path` | The case rules and the fast-path rules all hold, and `adaptive_fast_path` is on | none |
+| `targeted_review` | Otherwise | those with an open question |
+
+**Case rules.** One failure keeps the full review:
+
+- the evidence packet, the quality report and the guard report exist;
+- it is the first review round (a correction round is always reviewed in full);
+- there is no user claim and no challenge to an earlier result;
+- no instruction-like content was detected;
+- the packet has exactly one subject;
+- neither the planner nor the extractor expects several taxa;
+- no evidence is unattached and no verdict is attachment-sensitive;
+- there is no open-world candidate;
+- no candidate is proposed at species level.
+
+**Fast-path rules.** All of these must hold as well:
+
+- code alone names a genus, `identified` or `probable`, at high confidence;
+- the leader has discriminating support;
+- no evidence is recorded against the leader, by the proposal or by its card;
+- the two leaders are at least one strength step apart;
+- no accepted code-raised finding asks for anything;
+- no trusted observation falls outside the card vocabulary;
+- the result does not depend on colour.
+
+`GraphConfig.adaptive_fast_path` (env `DENDRO_ADAPTIVE_FAST_PATH`) is a separate switch, off
+by default. With it off, a case that meets every rule goes to the confidence reviewer alone.
+`fast_path_eligible` is recorded either way, so eligibility can be counted before the switch
+is used. A photograph that could not be read is not a rule: no reviewer sees it either.
+
+**Questions.** A targeted plan calls a reviewer for a stated reason and tells it so, in a
+"Review questions" section of its context:
+
+| Reviewer | Code | Asked when |
+| --- | --- | --- |
+| botanical | `contradiction_against_leader` | Evidence is recorded against the leader |
+| confusion | `leaders_not_separated` | The two leaders are less than one strength step apart |
+| confusion | `declared_look_alike_open` | Code found a card-declared look-alike that trusted evidence has not ruled out |
+| confusion | `leader_not_established` | Code could not name the leader |
+| confidence | `claim_strength` | Code named a taxon |
+
+The rest of the reviewer's context is unchanged: the whole evidence packet, every candidate
+and every photograph. Narrowing what a reviewer sees would be a separate change.
+
+**What a skipped call cannot skip.** Each reviewer node raises findings in code as well as
+asking a model (see [review pipeline](review-pipeline.md#reviewers)). For every reviewer a
+plan does not call, the gate files those findings as a review with no recommended level,
+recorded with `model_called: false`. Adjudication, abstention, the escalation gate and the
+final decision therefore apply the same code-raised findings on every route. Such a review
+is not a reviewer's judgement, and it takes no part in the reviewer-disagreement signal.
+
+**What it can change.** In `enabled` mode a reviewer model that is not called cannot raise a
+finding, recommend a lower level or propose a rerank. A recommendation with nothing behind
+it can no longer lower a supported name, and a contradiction only that reviewer would have
+noticed is missed. `request_photos` gives up the chance that a reviewer proposes a
+candidate the generator did not. `shadow` changes no answer.
+
+**Measured so far: nothing.** The rules are a first, deliberately narrow reading of when a
+reviewer model is unlikely to change the answer. How often each route occurs, how many
+calls it saves and whether answers get better or worse are all unknown. Measure in this
+order, and do not enable it on a deployment before the last step:
+
+1. Offline, on stored records that carry recorded reviews, replay the same records with and
+   without the plan and score both against the same labels. See
+   [evaluation](evaluation.md#replay-under-a-review-plan).
+2. `shadow` on live runs, to count routes and failed rules at no extra model cost.
+3. A held-out set ([evaluation](evaluation.md#the-held-out-set)), with the wrong-name rate
+   compared between the full review and the plan.
+
 ## Cost
 
 The arbiter roughly doubles model cost on escalated cases. The public conformance suite is
@@ -357,5 +446,8 @@ branch a type error rather than a runtime surprise.
 
 - [`src/dendro_inspector/config.py`](../src/dendro_inspector/config.py) — `Role`, `EscalationPolicy`
 - [`src/dendro_inspector/nodes/escalation_gate.py`](../src/dendro_inspector/nodes/escalation_gate.py)
+- [`src/dendro_inspector/nodes/adaptive_gate.py`](../src/dendro_inspector/nodes/adaptive_gate.py),
+  [`src/dendro_inspector/schemas/routing.py`](../src/dendro_inspector/schemas/routing.py) —
+  the review plan and its record
 - [`src/dendro_inspector/providers/`](../src/dendro_inspector/providers)
 - [`prompts/nodes/arbiter.md`](../prompts/nodes/arbiter.md)

@@ -43,6 +43,7 @@ async def run(state: GraphState, ctx: NodeContext) -> GraphState:
         proposed_candidate_sets=(),
         candidate_sets=(),
         reviews=(),
+        routing_assessment=None,
         synthesis=None,
         quality=None,
     )

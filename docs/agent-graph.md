@@ -21,6 +21,7 @@ flowchart TD
     PHOTO_PLANNER[Additional photo planner]
     CANDIDATE_GENERATOR[Candidate generator]
     ATTACHMENT_AUTHORITY_GATE[Attachment authority gate]
+    ADAPTIVE_GATE{Which reviewers are needed?}
     BOTANICAL_REVIEWER[Botanical reviewer]
     CONFUSION_REVIEWER[Confusion reviewer]
     CONFIDENCE_REVIEWER[Confidence reviewer]
@@ -48,6 +49,11 @@ flowchart TD
     ATTACHMENT_AUTHORITY_GATE --> BOTANICAL_REVIEWER
     ATTACHMENT_AUTHORITY_GATE --> CONFUSION_REVIEWER
     ATTACHMENT_AUTHORITY_GATE --> CONFIDENCE_REVIEWER
+    ATTACHMENT_AUTHORITY_GATE -->|adaptive routing on| ADAPTIVE_GATE
+    ADAPTIVE_GATE -->|if planned| BOTANICAL_REVIEWER
+    ADAPTIVE_GATE -->|if planned| CONFUSION_REVIEWER
+    ADAPTIVE_GATE -->|if planned| CONFIDENCE_REVIEWER
+    ADAPTIVE_GATE -->|no reviewer model planned| REVIEW_SYNTHESIZER
     BOTANICAL_REVIEWER --> REVIEW_SYNTHESIZER
     CONFUSION_REVIEWER --> REVIEW_SYNTHESIZER
     CONFIDENCE_REVIEWER --> REVIEW_SYNTHESIZER
@@ -80,6 +86,7 @@ node with side effects.
 | `evidence_quality` | no | Decide whether any claim is possible | `EvidenceQualityReport` |
 | `photo_planner` | no | Convert "not enough" into a specific photo request | `FinalDecision[]` |
 | `candidate_generator` | primary | Propose rankings; admit only known, same-subject, card-matched support; retain evidence-backed no-card taxa as open-world | `CandidateSet[]`, `OpenWorldCandidate[]` |
+| `adaptive_gate` | no | Only with adaptive routing on: derive which reviewer models the round needs, and file the code-raised findings of the ones it will not call | `RoutingAssessment` |
 | `botanical_reviewer` | reviewer | Botany; card-declared contradictions | `ReviewResult` |
 | `confusion_reviewer` | reviewer | Look-alikes, colour dependence, region assumptions | `ReviewResult` |
 | `confidence_reviewer` | reviewer | Calibration, earned resolution, invalid negatives | `ReviewResult` |
@@ -117,6 +124,10 @@ candidate-specific support. The graph topology did not need a new node to enforc
 | | otherwise | `photo_planner` |
 | `candidate_generator` | `open_world_discovery` and no subject has an admitted candidate | `final_decision` |
 | | otherwise | `attachment_authority_gate` |
+| `attachment_authority_gate` | `adaptive_routing` is `off` (the default) | the three reviewers |
+| | otherwise | `adaptive_gate` |
+| `adaptive_gate` | the plan is applied and calls no reviewer model | `review_synthesizer` |
+| | otherwise | the reviewers the plan calls; all three unless it is applied |
 | `internal_gate` | `synthesis.unresolvable` | `abstain` |
 | | `retry_required` and `retries < budget` | `correction_worker` |
 | | `retry_required` and budget spent | `abstain` |
@@ -132,6 +143,12 @@ takes the `otherwise` branch and is settled before `final_decision`: abstained i
 independently confirms it or if arbitration does not run. See
 [`docs/review-pipeline.md`](review-pipeline.md#an-abstention-needs-a-basis-or-a-second-opinion).
 
+The adaptive gate is an experiment and is off by default, in which case it never runs and
+the graph is the one released. Both of its edges point forward, so it adds no loop. A plan
+that calls no reviewer model still passes through `review_synthesizer`: every reviewer's
+code-raised findings are adjudicated on every route. See
+[`docs/model-roles.md`](model-roles.md#adaptive-routing-experimental).
+
 ## Parallelism
 
 The three reviewers are independent and run concurrently as one logical step. They receive
@@ -146,6 +163,10 @@ on failure or caller cancellation; cancelled members have failed status and a `c
 detail. Completed members retain their provider calls and projections. Failed rounds never
 merge partial reviews into the decision state.
 
+Under an applied review plan the step runs only the reviewers that plan calls. The others
+leave no node event, because nothing of theirs ran; the plan in the trace's
+`routing_history` names them, and their review in `review_rounds` has `model_called: false`.
+
 ## Retry and stop conditions
 
 **Budget: 1** (`GraphConfig.retry_budget`).
@@ -156,8 +177,8 @@ visible. The correction worker then:
 
 1. increments `retries` and records it in the trace;
 2. hands the accepted corrections to the extractor, which appends them to its prompt;
-3. **clears** `candidate_sets`, `reviews`, `synthesis` and `quality`, so the second pass
-   cannot inherit the first pass's conclusions.
+3. **clears** `candidate_sets`, `reviews`, `routing_assessment`, `synthesis` and `quality`,
+   so the second pass cannot inherit the first pass's conclusions.
 
 When the budget is spent the graph does one of: lower taxonomic resolution, request a
 targeted photograph, or abstain. It never loops. See
@@ -180,6 +201,8 @@ raises `GraphExecutionError` rather than returning a degraded answer.
 | Insufficient evidence | Quality gate diverts to photo planner |
 | Escalated | Adds arbiter and arbiter synthesis |
 | One retry | Correction worker repeats extraction through review synthesis |
+| Adaptive routing, shadow | Adds `adaptive_gate` before the reviewers; nothing else changes |
+| Adaptive routing, applied | `adaptive_gate`, then only the planned reviewers, or none |
 
 Exact executed-node counts live in each run trace.
 

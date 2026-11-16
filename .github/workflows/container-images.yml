@@ -39,6 +39,8 @@ jobs:
           docker run --rm dendro-inspector:ci --help
           docker run --rm dendro-inspector:ci prompt-info
           docker run --rm --read-only --tmpfs /tmp dendro-inspector:ci eval --suite public
+          # What an answer from this image depends on: prompts, knowledge and settings.
+          docker run --rm --read-only --tmpfs /tmp dendro-inspector:ci release-manifest
           docker run --rm --entrypoint python dendro-inspector:ci -c \
             "import openai, anthropic, PIL; from dendro_inspector.providers import openai_adapter"
           # Parse only: /app is read-only for the runtime user, so nothing may be written there.
