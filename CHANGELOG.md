@@ -20,6 +20,15 @@ get entries.
   coverage (a genus no card covers counts as an unknown taxon), review status derived from
   the reviews, and GPS metadata. `--labels-out` writes the release-ready units' labels in the
   `coverage-audit --labels` format. No model is called.
+- **An experimental selective arbitration policy, off by default.** Setting
+  `DENDRO_SELECTIVE_ARBITRATION=true` (`EscalationPolicy.selective_arbitration`) calls the
+  arbiter only for a possible overclaim (species proposed, high confidence, close leading
+  candidates) or a safety case (several taxa, a user challenge, instruction-like content, an
+  unresolved contradiction). Reviewer disagreement, critical severity on its own, bark-only
+  input and bark colour dependence are recorded and no longer call it, and the every-decision
+  switch is ignored. A case it does not send records `selective_arbitration` in
+  `escalation_suppressed_by`. On recorded live cases it would have kept 61% of arbiter calls
+  and 17 of the 20 changes the arbiter made. The default is unchanged.
 - **A name that review held back is kept as an unconfirmed hypothesis.** When the leading
   candidate has a reading its own reference card treats as diagnostic, and the verdict was
   lowered only by review that code cannot check (a recommended level, an unverified request
@@ -39,6 +48,15 @@ get entries.
   by `dendro eval` or `coverage-audit`. Three consistency codes report a result that
   disagrees with its decision: `validated_identity_mismatch`, `hypothesis_mismatch` and
   `text_omits_hypothesis`.
+- **An experimental per-node domain prompt, off by default.** With
+  `DENDRO_DOMAIN_PROMPT_SECTIONS=per_node` (`PromptConfig.domain_sections`) each model node
+  is sent only the domain prompt sections listed for it in `prompts/sections.py`, cut at the
+  prompt's own headings and never rewritten: none receives tone, jokes, the response formats
+  or admitting a mistake, which code implements, and the planner and confidence reviewer
+  receive about a third of the prompt. The seal still covers the whole file, a prompt whose
+  sections cannot be read fails closed, and the trace records the mode in
+  `domain_prompt.domain_sections`. The prompt-cache boundary under it is the three sections
+  every node shares. The default sends the whole prompt to every node as before.
 - **An experimental review policy, off by default, for offline comparison.** Under the
   released policy the broadest level any admitted review recommends caps the claim, so a
   reviewer's stated doubt can withdraw a name the evidence supports. Setting

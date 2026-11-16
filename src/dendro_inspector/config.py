@@ -101,6 +101,17 @@ class EscalationPolicy(Contract):
         ),
     )
 
+    selective_arbitration: bool = Field(
+        default=False,
+        description=(
+            "Experimental. Call the arbiter only for the triggers in "
+            "`escalation_gate.SELECTIVE_TRIGGERS`: a possible overclaim (species, high "
+            "confidence, close leaders) or a safety case (several taxa, a user challenge, "
+            "instruction-like content, an unresolved contradiction). The other triggers are "
+            "recorded and do not call it, and `review_every_decision` is ignored."
+        ),
+    )
+
     # Blocking suppressor — wins even over hard triggers when every subject abstains.
     suppress_when_abstaining: bool = True
 
@@ -209,12 +220,22 @@ class ToneProfile(StrEnum):
     DIRECT = "direct"
 
 
+class DomainSections(StrEnum):
+    """How much of the domain prompt each model call is sent."""
+
+    FULL = "full"
+    """The whole prompt on every call, as released."""
+    PER_NODE = "per_node"
+    """Experimental: each node its sections from ``prompts.sections.NODE_SECTIONS``."""
+
+
 class PromptConfig(Contract):
     domain_prompt_path: Path = DEFAULT_DOMAIN_PROMPT_PATH
     manifest_path: Path = DEFAULT_PROMPT_MANIFEST_PATH
     node_prompt_root: Path = DEFAULT_NODE_PROMPT_ROOT
     personality_root: Path = DEFAULT_PERSONALITY_ROOT
     tone_profile: ToneProfile = ToneProfile.STANDARD
+    domain_sections: DomainSections = DomainSections.FULL
 
 
 class KnowledgeConfig(Contract):
@@ -349,6 +370,7 @@ def load_config(overrides: AppConfig | None = None) -> AppConfig:
     reference_records = _env("DENDRO_REFERENCE_RECORDS")
     open_world = (_env("DENDRO_OPEN_WORLD_DISCOVERY", "false") or "false").strip().lower()
     every = (_env("DENDRO_ARBITER_EVERY_DECISION", "false") or "false").strip().lower()
+    selective = (_env("DENDRO_SELECTIVE_ARBITRATION", "false") or "false").strip().lower()
     discriminating = (
         (_env("DENDRO_REQUIRE_DISCRIMINATING_SUPPORT", "true") or "true").strip().lower()
     )
@@ -378,7 +400,10 @@ def load_config(overrides: AppConfig | None = None) -> AppConfig:
 
     return AppConfig(
         providers={Role.PRIMARY: primary, Role.REVIEWER: reviewer, Role.ARBITER: arbiter},
-        escalation=EscalationPolicy(review_every_decision=every in {"1", "true", "yes", "on"}),
+        escalation=EscalationPolicy(
+            review_every_decision=every in {"1", "true", "yes", "on"},
+            selective_arbitration=selective in {"1", "true", "yes", "on"},
+        ),
         graph=graph,
         prompts=PromptConfig(
             domain_prompt_path=Path(
@@ -392,6 +417,10 @@ def load_config(overrides: AppConfig | None = None) -> AppConfig:
             tone_profile=ToneProfile(
                 _env("DENDRO_TONE_PROFILE", ToneProfile.STANDARD.value)
                 or ToneProfile.STANDARD.value
+            ),
+            # An unknown value fails here, at load, like every other policy setting.
+            domain_sections=DomainSections(
+                (_env("DENDRO_DOMAIN_PROMPT_SECTIONS") or DomainSections.FULL.value).strip().lower()
             ),
         ),
         knowledge=KnowledgeConfig(
