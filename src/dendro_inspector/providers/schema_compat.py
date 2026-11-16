@@ -223,7 +223,38 @@ def to_strict_openai_schema(schema: Mapping[str, Any]) -> dict[str, Any]:
     semantically non-optional: nullable fields retain their null branch, while fields with
     Pydantic defaults must be emitted explicitly. The original Pydantic model still validates
     the returned object after transport.
+
+    A reference that carries keywords of its own is replaced by its definition with those
+    keywords on top. Pydantic writes a described enum or model field as ``$ref`` beside
+    ``description``, and strict decoders refuse that pairing. Measured 2026-11-16 on
+    Foundry gpt-5-mini: 400 ``$ref cannot have keywords {'description'}``. Dropping the
+    description instead would hide from the model what the field's author wrote for it.
+    A definition left with no reference by that replacement is removed, so the decoder
+    never receives a definition nothing uses, which Pydantic itself never emits.
     """
+    source = to_openai_schema(schema)
+    definitions = source.get("$defs")
+    inlining: list[str] = []
+    inlined: set[str] = set()
+
+    def definition(reference: str) -> dict[str, Any]:
+        name = reference.rpartition("/")[2]
+        if not isinstance(definitions, dict) or name not in definitions:
+            msg = f"unresolvable $ref {reference!r}"
+            raise SchemaTranslationError(msg)
+        if name in inlining:
+            msg = f"recursive $ref {reference!r} carries keywords and cannot be inlined"
+            raise SchemaTranslationError(msg)
+        inlining.append(name)
+        try:
+            resolved = strict(definitions[name])
+        finally:
+            inlining.pop()
+        if not isinstance(resolved, dict):
+            msg = f"$ref {reference!r} does not name a schema"
+            raise SchemaTranslationError(msg)
+        inlined.add(name)
+        return resolved
 
     def strict(node: Any) -> Any:
         if isinstance(node, list):
@@ -251,13 +282,42 @@ def to_strict_openai_schema(schema: Mapping[str, Any]) -> dict[str, Any]:
         if isinstance(properties, dict):
             out["required"] = list(properties)
             out["additionalProperties"] = False
+        reference = out.get("$ref")
+        if isinstance(reference, str) and len(out) > 1:
+            own = {key: value for key, value in out.items() if key != "$ref"}
+            out = {**definition(reference), **own}
         return out
 
-    translated = strict(to_openai_schema(schema))
+    translated = strict(source)
     if not isinstance(translated, dict):  # pragma: no cover - strict preserves the root
         msg = "strict schema root is not an object"
         raise SchemaTranslationError(msg)
+    kept = translated.get("$defs")
+    if inlined and isinstance(kept, dict):
+        for name in inlined - _referenced_definitions(translated):
+            del kept[name]
+        if not kept:
+            del translated["$defs"]
     return translated
+
+
+def _referenced_definitions(node: Any) -> set[str]:
+    """Names of the definitions a schema still points at through ``$ref``."""
+    if isinstance(node, list):
+        return {name for item in node for name in _referenced_definitions(item)}
+    if not isinstance(node, dict):
+        return set()
+    names: set[str] = set()
+    for key, value in node.items():
+        if key in {"properties", "$defs"} and isinstance(value, dict):
+            # Field and definition names, not keywords: a field called `$ref` points nowhere.
+            for sub in value.values():
+                names |= _referenced_definitions(sub)
+        elif key == "$ref" and isinstance(value, str):
+            names.add(value.rpartition("/")[2])
+        else:
+            names |= _referenced_definitions(value)
+    return names
 
 
 #: Keywords the Anthropic structured-output dialect does not accept. Each is re-imposed by
