@@ -13,6 +13,7 @@ from dendro_inspector.graph.definition import EXECUTABLE_NODES, NodeName
 from dendro_inspector.graph.executor import NodeRunner
 from dendro_inspector.nodes import (
     abstain,
+    adaptive_gate,
     arbiter,
     arbiter_synthesizer,
     attachment_authority_gate,
@@ -44,6 +45,7 @@ def build_registry() -> Mapping[NodeName, NodeRunner]:
         NodeName.PHOTO_PLANNER: photo_planner.run,
         NodeName.CANDIDATE_GENERATOR: candidate_generator.run,
         NodeName.ATTACHMENT_AUTHORITY_GATE: attachment_authority_gate.run,
+        NodeName.ADAPTIVE_GATE: adaptive_gate.run,
         NodeName.BOTANICAL_REVIEWER: botanical_reviewer.run,
         NodeName.CONFUSION_REVIEWER: confusion_reviewer.run,
         NodeName.CONFIDENCE_REVIEWER: confidence_reviewer.run,

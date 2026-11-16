@@ -136,6 +136,19 @@ class ReviewAuthority(StrEnum):
     evidence. Experimental; see ``final_decision.validated_ground``."""
 
 
+class AdaptiveMode(StrEnum):
+    """Whether the review plan of ``nodes/adaptive_gate.py`` is derived, and followed."""
+
+    OFF = "off"
+    """The gate does not run. Every case gets all three reviewers, as released."""
+    SHADOW = "shadow"
+    """The plan is derived and recorded in the trace; the full review still runs. No model
+    call is added or removed, and no reviewer's context changes."""
+    ENABLED = "enabled"
+    """The graph follows the plan. Experimental: it changes which reviewer models see a
+    case, and so can change the answer."""
+
+
 class GraphConfig(Contract):
     """Execution limits. The retry budget is what makes the graph provably terminating."""
 
@@ -161,6 +174,24 @@ class GraphConfig(Contract):
     vision_shadow_max_images: int = Field(default=4, ge=1, le=16)
     vision_shadow_max_bytes: int = Field(default=16 * 1024 * 1024, ge=1)
     vision_shadow_timeout_seconds: float = Field(default=60, gt=0, le=300)
+    adaptive_routing: AdaptiveMode = Field(
+        default=AdaptiveMode.OFF,
+        description=(
+            "Experimental. `shadow` records, per review round, which reviewer models "
+            "deterministic rules would have called; `enabled` calls only those. Reviewers "
+            "that are not called still contribute their code-raised findings, and the "
+            "arbiter keeps its own policy. Unmeasured: enable only for an evaluation."
+        ),
+    )
+    adaptive_fast_path: bool = Field(
+        default=False,
+        description=(
+            "Experimental, and separate on purpose. With `adaptive_routing=enabled`, call no "
+            "reviewer model for a single-subject case in which code alone supports an "
+            "uncontested genus at high confidence. Off, such a case still gets the "
+            "confidence reviewer. Eligibility is recorded in the trace either way."
+        ),
+    )
     open_world_discovery: bool = Field(
         default=False,
         description=(
@@ -390,6 +421,9 @@ def load_config(overrides: AppConfig | None = None) -> AppConfig:
     # running a paid inspection under a policy nobody asked for.
     authority = (_env("DENDRO_REVIEW_AUTHORITY") or ReviewAuthority.RECOMMENDATION.value).strip()
     graph = GraphConfig(
+        adaptive_routing=AdaptiveMode((_env("DENDRO_ADAPTIVE_ROUTING", "off") or "off").lower()),
+        adaptive_fast_path=(_env("DENDRO_ADAPTIVE_FAST_PATH", "false") or "false").lower()
+        in {"1", "true", "yes", "on"},
         vision_shadow=(_env("DENDRO_VISION_SHADOW", "false") or "false").lower()
         in {"1", "true", "yes", "on"},
         semantic_retrieval=(_env("DENDRO_SEMANTIC_RETRIEVAL", "false") or "false").lower()
@@ -405,6 +439,8 @@ def load_config(overrides: AppConfig | None = None) -> AppConfig:
     max_edge = (_env("DENDRO_IMAGE_MAX_EDGE_PX") or "").strip().lower()
     if max_edge:
         graph = GraphConfig(
+            adaptive_routing=graph.adaptive_routing,
+            adaptive_fast_path=graph.adaptive_fast_path,
             vision_shadow=graph.vision_shadow,
             semantic_retrieval=graph.semantic_retrieval,
             semantic_retrieval_limit=graph.semantic_retrieval_limit,

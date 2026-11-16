@@ -16,6 +16,7 @@ import typer
 
 from dendro_inspector.config import (
     Adapter,
+    AdaptiveMode,
     AppConfig,
     ProviderConfig,
     ReviewAuthority,
@@ -503,6 +504,24 @@ def coverage_audit_command(
             ),
         ),
     ] = None,
+    adaptive_routing: Annotated[
+        AdaptiveMode | None,
+        typer.Option(
+            "--adaptive-routing",
+            help=(
+                "Override the review-plan mode for offline replay only. 'enabled' replays "
+                "each record calling only the reviewer models its plan names; pair it with "
+                "--reviews recorded and compare against the same replay without it."
+            ),
+        ),
+    ] = None,
+    adaptive_fast_path: Annotated[
+        bool | None,
+        typer.Option(
+            "--adaptive-fast-path/--no-adaptive-fast-path",
+            help="Override the fast-path switch of adaptive routing, for offline replay only.",
+        ),
+    ] = None,
     reviews: Annotated[
         str,
         typer.Option(
@@ -543,6 +562,13 @@ def coverage_audit_command(
         config = config.model_copy(
             update={"graph": config.graph.model_copy(update={"review_authority": review_authority})}
         )
+    routing: dict[str, object] = {}
+    if adaptive_routing is not None:
+        routing["adaptive_routing"] = adaptive_routing
+    if adaptive_fast_path is not None:
+        routing["adaptive_fast_path"] = adaptive_fast_path
+    if routing:
+        config = config.model_copy(update={"graph": config.graph.model_copy(update=routing)})
     try:
         references = label_scoring.load_labels(labels)
     except (OSError, ValueError) as exc:

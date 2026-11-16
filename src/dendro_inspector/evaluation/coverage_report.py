@@ -77,6 +77,11 @@ class RecordReport:
     replay_gaps: tuple[str, ...] = ()
     #: The trace lacks what the requested replay needs, so no replayed verdict is given.
     replay_unavailable: bool = False
+    #: The replay's last review plan, when it ran with adaptive routing on: the route, and
+    #: the reviewer models that plan did not call (or, in shadow mode, would not have).
+    replay_route: str | None = None
+    replay_route_applied: bool = False
+    replay_skipped_reviewers: tuple[str, ...] = ()
 
 
 def _genus(knowledge: KnowledgeBase, taxon: str | None, resolution: str) -> str | None:
@@ -181,12 +186,14 @@ async def build_reports(
         packet = packet_from_trace(record.trace)
         replayed: tuple[DecisionRow, ...] = ()
         unavailable = False
+        plan = None
         if with_replay:
             try:
                 state = await replay(record, config=config, root=root, reviews=reviews)
             except ReplayUnavailableError:
                 unavailable = True
             else:
+                plan = state.routing_assessment
                 replayed = tuple(
                     DecisionRow(
                         decision.subject_id,
@@ -221,6 +228,13 @@ async def build_reports(
                 replay_reviews=reviews if with_replay else None,
                 replay_gaps=replay_gaps(record.trace, reviews) if with_replay else (),
                 replay_unavailable=unavailable,
+                replay_route=plan.route.value if plan is not None else None,
+                replay_route_applied=plan is not None and plan.applied,
+                replay_skipped_reviewers=(
+                    tuple(reviewer.value for reviewer in plan.skipped_reviewers)
+                    if plan is not None
+                    else ()
+                ),
             )
         )
     return tuple(reports)
@@ -297,6 +311,12 @@ def summarise(reports: tuple[RecordReport, ...]) -> dict[str, Any]:
         ],
         "replay_fidelity_mismatches": sum(1 for r in reports if r.fidelity_mismatches),
         "replay_unavailable": sum(1 for r in reports if r.replay_unavailable),
+        # Empty unless the replay ran with adaptive routing on. Calls are counted as
+        # skipped only where the plan was applied; in shadow mode none were.
+        "replay_routes": dict(Counter(r.replay_route for r in reports if r.replay_route)),
+        "replay_reviewer_calls_skipped": sum(
+            len(r.replay_skipped_reviewers) for r in reports if r.replay_route_applied
+        ),
     }
 
 
@@ -344,6 +364,13 @@ def render_text(reports: tuple[RecordReport, ...]) -> str:
             lines.append(f"  replay fidelity: trust differs for {report.fidelity_mismatches}")
         if report.replay_unavailable:
             lines.append(f"  replay: not available with {report.replay_reviews} reviews")
+        if report.replay_route is not None:
+            skipped = ", ".join(report.replay_skipped_reviewers) or "none"
+            mode = "applied" if report.replay_route_applied else "shadow"
+            lines.append(
+                f"  replay route: {report.replay_route} ({mode}; reviewer models not called: "
+                f"{skipped})"
+            )
         lines.extend(f"  replay gap: {gap}" for gap in report.replay_gaps)
     lines.append(json.dumps(summarise(reports), indent=1, ensure_ascii=False))
     return "\n".join(lines)

@@ -181,6 +181,39 @@ replay to the verdict their run reached
 Retry sequence and route-divergence regressions live in
 [`tests/unit/test_retry_replay.py`](../tests/unit/test_retry_replay.py).
 
+### Replay under a review plan
+
+[Adaptive routing](model-roles.md#adaptive-routing-experimental) is evaluated offline first.
+Replay the same stored records twice, once as recorded and once following the plan, and
+score both against the same reference labels:
+
+```bash
+dendro coverage-audit runs/saved/cases --replay --reviews recorded --labels references.json --json-out runs/full-review.json
+dendro coverage-audit runs/saved/cases --replay --reviews recorded --labels references.json --adaptive-routing enabled --json-out runs/planned-review.json
+```
+
+The second replay gives each reviewer its plan calls the review the run recorded and leaves
+the other recorded reviews unread. Each record reports its route and the reviewer models
+not called; the summary adds `replay_routes` and `replay_reviewer_calls_skipped`.
+`--adaptive-fast-path` adds the fast path, and `--adaptive-routing shadow` reports the
+routes while replaying the full review.
+
+Read the pair as with any policy comparison: names recovered against wrong names added, and
+the calls saved beside both. What this replay cannot show:
+
+- The case's own inputs are not in a trace, so the rule that keeps the full review for a
+  case with a user claim never fails in a replay. A record that carried a claim is planned
+  as though it had none.
+- A plan is derived from the recorded proposals and evidence. It says nothing about a
+  reviewer answering differently when told why it was called, because the recorded review
+  was written without that question.
+- A record whose run retried may not replay under a plan. If the plan leaves unread the
+  review that asked for the retry, or the retry needs a review the plan skipped earlier,
+  the record is reported `replay_unavailable`.
+- A trace recorded with a plan applied has no response for a reviewer that plan skipped
+  (`model_called: false`). Replaying it without the plan is refused, never filled with a
+  neutral pass.
+
 ## What assertions check
 
 Assertions run against the **graph's decisions**, never against prose. Rewriting the tone

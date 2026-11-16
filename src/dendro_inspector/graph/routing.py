@@ -13,7 +13,7 @@ Therefore the loop can be taken at most ``retry_budget`` times and the graph ter
 
 from __future__ import annotations
 
-from dendro_inspector.config import GraphConfig
+from dendro_inspector.config import AdaptiveMode, GraphConfig
 from dendro_inspector.graph.definition import NodeName
 from dendro_inspector.graph.state import GraphState
 
@@ -60,6 +60,23 @@ def route_candidate_generator(state: GraphState, config: GraphConfig) -> NodeNam
     return NodeName.ATTACHMENT_AUTHORITY_GATE
 
 
+def route_adaptive_gate(state: GraphState) -> NodeName:
+    """Follow an applied review plan; a plan that was only recorded changes nothing.
+
+    Every target is forward of the gate, so the termination argument above is untouched.
+    A plan that calls no reviewer model still goes through the synthesizer: the gate has
+    already placed each reviewer's code-raised findings in the state, and adjudication,
+    abstention and escalation must see them exactly as they would after a full review.
+    """
+    plan = state.routing_assessment
+    if plan is None:
+        msg = "adaptive gate produced no review plan"
+        raise RoutingError(msg)
+    if plan.applied and not plan.reviewers:
+        return NodeName.REVIEW_SYNTHESIZER
+    return NodeName.BOTANICAL_REVIEWER
+
+
 def next_step(current: NodeName, state: GraphState, config: GraphConfig) -> NodeName:
     """Return the next step after ``current`` has run."""
     match current:
@@ -87,7 +104,12 @@ def next_step(current: NodeName, state: GraphState, config: GraphConfig) -> Node
             return route_candidate_generator(state, config)
 
         case NodeName.ATTACHMENT_AUTHORITY_GATE:
+            if config.adaptive_routing is not AdaptiveMode.OFF:
+                return NodeName.ADAPTIVE_GATE
             return NodeName.BOTANICAL_REVIEWER
+
+        case NodeName.ADAPTIVE_GATE:
+            return route_adaptive_gate(state)
 
         case (
             NodeName.BOTANICAL_REVIEWER | NodeName.CONFUSION_REVIEWER | NodeName.CONFIDENCE_REVIEWER

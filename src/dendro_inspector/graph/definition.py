@@ -25,6 +25,7 @@ class NodeName(StrEnum):
     PHOTO_PLANNER = "photo_planner"
     CANDIDATE_GENERATOR = "candidate_generator"
     ATTACHMENT_AUTHORITY_GATE = "attachment_authority_gate"
+    ADAPTIVE_GATE = "adaptive_gate"
     BOTANICAL_REVIEWER = "botanical_reviewer"
     CONFUSION_REVIEWER = "confusion_reviewer"
     CONFIDENCE_REVIEWER = "confidence_reviewer"
@@ -60,6 +61,7 @@ NODE_KINDS: dict[NodeName, NodeKind] = {
     NodeName.PHOTO_PLANNER: NodeKind.EXECUTABLE,
     NodeName.CANDIDATE_GENERATOR: NodeKind.EXECUTABLE,
     NodeName.ATTACHMENT_AUTHORITY_GATE: NodeKind.EXECUTABLE,
+    NodeName.ADAPTIVE_GATE: NodeKind.DECISION,
     NodeName.BOTANICAL_REVIEWER: NodeKind.EXECUTABLE,
     NodeName.CONFUSION_REVIEWER: NodeKind.EXECUTABLE,
     NodeName.CONFIDENCE_REVIEWER: NodeKind.EXECUTABLE,
@@ -82,6 +84,7 @@ DISPLAY_LABELS: dict[NodeName, str] = {
     NodeName.PHOTO_PLANNER: "Additional photo planner",
     NodeName.CANDIDATE_GENERATOR: "Candidate generator",
     NodeName.ATTACHMENT_AUTHORITY_GATE: "Attachment authority gate",
+    NodeName.ADAPTIVE_GATE: "Which reviewers are needed?",
     NodeName.BOTANICAL_REVIEWER: "Botanical reviewer",
     NodeName.CONFUSION_REVIEWER: "Confusion reviewer",
     NodeName.CONFIDENCE_REVIEWER: "Confidence reviewer",
@@ -119,6 +122,11 @@ GRAPH_EDGES: tuple[Edge, ...] = (
     Edge(NodeName.ATTACHMENT_AUTHORITY_GATE, NodeName.BOTANICAL_REVIEWER),
     Edge(NodeName.ATTACHMENT_AUTHORITY_GATE, NodeName.CONFUSION_REVIEWER),
     Edge(NodeName.ATTACHMENT_AUTHORITY_GATE, NodeName.CONFIDENCE_REVIEWER),
+    Edge(NodeName.ATTACHMENT_AUTHORITY_GATE, NodeName.ADAPTIVE_GATE, "adaptive routing on"),
+    Edge(NodeName.ADAPTIVE_GATE, NodeName.BOTANICAL_REVIEWER, "if planned"),
+    Edge(NodeName.ADAPTIVE_GATE, NodeName.CONFUSION_REVIEWER, "if planned"),
+    Edge(NodeName.ADAPTIVE_GATE, NodeName.CONFIDENCE_REVIEWER, "if planned"),
+    Edge(NodeName.ADAPTIVE_GATE, NodeName.REVIEW_SYNTHESIZER, "no reviewer model planned"),
     Edge(NodeName.BOTANICAL_REVIEWER, NodeName.REVIEW_SYNTHESIZER),
     Edge(NodeName.CONFUSION_REVIEWER, NodeName.REVIEW_SYNTHESIZER),
     Edge(NodeName.CONFIDENCE_REVIEWER, NodeName.REVIEW_SYNTHESIZER),

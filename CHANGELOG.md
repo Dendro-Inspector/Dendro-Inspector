@@ -12,6 +12,18 @@ get entries.
 
 ### Added
 
+- **Experimental adaptive routing of the reviewers**, off by default. With
+  `DENDRO_ADAPTIVE_ROUTING=shadow` a run's trace records, for each review round, which
+  reviewer models deterministic rules would have called and why (`routing_history`); no
+  model call and no answer changes. With `enabled` only those reviewers are called: any
+  ambiguity keeps all three, a specific open question calls the reviewer that owns it and
+  tells it the question, and a subject with nothing admitted calls none.
+  `DENDRO_ADAPTIVE_FAST_PATH=true` also calls none for a single subject that code alone
+  names at genus level with high confidence and nothing recorded against it. A reviewer
+  that is not called still contributes the findings its code raises (its review is recorded
+  with `model_called: false`), and the arbiter keeps its own policy. `dendro coverage-audit
+  --replay --reviews recorded --adaptive-routing enabled` compares a plan with the recorded
+  reviews offline. No route has been measured yet; see `docs/model-roles.md`.
 - **Optional card-independent vision assessment in shadow mode.** The extra assessment
   is stored separately after the production answer is frozen, with scoped evidence and
   image references, workload limits and its own usage record. It never changes the answer

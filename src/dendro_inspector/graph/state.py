@@ -18,6 +18,7 @@ from dendro_inspector.schemas.decisions import AuthorityCheckTrace, CaseResponse
 from dendro_inspector.schemas.evidence import EvidencePacket, KnowledgeCoverage
 from dendro_inspector.schemas.input import CaseInput
 from dendro_inspector.schemas.reviews import CorrectionDirective, ReviewResult, ReviewSynthesis
+from dendro_inspector.schemas.routing import RoutingAssessment
 from dendro_inspector.schemas.taxon import Resolution
 
 
@@ -148,6 +149,7 @@ class GraphState(Contract):
         description="One deterministic attachment-authority record per subject.",
     )
     reviews: tuple[ReviewResult, ...] = ()
+    routing_assessment: RoutingAssessment | None = None
     synthesis: ReviewSynthesis | None = None
     provisional_decisions: tuple[FinalDecision, ...] = Field(
         default=(),

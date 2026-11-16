@@ -42,6 +42,10 @@ What a trace does not carry is reconstructed conservatively and reported by
   uses that round's reviews on every pass, so the earlier retry route is not reconstructed.
 * The case's own inputs — declared object type, location, the user's claim and note — are
   not in the trace. A record that used any of them replays without it.
+* A reviewer whose model a review plan did not call (``model_called: false``) left no
+  response. A replay that reaches it with evidence history reports the route as unavailable
+  rather than scripting a pass. The other direction is allowed: a replay run with adaptive
+  routing switched on may leave recorded reviews unread, which is the route under test.
 
 Schema-3 traces also carry complete raw and effective packets by extraction revision. The
 audit reads the final effective artifact, while replay gives the fake extractor its original
@@ -401,9 +405,19 @@ def reviews_from_trace(trace: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
     for recorded in _replayed_rounds(trace):
         for reviewer in recorded.get("reviewers") or ():
             key = _REVIEW_KEYS.get(str(reviewer.get("reviewer")))
-            if key is not None:
+            if key is not None and _model_called(reviewer):
                 responses[key] = _review_response(reviewer)
     return responses
+
+
+def _model_called(reviewer: Mapping[str, Any]) -> bool:
+    """Whether a recorded review is a model's answer. Absent in older traces, where it is.
+
+    A review plan can leave a reviewer's model uncalled; its record then holds what its code
+    raised and nothing a model said. Scripting that as the model's response would invent a
+    pass nobody gave.
+    """
+    return bool(reviewer.get("model_called", True))
 
 
 def _response_sequences(
@@ -468,6 +482,10 @@ def _response_sequences(
                     f"review:{name}: revision {revision_id} has omitted findings"
                 )
             seen.add((revision_id, key))
+            if not _model_called(reviewer):
+                # Nothing was returned, so nothing is scripted: a replay that reaches this
+                # reviewer finds no response and reports that it cannot follow this route.
+                continue
             sequences[key].append(
                 {
                     "response": _review_response(reviewer),
@@ -552,7 +570,12 @@ def replay_gaps(trace: Mapping[str, Any], reviews: ReviewReplay = "neutral") -> 
     internal_rounds = sum(1 for item in rounds if item.get("stage") == "internal")
     if internal_rounds > 1:
         gaps.append(f"review_rounds: only the last of {internal_rounds} internal rounds replays")
-    called = {str(r.get("reviewer")) for item in replayed for r in item.get("reviewers") or ()}
+    called = {
+        str(r.get("reviewer"))
+        for item in replayed
+        for r in item.get("reviewers") or ()
+        if _model_called(r)
+    }
     gaps.extend(
         f"review:{reviewer}: not called in the recorded run; neutral if this replay calls it"
         for reviewer in _REVIEW_KEYS
@@ -695,8 +718,16 @@ async def replay(
             for event in result.trace.events
             for call in event.provider_calls
         )
+        # A review plan this replay applied may leave a recorded review unread. That is the
+        # route under test, not a divergence; every other unread response still is one.
+        skipped = Counter(
+            _REVIEW_KEYS[reviewer.value]
+            for plan in result.trace.routing_history
+            if plan.applied
+            for reviewer in plan.skipped_reviewers
+        )
         for key, sequence in fixture["response_sequences"].items():
-            if consumed[key] != len(sequence):
+            if len(sequence) - consumed[key] > skipped[key]:
                 raise ReplayUnavailableError(
                     f"replay_route: consumed {consumed[key]} of {len(sequence)} responses for {key}"
                 )

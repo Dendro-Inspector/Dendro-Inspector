@@ -327,14 +327,18 @@ def region_findings(state: GraphState, ctx: NodeContext) -> tuple[ReviewFinding,
     )
 
 
-async def run(state: GraphState, ctx: NodeContext) -> GraphState:
-    result = await review_call(ctx, node=NODE, reviewer=Reviewer.CONFUSION)
-    result = merge_findings(
-        result,
+def code_findings(state: GraphState, ctx: NodeContext) -> tuple[ReviewFinding, ...]:
+    """Every finding this reviewer's code raises, with or without its model call."""
+    return (
         colour_findings(state)
         + unattached_evidence_findings(state)
         + bark_only_findings(state, ctx)
         + look_alike_findings(state, ctx)
-        + region_findings(state, ctx),
+        + region_findings(state, ctx)
     )
+
+
+async def run(state: GraphState, ctx: NodeContext) -> GraphState:
+    result = await review_call(ctx, node=NODE, reviewer=Reviewer.CONFUSION)
+    result = merge_findings(result, code_findings(state, ctx))
     return state.evolve(reviews=(*state.reviews, result))

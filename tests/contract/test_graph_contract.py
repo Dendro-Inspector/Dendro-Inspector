@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from dendro_inspector.config import GraphConfig
+from dendro_inspector.config import AdaptiveMode, GraphConfig
 from dendro_inspector.graph.definition import (
     ENTRY_NODE,
     EXECUTABLE_NODES,
@@ -29,6 +29,7 @@ from dendro_inspector.graph.state import (
 from dendro_inspector.nodes import build_registry
 from dendro_inspector.schemas.input import CaseInput
 from dendro_inspector.schemas.reviews import ReviewSynthesis
+from dendro_inspector.schemas.routing import PLANNED_REVIEWERS, ReviewRoute, RoutingAssessment
 
 pytestmark = pytest.mark.contract
 
@@ -48,6 +49,9 @@ def _saturated_state() -> GraphState:
         quality=EvidenceQualityReport(sufficient=True, usable_subject_ids=("s",)),
         synthesis=ReviewSynthesis(),
         escalation=EscalationDecision(required=True),
+        routing_assessment=RoutingAssessment(
+            route=ReviewRoute.FULL_REVIEW, reviewers=PLANNED_REVIEWERS
+        ),
     )
 
 
@@ -108,6 +112,30 @@ def test_every_routing_target_is_a_declared_edge(source):
         f"{source.value} routes to {sorted(n.value for n in observed - declared)}, "
         f"which is not declared in GRAPH_EDGES"
     )
+
+
+def test_adaptive_routing_reaches_only_declared_edges():
+    """The experiment's two branches are in the diagram too: the gate, and what follows it."""
+    state = _saturated_state()
+    gate_targets = {
+        next_step(NodeName.ATTACHMENT_AUTHORITY_GATE, state, GraphConfig(adaptive_routing=mode))
+        for mode in AdaptiveMode
+    }
+    assert gate_targets == {NodeName.BOTANICAL_REVIEWER, NodeName.ADAPTIVE_GATE}
+    assert gate_targets <= reachable_targets(NodeName.ATTACHMENT_AUTHORITY_GATE)
+
+    plans = (
+        RoutingAssessment(route=ReviewRoute.FULL_REVIEW, reviewers=PLANNED_REVIEWERS),
+        RoutingAssessment(
+            route=ReviewRoute.REQUEST_PHOTOS, applied=True, skipped_reviewers=PLANNED_REVIEWERS
+        ),
+    )
+    after_gate = {
+        next_step(NodeName.ADAPTIVE_GATE, state.evolve(routing_assessment=plan), GraphConfig())
+        for plan in plans
+    }
+    assert after_gate == {NodeName.BOTANICAL_REVIEWER, NodeName.REVIEW_SYNTHESIZER}
+    assert after_gate <= reachable_targets(NodeName.ADAPTIVE_GATE)
 
 
 def test_entry_and_terminal_are_wired():

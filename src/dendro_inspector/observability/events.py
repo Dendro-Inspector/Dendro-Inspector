@@ -24,6 +24,7 @@ from dendro_inspector.schemas.decisions import (
     FindingReference,
 )
 from dendro_inspector.schemas.evidence import KnowledgeCoverage
+from dendro_inspector.schemas.routing import RoutingAssessment
 from dendro_inspector.schemas.taxon import Confidence, Resolution
 from dendro_inspector.schemas.vision import VisionShadowResult
 
@@ -349,6 +350,14 @@ class ReviewerRecord(Contract):
 
     reviewer: str = Field(max_length=40)
     status: str = Field(max_length=40)
+    model_called: bool = Field(
+        default=True,
+        description=(
+            "False when an applied review plan did not call this reviewer's model. The "
+            "record then holds only what the reviewer's code raised: its status is not a "
+            "model's judgement and must never be replayed as one."
+        ),
+    )
     subject_id: str | None = Field(default=None, max_length=120)
     recommended_resolution: Resolution | None = None
     recommended_confidence: Confidence | None = None
@@ -532,6 +541,14 @@ class RunTrace(Contract):
     candidate_validation_history: tuple[CandidateValidationRecord, ...] = ()
     card_retrievals: tuple[CardRetrieval, ...] = ()
     vision_shadow: VisionShadowResult | None = None
+    routing_history: tuple[RoutingAssessment, ...] = Field(
+        default=(),
+        description=(
+            "One review plan per internal round, in order, when adaptive routing is on: the "
+            "route, every rule evaluated, the reviewer models called and skipped, and the "
+            "verdict code alone had composed. Empty when it is off."
+        ),
+    )
     observation_uses: tuple[ObservationUseRecord, ...] = ()
     plan: PlanRecord | None = None
     review_rounds: tuple[ReviewRoundRecord, ...] = Field(
