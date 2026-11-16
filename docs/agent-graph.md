@@ -82,7 +82,7 @@ node with side effects.
 | --- | --- | --- | --- |
 | `input_guard` | no | Record instruction-like content, missing files, user pushback | `GuardReport` |
 | `planner` | primary | Decide which features to look for | `InspectionPlan` |
-| `evidence_extractor` | primary | Enumerate identity scopes/components and normalize components to their roots | `EvidencePacket` |
+| `evidence_extractor` | primary | Enumerate identity scopes/components, normalize components to their roots, and leave out a subject named with no observation and no photograph | `EvidencePacket` |
 | `evidence_quality` | no | Decide whether any claim is possible | `EvidenceQualityReport` |
 | `photo_planner` | no | Convert "not enough" into a specific photo request | `FinalDecision[]` |
 | `candidate_generator` | primary | Propose rankings; admit only known, same-subject, card-matched support; retain evidence-backed no-card taxa as open-world | `CandidateSet[]`, `OpenWorldCandidate[]` |

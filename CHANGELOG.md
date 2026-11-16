@@ -322,6 +322,16 @@ get entries.
 
 ### Changed
 
+- **A subject the extraction named and never saw no longer gets a verdict.** An
+  extraction sometimes lists a subject that has no observation and appears on no
+  photograph, beside the one tree the photographs show. Each got its own "insufficient
+  evidence" section, and its presence made a single-subject case read as one with several
+  subjects and no designated target. Such a subject is now left out of the evidence
+  packet when another subject has evidence; the trace's raw packet still lists it. A
+  subject that names a photograph is kept even with nothing read on it, and a packet in
+  which every subject is unseen is unchanged. No verdict about an observed subject moves:
+  on 36 stored runs, four such sections disappear in three and every other answer is the
+  same.
 - **A heart-shaped leaf no longer counts against linden.** `knowledge/vocabulary.yaml` now
   declares linden's serrate heart-shaped leaf (`cordate_serrate`) a narrower reading of a
   heart-shaped leaf (`cordate`), as the domain prompt describes both. A leaf read as
