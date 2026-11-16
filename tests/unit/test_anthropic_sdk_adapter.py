@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
@@ -14,12 +15,15 @@ from dendro_inspector.config import DEFAULT_KEY_ENV, Adapter, ProviderConfig
 from dendro_inspector.providers.anthropic_sdk_adapter import (
     DEFAULT_MODEL,
     FALLBACK_BETA,
+    MAX_IMAGE_EDGE_PX,
     AnthropicSDKProvider,
     _api_key,
+    within_image_limit,
 )
 from dendro_inspector.providers.base import (
     CACHE_PREFIX_CHARS,
     USAGE_SINK,
+    ImageInput,
     ProviderUnavailableError,
     StructuredOutputError,
     UsageSink,
@@ -91,6 +95,49 @@ def provider(monkeypatch: pytest.MonkeyPatch) -> AnthropicSDKProvider:
     for name in ("ANTHROPIC_EFFORT", "ANTHROPIC_FALLBACKS", "ANTHROPIC_TIMEOUT_SECONDS"):
         monkeypatch.delenv(name, raising=False)
     return AnthropicSDKProvider()
+
+
+class TestImageLimit:
+    """The API answers 400 to the whole call for one image with an edge above its limit."""
+
+    @staticmethod
+    def _image(max_edge_px: int | None) -> ImageInput:
+        return ImageInput(image_id="img-1", path=Path("img-1.jpg"), max_edge_px=max_edge_px)
+
+    def test_a_configured_edge_above_the_limit_is_lowered_to_it(self):
+        (image,) = within_image_limit([self._image(8192)])
+        assert image.max_edge_px == MAX_IMAGE_EDGE_PX == 8000
+        assert image.image_id == "img-1"
+
+    @pytest.mark.parametrize("edge", [256, 1568, 8000])
+    def test_an_edge_within_the_limit_is_left_alone(self, edge):
+        original = self._image(edge)
+        assert within_image_limit([original]) == (original,)
+
+    def test_an_original_stays_an_original(self):
+        original = self._image(None)
+        assert within_image_limit([original]) == (original,)
+
+    def test_the_request_is_built_from_the_bounded_images(self, monkeypatch):
+        seen: list[int | None] = []
+
+        def block(image: ImageInput) -> dict[str, Any]:
+            seen.append(image.max_edge_px)
+            return {"type": "text", "text": "image"}
+
+        monkeypatch.setattr(AnthropicSDKProvider, "_image_block", staticmethod(block))
+        bounded = AnthropicSDKProvider(image_mode="inline")
+        bounded._client = _client(_response(json.dumps({"taxon": "pinus", "confidence": 70})))
+        asyncio.run(
+            bounded.generate_structured(
+                role="primary",
+                prompt="DOMAIN PROMPT\nnode instructions",
+                images=[self._image(8192), self._image(1568)],
+                response_model=Verdict,
+                metadata={"node": "planner"},
+            )
+        )
+        assert seen == [8000, 1568]
 
 
 class TestRegistration:

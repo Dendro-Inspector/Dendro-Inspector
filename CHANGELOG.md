@@ -456,6 +456,13 @@ get entries.
 
 ### Fixed
 
+- **A photograph edge above 8,000 px no longer fails an inspection on the Claude API.**
+  The API answers 400 to the whole call for one image with an edge above 8,000 px, and
+  `DENDRO_IMAGE_MAX_EDGE_PX` accepts more, because other providers take it: a deployment
+  set to 8192 lost every `anthropic-sdk` inspection that held one such photograph. That
+  adapter now sends a configured edge above the limit as 8,000 px. Other adapters are
+  unchanged, and so is `original`, which is still sent untouched and still refused there
+  when the file is larger.
 - **Inspections on OpenAI and Foundry no longer fail at candidate generation.** A
   description added to the candidate score made its schema a `$ref` beside `description`,
   which strict structured output refuses: Foundry answered 400 `$ref cannot have keywords
