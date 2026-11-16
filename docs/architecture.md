@@ -303,6 +303,40 @@ no model, and is not scored. `StructuredFinalResult` gives a consumer two separa
 its own status and explanation. When one is recorded, and what ends it, is in
 [the review pipeline](review-pipeline.md#the-name-a-review-held-back).
 
+### Whose answer a result is
+
+Every subject gets its own verdict, and a photograph of one tree often shows another behind
+it. The composed answer therefore says which result the request is about:
+
+- each `StructuredFinalResult` has a `subject_role`: `target`, `context` or `unspecified`;
+- `CaseResponse.target_subject_ids` lists the target subjects, and `target_source` says what
+  designated them.
+
+The rule is code, in `response_composer.designate_targets`. A lone subject is the target
+(`single_subject`). Among several, nothing code can check says which one was meant, so none
+is designated: every result is `unspecified`, `target_subject_ids` is empty, and the text
+opens by saying so. A consumer must not then present the first result as the answer.
+
+`GraphConfig.target_selection = extractor` (env `DENDRO_TARGET_SELECTION`) is an experiment,
+off by default. The evidence extractor is also asked which subject the photographs are of.
+Its proposal designates that subject `target` (`extractor_proposal`) and the others
+`context`, and the text leads with the target. A proposal that names a component stands for
+its tree; one that names nothing here is dropped. The proposal is a reading of how the
+photographs are framed and is used for nothing else: no verdict, level or confidence depends
+on it. It adds one optional field to that one call's response schema, which stays the
+released schema while the setting is off, so one real inspection against the live provider
+is owed before it is used there.
+
+The proposal is kept in the composed answer, not in the trace's evidence history, so a
+replay of a stored trace designates no target among several subjects.
+
+A role never changes a decision, and `results` and `decisions` keep the extractor's order.
+The batch summary (`scripts/batch/summarize_run.py`) reports the designated target in its
+per-case verdict columns, and the first subject only where none is designated.
+
+`CaseResponse.schema_version` is `2` since these fields were added. Version 2 removed and
+renamed nothing; an answer stored before the field existed has no version and is version 1.
+
 ### Ordinal scores, not percentages
 
 `SupportStrength` is `weak | moderate | strong`. `Confidence` is `low | medium | high`.

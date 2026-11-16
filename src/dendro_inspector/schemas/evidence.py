@@ -649,3 +649,44 @@ class GeneratedEvidencePacket(EvidencePacket):
         """Return the canonical persistence/runtime contract after generated-output checks."""
         packet = EvidencePacket.model_validate(self.model_dump(mode="python"))
         return packet.collapse_subject_components()
+
+
+class TargetedEvidencePacket(GeneratedEvidencePacket):
+    """The extractor's response when it is also asked which subject the photographs are of.
+
+    Requested only with ``GraphConfig.target_selection = extractor``; every other run uses
+    :class:`GeneratedEvidencePacket` and its schema unchanged. The proposal is a reading of
+    how the photographs are framed. It is not evidence: it supports no taxon and selects
+    none, and code decides what it designates.
+    """
+
+    main_subject_id: Identifier | None = Field(
+        default=None,
+        description=(
+            "The `subject_id` of the one subject these photographs are of: the tree, log or "
+            "part the photographer framed. Omit it when several subjects are equally the "
+            "subject or you cannot tell. A subject standing behind or beside the main one "
+            "is not it."
+        ),
+    )
+
+    def generated(self) -> GeneratedEvidencePacket:
+        """The same packet without the proposal: what the evidence history stores."""
+        return GeneratedEvidencePacket.model_validate(
+            self.model_dump(mode="python", exclude={"main_subject_id"})
+        )
+
+    def to_evidence_packet(self) -> EvidencePacket:
+        return self.generated().to_evidence_packet()
+
+    def main_root_id(self) -> str | None:
+        """The identity root the proposal names; a component stands for its tree.
+
+        An id that names no subject of this packet designates nothing. The proposal is
+        optional and decides no verdict, so a wrong one is dropped rather than made a
+        reason to reject an otherwise valid extraction.
+        """
+        listed = {subject.subject_id for subject in self.subjects}
+        if self.main_subject_id is None or self.main_subject_id not in listed:
+            return None
+        return self.identity_root_id(self.main_subject_id)

@@ -12,7 +12,7 @@ rather than hoped for:
 
 from __future__ import annotations
 
-from dendro_inspector.config import Adapter, Role
+from dendro_inspector.config import Adapter, Role, TargetSelection
 from dendro_inspector.graph.executor import NodeContext
 from dendro_inspector.graph.state import GraphState
 from dendro_inspector.nodes._support import (
@@ -23,7 +23,11 @@ from dendro_inspector.nodes._support import (
 )
 from dendro_inspector.nodes.field_attestation import apply_part_attestations
 from dendro_inspector.providers.base import StructuredOutputError, request_structured
-from dendro_inspector.schemas.evidence import EvidencePacket, GeneratedEvidencePacket
+from dendro_inspector.schemas.evidence import (
+    EvidencePacket,
+    GeneratedEvidencePacket,
+    TargetedEvidencePacket,
+)
 
 NODE = "evidence_extractor"
 
@@ -46,6 +50,17 @@ def corrections_context(state: GraphState) -> str:
         for directive in state.corrections
     )
     return "\n".join(lines)
+
+
+MAIN_SUBJECT_CONTEXT = (
+    "## Main subject (experiment)\n\n"
+    "Also set `main_subject_id` to the `subject_id` of the one subject these photographs "
+    "are of: the tree, log or part the photographer framed, usually the one that is "
+    "centred, closest or shown in most of the photographs. A subject standing behind or "
+    "beside it is not the main subject. Leave it out when several subjects are equally "
+    "the subject or you cannot tell. This says which subject the request is about. It is "
+    "not evidence for any taxon and must not change what you record about any subject."
+)
 
 
 def _empty_packet(state: GraphState) -> EvidencePacket:
@@ -73,7 +88,7 @@ async def run(state: GraphState, ctx: NodeContext) -> GraphState:
     if guard is not None and not guard.safe_to_continue:
         packet = _empty_packet(state)
         ctx.recorder.record_evidence(packet, retry_index=state.retries)
-        return state.evolve(evidence=packet)
+        return state.evolve(evidence=packet, proposed_target_subject_id=None)
 
     context_parts = [
         case_context(state.case),
@@ -82,6 +97,10 @@ async def run(state: GraphState, ctx: NodeContext) -> GraphState:
     corrections = corrections_context(state)
     if corrections:
         context_parts.append(corrections)
+    # Off by default: the response schema then is the released one, field for field.
+    propose_target = ctx.config.graph.target_selection is TargetSelection.EXTRACTOR
+    if propose_target:
+        context_parts.append(MAIN_SUBJECT_CONTEXT)
 
     provider = ctx.providers.get(Role.PRIMARY)
     images = case_image_inputs(state, ctx)
@@ -101,7 +120,7 @@ async def run(state: GraphState, ctx: NodeContext) -> GraphState:
         except ValueError as exc:
             raise StructuredOutputError(str(exc)) from exc
 
-    generated = await request_structured(
+    response = await request_structured(
         provider=provider,
         role=Role.PRIMARY.value,
         node=NODE,
@@ -111,12 +130,18 @@ async def run(state: GraphState, ctx: NodeContext) -> GraphState:
             locale=locale_of(state),
         ),
         images=images,
-        response_model=GeneratedEvidencePacket,
+        response_model=TargetedEvidencePacket if propose_target else GeneratedEvidencePacket,
         recorder=ctx.recorder,
         cache_prefix_chars=ctx.prompts.cacheable_prefix_chars(locale_of(state)),
         max_retries=ctx.config.provider_for(Role.PRIMARY).max_structured_retries,
         validate_response=validate_images,
     )
+
+    proposed_target: str | None = None
+    generated: GeneratedEvidencePacket = response
+    if isinstance(response, TargetedEvidencePacket):
+        proposed_target = response.main_root_id()
+        generated = response.generated()
 
     packet = reconcile_packet(state, generated.to_evidence_packet())
     packet, attestations = apply_part_attestations(state.case, packet)
@@ -124,4 +149,4 @@ async def run(state: GraphState, ctx: NodeContext) -> GraphState:
     ctx.recorder.record_evidence(
         packet, generated=generated, retry_index=state.retries, attestations=attestations
     )
-    return state.evolve(evidence=packet)
+    return state.evolve(evidence=packet, proposed_target_subject_id=proposed_target)

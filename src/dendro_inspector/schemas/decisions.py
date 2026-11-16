@@ -698,11 +698,49 @@ class HypothesisStatement(Contract):
     explanation: ShortText
 
 
+#: Version of the composed answer a consumer reads (`CaseResponse` and its results).
+#: Version 2 added `schema_version`, `target_subject_ids`, `target_source` and each
+#: result's `subject_role`. It removed and renamed nothing, so a reader of version 1 that
+#: ignores unknown fields reads version 2 unchanged.
+RESULT_SCHEMA_VERSION = 2
+#: What an answer written before the version was recorded is: it carries no version field.
+LEGACY_RESULT_SCHEMA_VERSION = 1
+
+
+class SubjectRole(StrEnum):
+    """Whose answer a result is, when the photographs show more than one subject."""
+
+    TARGET = "target"
+    """The subject the request is about. Its verdict is the answer."""
+    CONTEXT = "context"
+    """Another subject in the frame. Its verdict is reported and is not the answer."""
+    UNSPECIFIED = "unspecified"
+    """Several subjects and nothing designates one, or an answer that predates roles."""
+
+
+class TargetSource(StrEnum):
+    """What designated the target subject, so a consumer can weigh it."""
+
+    SINGLE_SUBJECT = "single_subject"
+    """Only one subject was found, so it is the one asked about."""
+    EXTRACTOR_PROPOSAL = "extractor_proposal"
+    """The evidence extractor named the photographs' main subject (experimental)."""
+    NONE = "none"
+    """No target is designated."""
+
+
 class StructuredFinalResult(Contract):
     """Machine-readable answer for one subject."""
 
     verdict: ShortText
     subject: Identifier
+    subject_role: SubjectRole = Field(
+        default=SubjectRole.UNSPECIFIED,
+        description=(
+            "`target` for the subject the request is about, `context` for another subject "
+            "in the frame, `unspecified` when several were found and none is designated."
+        ),
+    )
     taxonomic_resolution: Resolution
     confidence: Confidence
     confidence_band: str = Field(default="<50/100", max_length=16)
@@ -763,9 +801,29 @@ class ResponseFormat(StrEnum):
 class CaseResponse(Contract):
     """The composed answer for a whole case, before and after the tone layer."""
 
+    schema_version: int = Field(
+        default=LEGACY_RESULT_SCHEMA_VERSION,
+        ge=1,
+        description=(
+            "Version of this answer's contract. The composer writes the current one; an "
+            "answer stored before the field existed has none and reads as version 1."
+        ),
+    )
     case_id: Identifier
     results: tuple[StructuredFinalResult, ...] = ()
     decisions: tuple[FinalDecision, ...] = ()
+    target_subject_ids: tuple[Identifier, ...] = Field(
+        default=(),
+        description=(
+            "The subjects the request is about, by `subject` / `subject_id`. Empty when "
+            "several subjects were found and none is designated: no single result is then "
+            "the answer, and a consumer must not present the first one as if it were."
+        ),
+    )
+    target_source: TargetSource = Field(
+        default=TargetSource.NONE,
+        description="What designated `target_subject_ids`.",
+    )
     human_readable: str = Field(default="", max_length=20000)
     tone_applied: bool = False
     tone_mode: ToneMode = ToneMode.MEASURED
@@ -806,6 +864,13 @@ def assert_tone_preserved_decision(
         raise ValueError(msg)
     if before.case_id != after.case_id:
         msg = "tone layer mutated case_id"
+        raise ValueError(msg)
+    if (before.schema_version, before.target_subject_ids, before.target_source) != (
+        after.schema_version,
+        after.target_subject_ids,
+        after.target_source,
+    ):
+        msg = "tone layer changed which subject the answer is about"
         raise ValueError(msg)
     if before.tone_mode is not after.tone_mode:
         msg = "tone layer changed its own permission level"

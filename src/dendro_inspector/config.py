@@ -149,6 +149,17 @@ class AdaptiveMode(StrEnum):
     case, and so can change the answer."""
 
 
+class TargetSelection(StrEnum):
+    """What may designate the subject a request is about, among several in the frame."""
+
+    SINGLE_SUBJECT = "single_subject"
+    """Only a lone subject is a target. With several, none is designated."""
+    EXTRACTOR = "extractor"
+    """Experimental. The evidence extractor is also asked which subject the photographs
+    are of, and code designates it. One optional field is added to that call's response
+    schema, so a provider must be shown to accept it before this is used live."""
+
+
 class GraphConfig(Contract):
     """Execution limits. The retry budget is what makes the graph provably terminating."""
 
@@ -190,6 +201,16 @@ class GraphConfig(Contract):
             "reviewer model for a single-subject case in which code alone supports an "
             "uncontested genus at high confidence. Off, such a case still gets the "
             "confidence reviewer. Eligibility is recorded in the trace either way."
+        ),
+    )
+    target_selection: TargetSelection = Field(
+        default=TargetSelection.SINGLE_SUBJECT,
+        description=(
+            "What designates the target subject of an answer. `single_subject` (the "
+            "default) calls a lone subject the target and designates none among several. "
+            "`extractor` is experimental: the extractor proposes the photographs' main "
+            "subject and the other subjects are reported as context. No verdict, level or "
+            "confidence depends on it; only which result is presented as the answer."
         ),
     )
     open_world_discovery: bool = Field(
@@ -422,6 +443,9 @@ def load_config(overrides: AppConfig | None = None) -> AppConfig:
     authority = (_env("DENDRO_REVIEW_AUTHORITY") or ReviewAuthority.RECOMMENDATION.value).strip()
     graph = GraphConfig(
         adaptive_routing=AdaptiveMode((_env("DENDRO_ADAPTIVE_ROUTING", "off") or "off").lower()),
+        target_selection=TargetSelection(
+            (_env("DENDRO_TARGET_SELECTION") or TargetSelection.SINGLE_SUBJECT.value).lower()
+        ),
         adaptive_fast_path=(_env("DENDRO_ADAPTIVE_FAST_PATH", "false") or "false").lower()
         in {"1", "true", "yes", "on"},
         vision_shadow=(_env("DENDRO_VISION_SHADOW", "false") or "false").lower()
@@ -438,17 +462,12 @@ def load_config(overrides: AppConfig | None = None) -> AppConfig:
     # the file untouched (no upright rotation, metadata kept).
     max_edge = (_env("DENDRO_IMAGE_MAX_EDGE_PX") or "").strip().lower()
     if max_edge:
-        graph = GraphConfig(
-            adaptive_routing=graph.adaptive_routing,
-            adaptive_fast_path=graph.adaptive_fast_path,
-            vision_shadow=graph.vision_shadow,
-            semantic_retrieval=graph.semantic_retrieval,
-            semantic_retrieval_limit=graph.semantic_retrieval_limit,
-            open_world_discovery=graph.open_world_discovery,
-            require_discriminating_support=graph.require_discriminating_support,
-            review_authority=graph.review_authority,
-            deadline_seconds=graph.deadline_seconds,
-            image_max_edge_px=None if max_edge in {"original", "none"} else int(max_edge),
+        # Every other setting is carried over as it is, so a new one cannot be lost here.
+        graph = GraphConfig.model_validate(
+            {
+                **graph.model_dump(),
+                "image_max_edge_px": None if max_edge in {"original", "none"} else int(max_edge),
+            }
         )
 
     return AppConfig(

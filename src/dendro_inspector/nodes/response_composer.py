@@ -16,6 +16,7 @@ Output language defaults to Ukrainian, as the domain prompt specifies.
 
 from __future__ import annotations
 
+from dendro_inspector.config import TargetSelection
 from dendro_inspector.graph.executor import NodeContext
 from dendro_inspector.graph.state import GraphState
 from dendro_inspector.knowledge.evidence_hierarchy import BAND_DECISIVE, EvidenceTier
@@ -23,6 +24,7 @@ from dendro_inspector.nodes._support import locale_of
 from dendro_inspector.nodes.field_attestation import attested_evidence_ids
 from dendro_inspector.schemas.decisions import (
     NO_CLAIM_STATUSES,
+    RESULT_SCHEMA_VERSION,
     CaseResponse,
     DecisionStatus,
     FinalDecision,
@@ -31,6 +33,8 @@ from dendro_inspector.schemas.decisions import (
     HypothesisStatus,
     ResponseFormat,
     StructuredFinalResult,
+    SubjectRole,
+    TargetSource,
     ToneMode,
     UserClaimVerdict,
     ValidatedIdentity,
@@ -214,6 +218,12 @@ _LABELS: dict[str, dict[str, str]] = {
         "no_confirmed_taxon": "по цьому фото жодну породу не підтверджено",
         "hypothesis": "Непідтверджена гіпотеза",
         "hypothesis_line": "Ймовірно, {name} ({level}) — не підтверджено.",
+        "role_target": "Саме про цей об'єкт запит.",
+        "role_context": "Також у кадрі; запит не про цей об'єкт.",
+        "no_target": (
+            "На фото кілька об'єктів ({count}), і жоден не позначено як той, про який запит. "
+            "Нижче окрема відповідь для кожного."
+        ),
         "nothing_would_change": "додаткове фото вже нічого не змінить",
         "placeholder": (
             "> **Демонстраційні дані.** Довідник порід у цій збірці — мінімальний "
@@ -237,6 +247,12 @@ _LABELS: dict[str, dict[str, str]] = {
         "no_confirmed_taxon": "no taxon is confirmed from this photograph",
         "hypothesis": "Unconfirmed hypothesis",
         "hypothesis_line": "Most likely {name} ({level}) — not confirmed.",
+        "role_target": "This is the subject the request is about.",
+        "role_context": "Also in the frame; the request is not about this subject.",
+        "no_target": (
+            "These photographs show {count} subjects, and none is designated as the one "
+            "asked about. Each has its own answer below."
+        ),
         "nothing_would_change": "no further photograph would change this",
         "placeholder": (
             "> **Placeholder knowledge.** This build ships a minimal demonstration pack "
@@ -384,10 +400,38 @@ def hypothesis_line(statement: HypothesisStatement, locale: str) -> str:
     return f"**{labels['hypothesis']}.** {named} {statement.explanation}"
 
 
+def designate_targets(
+    subject_ids: tuple[str, ...],
+    proposed: str | None = None,
+    selection: TargetSelection = TargetSelection.SINGLE_SUBJECT,
+) -> tuple[dict[str, SubjectRole], TargetSource]:
+    """Decide which results are the answer. Pure, and it changes no verdict.
+
+    A lone subject is the target because nothing else could be meant. Among several,
+    nothing code can check says which one the request is about, so none is designated:
+    presenting the first as the answer is how a tree in the background came to be reported
+    as the tree asked about. Under ``target_selection = extractor`` the extractor's proposal
+    designates one, when it names a subject that has a verdict here.
+    """
+    if len(subject_ids) == 1:
+        return {subject_ids[0]: SubjectRole.TARGET}, TargetSource.SINGLE_SUBJECT
+    if selection is TargetSelection.EXTRACTOR and proposed in subject_ids:
+        return (
+            {
+                subject_id: SubjectRole.TARGET if subject_id == proposed else SubjectRole.CONTEXT
+                for subject_id in subject_ids
+            },
+            TargetSource.EXTRACTOR_PROPOSAL,
+        )
+    return dict.fromkeys(subject_ids, SubjectRole.UNSPECIFIED), TargetSource.NONE
+
+
 def build_result(
     decision: FinalDecision,
     locale: str,
     state: GraphState | None = None,
+    *,
+    role: SubjectRole = SubjectRole.UNSPECIFIED,
 ) -> StructuredFinalResult:
     supporting = _supporting_evidence(decision, state)
     ruled_out: tuple[str, ...] = ()
@@ -399,6 +443,7 @@ def build_result(
         visual_hypothesis=hypothesis_statement(decision, locale),
         verdict=verdict_line(decision, locale),
         subject=decision.subject_id,
+        subject_role=role,
         taxonomic_resolution=decision.resolution,
         confidence=decision.confidence,
         confidence_band=decision.confidence_band,
@@ -585,6 +630,12 @@ def _render_block(
 ) -> str:
     labels = _LABELS[locale]
     lines = [f"### {labels['subject']}: {result.subject}", ""]
+    # Only where a reader could otherwise take the wrong block for the answer. A lone
+    # subject reads exactly as it did before roles existed.
+    if result.subject_role is SubjectRole.CONTEXT:
+        lines += [f"*{labels['role_context']}*", ""]
+    elif result.subject_role is SubjectRole.TARGET and len(state.decisions) > 1:
+        lines += [f"*{labels['role_target']}*", ""]
 
     if response_format is not ResponseFormat.NO_VERSION and state.case.user_claim:
         lines.append(f"**{labels['version']}:** {state.case.user_claim}")
@@ -644,11 +695,21 @@ def render_human_readable(
     if not results:
         return _LABELS[locale]["no_result"]
 
+    # The answer comes first. The sort is stable, so nothing moves unless a designated
+    # target was not already the first subject.
+    ordered = sorted(
+        zip(results, decisions, strict=False),
+        key=lambda pair: pair[0].subject_role is not SubjectRole.TARGET,
+    )
     blocks = [
         _render_block(result, decision, state, locale, response_format)
-        for result, decision in zip(results, decisions, strict=False)
+        for result, decision in ordered
     ]
     text = "\n\n---\n\n".join(blocks)
+    if len(results) > 1 and all(
+        result.subject_role is SubjectRole.UNSPECIFIED for result in results
+    ):
+        text = _LABELS[locale]["no_target"].format(count=len(results)) + "\n\n" + text
     if placeholder_knowledge:
         text += "\n\n" + _LABELS[locale]["placeholder"]
     return text
@@ -657,10 +718,22 @@ def render_human_readable(
 async def run(state: GraphState, ctx: NodeContext) -> GraphState:
     locale = locale_of(state)
     tone, joke_allowed = decide_tone(state)
-    results = tuple(build_result(decision, locale, state) for decision in state.decisions)
-    response_format = (
-        select_format(state.decisions[0], tone) if state.decisions else ResponseFormat.NO_VERSION
+    roles, target_source = designate_targets(
+        tuple(decision.subject_id for decision in state.decisions),
+        state.proposed_target_subject_id,
+        ctx.config.graph.target_selection,
     )
+    results = tuple(
+        build_result(decision, locale, state, role=roles[decision.subject_id])
+        for decision in state.decisions
+    )
+    targets = tuple(
+        decision for decision in state.decisions if roles[decision.subject_id] is SubjectRole.TARGET
+    )
+    # The response shape follows the subject the request is about. With none designated
+    # it follows the first, as it always has.
+    lead = targets[0] if len(targets) == 1 else (state.decisions[0] if state.decisions else None)
+    response_format = select_format(lead, tone) if lead is not None else ResponseFormat.NO_VERSION
     placeholder = any(
         (card := ctx.knowledge.try_taxon(decision.selected_taxon)) is not None
         and card.placeholder_content
@@ -674,9 +747,12 @@ async def run(state: GraphState, ctx: NodeContext) -> GraphState:
         if (leader := candidate_set.leader) is not None
     )
     response = CaseResponse(
+        schema_version=RESULT_SCHEMA_VERSION,
         case_id=state.case.case_id,
         results=results,
         decisions=state.decisions,
+        target_subject_ids=tuple(decision.subject_id for decision in targets),
+        target_source=target_source,
         human_readable=render_human_readable(
             results,
             state.decisions,

@@ -120,6 +120,14 @@ class GraphState(Contract):
     guard: GuardReport | None = None
     plan: InspectionPlan | None = None
     evidence: EvidencePacket | None = None
+    proposed_target_subject_id: Identifier | None = Field(
+        default=None,
+        description=(
+            "The identity root the extractor named as the photographs' main subject. "
+            "Set only under `target_selection = extractor`, and replaced by every "
+            "extraction. A proposal: it selects no taxon and supports none."
+        ),
+    )
     quality: EvidenceQualityReport | None = None
     proposed_candidate_sets: tuple[CandidateSet, ...] = Field(
         default=(),

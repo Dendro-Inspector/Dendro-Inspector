@@ -2,8 +2,10 @@
 
 Reads <run_dir>/cases/*.json and writes <run_dir>/summary.json and <run_dir>/cases.csv:
 one row per case (verdict, confidence, arbiter use, tokens, time) plus run totals.
-Legacy verdict fields describe the first subject; subject_summary counts every subject
-in successful cases. Each CSV row also carries subject_decisions as a JSON array.
+The verdict fields describe the subject the answer designates as its target, and the
+first subject where none is designated (several subjects, or a record written before
+targets existed); target_subject says which. subject_summary counts every subject in
+successful cases. Each CSV row also carries subject_decisions as a JSON array.
 Projected API records have no trace, so usage and model-call counts remain unknown.
 Standard library only.
 
@@ -25,6 +27,7 @@ COLUMNS = (
     "exit_code",
     "wall_seconds",
     "subjects",
+    "target_subject",
     "selected_taxon",
     "status",
     "resolution",
@@ -41,6 +44,8 @@ COLUMNS = (
     "subject_decisions",
 )
 DECISION_COLUMNS = ("subject_id", "selected_taxon", "status", "resolution", "confidence")
+#: A subject's role when the record does not say: written before roles existed.
+UNSPECIFIED_ROLE = "unspecified"
 TOKEN_KEYS = ("input_tokens", "cached_input_tokens", "output_tokens")
 
 
@@ -77,9 +82,21 @@ def case_row(record: dict[str, Any]) -> dict[str, Any]:
             )
         return row
     decisions = response.get("decisions") or []
-    first = decisions[0] if decisions else {}
+    roles = {
+        result.get("subject"): result.get("subject_role") or UNSPECIFIED_ROLE
+        for result in response.get("results") or []
+    }
+    # One designated target is the answer. Otherwise the first subject, as before, and
+    # target_subject stays empty so a reader can tell the two apart.
+    targets = response.get("target_subject_ids") or []
+    target = targets[0] if len(targets) == 1 else ""
+    first = next(
+        (decision for decision in decisions if decision.get("subject_id") == target),
+        decisions[0] if decisions else {},
+    )
     row.update(
         subjects=len(decisions),
+        target_subject=target,
         selected_taxon=first.get("selected_taxon") or "",
         status=first.get("status") or "",
         resolution=first.get("resolution") or "",
@@ -90,7 +107,11 @@ def case_row(record: dict[str, Any]) -> dict[str, Any]:
         escalation_triggered=trace.get("escalation_triggered"),
         model_calls=len(calls) if "events" in trace else None,
         subject_decisions=[
-            {key: decision.get(key) for key in DECISION_COLUMNS} for decision in decisions
+            {
+                **{key: decision.get(key) for key in DECISION_COLUMNS},
+                "role": roles.get(decision.get("subject_id"), UNSPECIFIED_ROLE),
+            }
+            for decision in decisions
         ],
         **{key: _measured_total(calls, key) for key in TOKEN_KEYS},
     )
@@ -116,7 +137,9 @@ def summarize(rows: list[dict[str, Any]]) -> dict[str, Any]:
         "confidence": dict(Counter(row["confidence"] for row in done)),
         "top_taxa": dict(Counter(row["selected_taxon"] for row in done).most_common(15)),
         "arbiter_used": sum(1 for row in done if row["arbiter_used"] is True),
-        # Legacy fields above describe the first subject of each successful case.
+        # The fields above describe each successful case's designated target, or its
+        # first subject where none is designated. This counts the former.
+        "target_designated": sum(1 for row in done if row.get("target_subject")),
         # Keep all subject outcomes separately; usage and durations remain per case.
         "subject_summary": {
             "subjects": len(decisions),

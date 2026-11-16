@@ -12,6 +12,21 @@ get entries.
 
 ### Added
 
+- **An answer says which subject it is about.** Each result has a `subject_role`
+  (`target`, `context` or `unspecified`), and the response lists `target_subject_ids` with a
+  `target_source`. A lone subject is the target. When the photographs show several, none is
+  designated: the results are `unspecified`, the text opens by saying so, and no result
+  should be presented as "the" answer. `scripts/batch/summarize_run.py` now reports the
+  designated target in its per-case verdict columns (new `target_subject` column, and a
+  `role` on every subject row) and falls back to the first subject only where none is
+  designated. The response carries `schema_version: 2`; nothing was renamed or removed, so
+  a reader of the earlier shape that ignores unknown fields is unaffected.
+- **Experimental: the extractor can name the photographs' main subject**, off by default.
+  With `DENDRO_TARGET_SELECTION=extractor` the evidence extractor is also asked which
+  subject the photographs are of; that subject becomes the `target`, the others `context`,
+  and the text leads with it. No verdict, level or confidence depends on it. It adds one
+  optional field to that call's response schema, which is unchanged while the setting is
+  off. Not yet run against a live provider.
 - **Experimental adaptive routing of the reviewers**, off by default. With
   `DENDRO_ADAPTIVE_ROUTING=shadow` a run's trace records, for each review round, which
   reviewer models deterministic rules would have called and why (`routing_history`); no
