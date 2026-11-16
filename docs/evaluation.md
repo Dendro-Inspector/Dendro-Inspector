@@ -557,7 +557,8 @@ Every other frozen decision and every metric is unchanged.
 
 Read the result honestly: twenty-four hand-built cases over recorded fixtures can show that
 the machinery follows these contracts. It says nothing about identification accuracy on real
-photographs, which has not been measured.
+photographs. That has been measured only in-sample, on the maintainers' own photographs; the
+figures and their limits are in the README's [Status](../README.md#status).
 
 ## Adding a case
 
