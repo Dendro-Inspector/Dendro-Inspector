@@ -12,6 +12,18 @@ get entries.
 
 ### Added
 
+- **A spend limit for one inspection that degrades the answer instead of failing it.**
+  `DENDRO_MAX_MODEL_CALLS` (`GraphConfig.max_model_calls`) and `DENDRO_MAX_TOKENS`
+  (`GraphConfig.max_tokens`) are unset by default. They bound the stages a run may add: a
+  correction retry and the arbiter. The first pass always runs. A stage starts only while
+  it fits, decided before it starts: requests are counted from the graph (five for a retry,
+  one for the arbiter, repair attempts included in what is spent), tokens from the same
+  run's last round. A retry that does not fit abstains, with the recorded cause
+  `spend_limit_reached`; an arbiter call that does not fit is recorded with its reasons and
+  `suppressed_by: [spend_limit_reached]`, and the answer is the provisional verdict. The
+  answer's limitations say which stage was not run. A trace can therefore carry a new
+  abstention cause. Until now the only ceiling was the wall-clock deadline, which fails the
+  run with no answer. See `docs/agent-graph.md`.
 - **`coverage-audit --settings recorded` replays a stored run under the settings it ran
   with, and an unavailable replay says why.** A replay ran only under the settings of the
   environment it was started in. Records from a deployment configured differently then

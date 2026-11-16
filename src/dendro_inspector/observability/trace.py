@@ -10,6 +10,8 @@ import json
 import os
 import subprocess
 import time
+from collections.abc import Mapping
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
@@ -165,6 +167,18 @@ def _finding_record(
         required_action=finding.required_action.value,
         impact=finding.impact.value,
     )
+
+
+@dataclass(frozen=True, slots=True)
+class RunSpend:
+    """What a run has spent on model calls so far."""
+
+    #: Requests sent, every repair attempt counted.
+    requests: int = 0
+    #: Input (cached input included) plus output tokens, where a provider reported them.
+    tokens: int = 0
+    #: Tokens of the most recent call each node made.
+    latest_tokens: Mapping[str, int] = field(default_factory=dict)
 
 
 class TraceRecorder:
@@ -644,6 +658,19 @@ class TraceRecorder:
                 reviewer_projection=projection,
             )
         )
+
+    def spend(self) -> RunSpend:
+        """Model requests and tokens so far, whether a node has claimed the call or not."""
+        calls = [call for event in self._events for call in event.provider_calls]
+        calls.extend(self._pending_calls)
+        latest: dict[str, int] = {}
+        requests = tokens = 0
+        for call in calls:
+            used = (call.input_tokens or 0) + (call.output_tokens or 0)
+            requests += call.attempts
+            tokens += used
+            latest[call.node] = used
+        return RunSpend(requests=requests, tokens=tokens, latest_tokens=latest)
 
     @property
     def retry_index(self) -> int:

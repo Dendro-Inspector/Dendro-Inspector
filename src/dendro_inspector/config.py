@@ -174,6 +174,26 @@ class GraphConfig(Contract):
             "GraphExecutionError; it never returns a partial answer."
         ),
     )
+    max_model_calls: int | None = Field(
+        default=None,
+        ge=1,
+        description=(
+            "Model requests one inspection may make, repair attempts included, or None for "
+            "no limit. A correction retry and the arbiter start only while they fit; the "
+            "first pass always runs. Reaching the limit never fails the run: it answers "
+            "from what it has and records which stage was not run."
+        ),
+    )
+    max_tokens: int | None = Field(
+        default=None,
+        ge=1,
+        description=(
+            "Tokens one inspection may use, as providers report them (input with cached "
+            "input, plus output), or None for no limit. Same rule as max_model_calls, with "
+            "a stage's size taken from the run's own last round. A provider that reports "
+            "no usage is not bounded by it."
+        ),
+    )
     min_observations_for_candidates: int = Field(default=2, ge=1)
     require_non_colour_evidence: bool = True
     semantic_retrieval: bool = Field(
@@ -457,6 +477,8 @@ def load_config(overrides: AppConfig | None = None) -> AppConfig:
         require_discriminating_support=discriminating in {"1", "true", "yes", "on"},
         review_authority=ReviewAuthority(authority.lower()),
         deadline_seconds=float(deadline) if deadline else None,
+        max_model_calls=int(calls) if (calls := _env("DENDRO_MAX_MODEL_CALLS")) else None,
+        max_tokens=int(tokens) if (tokens := _env("DENDRO_MAX_TOKENS")) else None,
     )
     # Longest edge of the photograph sent to models: a number of pixels, or "original" to send
     # the file untouched (no upright rotation, metadata kept).

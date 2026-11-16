@@ -9,11 +9,13 @@ termination argument is a property of this module alone:
 * ``correction_worker`` increments ``retries`` on every pass.
 
 Therefore the loop can be taken at most ``retry_budget`` times and the graph terminates.
+A spend limit can only remove that edge, never add a pass, so the argument is unchanged.
 """
 
 from __future__ import annotations
 
 from dendro_inspector.config import AdaptiveMode, GraphConfig
+from dendro_inspector.graph.budget import Stage
 from dendro_inspector.graph.definition import NodeName
 from dendro_inspector.graph.state import GraphState
 
@@ -26,7 +28,8 @@ def route_internal_gate(state: GraphState, config: GraphConfig) -> NodeName:
     """Resolve the ``internal_gate`` decision diamond.
 
     Precedence matters: an unresolvable finding must not be retried, and a retry request
-    that has run out of budget degrades to abstention rather than looping.
+    that has run out of budget degrades to abstention rather than looping. A retry the
+    run's spend limit left no room for degrades the same way.
     """
     synthesis = state.synthesis
     if synthesis is None:
@@ -36,7 +39,10 @@ def route_internal_gate(state: GraphState, config: GraphConfig) -> NodeName:
     if synthesis.unresolvable:
         return NodeName.ABSTAIN
     if synthesis.retry_required:
-        if state.retries < config.retry_budget:
+        if (
+            state.retries < config.retry_budget
+            and Stage.CORRECTION_RETRY.value not in state.budget_stops
+        ):
             return NodeName.CORRECTION_WORKER
         return NodeName.ABSTAIN
     return NodeName.ESCALATION_GATE

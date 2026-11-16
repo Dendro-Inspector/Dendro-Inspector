@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from dendro_inspector.graph.budget import SPEND_LIMIT_REACHED, Stage
 from dendro_inspector.graph.executor import NodeContext
 from dendro_inspector.graph.state import GraphState, SubjectAbstention
 from dendro_inspector.nodes.review_synthesizer import (
@@ -168,6 +169,13 @@ async def run(state: GraphState, ctx: NodeContext) -> GraphState:
     # claims; another tree's weaker bound is never folded into this subject's result.
     affected = _covered(state, blocking) if blocking else state.subject_ids
     bounds = _bounds(state, ctx, affected)
+    # A retry that was asked for and not run has one of two causes, and they are different
+    # facts: the graph's retry budget was spent, or the run's spend limit left no room.
+    no_retry: AbstentionCause = (
+        SPEND_LIMIT_REACHED
+        if Stage.CORRECTION_RETRY.value in state.budget_stops
+        else "retry_budget_spent"
+    )
     for bound in bounds:
         covering = tuple(
             finding for finding in blocking if finding.subject_id in (None, bound.subject_id)
@@ -175,7 +183,7 @@ async def run(state: GraphState, ctx: NodeContext) -> GraphState:
         cause: AbstentionCause = (
             "unresolvable_finding"
             if any(requests_abstention(finding) for finding in covering)
-            else "retry_budget_spent"
+            else no_retry
             if covering
             else "unspecified"
         )

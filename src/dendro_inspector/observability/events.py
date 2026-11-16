@@ -435,6 +435,8 @@ AbstentionCause = Literal[
     "unresolvable_finding",
     # A finding asked for re-extraction and the retry budget was already spent.
     "retry_budget_spent",
+    # A finding asked for re-extraction and the run's spend limit left no room for it.
+    "spend_limit_reached",
     # A model asserted abstention without evidence and the arbiter's own findings agreed.
     "unverified_abstention_confirmed",
     # The same, with no arbitration to confirm or refuse it: withdrawn to fail closed.

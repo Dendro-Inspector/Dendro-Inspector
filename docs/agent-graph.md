@@ -193,6 +193,43 @@ normal arbitration check. A fully abstained case suppresses arbitration.
 `max_steps` (default 64) is a backstop against a routing bug, not the primary guarantee. It
 raises `GraphExecutionError` rather than returning a degraded answer.
 
+### Spend limit
+
+`GraphConfig.max_model_calls` (`DENDRO_MAX_MODEL_CALLS`) and `GraphConfig.max_tokens`
+(`DENDRO_MAX_TOKENS`) bound what one inspection may spend. Both are unset by default, and an
+unset limit changes nothing.
+
+A limit applies only to the stages a run may add: a correction retry (extraction, candidate
+generation and the three reviews again, five calls) and the arbiter (one call). The plan,
+the first extraction, candidate generation and the first review round always run, because
+without them there is nothing to answer from. A stage starts only while it fits under every
+configured limit, decided before it starts:
+
+| Limit | What is counted | How a stage's size is known |
+| --- | --- | --- |
+| `max_model_calls` | Requests sent, each repair attempt included | From the graph: five for a retry, one for the arbiter |
+| `max_tokens` | Input tokens (cached input included) plus output tokens, as providers report them | From the same run: a retry is taken to cost what the round before it cost, the arbiter what the largest review call did |
+
+A stage that does not fit is left out, and the run answers from what it has:
+
+- A retry that was asked for and not run goes to `abstain`, as when the retry budget is
+  spent. The abstention's recorded cause is `spend_limit_reached`, not `retry_budget_spent`.
+- An arbiter call that was due and not made is recorded as an escalation with its reasons
+  and `suppressed_by: [spend_limit_reached]`. This is the one suppressor that stands against
+  a hard trigger, because it is an operator's ceiling and not a judgement that the call is
+  unnecessary. The answer is the provisional verdict, which code had already capped. An
+  abstention that was waiting for the arbiter fails closed, as for any arbitration that did
+  not run.
+
+Either way `GraphState.budget_stops` names the stage, and each result's limitations tell the
+reader that it was not run. Reaching a limit never fails the run and is never reported as
+missing evidence.
+
+What a limit does not do. A stage that has started finishes, so repair attempts inside it
+can take the run past the limit by part of one stage. A provider that reports no token
+usage is not bounded by `max_tokens`. `deadline_seconds` is a different control: it bounds
+wall-clock time and fails the run with its partial trace.
+
 ## Execution paths
 
 | Scenario | Nodes executed |

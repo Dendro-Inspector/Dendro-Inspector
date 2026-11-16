@@ -174,6 +174,14 @@ _REASON_PHRASE: dict[str, dict[str, str]] = {
         "scale_absent": "у кадрі немає масштабного орієнтира",
         "scale_approximate": "масштаб у кадрі лише приблизний",
         "abstained": ("система утрималася від сильнішого висновку; цей результат навмисно ширший"),
+        "spend_limit_correction_retry": (
+            "перевірка просила переглянути ознаки ще раз, але цього не зроблено: "
+            "вичерпано ліміт витрат на цю інспекцію"
+        ),
+        "spend_limit_arbitration": (
+            "незалежну перевірку мали провести, але не провели: "
+            "вичерпано ліміт витрат на цю інспекцію"
+        ),
         "knowledge_coverage_gap": (
             "частина побачених ознак не описана жодною карткою цього довідника — "
             "це межа бази знань, а не якості фото"
@@ -185,6 +193,13 @@ _REASON_PHRASE: dict[str, dict[str, str]] = {
         "scale_approximate": "scale in the frame is only approximate",
         "abstained": (
             "the run abstained; this verdict is deliberately broader than the evidence earned"
+        ),
+        "spend_limit_correction_retry": (
+            "review asked for a second look at the evidence and it was not run: this "
+            "inspection reached its spend limit"
+        ),
+        "spend_limit_arbitration": (
+            "an independent review was due and was not run: this inspection reached its spend limit"
         ),
         "knowledge_coverage_gap": (
             "some features visible in this photograph are not described by any card in this "
@@ -565,6 +580,12 @@ def _limitations(
     through :func:`render_reason_code`, because this tuple is printed to a person.
     """
     items = [render_reason_code("abstained", locale)] if decision.abstained else []
+    # A stage the spend limit left out is a fact about this run, not about the photograph
+    # or the tree. It goes ahead of everything the eight-item cap below could drop.
+    if state is not None:
+        items.extend(
+            render_reason_code(f"spend_limit_{stop}", locale) for stop in state.budget_stops
+        )
     # Ahead of the reviewer prose, and deliberately: the eight-item cap below means a late
     # entry is a dropped entry, and this is the one limitation a reader cannot infer from
     # the photograph they took. Everything else here describes their image; this describes

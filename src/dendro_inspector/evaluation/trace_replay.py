@@ -42,6 +42,10 @@ What a trace does not carry is reconstructed conservatively and reported by
   uses that round's reviews on every pass, so the earlier retry route is not reconstructed.
 * The case's own inputs — declared object type, location, the user's claim and note — are
   not in the trace. A record that used any of them replays without it.
+* A spend limit is replayed as a count of requests only. Scripted calls report no token
+  usage and repeat no repair attempt, so a run that a token limit stopped, or that a
+  repair attempt took to its request limit, routes on in a replay, asks for a response it
+  never recorded, and is reported unavailable.
 * A reviewer whose model a review plan did not call (``model_called: false``) left no
   response. A replay that reaches it with evidence history reports the route as unavailable
   rather than scripting a pass. The other direction is allowed: a replay run with adaptive
