@@ -152,6 +152,11 @@ class GraphConfig(Contract):
     )
     min_observations_for_candidates: int = Field(default=2, ge=1)
     require_non_colour_evidence: bool = True
+    semantic_retrieval: bool = Field(
+        default=False,
+        description="Retrieve related cards through declared refinements; admission stays exact.",
+    )
+    semantic_retrieval_limit: int = Field(default=8, ge=1, le=64)
     open_world_discovery: bool = Field(
         default=False,
         description=(
@@ -381,6 +386,9 @@ def load_config(overrides: AppConfig | None = None) -> AppConfig:
     # running a paid inspection under a policy nobody asked for.
     authority = (_env("DENDRO_REVIEW_AUTHORITY") or ReviewAuthority.RECOMMENDATION.value).strip()
     graph = GraphConfig(
+        semantic_retrieval=(_env("DENDRO_SEMANTIC_RETRIEVAL", "false") or "false").lower()
+        in {"1", "true", "yes", "on"},
+        semantic_retrieval_limit=int(_env("DENDRO_SEMANTIC_RETRIEVAL_LIMIT", "8") or "8"),
         open_world_discovery=open_world in {"1", "true", "yes", "on"},
         require_discriminating_support=discriminating in {"1", "true", "yes", "on"},
         review_authority=ReviewAuthority(authority.lower()),
@@ -391,6 +399,8 @@ def load_config(overrides: AppConfig | None = None) -> AppConfig:
     max_edge = (_env("DENDRO_IMAGE_MAX_EDGE_PX") or "").strip().lower()
     if max_edge:
         graph = GraphConfig(
+            semantic_retrieval=graph.semantic_retrieval,
+            semantic_retrieval_limit=graph.semantic_retrieval_limit,
             open_world_discovery=graph.open_world_discovery,
             require_discriminating_support=graph.require_discriminating_support,
             review_authority=graph.review_authority,

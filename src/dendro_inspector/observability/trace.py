@@ -49,6 +49,7 @@ from dendro_inspector.observability.events import (
 )
 from dendro_inspector.observability.evidence_history import EvidenceRevision, packet_digest
 from dendro_inspector.observability.logging import get_logger
+from dendro_inspector.schemas.candidates import CardRetrieval
 from dendro_inspector.schemas.decisions import AuthorityCheckStatus
 from dendro_inspector.schemas.evidence import KnowledgeCoverage
 from dendro_inspector.schemas.review_context import ReviewProjection
@@ -177,6 +178,7 @@ class TraceRecorder:
         self._evidence_revision = 0
         self._evidence_history: list[EvidenceRevision] = []
         self._candidate_validation_history: list[CandidateValidationRecord] = []
+        self._card_retrievals: list[CardRetrieval] = []
         self._evidence_context: EvidenceContextRecord | None = None
         self._plan: PlanRecord | None = None
         self._candidate_validations: dict[str, CandidateValidationRecord] = {}
@@ -194,6 +196,12 @@ class TraceRecorder:
 
     def set_prompt_metadata(self, metadata: PromptMetadata) -> None:
         self._prompt = metadata
+
+    def record_card_retrievals(self, records: tuple[CardRetrieval, ...]) -> None:
+        self._card_retrievals.extend(
+            record.model_copy(update={"evidence_revision": self._evidence_revision})
+            for record in records
+        )
 
     def set_provider(self, role: str, adapter: str, model: str | None) -> None:
         self._providers[role] = f"{adapter}:{model}" if model else adapter
@@ -726,6 +734,7 @@ class TraceRecorder:
             evidence_context=self._evidence_context,
             evidence_history=tuple(self._evidence_history),
             candidate_validation_history=tuple(self._candidate_validation_history),
+            card_retrievals=tuple(self._card_retrievals),
             observation_uses=self._observation_uses(),
             plan=self._plan,
             review_rounds=tuple(self._review_rounds.values()),

@@ -16,6 +16,7 @@ from pydantic import Field
 
 from dendro_inspector.observability.evidence_history import EvidenceRevision
 from dendro_inspector.schemas.base import Contract, Identifier, ShortText
+from dendro_inspector.schemas.candidates import CardRetrieval
 from dendro_inspector.schemas.decisions import (
     AuthorityCheckTrace,
     DecisionDerivation,
@@ -32,7 +33,7 @@ GRAPH_VERSION = "0.9.0"
 #: inferring it from the package version. Traces written before this field existed carry no
 #: version and are version 1: they have no `review_rounds`, so an empty tuple there means
 #: "not recorded", never "no review ran".
-TRACE_SCHEMA_VERSION = 3
+TRACE_SCHEMA_VERSION = 4
 LEGACY_TRACE_SCHEMA_VERSION = 1
 
 
@@ -528,6 +529,7 @@ class RunTrace(Contract):
         ),
     )
     candidate_validation_history: tuple[CandidateValidationRecord, ...] = ()
+    card_retrievals: tuple[CardRetrieval, ...] = ()
     observation_uses: tuple[ObservationUseRecord, ...] = ()
     plan: PlanRecord | None = None
     review_rounds: tuple[ReviewRoundRecord, ...] = Field(

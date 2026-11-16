@@ -207,6 +207,25 @@ covers every detected identity root, including subjects the quality gate found u
 each receives either a supported verdict or an explicit insufficient-evidence result and
 photo request. A model's omission cannot silently remove a subject from the answer.
 
+### Bounded semantic retrieval (experimental)
+
+`DENDRO_SEMANTIC_RETRIEVAL=true` lets the candidate generator see cards related through
+the explicit refinement chains in `knowledge/vocabulary.yaml`. It defaults to false.
+`DENDRO_SEMANTIC_RETRIEVAL_LIMIT` bounds additional cards per subject (default 8); exact
+matches are never removed by this limit. The evidence-quality gate uses the same retrieval
+policy, so it does not stop a subject whose related cards could be inspected.
+
+Retrieval records identify the subject, observation, feature, observed and declared values,
+relation (`exact`, `observed_broader`, `observed_narrower`) and evidence revision. These are
+stored as `card_retrievals` in trace schema 4 and shown to the generator. A relation explains
+why a card is visible; it grants no diagnostic credit. Candidate admission, contradictions,
+attachment trust and confidence ceilings retain their exact matching rules. Word overlap,
+sibling refinements and another subject's readings do not establish a relation.
+
+No new botanical refinement pairs are added by this implementation. In particular the
+roadmap's `cordate_serrate -> cordate` example needs a separately reviewed knowledge change.
+Older trace readers must negotiate schema support before accepting schema 4 records.
+
 ### Open-world candidates
 
 All of this is behind `GraphConfig.open_world_discovery`, off by default. Off, the

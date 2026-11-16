@@ -12,6 +12,10 @@ get entries.
 
 ### Added
 
+- **Experimental bounded semantic retrieval**, disabled by default. Declared vocabulary
+  refinements can open related cards without turning those relations into supporting
+  evidence. Additional cards are capped per subject, and trace schema 4 records retrieval
+  reasons and their evidence revision. Enable with `DENDRO_SEMANTIC_RETRIEVAL=true`.
 - **`dendro heldout-check` validates a held-out evaluation set.** A YAML manifest kept
   beside the photographs lists each unit with its physical tree or wood lot, categories, the
   owner's preliminary label and specialist reviews. The check fails on a photograph shared
