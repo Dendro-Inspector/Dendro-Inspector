@@ -251,6 +251,16 @@ source; that is also the only path by which one can affect a verdict. Drafts mad
 reference records go to `knowledge/review-queue/`, which the loader never reads
 (`knowledge/drafts.py`).
 
+### A hypothesis beside the verdict
+
+`FinalDecision.visual_hypothesis` holds a name the leader's card diagnosed and an
+uncheckable review kept out of the verdict. Like an open-world candidate it sits beside the
+verdict and never inside it: it is never `selected_taxon`, carries no confidence, reaches
+no model, and is not scored. `StructuredFinalResult` gives a consumer two separate objects,
+`validated_identity` for the confirmed name and `visual_hypothesis` for this one, each with
+its own status and explanation. When one is recorded, and what ends it, is in
+[the review pipeline](review-pipeline.md#the-name-a-review-held-back).
+
 ### Ordinal scores, not percentages
 
 `SupportStrength` is `weak | moderate | strong`. `Confidence` is `low | medium | high`.

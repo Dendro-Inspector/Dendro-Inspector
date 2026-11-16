@@ -12,6 +12,25 @@ get entries.
 
 ### Added
 
+- **A name that review held back is kept as an unconfirmed hypothesis.** When the leading
+  candidate has a reading its own reference card treats as diagnostic, and the verdict was
+  lowered only by review that code cannot check (a recommended level, an unverified request
+  to lower the level, or an abstention), the answer used to lose the name: it said
+  "insufficient evidence" or named only the family. The verdict's taxon, level, confidence
+  and status are unchanged; the name now appears beside it. A decision carries it as
+  `visual_hypothesis`, and each structured result has two separate objects:
+  `validated_identity` (the confirmed name with its status, or null) and
+  `visual_hypothesis` (the unconfirmed name, its status `evidence_supported`, what held it
+  back, and an explanation). The text answer adds one line after the verdict, "Unconfirmed
+  hypothesis. Most likely ... — not confirmed.", and a verdict that names nothing then reads
+  "no taxon is confirmed from this photograph". No hypothesis is recorded when a trusted
+  reading contradicts the card, when a code-raised or code-verified finding lowered the
+  level, or when the leader has no diagnostic reading; such a leader stays listed under
+  "still consistent with this evidence". A hypothesis is never the selected taxon, carries
+  no confidence, is not shown to reviewers or the arbiter, and is not counted as an answer
+  by `dendro eval` or `coverage-audit`. Three consistency codes report a result that
+  disagrees with its decision: `validated_identity_mismatch`, `hypothesis_mismatch` and
+  `text_omits_hypothesis`.
 - **An experimental review policy, off by default, for offline comparison.** Under the
   released policy the broadest level any admitted review recommends caps the claim, so a
   reviewer's stated doubt can withdraw a name the evidence supports. Setting

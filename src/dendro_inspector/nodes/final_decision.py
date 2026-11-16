@@ -86,6 +86,7 @@ from dendro_inspector.schemas.decisions import (
     DecisionStatus,
     FinalDecision,
     FindingReference,
+    HeldBackBy,
     PhotoRequest,
     RecommendationSource,
     RerankSource,
@@ -93,6 +94,7 @@ from dendro_inspector.schemas.decisions import (
     ResolutionBoundSource,
     ReviewStage,
     UserClaimVerdict,
+    VisualHypothesis,
 )
 from dendro_inspector.schemas.evidence import (
     EvidencePacket,
@@ -1853,6 +1855,116 @@ def _unresolved(
     return tuple(dict.fromkeys(questions))[:8]
 
 
+#: Bounds that hold a leader back for a reason found in the evidence itself. A name one of
+#: these stands above is not waiting on review, and is not offered as a hypothesis.
+_EVIDENCE_BOUNDS: frozenset[ResolutionBoundSource] = frozenset(
+    {"no_discriminating_support", "diagnostic_combination", "open_world_outranked"}
+)
+
+
+def hypothesis_identity(
+    candidate: Candidate, card: TaxonCard, tier: EvidenceTier
+) -> TaxonIdentity | None:
+    """The narrowest name a hypothesis may carry.
+
+    The level the model proposed, no narrower than its card declares and no narrower than
+    this kind of evidence can name. The tier ceiling applies to a hypothesis exactly as it
+    does to a verdict: "by the bark it is definitely this species" is the overclaim the
+    hierarchy exists for, and labelling it unconfirmed would not make it a reading the
+    photograph can carry.
+    """
+    level = min(
+        (
+            candidate.resolution,
+            cap_resolution(candidate.resolution, card),
+            resolution_ceiling(tier),
+        ),
+        key=resolution_rank,
+    )
+    return card.identity_at_or_broader(level)
+
+
+def held_back_hypothesis(
+    state: GraphState,
+    ctx: NodeContext,
+    evidence: EvidencePacket,
+    subject_id: str,
+    leader: Candidate,
+    card: TaxonCard | None,
+    tier: EvidenceTier,
+    composed: ResolutionComposition,
+    named: Resolution,
+) -> VisualHypothesis | None:
+    """The leader as a hypothesis, where review alone kept the verdict from naming it.
+
+    ``named`` is the level the verdict ended at, ``unknown`` when it names nothing. The
+    hypothesis is recorded when all of these hold, and each is checked here:
+
+    * the verdict names less than the leader's own level (`hypothesis_identity`);
+    * a reading the leader's card calls diagnostic of it was made, and reaches that level.
+      A leader its card merely fits is listed under "still consistent with" as before and
+      is not singled out: see `HypothesisStatus` for what that costs when it is;
+    * nothing in the evidence stands against it. No trusted reading contradicts its card,
+      cited by a review or not; no evidence-side bound sits below the level; no code-raised
+      finding asked for a broader one; and no accepted model finding has a ground code
+      could verify (`validated_ground`: a card contradiction, an alternative supported as
+      well, or contaminated support). A reading the trust boundary holds as context only,
+      such as a neighbour's leaf at the frame edge, withdraws nothing here, as it cannot
+      under `validated_ground` either;
+    * what lowered the verdict is therefore review that code could not check: a
+      recommended level, a finding's lower-resolution action, or an abstention.
+
+    Under the evidence-bound review policy the same test decides the opposite way round:
+    an unverifiable recommendation does not lower the verdict there, so the name is
+    confirmed and no hypothesis is left to record.
+    """
+    if card is None:
+        return None
+    identity = hypothesis_identity(leader, card, tier)
+    if identity is None or resolution_rank(identity.resolution) <= resolution_rank(named):
+        return None
+    level = resolution_rank(identity.resolution)
+
+    diagnostic, combination = _discrimination(card, evidence, leader, subject_id)
+    if not diagnostic or (
+        combination is not None and level > resolution_rank(combination.combination.max_resolution)
+    ):
+        return None
+    match = match_card(card, evidence, subject_id)
+    trusted = {
+        observation.observation_id
+        for observation in evidence.observations_for(subject_id)
+        if project_observation(observation).supports_identification
+    }
+    if trusted.intersection(match.contradiction_hits) or match.contradicts_own_card:
+        return None
+    below = {bound.source for bound in composed.bounds if resolution_rank(bound.value) < level}
+    if below & _EVIDENCE_BOUNDS:
+        return None
+    if (
+        RequiredAction.LOWER_RESOLUTION in _deterministic_actions_for(state, subject_id)
+        or _validated_grounds(state, subject_id, leader, card, ctx.knowledge).entries
+    ):
+        return None
+
+    held_back_by: HeldBackBy
+    if "abstention" in below:
+        held_back_by = "abstention"
+    elif "reviewer_recommendation" in below:
+        held_back_by = "reviewer_recommendation"
+    elif composed.action_applied:
+        held_back_by = "review_finding"
+    else:
+        return None
+    return VisualHypothesis(
+        taxon=identity.taxon_id,
+        display_name=identity.display_name,
+        resolution=identity.resolution,
+        held_back_by=held_back_by,
+        diagnostic_evidence_ids=diagnostic,
+    )
+
+
 def decide_subject_base(
     state: GraphState,
     ctx: NodeContext,
@@ -2023,6 +2135,9 @@ def decide_subject_base(
             user_claim_verdict=verdict,
             evidence_tier=int(tier),
             open_world_candidates=state.open_world_for(subject_id),
+            visual_hypothesis=held_back_hypothesis(
+                state, ctx, evidence, subject_id, leader, card, tier, composed, Resolution.UNKNOWN
+            ),
         )
 
     resolution = selected.resolution
@@ -2101,6 +2216,9 @@ def decide_subject_base(
         ),
         open_world_candidates=state.open_world_for(subject_id),
         open_world_conflict=bool(competing),
+        visual_hypothesis=held_back_hypothesis(
+            state, ctx, evidence, subject_id, leader, card, tier, composed, resolution
+        ),
     )
 
 
