@@ -472,7 +472,7 @@ partial, the file records which parts it covers.
 
 ### Known limitations
 
-- All 27 taxon cards have an AI-assisted review, recorded per card; comparison and
+- All 28 taxon cards have an AI-assisted review, recorded per card; comparison and
   regional cards do not. No independent dendrologist review is recorded. Feature rules cite
   the domain prompt's §14 or their own sources; `larix` and `abies` are not in the prompt.
 - Not validated against real photographs at scale. The suite proves the machinery, not
@@ -650,6 +650,10 @@ answer.
    `.github/ISSUE_TEMPLATE/config.yml`. The repository became public on 2026-07-28.
    Release tags begin at `v0.2.1`; the `v0.1.0` and `v0.2.0` changelog entries predate the
    imported Git history and deliberately remain untagged.
-6. Branch protection on `main`: require the CI checks from `.github/workflows/ci.yml`.
-   Until this is switched on, §11's enforcement layer does not exist — the workflow runs
-   but nothing stops a merge over a red run.
+6. ~~Branch protection on `main`~~ — **on**, through repository rulesets rather than
+   classic branch protection (checked 2026-11-16). Changes arrive by pull request. Both
+   test jobs, the secret scan, the package build and the image build are required status
+   checks, and a merge is refused while one of them is running or red, a maintainer's
+   included. One approval is required; a maintainer may merge their own pull request
+   without it. `GET /repos/.../branches/main/protection` answers 404 for a ruleset, so
+   check `GET /repos/.../rules/branches/main` instead.

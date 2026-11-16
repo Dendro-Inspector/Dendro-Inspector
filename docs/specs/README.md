@@ -17,6 +17,10 @@ the one place that says in which order they land and which decisions gate them.
 | [`latency-and-cost.md`](latency-and-cost.md) | Speed and cost of a live run | Neutral by measurement |
 | [`core-modernisation.md`](core-modernisation.md) | Shape of the data and the public API | Neutral by proof |
 
+A fourth document is not a design specification and has no place in the order below:
+[`v1-heldout-protocol.md`](v1-heldout-protocol.md) fixes, before any result exists, how
+the held-out run for v1.0.0 is scored and which result leads to which decision.
+
 ## Order of work
 
 Dependencies, not preferences. An arrow means "cannot be measured or accepted without".

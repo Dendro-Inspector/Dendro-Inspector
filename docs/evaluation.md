@@ -681,6 +681,11 @@ Report wrong-genus rates per group as well as per unit when groups hold several 
 always with the denominator ([`AGENTS.md` §16](../AGENTS.md#16-benchmark-governance)). The
 wrong-genus target of under 5% among named genera is a planning target, not a guarantee.
 
+How the run on this set is carried out for v1.0.0, what is counted, and which result leads
+to which decision is fixed in advance in
+[`docs/specs/v1-heldout-protocol.md`](specs/v1-heldout-protocol.md). It compares the graph
+with the model alone on the same units and has to be signed before any result is read.
+
 ## Measuring cost and latency
 
 The suite measures what the system concludes. It says nothing about what a run costs or how

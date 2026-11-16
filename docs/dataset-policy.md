@@ -16,8 +16,8 @@ carries `false`, with a named, dated review of its rules and taxonomic identitie
 data-contract gate checks these review records instead of requiring every card to remain
 a placeholder forever.
 
-All 27 taxon cards received an **AI-assisted botanical and implementation review** on
-2026-11-11, using general botanical knowledge, the domain prompt and the source descriptions
+All 28 taxon cards carry a recorded **AI-assisted botanical and implementation review**,
+dated 2026-11-11 in each card, using general botanical knowledge, the domain prompt and the source descriptions
 recorded in their files. Their rules, contradictions, broader identities and evidence
 requirements were checked with synthetic regression cases. Their provenance confidence is
 `medium`; their placeholder flags are `false`. Rules added from general botanical
