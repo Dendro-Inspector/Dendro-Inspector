@@ -469,6 +469,121 @@ class TestReviewEveryDecision:
         assert not _decide(_state(), policy).required
 
 
+class TestSelectiveArbitration:
+    """Experimental: only a possible overclaim or a safety case calls the arbiter."""
+
+    SELECTIVE = EscalationPolicy(selective_arbitration=True)
+
+    @staticmethod
+    def _disagreeing(**changes) -> GraphState:
+        return _state(
+            synthesis=ReviewSynthesis(
+                reviewer_disagreement=True,
+                escalation_recommended=True,
+                accepted_findings=(
+                    ReviewFinding(
+                        finding_id="f1",
+                        category=FindingCategory.MISSING_DECISIVE_FEATURE,
+                        severity=Severity.MINOR,
+                        summary="Needs a leaf.",
+                        required_action=RequiredAction.REQUEST_ADDITIONAL_PHOTO,
+                    ),
+                ),
+            ),
+            **changes,
+        )
+
+    def test_off_by_default(self):
+        assert EscalationPolicy().selective_arbitration is False
+        assert _decide(self._disagreeing()).required
+
+    def test_reviewer_disagreement_alone_is_recorded_not_sent(self):
+        decision = _decide(self._disagreeing(), self.SELECTIVE)
+        assert not decision.required
+        assert "reviewer_disagreement" in decision.reasons
+        assert decision.suppressed_by == ("selective_arbitration",)
+
+    def test_bark_only_input_alone_is_recorded_not_sent(self):
+        state = self._disagreeing(plan=InspectionPlan(bark_only_input=True))
+        decision = _decide(state, self.SELECTIVE)
+        assert not decision.required
+        assert "bark_only_input" in decision.reasons
+
+    def test_the_every_decision_switch_is_ignored(self):
+        policy = EscalationPolicy(selective_arbitration=True, review_every_decision=True)
+        decision = _decide(self._disagreeing(), policy)
+        assert not decision.required
+        assert decision.suppressed_by == ("selective_arbitration",)
+
+    def test_case_wide_abstention_blocks_it_again(self):
+        policy = EscalationPolicy(selective_arbitration=True, review_every_decision=True)
+        state = _state(abstained=True, guard=GuardReport(user_challenges_previous_result=True))
+        decision = _decide(state, policy)
+        assert not decision.required
+        assert decision.suppressed_by == ("already_abstaining",)
+
+    def test_a_species_claim_is_still_sent(self):
+        state = self._disagreeing(
+            candidate_sets=(
+                CandidateSet(
+                    subject_id="log_1",
+                    candidates=(Candidate(taxon="pinus", resolution=Resolution.SPECIES, rank=1),),
+                ),
+            )
+        )
+        decision = _decide(state, self.SELECTIVE)
+        assert decision.required
+        assert "species_level_proposed" in decision.reasons
+
+    def test_a_user_challenge_is_still_sent(self):
+        state = _state(guard=GuardReport(user_challenges_previous_result=True))
+        assert _decide(state, self.SELECTIVE).required
+
+    def test_close_leaders_are_still_sent(self):
+        state = self._disagreeing(
+            candidate_sets=(
+                CandidateSet(
+                    subject_id="log_1",
+                    candidates=(
+                        Candidate(
+                            taxon="pinus",
+                            resolution=Resolution.GENUS,
+                            rank=1,
+                            score=SupportStrength.MODERATE,
+                        ),
+                        Candidate(
+                            taxon="picea",
+                            resolution=Resolution.GENUS,
+                            rank=2,
+                            score=SupportStrength.MODERATE,
+                        ),
+                    ),
+                ),
+            )
+        )
+        decision = _decide(state, self.SELECTIVE)
+        assert decision.required
+        assert "leading_candidates_close" in decision.reasons
+
+    def test_the_set_holds_every_hard_trigger_but_the_operator_switch(self):
+        from dendro_inspector.nodes.escalation_gate import HARD_TRIGGERS, SELECTIVE_TRIGGERS
+
+        assert {"review_every_decision"} == HARD_TRIGGERS - SELECTIVE_TRIGGERS
+        assert "reviewer_disagreement" not in SELECTIVE_TRIGGERS
+        assert "bark_only_input" not in SELECTIVE_TRIGGERS
+
+
+@pytest.mark.parametrize(("value", "expected"), [("true", True), ("0", False), (None, False)])
+def test_selective_arbitration_reads_the_environment(monkeypatch, value, expected):
+    from dendro_inspector.config import load_config
+
+    if value is None:
+        monkeypatch.delenv("DENDRO_SELECTIVE_ARBITRATION", raising=False)
+    else:
+        monkeypatch.setenv("DENDRO_SELECTIVE_ARBITRATION", value)
+    assert load_config().escalation.selective_arbitration is expected
+
+
 @pytest.mark.parametrize(("value", "expected"), [("true", True), ("0", False), (None, False)])
 def test_every_decision_switch_reads_the_environment(monkeypatch, value, expected):
     from dendro_inspector.config import load_config

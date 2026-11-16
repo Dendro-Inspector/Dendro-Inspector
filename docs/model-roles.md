@@ -263,6 +263,28 @@ escalation precision and recall.
 | `forced_by_configuration` | yes | Explicit operator override |
 | `review_every_decision` | yes | Operator switch `review_every_decision` (env `DENDRO_ARBITER_EVERY_DECISION`): the arbiter reviews every provisional verdict that reaches this gate, and the `already_abstaining` suppressor no longer applies. The arbiter still only proposes findings; admissibility and the final decision stay in code. Off by default, so evaluation keeps measuring escalation precision. Temporary: to be narrowed to targeted triggers. |
 
+### Selective arbitration (experimental)
+
+`EscalationPolicy.selective_arbitration` (env `DENDRO_SELECTIVE_ARBITRATION`), off by
+default. When on, only `escalation_gate.SELECTIVE_TRIGGERS` can call the arbiter: every hard
+trigger above except `review_every_decision`, plus `high_confidence_proposed` and
+`leading_candidates_close`. The other triggers are still recorded in the trace's
+`escalation_reasons`; when they are all that fired, `escalation_suppressed_by` is
+`selective_arbitration`. `review_every_decision` is ignored, so `already_abstaining` applies
+again. Precedence among the selected triggers is as below.
+
+Why these: over 1,450 arbitrated live cases (2026-11-12 to 16) the arbiter changed the
+provisional taxon, level or confidence 20 times. No trigger predicted a change much better
+than another (1-3% each). `reviewer_disagreement` fired in 72% of the cases, and
+`bark_only_input` and `bark_colour_dependence` describe input the evidence hierarchy already
+caps. The selected set would have arbitrated 61% of those cases, used 64% of the arbiter's
+tokens, and seen 17 of the 20 changes; the 3 it misses were low-confidence answers the
+arbiter re-named, none an overclaim. Whether those changes were right needs labelled
+photographs; this is a cost measurement, not an accuracy one.
+
+Offline replay cannot evaluate it: a recorded arbiter response that the policy no longer
+requests makes recorded-review replay unavailable. Compare it on live runs.
+
 ### Suppressors
 
 **Blocking** — overrides hard triggers when enabled:

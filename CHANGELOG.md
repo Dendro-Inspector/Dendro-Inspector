@@ -12,6 +12,15 @@ get entries.
 
 ### Added
 
+- **An experimental selective arbitration policy, off by default.** Setting
+  `DENDRO_SELECTIVE_ARBITRATION=true` (`EscalationPolicy.selective_arbitration`) calls the
+  arbiter only for a possible overclaim (species proposed, high confidence, close leading
+  candidates) or a safety case (several taxa, a user challenge, instruction-like content, an
+  unresolved contradiction). Reviewer disagreement, critical severity on its own, bark-only
+  input and bark colour dependence are recorded and no longer call it, and the every-decision
+  switch is ignored. A case it does not send records `selective_arbitration` in
+  `escalation_suppressed_by`. On recorded live cases it would have kept 61% of arbiter calls
+  and 17 of the 20 changes the arbiter made. The default is unchanged.
 - **A name that review held back is kept as an unconfirmed hypothesis.** When the leading
   candidate has a reading its own reference card treats as diagnostic, and the verdict was
   lowered only by review that code cannot check (a recommended level, an unverified request
