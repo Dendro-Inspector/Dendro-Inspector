@@ -12,6 +12,14 @@ get entries.
 
 ### Added
 
+- **`dendro heldout-check` validates a held-out evaluation set.** A YAML manifest kept
+  beside the photographs lists each unit with its physical tree or wood lot, categories, the
+  owner's preliminary label and specialist reviews. The check fails on a photograph shared
+  between units or found in a named development directory, a tree labelled with two genera,
+  and missing or repeated entries; it reports size against the 100-200 target, category
+  coverage (a genus no card covers counts as an unknown taxon), review status derived from
+  the reviews, and GPS metadata. `--labels-out` writes the release-ready units' labels in the
+  `coverage-audit --labels` format. No model is called.
 - **An experimental selective arbitration policy, off by default.** Setting
   `DENDRO_SELECTIVE_ARBITRATION=true` (`EscalationPolicy.selective_arbitration`) calls the
   arbiter only for a possible overclaim (species proposed, high confidence, close leading

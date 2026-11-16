@@ -570,6 +570,45 @@ This suite (`evals/public/`) is a **conformance and regression** suite, not an a
 benchmark. Adding a public case for a newly-understood failure class is expected and is not
 overfitting: the fixtures are synthetic and the case documents a rule rather than an answer.
 
+## The held-out set
+
+The set that measures field accuracy is prepared outside the repository, beside its
+photographs, as a YAML manifest that `dendro heldout-check MANIFEST` validates. Each unit is
+one inspection (up to 12 photographs) with a `group_id` naming the physical tree or wood
+lot, `categories`, the owner's preliminary `label` and the specialist `reviews` it has had.
+
+```yaml
+schema_version: 1
+name: heldout-v1
+development_photo_dirs: [../selected, ../untagged]   # photographs used in development
+units:
+  - unit_id: h001
+    group_id: tree-017
+    photos: [tree-017/01.jpg, tree-017/02.jpg]
+    categories: [bark_only, confusable]   # also mixed_subjects, wood, unknown_taxon
+    label: {genus: fagus, family: fagaceae, label_visible: false}
+    reviews:
+      - {reviewer: F.R., qualification: forester, verdict: agree, date: 2026-11-20}
+```
+
+What the check fails on: a repeated unit ID, a missing or non-image photograph, the same
+photograph in two units, a photograph whose hash is in a development directory, one group
+labelled with two genera (unless the unit is `mixed_subjects`), and `unknown_taxon` on a
+genus a card covers. A genus no card covers counts as `unknown_taxon` whether declared or
+not. It warns about a size outside the 100-200 planning target, a category with no unit,
+disputed units and photographs with GPS coordinates in EXIF (with Pillow installed).
+
+Review status is derived, never declared: `preliminary` with no review, `reviewed` when
+every specialist agrees with the label, `disputed` after a disagreement, and `resolved` when
+the two latest reviews agree. Only `reviewed` and `resolved` units are release-ready.
+`--labels-out labels.json` writes their labels, keyed by unit ID, in the format
+`coverage-audit --labels` reads; `--include-preliminary` writes every unit's. Submit each unit
+under its `unit_id` so its records match.
+
+Report wrong-genus rates per group as well as per unit when groups hold several units, and
+always with the denominator ([`AGENTS.md` §16](../AGENTS.md#16-benchmark-governance)). The
+wrong-genus target of under 5% among named genera is a planning target, not a guarantee.
+
 ## Measuring cost and latency
 
 The suite measures what the system concludes. It says nothing about what a run costs or how
