@@ -156,9 +156,41 @@ trust. Neutral-review replay continues to use only the final extraction.
 Full-history replay refuses missing raw packets, unbound reviews and omitted findings.
 A changed policy or retry budget may route differently: an extra call, a response assigned
 to another retry or an unconsumed recorded response produces `replay_unavailable`, without
-a substituted reviewer answer or partial verdict. Use neutral mode to compare final
+a substituted reviewer answer or partial verdict. Each such record carries
+`replay_unavailable_reason`, the text report prints it, and the summary counts the reasons
+in `replay_unavailable_reasons`. Use neutral mode to compare final
 evidence admission independently of the original review route. Older traces without
 evidence history retain the limited reconstruction behavior described below.
+
+### Replay under the settings a run recorded
+
+By default a replay runs under this environment's escalation and graph settings. Records
+from a deployment configured differently then route differently: a run that called the
+arbiter on every decision leaves an arbiter response that a replay under the default
+escalation policy never reads, and the record is reported unavailable. The reason names
+the settings that differ:
+
+```text
+replay unavailable because: replay_route: consumed 0 of 1 responses for arbiter:arbiter;
+the run recorded other settings than this replay uses (escalation.review_every_decision,
+graph.open_world_discovery): replay with the recorded settings to follow its route
+```
+
+`--settings recorded` replays each record under the escalation and graph settings its own
+trace recorded (`runtime_identity`, trace schema 5), with this command's policy options
+applied on top:
+
+```bash
+dendro coverage-audit runs/saved/cases --replay --reviews recorded --settings recorded --labels references.json --json-out runs/as-recorded.json
+dendro coverage-audit runs/saved/cases --replay --reviews recorded --settings recorded --labels references.json --review-authority evidence_bound --json-out runs/evidence-bound.json
+```
+
+The first command asks whether today's code reproduces each stored answer; the second
+changes one policy and nothing else. Two recorded settings are never taken over: the
+shadow vision assessment, which is an extra model call that decides nothing, and the
+wall-clock deadline. A trace that records no settings is reported unavailable; it is not
+replayed under this environment's settings instead. Each record's `replay_settings` says
+which of the two it ran under.
 
 Original case context and image files are still absent and explicitly reported in
 `replay_gaps`. Unsuccessful provider repair responses are not recorded; only the successful

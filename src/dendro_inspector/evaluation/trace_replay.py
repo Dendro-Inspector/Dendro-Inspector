@@ -55,6 +55,15 @@ attribution and rejected candidates without guessing them from the compact ledge
 and reviews in sequence, bound to its graph retry index. Missing responses and divergent
 routes fail explicitly. ``neutral`` mode still starts at the final extraction. Neither
 mode reproduces the original case inputs or unsuccessful provider repair attempts.
+
+A replay runs under the caller's settings unless it is asked for the run's own. That
+matters for the route: a run recorded with the arbiter called on every decision leaves an
+arbiter response that a replay under the default escalation policy never reads, and the
+replay is then unavailable. ``settings="recorded"`` takes the escalation and graph
+settings from the trace's ``runtime_identity`` (trace schema 5) and applies the caller's
+explicit overrides on top, so the recorded route is reproduced and only the policy under
+test differs. A trace that records no settings is unavailable that way, never replayed
+under the caller's settings instead.
 """
 
 from __future__ import annotations
@@ -67,7 +76,16 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
-from dendro_inspector.config import Adapter, AppConfig, ProviderConfig, Role
+from pydantic import ValidationError
+
+from dendro_inspector.config import (
+    Adapter,
+    AppConfig,
+    EscalationPolicy,
+    GraphConfig,
+    ProviderConfig,
+    Role,
+)
 from dendro_inspector.knowledge.evidence_hierarchy import project_observation
 from dendro_inspector.observability.events import LEGACY_TRACE_SCHEMA_VERSION
 from dendro_inspector.observability.evidence_history import EvidenceRevision
@@ -136,12 +154,98 @@ _REVIEW_KEYS = {
 #: How a replay answers for the reviewers; see the module docstring.
 ReviewReplay = Literal["neutral", "recorded"]
 
+#: Whose escalation and graph settings a replay runs under; see the module docstring.
+ReplaySettings = Literal["configured", "recorded"]
+
+#: Recorded settings a replay never takes over: the shadow assessment is an extra model
+#: call that decides nothing, and a wall-clock limit means nothing to a scripted run.
+_NOT_REPLAYED_SETTINGS: dict[str, object] = {"vision_shadow": False, "deadline_seconds": None}
+
+#: Settings that cannot change which calls a scripted run makes, so a difference in one
+#: is never offered as the reason a recorded route was not followed.
+_NOT_ROUTE_SETTINGS = frozenset(
+    {
+        "image_max_edge_px",
+        "vision_shadow_max_images",
+        "vision_shadow_max_bytes",
+        "vision_shadow_timeout_seconds",
+        *_NOT_REPLAYED_SETTINGS,
+    }
+)
+
 #: Marks something a replay had to do without because the trace predates its recording.
 MISSING_FROM_LEGACY_TRACE = "missing_from_legacy_trace"
 
 
 class ReplayUnavailableError(ValueError):
     """The trace lacks what the requested replay needs, and nothing may stand in for it."""
+
+
+def _recorded_settings(trace: Mapping[str, Any]) -> tuple[Mapping[str, Any], Mapping[str, Any]]:
+    """The escalation and graph settings a trace recorded, or two empty mappings."""
+    recorded = (trace.get("runtime_identity") or {}).get("config") or {}
+    escalation, graph = recorded.get("escalation"), recorded.get("graph")
+    if not isinstance(escalation, Mapping) or not isinstance(graph, Mapping):
+        return {}, {}
+    return escalation, graph
+
+
+def config_as_recorded(
+    trace: Mapping[str, Any],
+    config: AppConfig,
+    graph_overrides: Mapping[str, object] | None = None,
+) -> AppConfig:
+    """``config`` with the escalation and graph settings the run recorded.
+
+    ``graph_overrides`` are the caller's explicit choices for this replay (the policy
+    under test) and win over the recorded value. Providers, prompts and knowledge stay the
+    caller's: a replay scripts its own provider and reads today's cards.
+    """
+    escalation, graph = _recorded_settings(trace)
+    if not escalation or not graph:
+        raise ReplayUnavailableError(
+            "settings: the trace records no run settings (trace schema 5 or later does)"
+        )
+    try:
+        recorded_graph = GraphConfig.model_validate(dict(graph))
+        recorded_escalation = EscalationPolicy.model_validate(dict(escalation))
+    except ValidationError as exc:
+        fields = ", ".join(sorted({".".join(str(p) for p in e["loc"]) for e in exc.errors()}))
+        raise ReplayUnavailableError(
+            f"settings: the recorded settings do not fit this version ({fields})"
+        ) from exc
+    return config.model_copy(
+        update={
+            "escalation": recorded_escalation,
+            "graph": recorded_graph.model_copy(
+                update={**_NOT_REPLAYED_SETTINGS, **dict(graph_overrides or {})}
+            ),
+        }
+    )
+
+
+def _settings_hint(trace: Mapping[str, Any], config: AppConfig) -> str:
+    """Why a recorded route may not be this replay's: the settings that differ, if any."""
+    escalation, graph = _recorded_settings(trace)
+    current = {
+        "escalation": config.escalation.model_dump(mode="json"),
+        "graph": config.graph.model_dump(mode="json"),
+    }
+    differing = [
+        f"{group}.{name}"
+        for group, recorded in (("escalation", escalation), ("graph", graph))
+        for name, value in sorted(recorded.items())
+        if name not in _NOT_ROUTE_SETTINGS
+        and name in current[group]
+        and current[group][name] != value
+    ]
+    if not differing:
+        return ""
+    shown = ", ".join(differing[:4]) + (", ..." if len(differing) > 4 else "")
+    return (
+        f"; the run recorded other settings than this replay uses ({shown}): "
+        "replay with the recorded settings to follow its route"
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -687,14 +791,24 @@ async def replay(
     config: AppConfig,
     root: Path,
     reviews: ReviewReplay = "neutral",
+    settings: ReplaySettings = "configured",
+    graph_overrides: Mapping[str, object] | None = None,
 ) -> Any:
     """Run the graph on the recorded evidence; returns the final graph state.
 
+    ``settings`` chooses whose escalation and graph settings the replay runs under:
+    ``config`` as given, or the run's own from its trace with ``graph_overrides`` applied
+    on top. ``graph_overrides`` is read only in the second case; a caller replaying under
+    its own settings has already put its overrides in ``config``.
+
     Raises :class:`ReplayUnavailableError` for legacy traces without recorded reviews,
-    incomplete history, or a graph route that cannot consume the recorded responses.
+    incomplete history, a trace without the settings it was asked to replay under, or a
+    graph route that cannot consume the recorded responses.
     """
     from dendro_inspector.runner import run_case
 
+    if settings == "recorded":
+        config = config_as_recorded(record.trace, config, graph_overrides)
     fixture = fixture_from_trace(record.trace, reviews=reviews)
     with tempfile.TemporaryDirectory() as directory:
         fixtures = Path(directory)
@@ -711,7 +825,8 @@ async def replay(
         except UnscriptedCallError as exc:
             if "response_sequences" not in fixture:
                 raise
-            raise ReplayUnavailableError(f"replay_route: {exc}") from exc
+            hint = _settings_hint(record.trace, config) if settings == "configured" else ""
+            raise ReplayUnavailableError(f"replay_route: {exc}{hint}") from exc
     if "response_sequences" in fixture:
         consumed = Counter(
             f"{call.role}:{call.node}"
@@ -728,7 +843,9 @@ async def replay(
         )
         for key, sequence in fixture["response_sequences"].items():
             if len(sequence) - consumed[key] > skipped[key]:
+                hint = _settings_hint(record.trace, config) if settings == "configured" else ""
                 raise ReplayUnavailableError(
-                    f"replay_route: consumed {consumed[key]} of {len(sequence)} responses for {key}"
+                    f"replay_route: consumed {consumed[key]} of {len(sequence)} responses "
+                    f"for {key}{hint}"
                 )
     return result.state

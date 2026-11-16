@@ -31,6 +31,7 @@ from dendro_inspector.evaluation.label_scoring import (
     summarise_grades,
 )
 from dendro_inspector.evaluation.trace_replay import (
+    ReplaySettings,
     ReplayUnavailableError,
     ReviewReplay,
     StoredRecord,
@@ -77,6 +78,10 @@ class RecordReport:
     replay_gaps: tuple[str, ...] = ()
     #: The trace lacks what the requested replay needs, so no replayed verdict is given.
     replay_unavailable: bool = False
+    #: Why, as the replay stated it; None when the record replayed or was not replayed.
+    replay_unavailable_reason: str | None = None
+    #: Whose settings the replay ran under; None when the record was not replayed.
+    replay_settings: str | None = None
     #: The replay's last review plan, when it ran with adaptive routing on: the route, and
     #: the reviewer models that plan did not call (or, in shadow mode, would not have).
     replay_route: str | None = None
@@ -168,8 +173,13 @@ async def build_reports(
     labels: Mapping[str, ReferenceLabel] | None = None,
     with_replay: bool = False,
     reviews: ReviewReplay = "neutral",
+    settings: ReplaySettings = "configured",
+    graph_overrides: Mapping[str, object] | None = None,
 ) -> tuple[RecordReport, ...]:
     """One report per stored record; ``reviews`` chooses how a replay answers for reviewers.
+
+    ``settings`` chooses whose escalation and graph settings each replay runs under: the
+    given ``config``, or the record's own with ``graph_overrides`` applied on top.
 
     A record whose trace cannot support the requested replay is reported as such, with no
     replayed verdict. It is never replayed another way instead: a neutral verdict filed
@@ -186,12 +196,21 @@ async def build_reports(
         packet = packet_from_trace(record.trace)
         replayed: tuple[DecisionRow, ...] = ()
         unavailable = False
+        reason: str | None = None
         plan = None
         if with_replay:
             try:
-                state = await replay(record, config=config, root=root, reviews=reviews)
-            except ReplayUnavailableError:
+                state = await replay(
+                    record,
+                    config=config,
+                    root=root,
+                    reviews=reviews,
+                    settings=settings,
+                    graph_overrides=graph_overrides,
+                )
+            except ReplayUnavailableError as exc:
                 unavailable = True
+                reason = str(exc)
             else:
                 plan = state.routing_assessment
                 replayed = tuple(
@@ -228,6 +247,8 @@ async def build_reports(
                 replay_reviews=reviews if with_replay else None,
                 replay_gaps=replay_gaps(record.trace, reviews) if with_replay else (),
                 replay_unavailable=unavailable,
+                replay_unavailable_reason=reason,
+                replay_settings=settings if with_replay else None,
                 replay_route=plan.route.value if plan is not None else None,
                 replay_route_applied=plan is not None and plan.applied,
                 replay_skipped_reviewers=(
@@ -311,6 +332,14 @@ def summarise(reports: tuple[RecordReport, ...]) -> dict[str, Any]:
         ],
         "replay_fidelity_mismatches": sum(1 for r in reports if r.fidelity_mismatches),
         "replay_unavailable": sum(1 for r in reports if r.replay_unavailable),
+        # The first clause of each reason, so one cause repeated across records reads as one.
+        "replay_unavailable_reasons": dict(
+            Counter(
+                r.replay_unavailable_reason.split(";", 1)[0]
+                for r in reports
+                if r.replay_unavailable_reason
+            )
+        ),
         # Empty unless the replay ran with adaptive routing on. Calls are counted as
         # skipped only where the plan was applied; in shadow mode none were.
         "replay_routes": dict(Counter(r.replay_route for r in reports if r.replay_route)),
@@ -364,6 +393,8 @@ def render_text(reports: tuple[RecordReport, ...]) -> str:
             lines.append(f"  replay fidelity: trust differs for {report.fidelity_mismatches}")
         if report.replay_unavailable:
             lines.append(f"  replay: not available with {report.replay_reviews} reviews")
+            if report.replay_unavailable_reason:
+                lines.append(f"  replay unavailable because: {report.replay_unavailable_reason}")
         if report.replay_route is not None:
             skipped = ", ".join(report.replay_skipped_reviewers) or "none"
             mode = "applied" if report.replay_route_applied else "shadow"

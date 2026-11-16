@@ -12,6 +12,18 @@ get entries.
 
 ### Added
 
+- **`coverage-audit --settings recorded` replays a stored run under the settings it ran
+  with, and an unavailable replay says why.** A replay ran only under the settings of the
+  environment it was started in. Records from a deployment configured differently then
+  took another route, most often because the arbiter had been called on every decision and
+  the replay never called it, and were reported `replay_unavailable` with no reason. With
+  `--settings recorded` each record replays under the escalation and graph settings in its
+  own trace (`runtime_identity`), with the command's policy options applied on top, so the
+  recorded route is followed and only the policy under test differs. Every unavailable
+  record now carries `replay_unavailable_reason`, the text report prints it, the summary
+  counts the reasons, and where the settings differ the reason names them. On 36 stored
+  runs of one deployment, 8 were unavailable under default settings and all 36 replayed to
+  their stored answers under their own. The default, `--settings configured`, is unchanged.
 - **A trace names the knowledge and settings it ran with, and `dendro release-manifest`
   states them for an installation.** Trace schema 5 adds `runtime_identity`: one digest over
   every knowledge file the loader reads (line endings normalised, `review-queue/` excluded),
