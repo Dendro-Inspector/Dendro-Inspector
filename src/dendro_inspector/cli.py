@@ -631,5 +631,71 @@ def heldout_check_command(
         raise typer.Exit(1)
 
 
+@app.command(name="review-export")
+def review_export_command(
+    result: Annotated[
+        Path,
+        typer.Argument(help="A stored answer: `dendro inspect --json` output or a case record."),
+    ],
+    out: Annotated[Path, typer.Option("--out", help="A new folder for the package.")],
+    image: Annotated[
+        list[Path],
+        typer.Option(
+            "--image",
+            "-i",
+            help="The photographs, in the order they were given to `dendro inspect`.",
+        ),
+    ] = [],
+    allow_location: Annotated[
+        bool,
+        typer.Option(
+            "--allow-location",
+            help="Include photographs whose metadata carries GPS coordinates or cannot be read.",
+        ),
+    ] = False,
+) -> None:
+    """Write a package for a specialist: the photographs, the answer and precise questions.
+
+    No model is called and nothing is sent anywhere. Sharing the folder is your decision.
+    """
+    from pydantic import ValidationError
+
+    from dendro_inspector import human_review
+
+    try:
+        package, payloads = human_review.build_package(
+            result, list(image), allow_location=allow_location
+        )
+        human_review.write_package(package, payloads, out)
+    except (human_review.HumanReviewError, ValidationError) as exc:
+        typer.secho(str(exc), fg=typer.colors.RED, err=True)
+        raise typer.Exit(1) from exc
+    typer.echo(
+        f"package {package.package_id}: {len(package.photos)} photographs, "
+        f"{len(package.questions)} questions, in {out}"
+    )
+    typer.echo(f"The reviewer fills in {out / human_review.TEMPLATE_FILE}; see the README there.")
+
+
+@app.command(name="review-import")
+def review_import_command(
+    package: Annotated[Path, typer.Argument(help="The folder `dendro review-export` wrote.")],
+    answers: Annotated[Path, typer.Argument(help="The specialist's filled-in answers (JSON).")],
+) -> None:
+    """Record a specialist's answers as a revision of this one case.
+
+    The answers are checked against the package and appended to its revisions.jsonl. No
+    knowledge card, prompt or policy is changed.
+    """
+    from dendro_inspector import human_review
+
+    try:
+        revision, history = human_review.import_answers(package, answers)
+    except human_review.HumanReviewError as exc:
+        typer.secho(str(exc), fg=typer.colors.RED, err=True)
+        raise typer.Exit(1) from exc
+    typer.echo(human_review.render_revision(revision, history))
+
+
 if __name__ == "__main__":  # pragma: no cover
     app()

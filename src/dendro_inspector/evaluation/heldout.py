@@ -59,11 +59,15 @@ class Category(StrEnum):
     WOOD = "wood"
 
 
+#: Who may review a label. Also the qualifications a human review records (`human_review`).
+Qualification = Literal["botanist", "dendrologist", "forester", "arborist", "other"]
+
+
 class Review(Contract):
     """One specialist's judgement of a unit's label."""
 
     reviewer: str = Field(min_length=1, max_length=80, description="A role or initials.")
-    qualification: Literal["botanist", "dendrologist", "forester", "arborist", "other"]
+    qualification: Qualification
     verdict: Literal["agree", "disagree"]
     genus: str | None = Field(
         default=None, description="The reviewer's genus when they disagree with the label."
@@ -180,7 +184,7 @@ def _development_hashes(base: Path, directories: Iterable[str]) -> tuple[set[str
     return hashes, problems
 
 
-def _has_gps(path: Path) -> bool | None:
+def photo_has_gps(path: Path) -> bool | None:
     """Whether the photo's EXIF holds GPS data; None when that cannot be read."""
     try:
         from PIL import Image
@@ -236,7 +240,7 @@ def check(manifest: HeldOutManifest, base: Path, knowledge: KnowledgeBase) -> Ch
             owner_of.setdefault(digest, unit.unit_id)
             if digest in development:
                 errors.append(f"{unit.unit_id}: photograph used in development: {name}")
-            gps.append(_has_gps(photo))
+            gps.append(photo_has_gps(photo))
 
     by_group: dict[str, set[str]] = {}
     for unit in manifest.units:

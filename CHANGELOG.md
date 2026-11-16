@@ -12,6 +12,18 @@ get entries.
 
 ### Added
 
+- **`dendro review-export` and `dendro review-import`: a case reviewed by a specialist.**
+  Export writes a folder with the photographs byte for byte, their SHA-256, the answer per
+  subject, the engine commit and prompt version it came from, and questions code derives
+  from the answer (which subject is the target, whether the named taxon is right, what an
+  unnamed subject is, whether a held-back hypothesis or the strongest contradiction is
+  right), with a template to fill in. Photographs whose metadata carries GPS coordinates or
+  cannot be read are refused unless `--allow-location` is given. Import treats the filled-in
+  answers as untrusted: size-limited, schema-checked, bound to the package by its
+  content-derived id, refused for a changed package. An accepted response is appended to the
+  package's `revisions.jsonl` as the case's next revision, with per-subject outcomes
+  (`confirmed`, `refined`, `corrected`, `rejected`, `named`, `undecided`). Nothing outside the
+  package is written: no card, prompt or policy changes. See `docs/human-review.md`.
 - **An answer says which subject it is about.** Each result has a `subject_role`
   (`target`, `context` or `unspecified`), and the response lists `target_subject_ids` with a
   `target_source`. A lone subject is the target. When the photographs show several, none is
