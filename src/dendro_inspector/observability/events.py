@@ -28,7 +28,7 @@ from dendro_inspector.schemas.routing import RoutingAssessment
 from dendro_inspector.schemas.taxon import Confidence, Resolution
 from dendro_inspector.schemas.vision import VisionShadowResult
 
-GRAPH_VERSION = "0.9.0"
+GRAPH_VERSION = "1.0.0a1"
 
 #: Version of the trace's own shape, counted separately from the release. A trace can gain
 #: a record between two releases, and a reader has to know which records to expect without

@@ -337,7 +337,7 @@ dendro prompt-info      # prompt/manifest hashes, policy revision and compatibil
 ```
 
 The runtime validates `prompts/versions.yaml` before constructing any provider. That manifest
-pins policy revision `0.9.0`, the canonical domain prompt path and hash, the node-prompt root
+pins policy revision `1.0.0a1`, the canonical domain prompt path and hash, the node-prompt root
 and revision, and the exact node-prompt file set and hashes. Composition uses the cached
 validated bytes, so a prompt changed after validation cannot silently enter a request.
 
@@ -416,10 +416,12 @@ from real photographs is in-sample. Details in [docs/evaluation.md](docs/evaluat
 
 ## Status
 
-Research preview, not a production system. The latest tagged release is v0.8.0. `main` is at
-package version 0.9.0 plus the changes listed under "Unreleased" in
-[CHANGELOG.md](CHANGELOG.md): unconfirmed hypotheses, subject roles, specialist review
-packages, evidence history with replay, and several experiments that are off by default. The
+Research preview, not a production system. This is pre-release 1.0.0-alpha.1 (package
+version `1.0.0a1`): an engineering baseline, not a release candidate. What it adds since
+0.9.0 is in [CHANGELOG.md](CHANGELOG.md): unconfirmed hypotheses, subject roles, specialist
+review packages, evidence history with replay, a spend limit for one inspection, and
+several experiments that are off by default. What has to be shown before 1.0.0 is fixed in
+advance in [docs/specs/v1-heldout-protocol.md](docs/specs/v1-heldout-protocol.md). The
 graph runs end to end through OpenAI, Anthropic, Gemini, NVIDIA, OpenRouter and Ollama
 adapters; live calls can be exercised without an SDK client through the agent-as-provider
 bridge. Provider adapters are integration boundaries rather than hardened clients.
@@ -471,7 +473,9 @@ It is off by default.
 What these runs do not show: anything about photographs outside this set, anything about a
 taxon that has no card (every unit here is a genus the cards cover), or how much one run
 differs from the next (each figure is a single run). A held-out set is the next measurement
-([docs/evaluation.md](docs/evaluation.md#the-held-out-set)).
+([docs/evaluation.md](docs/evaluation.md#the-held-out-set)), compared with the model alone
+under rules fixed before any result is read
+([docs/specs/v1-heldout-protocol.md](docs/specs/v1-heldout-protocol.md)).
 
 Intentionally deferred items are listed in [CHANGELOG.md](CHANGELOG.md).
 

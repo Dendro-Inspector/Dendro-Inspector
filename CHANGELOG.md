@@ -10,6 +10,22 @@ get entries.
 
 ## [Unreleased]
 
+## [1.0.0-alpha.1] — 2026-11-16
+
+The first pre-release of 1.0.0. It is an engineering baseline, not a release candidate:
+it makes no claim about identification accuracy, every experimental policy listed below
+stays off by default, and nothing in it has been run on an independent set of photographs.
+What has been measured so far is in the README's Status section, and what the held-out run
+has to show before 1.0.0 is fixed in `docs/specs/v1-heldout-protocol.md`.
+
+The package, graph, deterministic policy and public baseline move together to `1.0.0a1`,
+the Python spelling of this version. The public suite's result is frozen in
+`evals/baselines/public-v1.0.0a1.json`: twenty-four passing cases, zero failures and zero
+overconfidence, with every decision and metric identical to the v0.11.0 baseline. A
+deployment that carries its own prompt manifest must re-pin its `policy_revision` to
+`1.0.0a1` after reviewing compatibility; a manifest bound to `0.9.0` is refused rather
+than upgraded.
+
 ### Added
 
 - **A spend limit for one inspection that degrades the answer instead of failing it.**
@@ -331,6 +347,143 @@ get entries.
   pale-above, dark-and-rough-below trunk as a supporting reading (Woodland Trust: the white
   bark "becomes black and rugged at the base"). White poplar shares it, so it names nothing
   alone.
+- `dendro coverage-audit`: an offline report for stored run records. It gives each
+  observation's coverage status, each proposal's admission outcome with its exact reason,
+  and, with `--replay`, today's deterministic verdict for the recorded evidence. No provider
+  is called.
+- Pine knowledge from cited sources: the two-zone Scots pine trunk (supporting), plus
+  contradictions separating pine, spruce and fir from each other's diagnostic needles and
+  cones. See `docs/reviews/EVIDENCE-COVERAGE-2026-11-11.md`.
+- A Juglans nigra (black walnut) card. A live upload of a planted walnut was answered
+  Fraxinus from its diamond-fissured bark, while the nuts and pinnate leaves had no card to
+  match. Black walnut and ash now name each other as confusions; opposite leaves
+  contradict walnut. Placeholder content, unreviewed, built from standard descriptions.
+- "All photos are of this one tree": an upload with field context and exactly one
+  standing tree credits fruit and leaves photographed off the tree (picked up beneath it)
+  to that tree as `user_attested`. Such evidence counts as capped support: it can back
+  an identification but cannot settle one or reach high confidence, and the answer says
+  which observations were counted on the uploader's word. Models cannot set this status.
+  With two trees in frame nothing is moved. The upload runner passes `field_context` from
+  the manifest as `--field-context`.
+- Open-world hypotheses are now told to the reader. With `DENDRO_OPEN_WORLD_DISCOVERY`
+  on, a taxon the model proposes with trusted support but no knowledge card was kept only
+  on the structured decision. The answer now adds "Outside this knowledge base: <taxon>
+  (<level>) is also consistent with N trusted observation(s) ..." (Ukrainian: "Поза цим
+  довідником ..."), says it was not checked by any feature rule and did not shape the
+  verdict, notes when the model ranked it above the verdict's taxon or an external
+  reference recognises the name, and points at `dendro draft-card`. `StructuredFinalResult`
+  gains `open_world_candidates` (taxon ids). Verdicts are unchanged.
+- `CaseResponse.consistency_issues`: machine-readable codes for every way the rendered
+  answer disagrees with its own decisions (mismatched resolution, confidence or band, a
+  verdict missing its band, a restraint voice framing a 95-100 claim). Empty on a consistent
+  answer; checked on every run by the tone layer.
+- Evidence provenance in the run trace: `evidence_observations` (subject, reading, trust and
+  tier per observation; tokens only) and `candidate_validations` (support admitted per
+  candidate, and refused support with its machine-readable reason, previously only a log
+  line). Provider call records keep `validation_errors` (field path and error type per
+  failed attempt).
+- A failed run in `dendro inspect --json` prints `{"error", "trace"}` with the partial trace,
+  and batch case records keep it as `failure`; a failed case used to keep a stderr tail only.
+- `scripts/eval/audit_archive.py`: offline audit of archived run results (completion and
+  failure classes, answer/decision contradictions, high-confidence policy flags,
+  resolution/abstention distributions, latency, tokens, estimated cost). No model calls.
+- A direct Claude API adapter, `anthropic-sdk` (`DENDRO_<ROLE>_PROVIDER=anthropic-sdk`),
+  alongside the existing `anthropic` adapter, which is unchanged and still serves the
+  agent-provider bridge. It uses native structured output, an explicit effort level
+  (`ANTHROPIC_EFFORT`, default `high`) and server-side refusal fallback
+  (`ANTHROPIC_FALLBACKS=off` disables it), and defaults to `claude-opus-5-5`. Its key is
+  `ANTHROPIC_SDK_API_KEY`, falling back to `ANTHROPIC_API_KEY` outside agent-provider bridge
+  pods (whose `ANTHROPIC_API_KEY` is a placeholder). On AKS the deploy workflow publishes the
+  `ANTHROPIC_API_KEY` repository secret to the cluster. Refusals and truncated output fail
+  the call as structured-output errors that name the cause.
+- The `candidate_validation_filtered` warning and `CandidateValidationResult` now carry
+  `dropped_support_details`: for each supporting evidence id a known taxon's card does not
+  admit, the taxon, the id, and why — an unresolved or foreign reference, untrusted evidence, a feature path the
+  card does not declare, or a value the card does not declare for that feature. A value
+  mismatch reports the model's original feature and value beside the card's expected values,
+  so a vocabulary near-miss is visible instead of only the bare id in `dropped_evidence_ids`.
+  Diagnostics only: admission, ranks, scores and every decision are unchanged, and no value
+  is mapped onto a card's vocabulary.
+- `DENDRO_IMAGE_MAX_EDGE_PX` sets `GraphConfig.image_max_edge_px` from the environment: a
+  pixel bound, or `original` to send files untouched. Unset keeps the 1568 px default.
+- The agent worker logs the pixel size and byte count of every image it hands to an agent,
+  and `--codex-enable FEATURE` passes `--enable FEATURE` to Codex (for example
+  `image_detail_original`, which skips Codex's own downscaling on models that support it).
+- `EscalationPolicy.review_every_decision` (environment `DENDRO_ARBITER_EVERY_DECISION`)
+  calls the arbiter on every case that reaches the escalation gate, including when every
+  subject abstained. The arbiter still only proposes findings that must pass admissibility;
+  the final decision remains deterministic code. Off by default, so the public evaluation
+  suite's escalation metrics are unchanged; it costs one arbiter call per inspection.
+- `deploy/k8s/` holds container images for running inspections as Kubernetes batch Jobs:
+  a batch image (the CLI plus `scripts/batch/`, which runs one dataset photograph or one
+  uploaded case per pod) and an agents image on top of it. Pull requests into `main` build and
+  smoke-test both. A deploy workflow builds them in Azure Container Registry, starts a smoke
+  run on the cluster through its control function, and reports the result and pod logs. A pull
+  request into `main` from a maintainer deploys at once; anyone else's waits for a maintainer's
+  approval. Only pushes to `main` and manual runs make the images the cluster's default. See
+  `deploy/k8s/README.md`.
+- **Open-world discovery** ([#10](https://github.com/Dendro-Inspector/Dendro-Inspector/issues/10)),
+  behind `GraphConfig.open_world_discovery` (`DENDRO_OPEN_WORLD_DISCOVERY`), **off by
+  default**. Off, nothing below takes effect: every public evaluation case produces the same
+  verdicts, composition records, node path and reader text as before, and an integration
+  test injects an uncovered leader into every case's proposal to hold that.
+  On:
+  - A proposed taxon with no card is retained as an `OpenWorldCandidate` instead of being
+    discarded, when at least one cited observation survives as trusted, same-subject,
+    readable, non-colour evidence. It is reported on the verdict
+    (`FinalDecision.open_world_candidates`) and in the reader's limitations, and is never
+    admitted or selected. Resolution is capped by the support's evidence tier, score below
+    `strong`, image confidence below `high`.
+  - A name a card declares only as a broader identity or alias (`juglans`, `walnut`) is
+    retained as *covered* (`covered_by`, with the declaring cards' local reference status)
+    rather than dropped or reported as missing. Admission still matches card ids only.
+  - A subject held back only by the knowledge-coverage gate reaches the candidate
+    generator, and a run that admits nothing goes from the generator to the final decision
+    without reviewer or arbiter calls. The generator is told which subjects have no card in
+    play and how to name a taxon no card describes (a rule in
+    `prompts/nodes/candidate-generator.md`, active only when the case context carries the
+    open-world section the code adds with the flag on). The node prompt's hash changed: a
+    deployment pinning its own prompt manifest must re-seal it (`dendro prompt-seal --write`).
+  - A subject with no admitted candidate reports `knowledge_coverage_gap` when its evidence
+    fell outside every card or an uncovered hypothesis rests on such evidence. Naming an
+    off-card taxon on evidence the cards can represent stays `insufficient_evidence`.
+  - An uncovered taxon the model ranked above the admitted leader caps the verdict at genus
+    (`open_world_outranked`) only when it is congeneric with the leader, cites the
+    observation the leader's claim rests on at its strongest tier, **and** is
+    `externally_verified`. A shared observation proves both hypotheses cited it, not that
+    both fit it, so an unchecked name — `juglans_fictitia` — never moves the verdict. Any
+    outranking hypothesis that does not cap is reported as competing and flagged with
+    `FinalDecision.open_world_conflict`. No authoritative source ships, so in this release
+    the cap cannot fire and every such case is flagged instead.
+- **Reference status**, a separate dimension from image-identification confidence:
+  `local_reviewed`, `local_unreviewed`, `externally_verified`, `provisional`, `disputed`,
+  `unavailable`. A selected taxon always reports its card's status in
+  `FinalDecision.reference_status`; every shipped card is `local_unreviewed`. No status ever
+  moves a confidence band.
+- Reference verification for open-world candidates through a `ReferenceSource` protocol.
+  Each citation records source, trust, HTTPS URL, retrieval time and the matched and
+  conflicting features. `externally_verified` requires a record this system retrieved from
+  an authoritative service itself (`SourceTrust.AUTHORITATIVE_RETRIEVAL`). The one source
+  that ships, `DENDRO_REFERENCE_RECORDS`, reads saved records and is `operator_supplied`: it
+  can dispute a hypothesis but a match from it stays `provisional`. Only a documented feature
+  the photograph contradicts disputes a hypothesis, and any one source disputing outweighs
+  the others. A synonym is the same taxon under an older name: it is followed to its
+  accepted name in the same source, and both records are cited. An unresolved name stays
+  `provisional`. A feature path a record documents twice is merged, not overwritten.
+  Records carry no free text, are discarded whole when invalid and never reach a model
+  prompt. No live online client ships.
+- `dendro draft-card TAXON --references FILE` drafts a card from a saved reference record
+  into `knowledge/review-queue/`, which the loader never reads. Drafts are always
+  `unreviewed` and `placeholder_content: true`, and every documented feature becomes a
+  supporting rule citing its source, never a strong one.
+- `GraphConfig.deadline_seconds` bounds the wall-clock time of one inspection. Off by
+  default, since each adapter already has a per-call timeout and local models can be slow.
+  On expiry the node in flight is cancelled, recorded in the trace as failed with detail
+  `cancelled`, and the run fails with `GraphExecutionError`; no partial answer is returned.
+  A node's own `TimeoutError` is not reported as the run deadline.
+- An image file larger than `MAX_IMAGE_FILE_BYTES` (32 MiB) is refused with
+  `ImageTooLargeError` before it is read, with or without the `images` extra. At most the
+  ceiling plus one byte is ever read.
 
 ### Changed
 
@@ -465,16 +618,54 @@ get entries.
   evidence, not several.
 - The colour warning names the organ that was read for colour instead of always saying
   "bark or wood".
+- Firewood material groups with visible, subject-scoped `context.material = split_firewood`
+  now request end grain and bark from one labelled piece instead of foliage. The photo
+  planner follows the existing wood-photo policy; taxonomic thresholds are unchanged.
+- Batch summaries expose all successful subject outcomes in `subject_summary` and preserve
+  per-subject decisions in CSV rows. Legacy first-subject fields remain available. Upload
+  reports no longer require dataset metadata, and projected API exports retain their
+  decisions while unreported usage stays unknown.
 
-### Added
+- Answers are now in English by default. The `inspect` CLI's `--lang` defaults to `en`, a case
+  without a locale is composed in English, and the English domain prompt now states English as
+  the default answer language (re-sealed in `prompts/versions.yaml`). Pass `--lang uk` (or
+  `lang=uk` on an upload) for Ukrainian answers.
 
-- `dendro coverage-audit`: an offline report for stored run records. It gives each
-  observation's coverage status, each proposal's admission outcome with its exact reason,
-  and, with `--replay`, today's deterministic verdict for the recorded evidence. No provider
-  is called.
-- Pine knowledge from cited sources: the two-zone Scots pine trunk (supporting), plus
-  contradictions separating pine, spruce and fir from each other's diagnostic needles and
-  cones. See `docs/reviews/EVIDENCE-COVERAGE-2026-11-11.md`.
+- The active domain prompt is now English: `prompts/domain/system-prompt.en.md`, a line-for-line
+  translation of the Ukrainian original, sealed by `prompts/versions.yaml`. Every evidence token
+  is byte-identical to the original. The Ukrainian original `prompts/domain/system-prompt.md` is kept unchanged as the
+  authoritative specification and can be selected with
+  `DENDRO_DOMAIN_PROMPT_PATH=prompts/domain/system-prompt.md` and
+  `DENDRO_PROMPT_MANIFEST_PATH=prompts/versions.uk.yaml`. The domain prompt hash in execution
+  traces changes accordingly.
+- Batch reports distinguish unreported token usage from a measured zero, include measured
+  usage from failed cases, expose per-counter case coverage, and correctly average the two
+  middle durations for an even-sized batch.
+
+- A model reviewer's `critical` + `abstain` finding that cites no evidence no longer
+  withdraws a claim on its own. It is still accepted and still critical, but it no longer
+  routes straight to abstention — which, once every subject had abstained, also skipped the
+  arbiter. The run proceeds to the escalation gate instead, where the
+  `unresolved_contradiction` hard trigger calls the arbiter, and the subject abstains only
+  if the arbiter's own accepted findings independently request it. If arbitration does not
+  run (disabled or switched off), the subject abstains as before. A finding that cites
+  admitted evidence, or one raised by code, abstains directly exactly as before.
+  `ReviewSynthesis` gains `unverified_abstention` to record the held finding;
+  `unresolvable` now means the grounded case only. No public evaluation case moves: the one
+  abstention case cites its evidence.
+- The input guard now scans metadata **keys** as well as values, and image media types.
+  Both are rendered into every model prompt beside the text it already scanned. Token-shaped
+  fields are scanned with `_`, `-`, `.`, `:`, `/` and `+` read as spaces, so a sentence packed
+  into one key (`ignore_all_previous_instructions`) is recognised; filenames get the same
+  treatment.
+- **Input contract:** a `CaseInput.metadata` key must now be a bounded ASCII field name
+  (`^[A-Za-z0-9][A-Za-z0-9 _.:-]{0,63}$`; spaces stay legal for EXIF-reader keys such as
+  `Image Make`), and `ImageRef.media_type` must be an `image/*` MIME type. Inputs outside
+  these shapes are rejected at validation instead of reaching a prompt or a provider request.
+- **Input contract:** `CaseInput.metadata` now holds at most 64 entries of at most 400
+  characters each. The mapping is rendered into every model call of a run, so its size
+  multiplies by the call count; a curated EXIF subset fits, a raw dump should be filtered by
+  the caller.
 
 ### Fixed
 
@@ -540,42 +731,11 @@ get entries.
 - With field context, the answer no longer says that fruit or leaves "could not be traced
   to this trunk" about evidence it counted on the uploader's word, nor "nothing above bark
   level is resolvable"; it says that evidence weighs no more than bark.
-
-### Added
-
-- A Juglans nigra (black walnut) card. A live upload of a planted walnut was answered
-  Fraxinus from its diamond-fissured bark, while the nuts and pinnate leaves had no card to
-  match. Black walnut and ash now name each other as confusions; opposite leaves
-  contradict walnut. Placeholder content, unreviewed, built from standard descriptions.
-- "All photos are of this one tree": an upload with field context and exactly one
-  standing tree credits fruit and leaves photographed off the tree (picked up beneath it)
-  to that tree as `user_attested`. Such evidence counts as capped support: it can back
-  an identification but cannot settle one or reach high confidence, and the answer says
-  which observations were counted on the uploader's word. Models cannot set this status.
-  With two trees in frame nothing is moved. The upload runner passes `field_context` from
-  the manifest as `--field-context`.
-
-### Fixed
-
 - An open-world hypothesis whose name a card already declares (a genus of a carded species)
   is no longer called "Outside this knowledge base" with a pointer to draft a card that
   exists. It now reads "Also proposed: <taxon> ... The knowledge base knows it only as a
   broader name on <card>". Found on the first live open-world run: golden-020 retained
   `robinia`, which `robinia_pseudoacacia` declares, beside a genuinely uncovered `salix`.
-
-### Added
-
-- Open-world hypotheses are now told to the reader. With `DENDRO_OPEN_WORLD_DISCOVERY`
-  on, a taxon the model proposes with trusted support but no knowledge card was kept only
-  on the structured decision. The answer now adds "Outside this knowledge base: <taxon>
-  (<level>) is also consistent with N trusted observation(s) ..." (Ukrainian: "Поза цим
-  довідником ..."), says it was not checked by any feature rule and did not shape the
-  verdict, notes when the model ranked it above the verdict's taxon or an external
-  reference recognises the name, and points at `dendro draft-card`. `StructuredFinalResult`
-  gains `open_world_candidates` (taxon ids). Verdicts are unchanged.
-
-### Fixed
-
 - High confidence can no longer rest on a single supporting feature. A new deterministic
   `corroboration_cap` confidence step caps a claim at medium unless its admitted support spans
   at least two independent, reliably read features (domain prompt section 6: 85-94 is
@@ -594,9 +754,6 @@ get entries.
   arbitration, so they are not read as the final decision.
 - The needle-ownership photo request says what it asks: whether the needle-bearing shoot in
   frame connects to this subject (it is raised for trunks beside a separate conifer branch).
-
-### Fixed
-
 - A card-declared 95-100 confidence exception now uses the 85-94 band while an admitted
   look-alike from that card's `common_confusions` remains unresolved, even below the nearest
   alternative. Trusted, subject-scoped evidence must rule the look-alike out before the top
@@ -622,183 +779,6 @@ get entries.
   targeted repair attempt (three instead of two by default). Exhausting the call fails the
   whole case, and the job then re-runs all of it: golden-003 spent three full case attempts
   dying on the same token. Semantic errors, refusals and truncation keep the configured budget.
-
-### Added
-
-- `CaseResponse.consistency_issues`: machine-readable codes for every way the rendered
-  answer disagrees with its own decisions (mismatched resolution, confidence or band, a
-  verdict missing its band, a restraint voice framing a 95-100 claim). Empty on a consistent
-  answer; checked on every run by the tone layer.
-- Evidence provenance in the run trace: `evidence_observations` (subject, reading, trust and
-  tier per observation; tokens only) and `candidate_validations` (support admitted per
-  candidate, and refused support with its machine-readable reason, previously only a log
-  line). Provider call records keep `validation_errors` (field path and error type per
-  failed attempt).
-- A failed run in `dendro inspect --json` prints `{"error", "trace"}` with the partial trace,
-  and batch case records keep it as `failure`; a failed case used to keep a stderr tail only.
-- `scripts/eval/audit_archive.py`: offline audit of archived run results (completion and
-  failure classes, answer/decision contradictions, high-confidence policy flags,
-  resolution/abstention distributions, latency, tokens, estimated cost). No model calls.
-
-### Added
-
-- A direct Claude API adapter, `anthropic-sdk` (`DENDRO_<ROLE>_PROVIDER=anthropic-sdk`),
-  alongside the existing `anthropic` adapter, which is unchanged and still serves the
-  agent-provider bridge. It uses native structured output, an explicit effort level
-  (`ANTHROPIC_EFFORT`, default `high`) and server-side refusal fallback
-  (`ANTHROPIC_FALLBACKS=off` disables it), and defaults to `claude-opus-5-5`. Its key is
-  `ANTHROPIC_SDK_API_KEY`, falling back to `ANTHROPIC_API_KEY` outside agent-provider bridge
-  pods (whose `ANTHROPIC_API_KEY` is a placeholder). On AKS the deploy workflow publishes the
-  `ANTHROPIC_API_KEY` repository secret to the cluster. Refusals and truncated output fail
-  the call as structured-output errors that name the cause.
-
-### Changed
-
-- Firewood material groups with visible, subject-scoped `context.material = split_firewood`
-  now request end grain and bark from one labelled piece instead of foliage. The photo
-  planner follows the existing wood-photo policy; taxonomic thresholds are unchanged.
-- Batch summaries expose all successful subject outcomes in `subject_summary` and preserve
-  per-subject decisions in CSV rows. Legacy first-subject fields remain available. Upload
-  reports no longer require dataset metadata, and projected API exports retain their
-  decisions while unreported usage stays unknown.
-
-- Answers are now in English by default. The `inspect` CLI's `--lang` defaults to `en`, a case
-  without a locale is composed in English, and the English domain prompt now states English as
-  the default answer language (re-sealed in `prompts/versions.yaml`). Pass `--lang uk` (or
-  `lang=uk` on an upload) for Ukrainian answers.
-
-- The active domain prompt is now English: `prompts/domain/system-prompt.en.md`, a line-for-line
-  translation of the Ukrainian original, sealed by `prompts/versions.yaml`. Every evidence token
-  is byte-identical to the original. The Ukrainian original `prompts/domain/system-prompt.md` is kept unchanged as the
-  authoritative specification and can be selected with
-  `DENDRO_DOMAIN_PROMPT_PATH=prompts/domain/system-prompt.md` and
-  `DENDRO_PROMPT_MANIFEST_PATH=prompts/versions.uk.yaml`. The domain prompt hash in execution
-  traces changes accordingly.
-
-### Changed
-
-- Batch reports distinguish unreported token usage from a measured zero, include measured
-  usage from failed cases, expose per-counter case coverage, and correctly average the two
-  middle durations for an even-sized batch.
-
-- A model reviewer's `critical` + `abstain` finding that cites no evidence no longer
-  withdraws a claim on its own. It is still accepted and still critical, but it no longer
-  routes straight to abstention — which, once every subject had abstained, also skipped the
-  arbiter. The run proceeds to the escalation gate instead, where the
-  `unresolved_contradiction` hard trigger calls the arbiter, and the subject abstains only
-  if the arbiter's own accepted findings independently request it. If arbitration does not
-  run (disabled or switched off), the subject abstains as before. A finding that cites
-  admitted evidence, or one raised by code, abstains directly exactly as before.
-  `ReviewSynthesis` gains `unverified_abstention` to record the held finding;
-  `unresolvable` now means the grounded case only. No public evaluation case moves: the one
-  abstention case cites its evidence.
-- The input guard now scans metadata **keys** as well as values, and image media types.
-  Both are rendered into every model prompt beside the text it already scanned. Token-shaped
-  fields are scanned with `_`, `-`, `.`, `:`, `/` and `+` read as spaces, so a sentence packed
-  into one key (`ignore_all_previous_instructions`) is recognised; filenames get the same
-  treatment.
-- **Input contract:** a `CaseInput.metadata` key must now be a bounded ASCII field name
-  (`^[A-Za-z0-9][A-Za-z0-9 _.:-]{0,63}$`; spaces stay legal for EXIF-reader keys such as
-  `Image Make`), and `ImageRef.media_type` must be an `image/*` MIME type. Inputs outside
-  these shapes are rejected at validation instead of reaching a prompt or a provider request.
-- **Input contract:** `CaseInput.metadata` now holds at most 64 entries of at most 400
-  characters each. The mapping is rendered into every model call of a run, so its size
-  multiplies by the call count; a curated EXIF subset fits, a raw dump should be filtered by
-  the caller.
-
-### Added
-
-- The `candidate_validation_filtered` warning and `CandidateValidationResult` now carry
-  `dropped_support_details`: for each supporting evidence id a known taxon's card does not
-  admit, the taxon, the id, and why — an unresolved or foreign reference, untrusted evidence, a feature path the
-  card does not declare, or a value the card does not declare for that feature. A value
-  mismatch reports the model's original feature and value beside the card's expected values,
-  so a vocabulary near-miss is visible instead of only the bare id in `dropped_evidence_ids`.
-  Diagnostics only: admission, ranks, scores and every decision are unchanged, and no value
-  is mapped onto a card's vocabulary.
-- `DENDRO_IMAGE_MAX_EDGE_PX` sets `GraphConfig.image_max_edge_px` from the environment: a
-  pixel bound, or `original` to send files untouched. Unset keeps the 1568 px default.
-- The agent worker logs the pixel size and byte count of every image it hands to an agent,
-  and `--codex-enable FEATURE` passes `--enable FEATURE` to Codex (for example
-  `image_detail_original`, which skips Codex's own downscaling on models that support it).
-- `EscalationPolicy.review_every_decision` (environment `DENDRO_ARBITER_EVERY_DECISION`)
-  calls the arbiter on every case that reaches the escalation gate, including when every
-  subject abstained. The arbiter still only proposes findings that must pass admissibility;
-  the final decision remains deterministic code. Off by default, so the public evaluation
-  suite's escalation metrics are unchanged; it costs one arbiter call per inspection.
-- `deploy/k8s/` holds container images for running inspections as Kubernetes batch Jobs:
-  a batch image (the CLI plus `scripts/batch/`, which runs one dataset photograph or one
-  uploaded case per pod) and an agents image on top of it. Pull requests into `main` build and
-  smoke-test both. A deploy workflow builds them in Azure Container Registry, starts a smoke
-  run on the cluster through its control function, and reports the result and pod logs. A pull
-  request into `main` from a maintainer deploys at once; anyone else's waits for a maintainer's
-  approval. Only pushes to `main` and manual runs make the images the cluster's default. See
-  `deploy/k8s/README.md`.
-- **Open-world discovery** ([#10](https://github.com/Dendro-Inspector/Dendro-Inspector/issues/10)),
-  behind `GraphConfig.open_world_discovery` (`DENDRO_OPEN_WORLD_DISCOVERY`), **off by
-  default**. Off, nothing below takes effect: every public evaluation case produces the same
-  verdicts, composition records, node path and reader text as before, and an integration
-  test injects an uncovered leader into every case's proposal to hold that.
-  On:
-  - A proposed taxon with no card is retained as an `OpenWorldCandidate` instead of being
-    discarded, when at least one cited observation survives as trusted, same-subject,
-    readable, non-colour evidence. It is reported on the verdict
-    (`FinalDecision.open_world_candidates`) and in the reader's limitations, and is never
-    admitted or selected. Resolution is capped by the support's evidence tier, score below
-    `strong`, image confidence below `high`.
-  - A name a card declares only as a broader identity or alias (`juglans`, `walnut`) is
-    retained as *covered* (`covered_by`, with the declaring cards' local reference status)
-    rather than dropped or reported as missing. Admission still matches card ids only.
-  - A subject held back only by the knowledge-coverage gate reaches the candidate
-    generator, and a run that admits nothing goes from the generator to the final decision
-    without reviewer or arbiter calls. The generator is told which subjects have no card in
-    play and how to name a taxon no card describes (a rule in
-    `prompts/nodes/candidate-generator.md`, active only when the case context carries the
-    open-world section the code adds with the flag on). The node prompt's hash changed: a
-    deployment pinning its own prompt manifest must re-seal it (`dendro prompt-seal --write`).
-  - A subject with no admitted candidate reports `knowledge_coverage_gap` when its evidence
-    fell outside every card or an uncovered hypothesis rests on such evidence. Naming an
-    off-card taxon on evidence the cards can represent stays `insufficient_evidence`.
-  - An uncovered taxon the model ranked above the admitted leader caps the verdict at genus
-    (`open_world_outranked`) only when it is congeneric with the leader, cites the
-    observation the leader's claim rests on at its strongest tier, **and** is
-    `externally_verified`. A shared observation proves both hypotheses cited it, not that
-    both fit it, so an unchecked name — `juglans_fictitia` — never moves the verdict. Any
-    outranking hypothesis that does not cap is reported as competing and flagged with
-    `FinalDecision.open_world_conflict`. No authoritative source ships, so in this release
-    the cap cannot fire and every such case is flagged instead.
-- **Reference status**, a separate dimension from image-identification confidence:
-  `local_reviewed`, `local_unreviewed`, `externally_verified`, `provisional`, `disputed`,
-  `unavailable`. A selected taxon always reports its card's status in
-  `FinalDecision.reference_status`; every shipped card is `local_unreviewed`. No status ever
-  moves a confidence band.
-- Reference verification for open-world candidates through a `ReferenceSource` protocol.
-  Each citation records source, trust, HTTPS URL, retrieval time and the matched and
-  conflicting features. `externally_verified` requires a record this system retrieved from
-  an authoritative service itself (`SourceTrust.AUTHORITATIVE_RETRIEVAL`). The one source
-  that ships, `DENDRO_REFERENCE_RECORDS`, reads saved records and is `operator_supplied`: it
-  can dispute a hypothesis but a match from it stays `provisional`. Only a documented feature
-  the photograph contradicts disputes a hypothesis, and any one source disputing outweighs
-  the others. A synonym is the same taxon under an older name: it is followed to its
-  accepted name in the same source, and both records are cited. An unresolved name stays
-  `provisional`. A feature path a record documents twice is merged, not overwritten.
-  Records carry no free text, are discarded whole when invalid and never reach a model
-  prompt. No live online client ships.
-- `dendro draft-card TAXON --references FILE` drafts a card from a saved reference record
-  into `knowledge/review-queue/`, which the loader never reads. Drafts are always
-  `unreviewed` and `placeholder_content: true`, and every documented feature becomes a
-  supporting rule citing its source, never a strong one.
-- `GraphConfig.deadline_seconds` bounds the wall-clock time of one inspection. Off by
-  default, since each adapter already has a per-call timeout and local models can be slow.
-  On expiry the node in flight is cancelled, recorded in the trace as failed with detail
-  `cancelled`, and the run fails with `GraphExecutionError`; no partial answer is returned.
-  A node's own `TimeoutError` is not reported as the run deadline.
-- An image file larger than `MAX_IMAGE_FILE_BYTES` (32 MiB) is refused with
-  `ImageTooLargeError` before it is read, with or without the `images` extra. At most the
-  ceiling plus one byte is ever read.
-
-### Fixed
-
 - The agent bridge (`scripts/agent-provider/bridge.py`) accepts the Anthropic key as an
   `Authorization: Bearer` header as well as `x-api-key`, as the real API does. Anthropic SDK
   releases on API version 2026-10-21 send only the bearer form, so the bridge rejected every
@@ -816,7 +796,7 @@ get entries.
   kept its free-text comment, because Pillow writes it back by default; that is dropped too.
   Without the extra, originals are still sent as they are, and the warning now says so.
 
-## [0.9.0] — 2026-10-07
+## 0.9.0 — 2026-10-07
 
 The package, graph, deterministic policy and public baseline move together to `0.9.0`
 because less of what a model says about itself can now reach the verdict: a candidate's
@@ -1739,10 +1719,11 @@ documents, GitHub Actions CI with a blocking secret scan.
 - A hosted API surface.
 
 Git history begins at v0.2.1; the older entries remain as unlinked release notes, as do
-0.6.0 and 0.7.0, which were never tagged: `main` moved from v0.5.0 to v0.8.0.
+0.6.0 and 0.7.0, which were never tagged: `main` moved from v0.5.0 to v0.8.0. 0.9.0 was
+not tagged either, so 1.0.0-alpha.1 is compared with v0.8.0.
 
-[Unreleased]: https://github.com/Dendro-Inspector/Dendro-Inspector/compare/v0.9.0...HEAD
-[0.9.0]: https://github.com/Dendro-Inspector/Dendro-Inspector/compare/v0.8.0...v0.9.0
+[Unreleased]: https://github.com/Dendro-Inspector/Dendro-Inspector/compare/v1.0.0-alpha.1...HEAD
+[1.0.0-alpha.1]: https://github.com/Dendro-Inspector/Dendro-Inspector/compare/v0.8.0...v1.0.0-alpha.1
 [0.8.0]: https://github.com/Dendro-Inspector/Dendro-Inspector/compare/v0.5.0...v0.8.0
 [0.5.0]: https://github.com/Dendro-Inspector/Dendro-Inspector/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/Dendro-Inspector/Dendro-Inspector/compare/v0.3.0...v0.4.0
