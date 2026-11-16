@@ -564,5 +564,46 @@ def coverage_audit_command(
     typer.echo(coverage_report.render_text(reports))
 
 
+@app.command(name="heldout-check")
+def heldout_check_command(
+    manifest: Annotated[Path, typer.Argument(help="The held-out set's manifest (YAML).")],
+    labels_out: Annotated[
+        Path | None,
+        typer.Option("--labels-out", help="Write reference labels for `coverage-audit --labels`."),
+    ] = None,
+    release_only: Annotated[
+        bool,
+        typer.Option(
+            "--release-only/--include-preliminary",
+            help="Write labels only for units a specialist review makes release-ready.",
+        ),
+    ] = True,
+    json_output: Annotated[
+        Path | None, typer.Option("--json", help="Also write the report as JSON.")
+    ] = None,
+) -> None:
+    """Check a held-out set's independence, leakage and review state; optionally export labels.
+
+    Exits 1 when any check fails. No model is called and nothing is uploaded.
+    """
+    from dendro_inspector.evaluation import heldout
+
+    try:
+        loaded = heldout.load_manifest(manifest)
+    except ValueError as exc:
+        raise typer.BadParameter(str(exc), param_hint="MANIFEST") from exc
+    knowledge = KnowledgeBase(load_config().knowledge)
+    report = heldout.check(loaded, manifest.resolve().parent, knowledge)
+    if json_output is not None:
+        json_output.write_text(report.model_dump_json(indent=2), encoding="utf-8")
+    typer.echo(heldout.render_text(report))
+    if labels_out is not None and report.ok:
+        payload = heldout.labels(loaded, release_only=release_only)
+        labels_out.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+        typer.echo(f"wrote {len(payload['labels'])} labels to {labels_out}")
+    if not report.ok:
+        raise typer.Exit(1)
+
+
 if __name__ == "__main__":  # pragma: no cover
     app()
