@@ -20,7 +20,7 @@ Two further distinctions the extractor must preserve:
 from __future__ import annotations
 
 import re
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping, Sequence
 from enum import StrEnum
 from typing import Any
 
@@ -408,6 +408,26 @@ class ImageLimitation(Contract):
     )
 
 
+class ImageOutcomeReason(StrEnum):
+    """Why a photograph the extractor was given yielded no reading.
+
+    A reason accounts for a photograph; it is never evidence. No decision code reads it, so
+    it cannot support a taxon or raise a confidence. ``no_diagnostic_feature_visible`` says
+    what this photograph shows, not what the tree lacks: it is not ``absent_features``.
+    """
+
+    UNREADABLE = "unreadable"
+    REDUNDANT_VIEW = "redundant_view"
+    NO_DIAGNOSTIC_FEATURE_VISIBLE = "no_diagnostic_feature_visible"
+
+
+class ImageOutcome(Contract):
+    """The extractor's account of one photograph it recorded nothing else about."""
+
+    image_id: Identifier
+    reason: ImageOutcomeReason
+
+
 #: Values that report a failure to read a feature rather than a reading of it. An extractor
 #: that fills `bark.texture` with `not_resolvable` is saying "I looked and could not tell",
 #: which is silence on that feature — never a positive observation that disagrees with a
@@ -576,8 +596,8 @@ class EvidencePacket(Contract):
                 raise ValueError(msg)
         return self
 
-    def validate_image_references(self, available_image_ids: frozenset[str]) -> None:
-        """Bind packet references to the code-owned image scope of the extraction call."""
+    def referenced_image_ids(self) -> frozenset[str]:
+        """Every photograph an observation, a subject or an image limitation names."""
         referenced = {
             observation.image_id
             for observation in self.observations
@@ -585,7 +605,11 @@ class EvidencePacket(Contract):
         }
         referenced.update(image_id for subject in self.subjects for image_id in subject.image_ids)
         referenced.update(limitation.image_id for limitation in self.image_limitations)
-        unknown = referenced - available_image_ids
+        return frozenset(referenced)
+
+    def validate_image_references(self, available_image_ids: frozenset[str]) -> None:
+        """Bind packet references to the code-owned image scope of the extraction call."""
+        unknown = self.referenced_image_ids() - available_image_ids
         if unknown:
             msg = f"evidence references unavailable image ids: {sorted(unknown)}"
             raise ValueError(msg)
@@ -641,13 +665,45 @@ class EvidencePacket(Contract):
 
 
 class GeneratedEvidencePacket(EvidencePacket):
-    """Provider response contract with strict surface provenance for new observations."""
+    """Provider response contract with strict surface provenance for new observations.
+
+    ``image_outcomes`` lives here and not on :class:`EvidencePacket`: it is kept with the
+    raw response and left out of the packet downstream nodes and decision code receive.
+    """
 
     observations: tuple[GeneratedObservation, ...] = ()
+    image_outcomes: tuple[ImageOutcome, ...] = Field(
+        default=(),
+        max_length=16,
+        description=(
+            "One entry for each photograph you recorded no observation, subject or image "
+            "limitation for, saying why it yielded nothing: `unreadable`, `redundant_view` "
+            "or `no_diagnostic_feature_visible`. It accounts for the photograph. It is not "
+            "evidence and supports no taxon."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def _one_outcome_per_image(self) -> GeneratedEvidencePacket:
+        image_ids = [outcome.image_id for outcome in self.image_outcomes]
+        if len(image_ids) != len(set(image_ids)):
+            msg = "duplicate image outcome image_id in evidence packet"
+            raise ValueError(msg)
+        return self
+
+    def validate_image_references(self, available_image_ids: frozenset[str]) -> None:
+        """Also bind the outcomes: a reason for a photograph never sent is invented."""
+        super().validate_image_references(available_image_ids)
+        unknown = {outcome.image_id for outcome in self.image_outcomes} - available_image_ids
+        if unknown:
+            msg = f"image outcomes name unavailable image ids: {sorted(unknown)}"
+            raise ValueError(msg)
 
     def to_evidence_packet(self) -> EvidencePacket:
         """Return the canonical persistence/runtime contract after generated-output checks."""
-        packet = EvidencePacket.model_validate(self.model_dump(mode="python"))
+        packet = EvidencePacket.model_validate(
+            self.model_dump(mode="python", exclude={"image_outcomes"})
+        )
         return packet.collapse_subject_components()
 
 
@@ -690,3 +746,103 @@ class TargetedEvidencePacket(GeneratedEvidencePacket):
         if self.main_subject_id is None or self.main_subject_id not in listed:
             return None
         return self.identity_root_id(self.main_subject_id)
+
+
+class PhotoStatus(StrEnum):
+    """What one submitted photograph came to in one extraction."""
+
+    REFERENCED = "referenced"
+    """Named by an observation, a subject or an image limitation the extractor returned."""
+    EXPLAINED = "explained"
+    """Named only by an image outcome: the extractor gave a reason it yielded nothing."""
+    MISSING = "missing"
+    """Sent to the extractor and named nowhere in what it returned: no recorded outcome."""
+    UNAVAILABLE = "unavailable"
+    """Submitted, and outside the extraction call's image scope: never sent to the model."""
+
+
+class PhotoAccount(Contract):
+    """One submitted photograph and what the extraction recorded about it."""
+
+    image_id: Identifier
+    status: PhotoStatus
+    reason: ImageOutcomeReason | None = Field(
+        default=None, description="The extractor's stated reason, when it gave one."
+    )
+
+
+class PhotoCoverage(Contract):
+    """Which submitted photographs one extraction accounted for, in submission order.
+
+    The image-reference validator proves that every photograph the evidence cites was sent.
+    This is the reverse direction: whether every photograph sent is named in what came back.
+    A photograph is accounted for when the evidence names it or the extractor gave a reason
+    for it. Coverage is telemetry. No decision reads it, and an explained photograph adds
+    nothing to an identification.
+    """
+
+    photos: tuple[PhotoAccount, ...] = Field(default=(), max_length=16)
+
+    @model_validator(mode="after")
+    def _one_account_per_photo(self) -> PhotoCoverage:
+        image_ids = [photo.image_id for photo in self.photos]
+        if len(image_ids) != len(set(image_ids)):
+            msg = "duplicate image_id in photo coverage"
+            raise ValueError(msg)
+        return self
+
+    def image_ids(self, *statuses: PhotoStatus) -> tuple[str, ...]:
+        """Submitted photographs with any of ``statuses``, in submission order."""
+        return tuple(photo.image_id for photo in self.photos if photo.status in statuses)
+
+    @property
+    def accounted_image_ids(self) -> tuple[str, ...]:
+        return self.image_ids(PhotoStatus.REFERENCED, PhotoStatus.EXPLAINED)
+
+    @property
+    def missing_image_ids(self) -> tuple[str, ...]:
+        return self.image_ids(PhotoStatus.MISSING)
+
+    @property
+    def unavailable_image_ids(self) -> tuple[str, ...]:
+        return self.image_ids(PhotoStatus.UNAVAILABLE)
+
+
+def photo_coverage(
+    submitted_image_ids: Sequence[str],
+    reached_image_ids: Collection[str],
+    packet: EvidencePacket | None = None,
+) -> PhotoCoverage:
+    """Account for every submitted photograph against what one extraction returned.
+
+    ``reached_image_ids`` is the image scope the extraction's response was validated
+    against, so nothing outside it can be cited. Pass the validated provider response rather
+    than the effective packet: only a generated packet carries ``image_outcomes``, and its
+    component subjects still name their photographs before they are folded into identity
+    roots. ``None`` stands for an extraction that returned nothing.
+    """
+    reached = frozenset(reached_image_ids)
+    referenced = packet.referenced_image_ids() if packet is not None else frozenset()
+    reasons = (
+        {outcome.image_id: outcome.reason for outcome in packet.image_outcomes}
+        if isinstance(packet, GeneratedEvidencePacket)
+        else {}
+    )
+    accounts = []
+    for image_id in submitted_image_ids:
+        if image_id not in reached:
+            status = PhotoStatus.UNAVAILABLE
+        elif image_id in referenced:
+            status = PhotoStatus.REFERENCED
+        elif image_id in reasons:
+            status = PhotoStatus.EXPLAINED
+        else:
+            status = PhotoStatus.MISSING
+        accounts.append(
+            PhotoAccount(
+                image_id=image_id,
+                status=status,
+                reason=reasons.get(image_id) if image_id in reached else None,
+            )
+        )
+    return PhotoCoverage(photos=tuple(accounts))

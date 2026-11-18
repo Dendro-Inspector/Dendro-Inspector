@@ -7,6 +7,12 @@ first subject where none is designated (several subjects, or a record written be
 targets existed); target_subject says which. subject_summary counts every subject in
 successful cases. Each CSV row also carries subject_decisions as a JSON array.
 Projected API records have no trace, so usage and model-call counts remain unknown.
+
+Photo coverage comes from the last extraction recorded in the trace, whether the case
+succeeded or failed: how many submitted photographs the extraction accounted for, how many
+were never sent, and which sent ones it returned nothing about. A record without a trace, a
+trace without an extraction, and a trace written before coverage was recorded (schema 5 and
+earlier) leave all three empty, and the summary counts the case as unknown, never complete.
 Standard library only.
 
 Usage: python scripts/batch/summarize_run.py <run_dir>
@@ -40,6 +46,10 @@ COLUMNS = (
     "input_tokens",
     "cached_input_tokens",
     "output_tokens",
+    "photos_submitted",
+    "photos_accounted",
+    "photos_unavailable",
+    "missing_photo_ids",
     "error",
     "subject_decisions",
 )
@@ -47,11 +57,35 @@ DECISION_COLUMNS = ("subject_id", "selected_taxon", "status", "resolution", "con
 #: A subject's role when the record does not say: written before roles existed.
 UNSPECIFIED_ROLE = "unspecified"
 TOKEN_KEYS = ("input_tokens", "cached_input_tokens", "output_tokens")
+#: Photo statuses that account for a photograph (`PhotoStatus` in schemas/evidence.py).
+ACCOUNTED_STATUSES = ("referenced", "explained")
 
 
 def _last_line(text: str | None) -> str:
     lines = (text or "").strip().splitlines()
     return lines[-1] if lines else ""
+
+
+def photo_coverage(trace: dict[str, Any]) -> dict[str, Any]:
+    """The last extraction's photo coverage, or every field None when it is unknown."""
+    history = trace.get("evidence_history") or []
+    coverage = history[-1].get("photo_coverage") if history else None
+    if coverage is None:
+        return {
+            "photos_submitted": None,
+            "photos_accounted": None,
+            "photos_unavailable": None,
+            "missing_photo_ids": None,
+        }
+    photos = coverage.get("photos") or []
+    return {
+        "photos_submitted": len(photos),
+        "photos_accounted": sum(photo.get("status") in ACCOUNTED_STATUSES for photo in photos),
+        "photos_unavailable": sum(photo.get("status") == "unavailable" for photo in photos),
+        "missing_photo_ids": [
+            photo.get("image_id") for photo in photos if photo.get("status") == "missing"
+        ],
+    }
 
 
 def case_row(record: dict[str, Any]) -> dict[str, Any]:
@@ -74,6 +108,8 @@ def case_row(record: dict[str, Any]) -> dict[str, Any]:
     calls = [
         call for event in trace.get("events", []) for call in event.get("provider_calls") or []
     ]
+    # Independent of the exit code: a successful case can leave photographs unexamined.
+    row.update(photo_coverage(trace))
     if response is None:
         if "events" in trace:
             row.update(
@@ -124,6 +160,26 @@ def _measured_total(records: list[dict[str, Any]], key: str) -> int | None:
     return sum(measured) if measured else None
 
 
+def _coverage_summary(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    """Photo coverage over every case, failed ones included. Unknown is never complete."""
+    measured = [row for row in rows if row.get("photos_submitted") is not None]
+    incomplete = [
+        {"case_id": row.get("case_id", ""), "missing_photo_ids": row["missing_photo_ids"]}
+        for row in measured
+        if row["missing_photo_ids"]
+    ]
+    return {
+        "cases_measured": len(measured),
+        "cases_unknown": len(rows) - len(measured),
+        "cases_incomplete": len(incomplete),
+        "photos_submitted": sum(row["photos_submitted"] for row in measured),
+        "photos_accounted": sum(row["photos_accounted"] for row in measured),
+        "photos_unavailable": sum(row["photos_unavailable"] for row in measured),
+        "photos_missing": sum(len(case["missing_photo_ids"]) for case in incomplete),
+        "incomplete": incomplete,
+    }
+
+
 def summarize(rows: list[dict[str, Any]]) -> dict[str, Any]:
     done = [row for row in rows if row["exit_code"] == 0]
     walls = sorted(float(row["wall_seconds"]) for row in done if row["wall_seconds"] != "")
@@ -155,6 +211,7 @@ def summarize(rows: list[dict[str, Any]]) -> dict[str, Any]:
         "token_measured_cases": {
             key: sum(_measured_total([row], key) is not None for row in rows) for key in TOKEN_KEYS
         },
+        "photo_coverage": _coverage_summary(rows),
         "wall_seconds": {
             "median": median(walls) if walls else None,
             "max": walls[-1] if walls else None,
@@ -172,7 +229,15 @@ def main(run_dir: Path) -> dict[str, Any]:
         writer = csv.DictWriter(handle, fieldnames=COLUMNS)
         writer.writeheader()
         writer.writerows(
-            {**row, "subject_decisions": json.dumps(row["subject_decisions"], ensure_ascii=False)}
+            {
+                **row,
+                "subject_decisions": json.dumps(row["subject_decisions"], ensure_ascii=False),
+                "missing_photo_ids": (
+                    json.dumps(row["missing_photo_ids"], ensure_ascii=False)
+                    if row["missing_photo_ids"] is not None
+                    else ""
+                ),
+            }
             for row in rows
         )
     summary = summarize(rows)

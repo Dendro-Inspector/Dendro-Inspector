@@ -34,8 +34,9 @@ GRAPH_VERSION = "1.0.0a1"
 #: a record between two releases, and a reader has to know which records to expect without
 #: inferring it from the package version. Traces written before this field existed carry no
 #: version and are version 1: they have no `review_rounds`, so an empty tuple there means
-#: "not recorded", never "no review ran". Version 5 adds `runtime_identity`.
-TRACE_SCHEMA_VERSION = 5
+#: "not recorded", never "no review ran". Version 5 adds `runtime_identity`. Version 6 adds
+#: `photo_coverage` to each evidence revision; without it photo coverage is unknown.
+TRACE_SCHEMA_VERSION = 6
 LEGACY_TRACE_SCHEMA_VERSION = 1
 
 

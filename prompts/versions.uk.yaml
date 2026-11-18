@@ -28,7 +28,7 @@ node_prompts:
     - file: confusion-reviewer.md
       sha256: da8c4d9d44e724f05822ee36b9719d1d42c3a5db3dff1f035a59de884096d026
     - file: evidence-extractor.md
-      sha256: b3bc06394e466f640930549f6b934c9b4500ed730c749c0398aae302d0c38b5d
+      sha256: 53f648a64a4d24aceea65a72c4422b85ff9a0b9d9e773bffeeb93443408c9156
     - file: planner.md
       sha256: c019496ccbd4d81124de4a5ad55d264d6e5ed294cab87f66f4b7f5fa84e9cf50
     - file: response-composer.md
