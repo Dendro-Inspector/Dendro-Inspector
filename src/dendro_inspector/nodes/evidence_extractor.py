@@ -9,7 +9,10 @@ rather than hoped for:
 * on a retry pass, the accepted corrections are appended to the prompt so the second
   extraction is actually different from the first;
 * a subject the model named and then recorded nothing about, on no photograph, is not
-  carried into the packet, so it cannot become a verdict about nothing.
+  carried into the packet, so it cannot become a verdict about nothing;
+* every submitted photograph is accounted for in the trace: named in the evidence,
+  explained, missing from the response, or never sent. A missing photograph is reported,
+  not repaired, and changes no verdict.
 """
 
 from __future__ import annotations
@@ -30,6 +33,7 @@ from dendro_inspector.schemas.evidence import (
     EvidencePacket,
     GeneratedEvidencePacket,
     TargetedEvidencePacket,
+    photo_coverage,
 )
 
 NODE = "evidence_extractor"
@@ -121,7 +125,12 @@ async def run(state: GraphState, ctx: NodeContext) -> GraphState:
     guard = state.guard
     if guard is not None and not guard.safe_to_continue:
         packet = _empty_packet(state)
-        ctx.recorder.record_evidence(packet, retry_index=state.retries)
+        # No extraction call is made, so no photograph reaches one.
+        ctx.recorder.record_evidence(
+            packet,
+            retry_index=state.retries,
+            photo_coverage=photo_coverage(state.case.image_ids, ()),
+        )
         return state.evolve(evidence=packet, proposed_target_subject_id=None)
 
     context_parts = [
@@ -188,8 +197,24 @@ async def run(state: GraphState, ctx: NodeContext) -> GraphState:
         )
         if proposed_target in unseen:
             proposed_target = None
+    # Against the raw response: a component subject still names its photographs there.
+    coverage = photo_coverage(state.case.image_ids, available_image_ids, generated)
+    if coverage.missing_image_ids:
+        get_logger(NODE).warning(
+            "photos_unaccounted",
+            extra={
+                "case_id": state.case.case_id,
+                "accounted": len(coverage.accounted_image_ids),
+                "submitted": len(coverage.photos),
+                "image_ids": list(coverage.missing_image_ids),
+            },
+        )
     ctx.recorder.record_component_projections(packet)
     ctx.recorder.record_evidence(
-        packet, generated=generated, retry_index=state.retries, attestations=attestations
+        packet,
+        generated=generated,
+        retry_index=state.retries,
+        attestations=attestations,
+        photo_coverage=coverage,
     )
     return state.evolve(evidence=packet, proposed_target_subject_id=proposed_target)

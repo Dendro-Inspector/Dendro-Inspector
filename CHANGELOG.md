@@ -10,6 +10,36 @@ get entries.
 
 ## [Unreleased]
 
+### Added
+
+- **A trace says which photographs an extraction accounted for.** An inspection of eleven
+  photographs could complete on evidence that named three of them, and nothing recorded
+  that the other eight were never examined: the image-reference validator only checks that
+  every cited photograph was supplied. Trace schema 6 adds `photo_coverage` to each evidence
+  revision: one entry per submitted photograph, `referenced` (named by an observation,
+  subject or image limitation), `explained` (only an image outcome names it), `missing`
+  (sent, and nothing came back about it) or `unavailable` (never sent). The extractor logs
+  `photos_unaccounted` when any is missing. Coverage is telemetry and changes no verdict.
+- **The extractor may give a reason a photograph yielded nothing.** Its response gains an
+  optional `image_outcomes` list, one entry per photograph with a `reason` of `unreadable`,
+  `redundant_view` or `no_diagnostic_feature_visible`. A reason accounts for the photograph
+  and is not evidence: it is kept with the raw response, left out of the packet every later
+  node receives, and cannot support a taxon or raise a confidence. A reason for a
+  photograph that was never sent is refused like any other invented image reference. The
+  extractor node prompt documents the field, so its hash changed: a deployment pinning its
+  own prompt manifest must re-seal it (`dendro prompt-seal --write`). An empty
+  `image_outcomes` is left out of evidence digests, so stored traces still verify.
+- **The batch summary reports photo coverage whatever the exit code.**
+  `scripts/batch/summarize_run.py` adds `photos_submitted`, `photos_accounted`,
+  `photos_unavailable` and `missing_photo_ids` per case, read from the last extraction in
+  the trace of a successful or a failed case, and a `photo_coverage` block with totals and
+  the missing photographs per case. A case without a trace, without an extraction, or with
+  a trace written before schema 6 is counted as unknown, never as complete.
+- **A replay holds every photograph the run was given.** Replaying a schema-6 trace builds
+  its case from the recorded coverage, so an explained or missing photograph is in the
+  replay too and the replay accounts for the same photographs. An older trace still
+  replays only the photographs its evidence names.
+
 ## [1.0.0-alpha.1] — 2026-11-16
 
 The first pre-release of 1.0.0. It is an engineering baseline, not a release candidate:

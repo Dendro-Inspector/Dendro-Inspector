@@ -69,6 +69,11 @@ Use these families — the system's evidence hierarchy is keyed on them:
   `green_cast`. `scale` is `exact` | `approximate` | `absent`. What the light does to a
   reading ("green cast, so bark colour is unreliable") goes in that image's `notes`, never
   in a token field.
+- `image_outcomes`: account for every photograph you were given. One you recorded no
+  observation, subject or image limitation for gets one entry: its `image_id` and a
+  `reason` of `unreadable`, `redundant_view` or `no_diagnostic_feature_visible`. A reason
+  is not evidence and cannot support a taxon. Do not use it to skip a photograph you can
+  read.
 - `context_limitations`: tokens, one per limitation, e.g. `location_unknown`,
   `season_unknown`, `crown_not_visible`, `foliage_not_traceable_to_subject`. Never
   sentences.

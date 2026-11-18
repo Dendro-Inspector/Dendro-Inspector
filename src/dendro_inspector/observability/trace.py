@@ -72,6 +72,7 @@ if TYPE_CHECKING:
         AttestationOutcome,
         EvidencePacket,
         GeneratedEvidencePacket,
+        PhotoCoverage,
     )
     from dendro_inspector.schemas.reviews import (
         Reviewer,
@@ -281,13 +282,15 @@ class TraceRecorder:
         generated: GeneratedEvidencePacket | None = None,
         retry_index: int = 0,
         attestations: tuple[AttestationOutcome, ...] = (),
+        photo_coverage: PhotoCoverage | None = None,
     ) -> None:
         """Keep the evidence ledger: attribution, reading and trust per observation.
 
         Compact compatibility fields describe the final packet. Complete raw/effective
         artifacts retain every revision, including notes and regions, before another
-        extraction reuses the IDs. The outcome of each uploader statement is kept with the
-        revision it shaped. No image bytes, local paths or case metadata are copied.
+        extraction reuses the IDs. The outcome of each uploader statement, and the account
+        of each submitted photograph, are kept with the revision they describe. No image
+        bytes, local paths or case metadata are copied.
         """
         from dendro_inspector.knowledge.evidence_hierarchy import (
             effective_tier,
@@ -321,6 +324,7 @@ class TraceRecorder:
                 raw_sha256=packet_digest(generated) if generated is not None else None,
                 effective_sha256=packet_digest(evidence),
                 attestations=attestations,
+                photo_coverage=photo_coverage,
             )
         )
         # Prior validations remain in history, but cannot describe the new packet's IDs.

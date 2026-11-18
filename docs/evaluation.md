@@ -18,7 +18,9 @@ secrets.
 
 Fake replay uses the image IDs declared by each case as its synthetic image scope, even
 when the example files are absent. Unknown image IDs still fail extraction validation.
-Live providers are bound to images actually passed to the extraction call. Regression
+Live providers are bound to images actually passed to the extraction call. Photo coverage
+counts that scope as the photographs that reached extraction, so under fake replay a declared
+photograph is never `unavailable`, only accounted for or `missing`. Regression
 coverage for image provenance, review ownership, omitted subjects, retrieval and cancellation
 is in [the architecture boundary tests](../tests/unit/test_architecture_boundaries.py).
 

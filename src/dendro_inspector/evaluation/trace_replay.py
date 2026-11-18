@@ -42,6 +42,10 @@ What a trace does not carry is reconstructed conservatively and reported by
   uses that round's reviews on every pass, so the earlier retry route is not reconstructed.
 * The case's own inputs — declared object type, location, the user's claim and note — are
   not in the trace. A record that used any of them replays without it.
+* The photographs a case submitted are recorded from trace schema 6 (``photo_coverage``).
+  A replay then holds every photograph the extraction was given, read or not, so it
+  accounts for the same photographs; one that was never sent is left out. An older trace
+  replays only the photographs its evidence names, and its coverage stays unknown.
 * A spend limit is replayed as a count of requests only. Scripted calls report no token
   usage and repeat no repair attempt, so a run that a token limit stopped, or that a
   repair attempt took to its request limit, routes on in a replay, asks for a response it
@@ -98,6 +102,7 @@ from dendro_inspector.providers.fake import UnscriptedCallError
 from dendro_inspector.schemas.evidence import (
     AttachmentStatus,
     EvidencePacket,
+    PhotoStatus,
     SubjectKind,
     WoodSurface,
     requires_wood_surface,
@@ -776,6 +781,13 @@ def _case_input(record: StoredRecord) -> CaseInput:
             referenced.update(o.image_id for o in raw.observations if o.image_id is not None)
             referenced.update(image for subject in raw.subjects for image in subject.image_ids)
             referenced.update(limitation.image_id for limitation in raw.image_limitations)
+        if revision.photo_coverage is not None:
+            # Every photograph the extraction was given, so a missing one stays missing.
+            referenced.update(
+                photo.image_id
+                for photo in revision.photo_coverage.photos
+                if photo.status is not PhotoStatus.UNAVAILABLE
+            )
     attestations = _recorded_attestations(history)
     for attestation in attestations:
         referenced.update(attestation.part_image_ids)

@@ -17,14 +17,24 @@ from dendro_inspector.schemas.evidence import (
     AttestationOutcome,
     EvidencePacket,
     GeneratedEvidencePacket,
+    PhotoCoverage,
 )
+
+#: Fields added to a stored packet after its digest was first defined. The canonical form
+#: leaves each out while it is empty, so a packet recorded before it existed keeps the
+#: digest it was stored with and an older trace still verifies.
+_OMITTED_WHEN_EMPTY = ("image_outcomes",)
 
 
 def packet_digest(packet: EvidencePacket) -> str:
     """Hash the complete validated artifact, including notes and original attribution."""
-    encoded = json.dumps(
-        packet.model_dump(mode="json"), sort_keys=True, separators=(",", ":"), ensure_ascii=False
-    ).encode("utf-8")
+    payload = packet.model_dump(mode="json")
+    for name in _OMITTED_WHEN_EMPTY:
+        if name in payload and not payload[name]:
+            del payload[name]
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode(
+        "utf-8"
+    )
     return hashlib.sha256(encoded).hexdigest()
 
 
@@ -40,6 +50,11 @@ class EvidenceRevision(Contract):
     which tree it named, which readings it credited and from where, and which it left alone
     and why. It is empty when the case carried no statement, and in traces written before
     statements were recorded.
+
+    ``photo_coverage`` accounts for every photograph the case submitted against the raw
+    packet: named in the evidence, explained by an image outcome, missing, or never sent.
+    ``None`` means it was not recorded (traces before schema version 6), so coverage is
+    unknown rather than complete.
     """
 
     schema_version: int = Field(default=1, ge=1, le=1)
@@ -51,6 +66,7 @@ class EvidenceRevision(Contract):
     effective_sha256: str = Field(min_length=64, max_length=64)
     candidate_proposal: CandidateProposal | None = None
     attestations: tuple[AttestationOutcome, ...] = ()
+    photo_coverage: PhotoCoverage | None = None
 
     @model_validator(mode="after")
     def _content_matches_hashes(self) -> EvidenceRevision:

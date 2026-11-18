@@ -584,6 +584,22 @@ regions, subject descriptions, parent relationships, image limitations and infer
 available even when a later extraction reuses their local IDs. A controlled empty extraction
 has an effective packet and no invented raw model response.
 
+Trace schema 6 adds `photo_coverage` to each revision: one entry per photograph the case
+submitted, in submission order. `referenced` means an observation, a subject or an image
+limitation in the raw packet names it. `explained` means only an image outcome does: the
+extractor's stated reason (`unreadable`, `redundant_view`, `no_diagnostic_feature_visible`)
+that the photograph yielded nothing. `missing` means it was sent and nothing came back about
+it. `unavailable` means it was outside the call's image scope and never sent. Code computes
+coverage from the raw packet, where component subjects still name their photographs, and the
+scope the response was validated against; the validator checks that every cited photograph
+was sent, and coverage checks that every photograph sent was answered. Coverage is
+telemetry. Image outcomes stay with the raw packet and are left out of the effective one, so
+no node, review or decision rule reads them, and a missing photograph is reported, never
+repaired. An empty `image_outcomes` is left out of a packet's digest, so a packet stored
+before the field existed keeps its hash. A revision without `photo_coverage` was written
+before schema 6, and its coverage is unknown rather than complete. The batch summary reports
+coverage for every case that has a trace, failed cases included.
+
 Each raw/effective packet has a canonical JSON SHA-256. The
 [`EvidenceRevision`](../src/dendro_inspector/observability/evidence_history.py) contract checks
 those hashes when reading an artifact. They detect content changes; they are not signatures
