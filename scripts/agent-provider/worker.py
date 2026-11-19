@@ -22,6 +22,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 import urllib.error
 import urllib.request
@@ -728,6 +729,272 @@ class ClineBackend:
         )
 
 
+#: Every Vibe 3.1.3 built-in tool that takes a permission, apart from read_file.
+_VIBE_REFUSED_TOOLS = (
+    "ask_user_question",
+    "bash",
+    "bash_log_file",
+    "bash_output",
+    "bash_sessions",
+    "bash_stdin",
+    "edit",
+    "git_bash",
+    "git_bash_log_file",
+    "git_bash_output",
+    "git_bash_sessions",
+    "git_bash_stdin",
+    "powershell",
+    "powershell_log_file",
+    "powershell_output",
+    "powershell_sessions",
+    "powershell_stdin",
+    "skill",
+    "todo",
+    "web_fetch",
+    "web_search",
+    "write_file",
+)
+
+#: Settings for the Vibe home a Vibe worker owns, rewritten at every worker start. In headless
+#: mode Vibe 3.1.3 still offers write_file, edit, bash, skill and run_typescript whatever
+#: ``enabled_tools`` and ``disabled_tools`` say; a ``never`` permission is what refuses a
+#: call, so every tool but read_file gets one. run_typescript takes no permission; with
+#: connectors and MCP off it has no tool of its own to reach.
+_VIBE_CONFIG = (
+    "# Written by Dendro Inspector's scripts/agent-provider/worker.py when it starts.\n"
+    "enable_telemetry = false\n"
+    "enable_update_checks = false\n"
+    "enable_auto_update = false\n"
+    "enable_notifications = false\n"
+    "enable_pr_monitoring = false\n"
+    "enable_connectors = false\n"
+    "enable_mcp = false\n"
+    "enable_subagents = false\n"
+    "enable_background_processes = false\n"
+    "enable_auto_approve = false\n"
+    "enable_file_autocomplete = false\n"
+    "include_project_context = false\n"
+    "include_commit_signature = false\n"
+    'outside_workdir = "deny"\n'
+    'enabled_tools = ["read_file"]\n'
+    'disabled_tools = ["bash", "write_file", "edit", "skill", "run_typescript", '
+    '"search_tool_functions"]\n'
+    "\n[session_logging]\nenabled = false\n"
+    '\n[tools.read_file]\noutside_workdir = "deny"\n'
+    + "".join(f'\n[tools.{tool}]\npermission = "never"\n' for tool in _VIBE_REFUSED_TOOLS)
+)
+
+#: How a Vibe failure reads when it is a short rate limit, and when no retry can succeed
+#: (no key, a revoked key, an account without credit). Vibe 3.1.3 without a key says
+#: "Missing MISTRAL_API_KEY environment variable for mistral provider" and exits 1.
+_VIBE_RATE_LIMIT_TEXT = re.compile(r"\b429\b|rate[ _-]?limit", re.IGNORECASE)
+_VIBE_TERMINAL_TEXT = re.compile(
+    r"\b40[123]\b|unauthori[sz]ed|forbidden|invalid api[ _]key|missing \S*api[ _]key"
+    r"|no api[ _]key|insufficient (?:credit|fund|balance)|payment required",
+    re.IGNORECASE,
+)
+
+
+def _vibe_output(stdout: str) -> tuple[str, frozenset[str]]:
+    """The last assistant text in Vibe's ``--output json`` array, and the file names its
+    ``read_file`` calls opened successfully."""
+    try:
+        entries = json.loads(stdout)
+    except ValueError as exc:
+        raise WorkerError(f"Vibe printed no JSON message array: {stdout.strip()[-500:]}") from exc
+    if not isinstance(entries, list):
+        raise WorkerError("Vibe's JSON output is not a message array")
+    answer = ""
+    opened: set[str] = set()
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        if entry.get("type") == "message" and entry.get("role") == "assistant":
+            text = "".join(
+                part["text"]
+                for part in entry.get("content") or []
+                if isinstance(part, dict)
+                and part.get("type") == "text"
+                and isinstance(part.get("text"), str)
+            ).strip()
+            if text:
+                answer = text
+        elif entry.get("type") == "effect":
+            detail = entry.get("detail") or {}
+            state = entry.get("state") or {}
+            tool = detail.get("toolName") if isinstance(detail, dict) else None
+            if (
+                isinstance(tool, str)
+                and tool.endswith("read_file")
+                and isinstance(state, dict)
+                and state.get("status") == "completed"
+            ):
+                path = (detail.get("input") or {}).get("filePath")
+                if isinstance(path, str):
+                    opened.add(Path(path).name)
+    return answer, frozenset(opened)
+
+
+def _read_json_object(path: Path) -> dict[str, Any]:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+class VibeBackend:
+    """Use Mistral Vibe's headless mode as a read-only vision transport.
+
+    Vibe has no image flag, and an ``@path`` in a headless prompt reaches the model as plain
+    text. Its ``read_file`` tool returns a photograph as an image, which Vibe's Mistral backend
+    sends on as an image part. So the worker copies the job's photographs into an empty folder,
+    confines Vibe to it, and asks it to open each one. An answer given without opening every
+    photograph is refused: it cannot be about them.
+
+    The worker owns a Vibe root: ``<root>/.vibe`` is the Vibe home and its settings, and each
+    job runs in ``<root>/jobs/<cache key>``. Vibe looks for project settings in the job folder
+    and its parents up to the home's parent, which is the root, so a ``.vibe`` folder elsewhere
+    on the machine cannot loosen the settings.
+    """
+
+    _SYSTEM_PROMPT = (
+        "You are a read-only structured-output worker for Dendro Inspector. Use only the "
+        "read_file tool, and only on the photographs the request names. Never edit a file, "
+        "run a command, delegate, or reach the network through a tool. Open every named "
+        "photograph, follow the complete Dendro prompt, and return exactly one JSON object "
+        "matching the required schema, with no Markdown fence, prose or commentary. Do not "
+        "invent observations. Uncertainty and abstention are valid."
+    )
+
+    def __init__(
+        self,
+        *,
+        executable: str,
+        model: str,
+        timeout_seconds: float,
+        root: Path,
+        max_price: float | None = None,
+    ) -> None:
+        resolved = shutil.which(executable) or executable
+        if not Path(resolved).is_file():
+            raise WorkerError(f"Vibe executable not found: {executable}")
+        self._executable = resolved
+        self._model = model
+        self._timeout = timeout_seconds
+        self._max_price = max_price
+        self._home = root / ".vibe"
+        self._jobs = root / "jobs"
+        self._home.mkdir(parents=True, exist_ok=True)
+        self._jobs.mkdir(parents=True, exist_ok=True)
+        atomic_write_text(self._home / "config.toml", _VIBE_CONFIG)
+        self._system_prompt = root / "system-prompt.md"
+        atomic_write_text(self._system_prompt, self._SYSTEM_PROMPT)
+
+    def _prompt(self, job: Job, photos: list[Path]) -> str:
+        listing = "\n".join(f"- {path}" for path in photos) or "- none"
+        return (
+            "The photographs for this request are files in your working directory. Nothing "
+            "is attached to this message: open every one of them with read_file before you "
+            f"answer.\n{listing}\n\n{compose_prompt(job)}"
+        )
+
+    def generate(self, job: Job) -> WorkerResult:
+        workdir = self._jobs / job.cache_key
+        export_dir = self._jobs / f"{job.cache_key}.export"
+        for stale in (workdir, export_dir):
+            shutil.rmtree(stale, ignore_errors=True)
+        workdir.mkdir(parents=True)
+        photos = []
+        for image_path in job.image_paths:
+            copy = workdir / image_path.name
+            shutil.copyfile(image_path, copy)
+            photos.append(copy)
+        command = [
+            self._executable,
+            "-p",
+            "--output",
+            "json",
+            "--trust",
+            "--workdir",
+            str(workdir),
+            "--model",
+            self._model,
+            # One turn per photograph if the model opens them one at a time, plus the answer
+            # and a repair of a refused tool call.
+            "--max-turns",
+            str(len(photos) + 4),
+            # Stop Vibe itself before the subprocess timeout, so it still writes export.json.
+            "--time-limit",
+            str(max(30, int(self._timeout) - 30)),
+            "--system-prompt-file",
+            str(self._system_prompt),
+            "--output-dir",
+            str(export_dir),
+            "--enabled-tools",
+            "read_file",
+        ]
+        if self._max_price is not None:
+            command.extend(("--max-price", f"{self._max_price:g}"))
+        environment = utf8_subprocess_environment()
+        environment["VIBE_HOME"] = str(self._home)
+        try:
+            completed = subprocess.run(
+                command,
+                input=self._prompt(job, photos),
+                cwd=workdir,
+                text=True,
+                encoding="utf-8",
+                errors="strict",
+                env=environment,
+                capture_output=True,
+                timeout=self._timeout,
+                check=False,
+            )
+            export = _read_json_object(export_dir / "export.json")
+        finally:
+            for scratch in (workdir, export_dir):
+                shutil.rmtree(scratch, ignore_errors=True)
+
+        error = export.get("error")
+        if completed.returncode != 0:
+            detail = " ".join(
+                part
+                for part in (
+                    json.dumps(error) if error else "",
+                    str(export.get("stop_reason") or ""),
+                    completed.stderr.strip()[-1500:],
+                )
+                if part
+            )[-2000:]
+            if _VIBE_RATE_LIMIT_TEXT.search(detail):
+                raise WorkerRateLimitError(f"Vibe route rate-limited: {detail}")
+            if _VIBE_TERMINAL_TEXT.search(detail):
+                raise WorkerTerminalError(f"Vibe route cannot authenticate or pay: {detail}")
+            raise WorkerError(f"Vibe exited {completed.returncode}: {detail}")
+        answer, opened = _vibe_output(completed.stdout)
+        if not answer:
+            raise WorkerError("Vibe finished without an answer")
+        unopened = sorted({photo.name for photo in photos} - opened)
+        if unopened:
+            raise WorkerError(f"Vibe answered without opening {', '.join(unopened)}")
+        return WorkerResult(
+            text=answer,
+            upstream={
+                "provider": "mistral-vibe",
+                "model": self._model,
+                "vibe_version": export.get("vibe_version"),
+                "session_id": export.get("session_id"),
+                "usage": export.get("usage"),
+                "cost_usd": export.get("cost_usd"),
+                "steps": export.get("steps"),
+                "outcome": export.get("outcome"),
+                "images_opened": len(photos),
+                "warnings": export.get("warnings"),
+            },
+        )
+
+
 #: How Claude Code words an exhausted subscription or spend limit. It arrives with HTTP 429,
 #: like a short rate limit, but no retry can succeed before the reset, which may be days
 #: away: "You've hit your 5-hour limit · resets 8:20am (UTC)", "You've hit your weekly
@@ -831,8 +1098,20 @@ def main() -> int:
     parser.add_argument("--route", default="ox-factory")
     parser.add_argument(
         "--backend",
-        choices=("opencode", "openrouter", "codex", "claude", "cline"),
+        choices=("opencode", "openrouter", "codex", "claude", "cline", "vibe"),
         required=True,
+    )
+    parser.add_argument(
+        "--vibe-root",
+        type=Path,
+        help="folder the Vibe worker owns: its Vibe home and job folders "
+        "(default: <temp>/dendro-vibe-<worker id>)",
+    )
+    parser.add_argument(
+        "--vibe-max-price",
+        type=float,
+        metavar="DOLLARS",
+        help="stop one Vibe call once its estimated cost passes this many dollars",
     )
     parser.add_argument("--model", required=True)
     parser.add_argument("--executable", default="opencode")
@@ -862,7 +1141,12 @@ def main() -> int:
     load_env_file(args.env_file.resolve())
     if args.backend == "opencode":
         backend: (
-            OpenCodeBackend | OpenRouterBackend | CodexBackend | ClaudeBackend | ClineBackend
+            OpenCodeBackend
+            | OpenRouterBackend
+            | CodexBackend
+            | ClaudeBackend
+            | ClineBackend
+            | VibeBackend
         ) = OpenCodeBackend(
             executable=args.executable,
             model=args.model,
@@ -887,6 +1171,16 @@ def main() -> int:
             executable=args.executable,
             model=args.model,
             timeout_seconds=args.timeout,
+        )
+    elif args.backend == "vibe":
+        backend = VibeBackend(
+            executable=args.executable,
+            model=args.model,
+            timeout_seconds=args.timeout,
+            root=(
+                args.vibe_root or Path(tempfile.gettempdir()) / f"dendro-vibe-{args.worker_id}"
+            ).resolve(),
+            max_price=args.vibe_max_price,
         )
     else:
         backend = ClineBackend(

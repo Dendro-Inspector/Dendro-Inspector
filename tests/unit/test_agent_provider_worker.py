@@ -771,6 +771,172 @@ def test_codex_backend_passes_enabled_features(tmp_path: Path, monkeypatch) -> N
     assert position < command.index("--image")
 
 
+def _vibe_job(worker: ModuleType, state: Path) -> Any:
+    _pending_request(state, route="vibe-main")
+    (state / "claims").mkdir()
+    job = worker.claim_next_job(
+        state_dir=state, route="vibe-main", worker_id="vibe-main", claim_ttl_seconds=60
+    )
+    assert job is not None
+    return job
+
+
+def _vibe_output(*, opened: list[str], answer: str) -> str:
+    """Vibe 3.1.3 ``--output json``: one entry per message or tool effect."""
+    entries: list[dict[str, Any]] = [
+        {"type": "message", "role": "user", "content": [{"type": "text", "text": "..."}]}
+    ]
+    for path in opened:
+        entries.append(
+            {
+                "type": "effect",
+                "detail": {"toolName": "file_system.read_file", "input": {"filePath": path}},
+                "state": {"status": "completed", "output": {"content": "Image file"}},
+            }
+        )
+    entries.append(
+        {
+            "type": "message",
+            "role": "assistant",
+            "content": [{"type": "text", "text": answer}],
+            "outcome": {"type": "committed"},
+        }
+    )
+    return json.dumps(entries)
+
+
+def _fake_vibe(
+    captured: dict[str, Any],
+    *,
+    returncode: int = 0,
+    export: dict[str, Any] | None = None,
+    stderr: str = "",
+    open_photos: bool = True,
+):
+    def fake_run(command, **kwargs):
+        workdir = Path(command[command.index("--workdir") + 1])
+        captured.update(
+            command=command,
+            kwargs=kwargs,
+            photos=sorted(path.name for path in workdir.iterdir()),
+        )
+        export_dir = Path(command[command.index("--output-dir") + 1])
+        export_dir.mkdir(parents=True, exist_ok=True)
+        (export_dir / "export.json").write_text(
+            json.dumps(
+                export
+                or {
+                    "outcome": "finished",
+                    "error": None,
+                    "usage": {"input_tokens": 900, "output_tokens": 40, "total_tokens": 940},
+                    "cost_usd": 0.0012,
+                    "steps": 2,
+                    "vibe_version": "3.1.3",
+                }
+            ),
+            encoding="utf-8",
+        )
+        opened = [str(path) for path in workdir.iterdir()] if open_photos else []
+        return SimpleNamespace(
+            returncode=returncode,
+            stderr=stderr,
+            stdout=_vibe_output(opened=opened, answer='{"status": "VIBE_OK"}'),
+        )
+
+    return fake_run
+
+
+def test_vibe_backend_opens_photos_with_read_file_in_a_confined_folder(
+    tmp_path: Path, monkeypatch
+) -> None:
+    worker = _load_script("worker")
+    job = _vibe_job(worker, tmp_path / "bridge")
+    captured: dict[str, Any] = {}
+    monkeypatch.setattr(worker.subprocess, "run", _fake_vibe(captured))
+    root = tmp_path / "vibe"
+    backend = worker.VibeBackend(
+        executable=sys.executable, model="mistral-large-4-0", timeout_seconds=600, root=root
+    )
+
+    result = backend.generate(job)
+
+    command = captured["command"]
+    workdir = root / "jobs" / "abc123"
+    assert command[command.index("-p") + 1] == "--output"
+    assert command[command.index("--output") + 1] == "json"
+    assert command[command.index("--workdir") + 1] == str(workdir)
+    assert command[command.index("--model") + 1] == "mistral-large-4-0"
+    assert command[command.index("--enabled-tools") + 1] == "read_file"
+    assert "--trust" in command
+    # The photograph is copied into the job folder, and only it.
+    assert captured["photos"] == ["req-001-img1.jpg"]
+    kwargs = captured["kwargs"]
+    assert kwargs["cwd"] == workdir
+    assert kwargs["env"]["VIBE_HOME"] == str(root / ".vibe")
+    assert str(workdir / "req-001-img1.jpg") in kwargs["input"]
+    assert "inspect the image" in kwargs["input"]
+    config = (root / ".vibe" / "config.toml").read_text(encoding="utf-8")
+    for tool in ("bash", "write_file", "edit", "powershell", "web_fetch"):
+        assert f'[tools.{tool}]\npermission = "never"' in config
+    assert 'outside_workdir = "deny"' in config
+    assert "enable_telemetry = false" in config
+    assert json.loads(result.text) == {"status": "VIBE_OK"}
+    assert result.upstream["provider"] == "mistral-vibe"
+    assert result.upstream["usage"]["total_tokens"] == 940
+    assert result.upstream["cost_usd"] == 0.0012
+    assert result.upstream["images_opened"] == 1
+    assert not workdir.exists()  # the copies go when the call ends
+
+
+def test_vibe_backend_refuses_an_answer_given_without_opening_the_photos(
+    tmp_path: Path, monkeypatch
+) -> None:
+    worker = _load_script("worker")
+    job = _vibe_job(worker, tmp_path / "bridge")
+    monkeypatch.setattr(worker.subprocess, "run", _fake_vibe({}, open_photos=False))
+    backend = worker.VibeBackend(
+        executable=sys.executable, model="m", timeout_seconds=600, root=tmp_path / "vibe"
+    )
+
+    with pytest.raises(worker.WorkerError, match=r"without opening req-001-img1\.jpg"):
+        backend.generate(job)
+
+
+def test_vibe_backend_treats_a_missing_key_as_terminal(tmp_path: Path, monkeypatch) -> None:
+    worker = _load_script("worker")
+    job = _vibe_job(worker, tmp_path / "bridge")
+    fake = _fake_vibe(
+        {},
+        returncode=1,
+        export={"outcome": "failed", "error": None},
+        stderr="Error: Missing MISTRAL_API_KEY environment variable for mistral provider",
+    )
+    monkeypatch.setattr(worker.subprocess, "run", fake)
+    backend = worker.VibeBackend(
+        executable=sys.executable, model="m", timeout_seconds=600, root=tmp_path / "vibe"
+    )
+
+    with pytest.raises(worker.WorkerTerminalError):
+        backend.generate(job)
+
+
+def test_vibe_backend_keeps_a_rate_limit_retryable(tmp_path: Path, monkeypatch) -> None:
+    worker = _load_script("worker")
+    job = _vibe_job(worker, tmp_path / "bridge")
+    fake = _fake_vibe(
+        {},
+        returncode=2,
+        export={"outcome": "failed", "error": {"message": "429 Too Many Requests"}},
+    )
+    monkeypatch.setattr(worker.subprocess, "run", fake)
+    backend = worker.VibeBackend(
+        executable=sys.executable, model="m", timeout_seconds=600, root=tmp_path / "vibe"
+    )
+
+    with pytest.raises(worker.WorkerRateLimitError):
+        backend.generate(job)
+
+
 def test_describe_images_reports_size_and_missing_files(tmp_path: Path) -> None:
     worker = _load_script("worker")
     image = tmp_path / "a.jpg"
