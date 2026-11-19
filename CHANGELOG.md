@@ -12,6 +12,16 @@ get entries.
 
 ### Added
 
+- **Mistral Vibe can answer bridge routes.** `scripts/agent-provider/worker.py --backend vibe`
+  runs Vibe's headless mode as a read-only vision worker: the request's photographs are
+  copied into an empty folder Vibe is confined to, Vibe opens each with `read_file` (the only
+  way its headless mode shows a model an image), and an answer given without opening every
+  photograph is refused. Every Vibe tool but `read_file` is refused by permission, telemetry
+  and update checks are off, and Vibe's usage and estimated cost are recorded beside each
+  answer. `Start-VibeFactory.ps1` starts the bridge with Vibe workers on `vibe-main`. The
+  agents image (`deploy/k8s/agents.Dockerfile`) carries `mistral-vibe` 3.1.3 in its own
+  venv. See [docs/agent-as-provider.md](docs/agent-as-provider.md).
+
 - **A trace says which photographs an extraction accounted for.** An inspection of eleven
   photographs could complete on evidence that named three of them, and nothing recorded
   that the other eight were never examined: the image-reference validator only checks that

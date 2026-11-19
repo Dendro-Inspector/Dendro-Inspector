@@ -56,4 +56,4 @@ jobs:
         run: |
           set -euo pipefail
           docker run --rm --entrypoint sh dendro-inspector:ci-agents -c \
-            "claude --version && codex --version && test -f /app/scripts/agent-provider/bridge.py"
+            "claude --version && codex --version && vibe --version && test -f /app/scripts/agent-provider/bridge.py"

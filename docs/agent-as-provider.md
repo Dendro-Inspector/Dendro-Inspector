@@ -129,6 +129,42 @@ the description kept, because strict decoding refuses `$ref` beside another keyw
 still faces the original Pydantic contract in Dendro, so this changes transport syntax rather
 than admissibility.
 
+### Mistral Vibe worker
+
+`worker.py --backend vibe` answers a route through Mistral Vibe's headless mode
+(`vibe -p`, tested with Vibe 3.1.3). `Start-VibeFactory.ps1` starts the bridge and three Vibe
+workers on the `vibe-main` route, one per concurrent review node; bind roles to it with
+`-BridgeModel vibe-main` (and the reviewer and arbiter equivalents).
+
+```powershell
+.\scripts\agent-provider\Start-VibeFactory.ps1 -Vibe <path to vibe>
+.\scripts\agent-provider\Invoke-BridgeInspect.ps1 -Dialect anthropic `
+    -BridgeModel vibe-main -ReviewerBridgeModel vibe-main -ArbiterBridgeModel vibe-main `
+    -Image path\to\photo.jpg
+```
+
+Vibe has no image flag, and an `@path` in a headless prompt reaches the model as plain text,
+not as an image. Its `read_file` tool does return a photograph as an image, and Vibe's
+Mistral backend passes that on as an image part (its generic OpenAI-style backend sends the
+text `[Image]` instead). So the worker copies the request's photographs into an empty job
+folder, confines Vibe to it, and asks it to open each one. An answer given without a
+successful `read_file` of every photograph is refused.
+
+Each worker owns a Vibe root (`--vibe-root`, default `<temp>/dendro-vibe-<worker id>`): its
+own Vibe home with settings the worker rewrites at start, and the job folders beneath it.
+Vibe looks for project settings from the job folder up to that root and no further. In
+headless mode Vibe 3.1.3 still offers `write_file`, `edit`, `bash`, `skill` and
+`run_typescript` whatever `enabled_tools` says, so every tool but `read_file` gets
+`permission = "never"`; `run_typescript` takes no permission, and with connectors and MCP off
+it has no tool of its own to reach. Telemetry, update checks, auto-update, subagents and
+session logs are off.
+
+The key comes from `MISTRAL_API_KEY`, from the `.env` file the worker loads, or from the
+keyring `vibe --setup` writes (service `ai.mistral.vibe`). A missing or refused key, or an
+account without credit, is a terminal failure; a 429 is a rate limit. Usage, estimated cost
+(`cost_usd`, from Vibe's own price table), steps and outcome come from Vibe's `export.json`
+and are recorded beside the answer. `--vibe-max-price` stops one call above a cost.
+
 For the private sequential dataset workflow—one immutable run and trace per photograph,
 canary-first execution, resume and exact-process cleanup—follow
 [Running individual private-photo experiments](individual-photo-experiments.md).
