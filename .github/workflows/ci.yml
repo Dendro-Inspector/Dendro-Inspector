@@ -36,6 +36,12 @@ jobs:
       fail-fast: false
       matrix:
         python-version: ["3.12", "3.13"]
+        # Format, lint and types run once, on the newest interpreter: ruff targets py312 and
+        # mypy python_version 3.12 in pyproject.toml, so a second run checks the same rules.
+        # Tests still run on every version. The job names stay as the main ruleset requires.
+        include:
+          - python-version: "3.13"
+            lint: true
 
     steps:
       - uses: actions/checkout@v4
@@ -53,12 +59,15 @@ jobs:
           pip install -e ".[dev]"
 
       - name: Ruff format check
+        if: matrix.lint
         run: ruff format --check .
 
       - name: Ruff lint
+        if: matrix.lint
         run: ruff check --output-format=github .
 
       - name: Static type check
+        if: matrix.lint
         run: mypy
 
       - name: Unit tests
