@@ -425,6 +425,33 @@ class TestFollowUpPhotoSelection:
     the planner can tell a question apart from a question already answered.
     """
 
+    def test_only_the_remaining_pair_decides_which_bound_views_apply(self, knowledge):
+        taxa = frozenset({"pinus", "larix"})
+        cards = knowledge.comparisons_for(taxa)
+        assert follow_up_photos(cards, taxa, ()) == ("needle_attachment_macro", "cone_photo")
+        assert follow_up_photos(cards, taxa, ("needles.attachment",)) == ("cone_photo",)
+
+    def test_a_generic_view_yields_to_a_view_that_can_distinguish_the_pair(self, knowledge):
+        card = knowledge.comparison("pinus-picea-larix").model_copy(
+            update={
+                "recommended_follow_up_photos": (
+                    "cone_photo",
+                    "needle_fascicle_macro",
+                    "needle_attachment_macro",
+                )
+            }
+        )
+        assert follow_up_photos((card,), frozenset({"picea", "larix"}), ()) == (
+            "needle_attachment_macro",
+            "cone_photo",
+        )
+
+    def test_a_feature_favouring_an_absent_rival_cannot_decide_between_two_others(self, knowledge):
+        taxa = frozenset({"fraxinus", "juglans_regia"})
+        cards = knowledge.comparisons_for(taxa)
+        assert follow_up_photos(cards, taxa, ()) == ("leaf_attachment_photo", "leaf_upper_macro")
+        assert follow_up_photos(cards, taxa, ("leaf.arrangement", "leaf.type")) == ()
+
     def test_nothing_resolved_yet_keeps_the_declared_order(self, knowledge):
         taxa = frozenset({"acer_saccharinum", "populus_alba"})
         cards = knowledge.comparisons_for(taxa)

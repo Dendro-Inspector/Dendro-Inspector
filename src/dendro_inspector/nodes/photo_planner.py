@@ -67,6 +67,32 @@ _DEFAULT_REQUEST = (
     "single photograph for most identifications.",
 )
 
+# The comparison cards decide when a feature matters. These directions describe how
+# to frame a photograph so the feature can be read.
+_CAPTURE_DIRECTIONS = {
+    "needles.attachment": (
+        "Show where the needles meet the twig on this tree. Keep the needle bases in focus."
+    ),
+    "needles.fascicles": (
+        "Show the bases of the needles on one twig, close enough to count how many grow together."
+    ),
+    "leaf.type": (
+        "Show one whole leaf from its tip to where its stalk joins the twig, "
+        "with any leaflets in frame."
+    ),
+    "leaf.arrangement": (
+        "Show a length of twig with several leaves still attached so their positions are visible."
+    ),
+    "leaf.underside": "Turn one attached leaf over and photograph its underside in focus.",
+    "branch.thorns": (
+        "Photograph the twig where its leaves join it, including any thorns or spines there."
+    ),
+    "bark.peeling": (
+        "Photograph the bark close enough to see whether it lifts in layers. "
+        "Include the edge of any loose patch."
+    ),
+}
+
 DIRECT_DETACHABLE_TYPES: frozenset[DeclaredObjectType] = frozenset(
     {
         DeclaredObjectType.LEAF,
@@ -126,6 +152,14 @@ _REASON_TEXT: dict[str, str] = {
         "of the photograph."
     ),
 }
+
+
+def comparison_photo_reason(feature: str) -> str:
+    """Explain how to photograph the selected discriminator on this subject."""
+    if feature in _CAPTURE_DIRECTIONS:
+        return _CAPTURE_DIRECTIONS[feature]
+    organ, trait = feature.replace("_", " ").split(".", 1)
+    return f"Show the {organ} on this subject clearly enough to check {trait.replace('.', ' ')}."
 
 
 def coverage_gap_text(state: GraphState) -> tuple[str, ...]:

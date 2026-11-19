@@ -12,6 +12,10 @@ get entries.
 
 ### Added
 
+- Held-out evaluations accept a specialist's explicit `genus: null` and count how often
+  the system names a genus when the reference evidence cannot establish one.
+  `heldout-check` warns when one tree has both indeterminate and named units.
+
 - **The Vibe worker can be made fast.** `worker.py` gains `--vibe-thinking` (`fastest` is the
   lowest level the model has: `low` for Mistral Large 4, `off` for Medium 3.5),
   `--vibe-max-edge` (Vibe opens copies downscaled to that edge) and `--parallel N` (N worker
@@ -57,6 +61,12 @@ get entries.
   its case from the recorded coverage, so an explained or missing photograph is in the
   replay too and the replay accounts for the same photographs. An older trace still
   replays only the photographs its evidence names.
+
+### Fixed
+
+- When two trees look alike, the next-photo request now says which feature to show.
+  For example, with pine and larch still in contention, it asks for the needle attachment.
+  A general view is a fallback once the comparison has no specific view left to request.
 
 ## [1.0.0-alpha.1] — 2026-11-16
 

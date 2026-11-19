@@ -82,32 +82,47 @@ def follow_up_photos(
     taxa: frozenset[str],
     resolved: Collection[str],
 ) -> tuple[str, ...]:
-    """Photographs worth asking for, in the cards' declared priority order.
+    """Ordered comparison views before accounting for the subject's evidence tier."""
+    return tuple(comparison_photo_features(cards, taxa, resolved, EvidenceTier.CONTEXT))
 
-    The recommendation list is the knowledge author's priority statement. Decisive-feature
-    order only supplies bindings used to filter that list; it must never silently re-sort it.
-    A photograph bound only to features this subject has already resolved carries no
-    information left to gain, and asking for it anyway is what teaches people to ignore the
-    request. A white-barked trunk with ``bark.peeling`` already read off it was still being
-    asked for another bark macro, while the leaf characters that actually separate birch
-    from white poplar went unrequested.
 
-    ``resolved`` is a set of feature paths — full-trust positive observations only, so a
-    partial or detached reading of a discriminator still counts as worth re-photographing.
-    A photograph bound to both a resolved and an unresolved discriminator stays: it has
-    something left to answer.
+def comparison_photo_features(
+    cards: tuple[ComparisonCard, ...],
+    taxa: frozenset[str],
+    resolved: Collection[str],
+    reached_tier: EvidenceTier,
+) -> dict[str, str | None]:
+    """Ordered views and the still-open feature to show. None denotes a generic view.
+
+    Preserve card order among equally useful views. A discriminator at the current
+    tier can still separate two candidates, even when it cannot raise the rank ceiling.
     """
-    bindings: dict[str, set[str]] = {}
+    bindings: dict[str, list[str]] = {}
     for card in cards:
         for difference in card.decisive_differences:
-            if difference.photo is None or len(set(difference.separates) & taxa) < 2:
+            if difference.photo is None:
                 continue
-            bindings.setdefault(difference.photo, set()).add(difference.feature)
-    return drop_resolved_photos(
-        recommended_photos(cards),
-        {photo: frozenset(features) for photo, features in bindings.items()},
-        resolved,
-    )
+            features = bindings.setdefault(difference.photo, [])
+            if (
+                difference.feature not in resolved
+                and (difference.favours is None or difference.favours in taxa)
+                and len(taxa.intersection(difference.separates)) >= 2
+            ):
+                features.append(difference.feature)
+
+    higher_tier: dict[str, str] = {}
+    same_or_lower: dict[str, str] = {}
+    generic: dict[str, None] = {}
+    for photo in recommended_photos(cards):
+        if photo not in bindings:
+            generic[photo] = None
+        elif features := bindings[photo]:
+            higher = next((f for f in features if tier_of_feature(f) > reached_tier), None)
+            if higher is None:
+                same_or_lower[photo] = features[0]
+            else:
+                higher_tier[photo] = higher
+    return {**higher_tier, **same_or_lower, **generic}
 
 
 def photo_bindings(

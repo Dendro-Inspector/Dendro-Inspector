@@ -34,10 +34,11 @@ from dendro_inspector.knowledge.candidate_validation import (
     candidate_support_tier,
 )
 from dendro_inspector.knowledge.comparison_cards import (
+    comparison_photo_features,
     deprioritise_saturated_photos,
     drop_resolved_photos,
-    follow_up_photos,
     photo_bindings,
+    recommended_photos,
 )
 from dendro_inspector.knowledge.evidence_hierarchy import (
     EvidenceTier,
@@ -65,6 +66,7 @@ from dendro_inspector.nodes.abstain import settle_unverified_abstention
 from dendro_inspector.nodes.photo_planner import (
     attachment_request,
     choose_request,
+    comparison_photo_reason,
     coverage_feature_text,
     effective_object_type,
     planned_attachment_request,
@@ -1782,23 +1784,20 @@ def _next_photo(
         default=EvidenceTier.CONTEXT,
     )
     comparison_cards = ctx.knowledge.comparisons_for(taxa)
-    photos = deprioritise_saturated_photos(
-        follow_up_photos(comparison_cards, taxa, resolved),
-        photo_bindings(ctx.knowledge.comparisons(), frozenset(vocabulary)),
-        reached_tier,
-    )
-    comparison_request = bool(photos)
+    comparison = comparison_photo_features(comparison_cards, taxa, resolved, reached_tier)
+    photos = tuple(comparison)
     if not photos:
-        # No look-alike group applies, so the leader's own follow-up list is all there is.
-        # It is a flat list of targets, and the only declared statement of what each target
-        # resolves lives on the comparison cards' discriminators — enough to drop a request
-        # whose every usable feature this subject has already answered.
+        # The leader may offer another view. Its list must not reintroduce one the
+        # comparison has already ruled out for these candidates and this evidence.
+        considered = set(recommended_photos(comparison_cards))
         card = ctx.knowledge.try_taxon(leader.taxon)
         usable = frozenset(card_value_vocabulary((card,))) if card is not None else frozenset()
         own_bindings = photo_bindings(ctx.knowledge.comparisons(), usable)
         photos = deprioritise_saturated_photos(
             drop_resolved_photos(
-                ctx.knowledge.follow_up_for((leader.taxon,)),
+                tuple(
+                    p for p in ctx.knowledge.follow_up_for((leader.taxon,)) if p not in considered
+                ),
                 own_bindings,
                 resolved,
             ),
@@ -1810,13 +1809,17 @@ def _next_photo(
         return ownership_first
     if not photos:
         return None
+    target = photos[0]
+    feature = comparison.get(target)
+    if feature:
+        reason = comparison_photo_reason(feature)
+    elif target in comparison:
+        reason = "This view may provide more detail about the remaining candidates."
+    else:
+        reason = "Would add missing organ-level evidence for the leading candidate."
     return PhotoRequest(
-        target=photos[0],
-        reason=(
-            "Would resolve an unresolved discriminator among the leading candidates."
-            if comparison_request
-            else "Would add missing organ-level evidence for the leading candidate."
-        ),
+        target=target,
+        reason=reason,
         subject_id=candidate_set.subject_id,
     )
 

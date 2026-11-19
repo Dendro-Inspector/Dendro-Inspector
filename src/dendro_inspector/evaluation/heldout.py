@@ -75,15 +75,19 @@ class Review(Contract):
     date: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}$")
 
     @model_validator(mode="after")
-    def _disagreement_names_a_genus(self) -> Review:
-        if self.verdict == "disagree" and not self.genus:
-            msg = "a disagreeing review names the genus the reviewer would give"
+    def _disagreement_states_a_determination(self) -> Review:
+        if self.verdict == "disagree" and (
+            "genus" not in self.model_fields_set or self.genus == ""
+        ):
+            msg = "a disagreeing review names the genus or explicitly sets it to null"
             raise ValueError(msg)
         return self
 
 
 class Label(Contract):
-    genus: str = Field(pattern=_LATIN.pattern)
+    genus: str | None = Field(
+        pattern=_LATIN.pattern, description="Explicit null means indeterminate."
+    )
     family: str | None = Field(default=None, pattern=_LATIN.pattern)
     target_subject_ids: tuple[str, ...] | Literal["all"] = "all"
     label_visible: bool | None = None
@@ -148,6 +152,7 @@ class CheckReport(Contract):
     missing_categories: tuple[str, ...] = ()
     review_status: dict[str, int] = Field(default_factory=dict)
     release_ready_units: int = 0
+    release_ready_indeterminate_genus_units: int = 0
     genera: dict[str, int] = Field(default_factory=dict)
     label_visible: dict[str, int] = Field(default_factory=dict)
     photos_with_gps: int | None = None
@@ -244,12 +249,24 @@ def check(manifest: HeldOutManifest, base: Path, knowledge: KnowledgeBase) -> Ch
 
     by_group: dict[str, set[str]] = {}
     for unit in manifest.units:
-        if Category.MIXED_SUBJECTS not in unit.categories:
+        if Category.MIXED_SUBJECTS not in unit.categories and unit.label.genus is not None:
             by_group.setdefault(unit.group_id, set()).add(unit.label.genus)
     errors += [
         f"group {group} is one tree or lot but is labelled {sorted(genera)}"
         for group, genera in sorted(by_group.items())
         if len(genera) > 1
+    ]
+    # The protocol keeps genus: null for a tree that no evidence names. Another unit of the
+    # same tree naming a genus contradicts that, unless only this unit's photos fall short.
+    indeterminate = {
+        unit.group_id
+        for unit in manifest.units
+        if Category.MIXED_SUBJECTS not in unit.categories and unit.label.genus is None
+    }
+    warnings += [
+        f"group {group} is one tree or lot: some units have no genus, others are "
+        f"labelled {sorted(by_group[group])}"
+        for group in sorted(indeterminate & by_group.keys())
     ]
 
     covered = covered_genera(knowledge)
@@ -260,7 +277,9 @@ def check(manifest: HeldOutManifest, base: Path, knowledge: KnowledgeBase) -> Ch
             errors.append(
                 f"{unit.unit_id}: marked unknown_taxon but a card covers {unit.label.genus}"
             )
-        if unit.label.genus not in covered:
+        if unit.label.genus is None and Category.UNKNOWN_TAXON in declared:
+            errors.append(f"{unit.unit_id}: unknown_taxon requires a known genus without a card")
+        if unit.label.genus is not None and unit.label.genus not in covered:
             declared.add(Category.UNKNOWN_TAXON)
         categories.update(category.value for category in declared)
 
@@ -290,7 +309,14 @@ def check(manifest: HeldOutManifest, base: Path, knowledge: KnowledgeBase) -> Ch
         missing_categories=missing,
         review_status=dict(sorted(statuses.items())),
         release_ready_units=sum(release_ready(unit) for unit in manifest.units),
-        genera=dict(sorted(Counter(unit.label.genus for unit in manifest.units).items())),
+        release_ready_indeterminate_genus_units=sum(
+            unit.label.genus is None and release_ready(unit) for unit in manifest.units
+        ),
+        genera=dict(
+            sorted(
+                Counter(u.label.genus for u in manifest.units if u.label.genus is not None).items()
+            )
+        ),
         label_visible=dict(
             sorted(
                 Counter(str(unit.label.label_visible).lower() for unit in manifest.units).items()
@@ -329,6 +355,7 @@ def render_text(report: CheckReport) -> str:
         f"  review: {json.dumps(report.review_status)}; release-ready {report.release_ready_units}",
         f"  categories: {json.dumps(report.categories)}",
         f"  genera: {json.dumps(report.genera)}",
+        f"  indeterminate genus (release-ready): {report.release_ready_indeterminate_genus_units}",
         f"  label visible: {json.dumps(report.label_visible)}",
         "  GPS in EXIF: "
         + (
