@@ -16,7 +16,7 @@ Signs in with Microsoft Entra (``Authentication=ActiveDirectoryDefault``: ``az l
 enough). Needs the ``results-sql`` extra: ``pip install -e ".[results-sql]"``.
 
 Usage:
-  sync_results_sql.py --server S --database D [--runs runs] [--refresh] [--regrade]
+  sync_results_sql.py --server S --database D [--runs runs] [--only FOLDER] [--refresh] [--regrade]
   sync_results_sql.py --dry-run [--runs runs]           counts only, no connection
   sync_results_sql.py --server S --database D --apply-schema [--grant-function NAME]
   sync_results_sql.py --server S --database D --report  outcomes per collection
@@ -101,13 +101,22 @@ def label_set_for(found: Found, sets: dict[str, dict[str, Any]], default: str) -
 
 
 def grade(found: Found, label: Any, knowledge: Any, config: Any) -> tuple[str, str] | None:
-    """The engine's stored-answer grade of one record, as (outcome, scope)."""
+    """The engine's stored-answer grade of one record, as (outcome, scope).
+
+    A graph record goes through the coverage audit; an arm M record (the model alone, no
+    graph trace) is graded from its answer by the same scorer.
+    """
+    from dendro_inspector.evaluation import model_alone
     from dendro_inspector.evaluation.coverage_report import build_reports
     from dendro_inspector.evaluation.trace_replay import load_record
 
     stored = load_record(found.path)
     if stored is None:
-        return None
+        record = json.loads(found.path.read_text(encoding="utf-8"))
+        if not ((record.get("result") or {}).get("model_alone") or {}).get("answer"):
+            return None
+        graded = model_alone.grade(record, label, knowledge)
+        return graded.outcome.value, graded.scope.value
     reports = asyncio.run(
         build_reports(
             [found.path], knowledge, config=config, root=ROOT, labels={stored.case_id: label}
@@ -178,7 +187,11 @@ def sync(args: argparse.Namespace) -> None:
     sets = label_sets(runs)
     if args.default_labels not in sets:
         raise SystemExit(f"default labels {args.default_labels} not found under {runs}")
-    found = list(find_records(runs))
+    found = [
+        item
+        for item in find_records(runs)
+        if not args.only or any(item[0].collection.startswith(prefix) for prefix in args.only)
+    ]
     config = load_config()
     knowledge = KnowledgeBase(config.knowledge, root=ROOT)
 
@@ -253,6 +266,13 @@ def main() -> int:
     parser.add_argument("--default-labels", default=DEFAULT_LABELS)
     parser.add_argument("--refresh", action="store_true", help="rewrite cases already stored")
     parser.add_argument("--regrade", action="store_true", help="grade again cases already graded")
+    parser.add_argument(
+        "--only",
+        action="append",
+        default=[],
+        metavar="COLLECTION",
+        help="only collections starting with this (repeatable), e.g. a new run folder",
+    )
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--apply-schema", action="store_true")
     parser.add_argument("--grant-function", help="managed identity to give read/write access")

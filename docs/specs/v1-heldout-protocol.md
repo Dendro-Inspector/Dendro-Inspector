@@ -82,8 +82,11 @@ the two policies is visible; it decides nothing.
 Before the run:
 
 - Arm M's script, prompt and answer schema are committed to this repository, and their
-  commit is entered in the sign-off table. Today they exist only as a private script, which
-  is not good enough for an arm a release decision rests on.
+  commit is entered in the sign-off table. They are `scripts/eval/model_alone.py` (the run)
+  and `dendro_inspector.evaluation.model_alone` (the request text and the answer schema).
+  Every arm M record carries `request_sha256`, `schema_sha256` and the domain prompt's
+  SHA-256, so the table can name exactly what was asked. The call goes through the same
+  provider adapter and image preparation as the graph.
 - `dendro release-manifest` is recorded for G0 and G1, with the image digest.
 - Automatic selection of the target among several subjects (`DENDRO_TARGET_SELECTION`)
   stays off. Units marked `mixed_subjects` are scored against the target the manifest
