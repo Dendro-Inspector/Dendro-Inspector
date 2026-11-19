@@ -33,6 +33,8 @@ anthropic = ["anthropic>=2.8.0"]
 # embedded metadata (EXIF, XMP, comments) from them. Optional because the core has no
 # imaging dependency: without it, originals are sent as before, metadata included.
 images = ["pillow>=10.0"]
+# The results database (scripts/batch/sync_results_sql.py): Azure SQL with Entra sign-in.
+results-sql = ["mssql-python>=1.18", "azure-identity>=1.25"]
 dev = [
   "pytest>=8.0",
   "ruff>=0.6",
