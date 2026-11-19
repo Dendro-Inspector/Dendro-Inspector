@@ -101,13 +101,22 @@ def label_set_for(found: Found, sets: dict[str, dict[str, Any]], default: str) -
 
 
 def grade(found: Found, label: Any, knowledge: Any, config: Any) -> tuple[str, str] | None:
-    """The engine's stored-answer grade of one record, as (outcome, scope)."""
+    """The engine's stored-answer grade of one record, as (outcome, scope).
+
+    A graph record goes through the coverage audit; an arm M record (the model alone, no
+    graph trace) is graded from its answer by the same scorer.
+    """
+    from dendro_inspector.evaluation import model_alone
     from dendro_inspector.evaluation.coverage_report import build_reports
     from dendro_inspector.evaluation.trace_replay import load_record
 
     stored = load_record(found.path)
     if stored is None:
-        return None
+        record = json.loads(found.path.read_text(encoding="utf-8"))
+        if not ((record.get("result") or {}).get("model_alone") or {}).get("answer"):
+            return None
+        graded = model_alone.grade(record, label, knowledge)
+        return graded.outcome.value, graded.scope.value
     reports = asyncio.run(
         build_reports(
             [found.path], knowledge, config=config, root=ROOT, labels={stored.case_id: label}

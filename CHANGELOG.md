@@ -12,6 +12,13 @@ get entries.
 
 ### Added
 
+- **Arm M of the held-out protocol, the model alone.** `scripts/eval/model_alone.py` asks the
+  configured primary model once per unit, through the graph's own provider layer and image
+  preparation, for a genus or an explicit "cannot be determined", a family and a confidence
+  (`dendro_inspector.evaluation.model_alone`: request text, answer schema, their hashes in
+  every record). Records have the stored-case layout; `sync_results_sql.py` grades them
+  with the same scorer as graph runs.
+
 - **Results database.** `scripts/batch/results_rows.py` and `results-schema.sql` define
   an Azure SQL schema for every stored case (whole record kept as JSON), its decisions,
   labels, units and grades; `scripts/batch/sync_results_sql.py` loads local run folders
