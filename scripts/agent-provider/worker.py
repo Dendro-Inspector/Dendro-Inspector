@@ -875,6 +875,35 @@ def copy_photo(source: Path, target: Path, max_edge: int) -> None:
     shutil.copyfile(source, target)
 
 
+def json_object_text(text: str) -> str:
+    """The JSON object in a model's answer, without a Markdown fence or prose around it.
+
+    Vibe's last message is free text: with low thinking Mistral Large 4 sometimes wraps the
+    object in ```json ... ```, which the bridge's Anthropic dialect passes on unparsed (oak-9,
+    2026-11-19: three fenced packets, the case failed). Only the wrapping goes; the object is
+    unchanged and still meets the node's Pydantic contract. Text with no parseable object is
+    returned as it was, for the repair retry to see.
+    """
+    stripped = text.strip()
+    try:
+        json.loads(stripped)
+        return stripped
+    except ValueError:
+        pass
+    fenced = re.search(r"```(?:json)?\s*(\{.*\})\s*```", stripped, re.DOTALL)
+    candidates = [fenced.group(1)] if fenced else []
+    start, end = stripped.find("{"), stripped.rfind("}")
+    if 0 <= start < end:
+        candidates.append(stripped[start : end + 1])
+    for candidate in candidates:
+        try:
+            if isinstance(json.loads(candidate), dict):
+                return candidate
+        except ValueError:
+            continue
+    return stripped
+
+
 def _read_json_object(path: Path) -> dict[str, Any]:
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
@@ -1019,6 +1048,7 @@ class VibeBackend:
                 raise WorkerTerminalError(f"Vibe route cannot authenticate or pay: {detail}")
             raise WorkerError(f"Vibe exited {completed.returncode}: {detail}")
         answer, opened = _vibe_output(completed.stdout)
+        answer = json_object_text(answer)
         if not answer:
             raise WorkerError("Vibe finished without an answer")
         unopened = sorted({photo.name for photo in photos} - opened)
