@@ -120,9 +120,11 @@ def grade(found: Found, label: Any, knowledge: Any, config: Any) -> tuple[str, s
 def connect(server: str, database: str) -> Any:
     import mssql_python
 
+    # The login timeout goes to connect(timeout=): mssql-python refuses it in the string.
     return mssql_python.connect(
         f"Server={server};Database={database};Authentication=ActiveDirectoryDefault;"
-        "Encrypt=yes;TrustServerCertificate=no;Connection Timeout=90"
+        "Encrypt=yes;TrustServerCertificate=no",
+        timeout=90,
     )
 
 
