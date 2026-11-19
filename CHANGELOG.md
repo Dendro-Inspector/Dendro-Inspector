@@ -12,6 +12,12 @@ get entries.
 
 ### Added
 
+- **Results database.** `scripts/batch/results_rows.py` and `results-schema.sql` define
+  an Azure SQL schema for every stored case (whole record kept as JSON), its decisions,
+  labels, units and grades; `scripts/batch/sync_results_sql.py` loads local run folders
+  and grades labelled cases, and the control function archives cluster cases with the
+  same rows. See `docs/results-database.md`. New extra `results-sql`.
+
 - Held-out evaluations accept a specialist's explicit `genus: null` and count how often
   the system names a genus when the reference evidence cannot establish one.
   `heldout-check` warns when one tree has both indeterminate and named units.
