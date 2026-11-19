@@ -996,7 +996,8 @@ def test_multi_candidate_photo_reason_names_an_unresolved_discriminator(
     assert decision.best_next_photo is not None
     assert decision.best_next_photo.target == "bark_macro_mid_trunk"
     assert decision.best_next_photo.reason == (
-        "Would resolve an unresolved discriminator among the leading candidates."
+        "Photograph the bark close enough to see whether it lifts in layers. "
+        "Include the edge of any loose patch."
     )
 
 

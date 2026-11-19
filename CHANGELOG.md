@@ -58,6 +58,12 @@ get entries.
   replay too and the replay accounts for the same photographs. An older trace still
   replays only the photographs its evidence names.
 
+### Fixed
+
+- When two trees look alike, the next-photo request now says which feature to show.
+  For example, with pine and larch still in contention, it asks for the needle attachment.
+  A general view is a fallback once the comparison has no specific view left to request.
+
 ## [1.0.0-alpha.1] — 2026-11-16
 
 The first pre-release of 1.0.0. It is an engineering baseline, not a release candidate:
