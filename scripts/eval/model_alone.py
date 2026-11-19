@@ -101,7 +101,7 @@ async def run(args: argparse.Namespace) -> int:
     todo = [u for u in units if args.force or not (out / f"{u['unit_id']}.json").exists()]
 
     config = load_config()
-    domain = load_domain_prompt(resolve_prompt_path(ROOT, config.domain_prompt_path))
+    domain = load_domain_prompt(resolve_prompt_path(ROOT, config.prompts.domain_prompt_path))
     registry = ProviderRegistry.from_config(config, root=ROOT)
     provider = registry.get(Role.PRIMARY)
     max_edge = config.graph.image_max_edge_px
@@ -197,7 +197,7 @@ def main() -> int:
     parser.add_argument("--force", action="store_true")
     parser.add_argument("unit_ids", nargs="*")
     args = parser.parse_args()
-    sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[attr-defined]
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[union-attr]
     return asyncio.run(run(args))
 
 
