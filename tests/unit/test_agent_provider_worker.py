@@ -937,6 +937,19 @@ def test_vibe_backend_keeps_a_rate_limit_retryable(tmp_path: Path, monkeypatch) 
         backend.generate(job)
 
 
+def test_json_object_text_unwraps_a_fence_or_prose_only() -> None:
+    worker = _load_script("worker")
+    packet = '{"subjects": [{"subject_id": "standing_tree"}], "notes": "a } in text"}'
+
+    assert worker.json_object_text(packet) == packet
+    assert worker.json_object_text(f"```json\n{packet}\n```") == packet
+    assert worker.json_object_text(f"```\n{packet}\n```\n") == packet
+    assert worker.json_object_text(f"Here is the packet:\n{packet}\nDone.") == packet
+    # Nothing parseable: left as it was, so the repair retry sees what the model wrote.
+    assert worker.json_object_text("I cannot see the photo.") == "I cannot see the photo."
+    assert worker.json_object_text("```json\n{broken\n```") == "```json\n{broken\n```"
+
+
 def test_vibe_thinking_fastest_follows_the_model() -> None:
     worker = _load_script("worker")
 
