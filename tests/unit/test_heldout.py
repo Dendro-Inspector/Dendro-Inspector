@@ -24,7 +24,7 @@ def _photo(folder: Path, name: str, content: bytes | None = None) -> str:
     return path.relative_to(folder).as_posix()
 
 
-def _unit(unit_id: str, group: str, photos: list[str], genus: str = "quercus", **extra):
+def _unit(unit_id: str, group: str, photos: list[str], genus: str | None = "quercus", **extra):
     return {
         "unit_id": unit_id,
         "group_id": group,
@@ -177,12 +177,37 @@ class TestReviewStatusIsDerived:
         assert heldout.review_status(resolved) is heldout.ReviewStatus.RESOLVED
         assert heldout.release_ready(resolved)
 
-    def test_a_disagreement_must_name_a_genus(self):
+    def test_a_disagreement_requires_an_explicit_determination(self):
+        review = _disagree("fagus")
+        assert heldout.Review.model_validate({**review, "genus": None}).genus is None
+        del review["genus"]
         with pytest.raises(ValueError, match="names the genus"):
-            heldout.Review.model_validate({**_disagree("fagus"), "genus": None})
+            heldout.Review.model_validate(review)
 
 
 class TestLabelsExport:
+    def test_reviewed_indeterminate_genus_round_trips_without_claiming_a_coverage_gap(
+        self, tmp_path, knowledge
+    ):
+        unit = _unit("h1", "t1", [_photo(tmp_path, "a.jpg")], genus=None, reviews=[_agree()])
+        preliminary = _unit("h2", "t2", [_photo(tmp_path, "b.jpg")], genus=None)
+        path = _manifest(tmp_path, [unit, preliminary])
+        report = _check(path, knowledge)
+        assert report.ok and report.genera == {}
+        assert report.release_ready_indeterminate_genus_units == 1
+        assert "unknown_taxon" not in report.categories
+        output = tmp_path / "labels.json"
+        result = CliRunner().invoke(app, ["heldout-check", str(path), "--labels-out", str(output)])
+        assert result.exit_code == 0, result.output
+        assert list(load_labels(output)) == ["h1"]
+        assert load_labels(output)["h1"].genus is None
+        same_tree = _unit("h3", "t1", [_photo(tmp_path, "c.jpg")], reviews=[_agree()])
+        report = _check(_manifest(tmp_path, [unit, same_tree]), knowledge)
+        assert report.ok
+        assert any("group t1" in w and "no genus" in w for w in report.warnings)
+        unit["categories"] = ["unknown_taxon"]
+        assert not _check(_manifest(tmp_path, [unit]), knowledge).ok
+
     def test_release_only_keeps_reviewed_units_and_reads_back(self, tmp_path, knowledge):
         path = _manifest(
             tmp_path,

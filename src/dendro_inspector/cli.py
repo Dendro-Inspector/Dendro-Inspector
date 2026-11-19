@@ -481,8 +481,9 @@ def coverage_audit_command(
         typer.Option(
             "--labels",
             help=(
-                "JSON of reference labels by case id: a genus, or an object with genus, "
-                "family, target_subject_ids and label_visible."
+                "JSON reference labels by case ID. Use a genus name or an object with genus, "
+                "family, target_subject_ids and label_visible. Set genus to null in the object "
+                "when the reference cannot establish it."
             ),
         ),
     ] = None,

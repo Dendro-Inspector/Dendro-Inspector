@@ -41,6 +41,9 @@ ALL_SUBJECTS: Literal["all"] = "all"
 
 class Outcome(StrEnum):
     CORRECT = "correct"
+    UNSUPPORTED_GENUS = "unsupported_genus"
+    UNSUPPORTED_ALTERNATIVES = "unsupported_alternatives"
+    UNVERIFIED_BROADER = "unverified_broader"
     BROADER_ONLY = "broader_only"
     AMBIGUOUS_WITH_LABEL = "ambiguous_with_label"
     AMBIGUOUS_WITHOUT_LABEL = "ambiguous_without_label"
@@ -64,15 +67,18 @@ class Scope(StrEnum):
 #: name on the labelled plant is a wrong answer however many subjects were named correctly.
 _PRECEDENCE = (
     Outcome.WRONG,
+    Outcome.UNSUPPORTED_GENUS,
+    Outcome.UNSUPPORTED_ALTERNATIVES,
     Outcome.WRONG_BROADER,
     Outcome.AMBIGUOUS_WITHOUT_LABEL,
     Outcome.AMBIGUOUS_WITH_LABEL,
     Outcome.CORRECT,
+    Outcome.UNVERIFIED_BROADER,
     Outcome.BROADER_ONLY,
     Outcome.NO_NAME,
 )
 
-#: Outcomes that commit to exactly one genus. The wrong-genus rate is counted among these.
+#: Single genus names whose correctness can be checked against a known reference genus.
 SINGLE_GENUS_OUTCOMES = (Outcome.CORRECT, Outcome.WRONG)
 
 
@@ -80,7 +86,7 @@ SINGLE_GENUS_OUTCOMES = (Outcome.CORRECT, Outcome.WRONG)
 class ReferenceLabel:
     """What one unit is, and what a grader needs to know about its photographs."""
 
-    genus: str
+    genus: str | None
     family: str | None = None
     target_subject_ids: tuple[str, ...] | Literal["all"] = ()
     label_visible: bool | None = None
@@ -154,12 +160,16 @@ def grade_subject(answer: SubjectAnswer, label: ReferenceLabel) -> Outcome:
     """The grade one subject's answer earns, were that subject the labelled plant."""
     genera = {name.lower() for name in answer.genera}
     if len(genera) > 1 or (genera and answer.broader):
+        if label.genus is None:
+            return Outcome.UNSUPPORTED_ALTERNATIVES
         return (
             Outcome.AMBIGUOUS_WITH_LABEL
             if label.genus in genera
             else Outcome.AMBIGUOUS_WITHOUT_LABEL
         )
     if genera:
+        if label.genus is None:
+            return Outcome.UNSUPPORTED_GENUS
         return Outcome.CORRECT if label.genus in genera else Outcome.WRONG
     if answer.broader:
         # Only a family can be checked against the label. An order or a class is broader
@@ -167,6 +177,8 @@ def grade_subject(answer: SubjectAnswer, label: ReferenceLabel) -> Outcome:
         families = [name for name in answer.broader if name.endswith(_FAMILY_ENDING)]
         if label.family is not None and any(name != label.family for name in families):
             return Outcome.WRONG_BROADER
+        if label.genus is None and (label.family is None or set(answer.broader) != {label.family}):
+            return Outcome.UNVERIFIED_BROADER
         return Outcome.BROADER_ONLY
     return Outcome.NO_NAME
 
@@ -195,6 +207,11 @@ def grade_record(subjects: Sequence[SubjectAnswer], label: ReferenceLabel) -> Gr
         graded = tuple(s for s in subjects if s.subject_id in label.target_subject_ids)
         scope = Scope.DECLARED_TARGET
     elif not subjects:
+        if label.genus is None:
+            scope = (
+                Scope.ALL_SUBJECTS if label.target_subject_ids == ALL_SUBJECTS else Scope.UNDECLARED
+            )
+            return Grade(Outcome.MISSING_TARGET, scope)
         return Grade(Outcome.NO_NAME, Scope.SINGLE_SUBJECT)
     elif label.target_subject_ids == ALL_SUBJECTS:
         graded, scope = tuple(subjects), Scope.ALL_SUBJECTS
@@ -258,30 +275,46 @@ def summarise_grades(graded: Iterable[tuple[str, Grade, ReferenceLabel]]) -> dic
 
     def block(items: Sequence[tuple[str, Grade, ReferenceLabel]]) -> dict[str, Any]:
         outcomes = Counter(grade.outcome.value for _, grade, _ in items)
-        named = sum(outcomes[outcome.value] for outcome in SINGLE_GENUS_OUTCOMES)
+        gradable_names = sum(outcomes[outcome.value] for outcome in SINGLE_GENUS_OUTCOMES)
+        named = gradable_names + outcomes[Outcome.UNSUPPORTED_GENUS.value]
         wrong = outcomes[Outcome.WRONG.value]
         distinct = len({case for case, _, _ in items})
         independent = distinct == len(items)
-        interval = wilson_interval(wrong, named) if independent else None
+        interval = wilson_interval(wrong, gradable_names) if independent else None
+        interval_reason = None
+        if not independent:
+            interval_reason = "repeated_case_ids"
+        elif not gradable_names:
+            interval_reason = "no_names_with_known_reference_genus" if named else "no_genus_names"
         return {
             "records": len(items),
             "distinct_cases": distinct,
             "outcomes": dict(outcomes),
             "scopes": dict(Counter(grade.scope.value for _, grade, _ in items)),
             "single_genus_names": named,
+            "names_with_known_reference_genus": gradable_names,
             "coverage": round(named / len(items), 3) if items else None,
-            "wrong_genus_rate": round(wrong / named, 3) if named else None,
-            "conditional_accuracy": round((named - wrong) / named, 3) if named else None,
+            "wrong_genus_rate": round(wrong / gradable_names, 3) if gradable_names else None,
+            "conditional_accuracy": round((gradable_names - wrong) / gradable_names, 3)
+            if gradable_names
+            else None,
             "wrong_genus_rate_interval_95": (
                 [round(interval[0], 3), round(interval[1], 3)] if interval else None
             ),
-            "interval_unavailable_reason": (
-                "repeated_case_ids" if not independent else "no_genus_names" if not named else None
-            ),
+            "interval_unavailable_reason": interval_reason,
         }
 
+    indeterminate = Counter(grade.outcome for _, grade, label in pairs if label.genus is None)
     return {
         "all": block(pairs),
+        "indeterminate_genus": {
+            "records": indeterminate.total(),
+            "genus_offered": indeterminate[Outcome.UNSUPPORTED_GENUS]
+            + indeterminate[Outcome.UNSUPPORTED_ALTERNATIVES],
+            "acceptable_abstentions": indeterminate[Outcome.NO_NAME]
+            + indeterminate[Outcome.BROADER_ONLY],
+            "outcomes": dict(indeterminate),
+        },
         "label_not_visible": block([pair for pair in pairs if pair[2].label_visible is False]),
         "label_visibility_unknown": sum(label.label_visible is None for _, _, label in pairs),
     }
@@ -310,6 +343,9 @@ def load_labels(path: Path | None) -> dict[str, ReferenceLabel]:
     labels: dict[str, ReferenceLabel] = {}
     for case, value in entries.items():
         entry = value if isinstance(value, dict) else {"genus": value}
+        explicit_indeterminate = (
+            isinstance(value, dict) and "genus" in entry and entry["genus"] is None
+        )
         targets = entry.get("target_subject_ids", [])
         if targets != ALL_SUBJECTS and (
             not isinstance(targets, list)
@@ -321,7 +357,7 @@ def load_labels(path: Path | None) -> dict[str, ReferenceLabel]:
             raise ValueError(f"{case}: label_visible must be true, false or null")
         family = entry.get("family")
         labels[case] = ReferenceLabel(
-            genus=name(entry.get("genus"), "genus", case),
+            genus=None if explicit_indeterminate else name(entry.get("genus"), "genus", case),
             family=name(family, "family", case) if family is not None else None,
             target_subject_ids=ALL_SUBJECTS if targets == ALL_SUBJECTS else tuple(targets),
             label_visible=visible,

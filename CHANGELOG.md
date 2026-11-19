@@ -12,6 +12,10 @@ get entries.
 
 ### Added
 
+- Held-out evaluations accept a specialist's explicit `genus: null` and count how often
+  the system names a genus when the reference evidence cannot establish one.
+  `heldout-check` warns when one tree has both indeterminate and named units.
+
 - **The Vibe worker can be made fast.** `worker.py` gains `--vibe-thinking` (`fastest` is the
   lowest level the model has: `low` for Mistral Large 4, `off` for Medium 3.5),
   `--vibe-max-edge` (Vibe opens copies downscaled to that edge) and `--parallel N` (N worker

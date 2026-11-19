@@ -114,7 +114,7 @@ def _family(knowledge: KnowledgeBase, genus: str) -> str | None:
 
 
 def _reference(knowledge: KnowledgeBase, label: ReferenceLabel | None) -> ReferenceLabel | None:
-    if label is None or label.family is not None:
+    if label is None or label.family is not None or label.genus is None:
         return label
     return replace(label, family=_family(knowledge, label.genus))
 
@@ -290,7 +290,13 @@ def summarise(reports: tuple[RecordReport, ...]) -> dict[str, Any]:
             per_record[grade.outcome.value] += 1
             legacy[
                 grade.outcome.value
-                if grade.outcome in (Outcome.CORRECT, Outcome.WRONG)
+                if grade.outcome
+                in (
+                    Outcome.CORRECT,
+                    Outcome.WRONG,
+                    Outcome.UNSUPPORTED_GENUS,
+                    Outcome.UNSUPPORTED_ALTERNATIVES,
+                )
                 else "abstained"
             ] += 1
             per_case.setdefault(report.case_id, Counter())[grade.outcome.value] += 1
@@ -377,6 +383,8 @@ def render_text(reports: tuple[RecordReport, ...]) -> str:
                 )
         if report.label:
             lines.append(f"  label genus: {report.label}")
+        elif report.reference is not None:
+            lines.append("  label genus: indeterminate")
         for label, grade in (("live", report.stored_grade), ("replay", report.replayed_grade)):
             if grade is not None:
                 possible = " or ".join(outcome.value for outcome in grade.possible_outcomes)

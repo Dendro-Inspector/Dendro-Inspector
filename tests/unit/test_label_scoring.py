@@ -222,6 +222,46 @@ def _decision(subject, taxon, resolution="genus"):
     return {"subject_id": subject, "selected_taxon": taxon, "resolution": resolution}
 
 
+def test_indeterminate_targets_count_unsupported_names_and_verified_abstentions(
+    tmp_path, knowledge, config, repo_root
+):
+    cases = {
+        "named": [_decision("target", "fagus")],
+        "alternatives": [_decision("target", "Fagus / Quercus")],
+        "abstained": [_decision("background", "fagus"), _decision("target", None, "unknown")],
+        "family": [_decision("target", "fagaceae", "family")],
+        "unverified-family": [_decision("target", "fagaceae", "family")],
+        "wrong-family": [_decision("target", "betulaceae", "family")],
+        "missing": [_decision("background", "fagus")],
+        "known": [_decision("target", "fagus")],
+    }
+    paths = [_archive(tmp_path, case, decisions) for case, decisions in cases.items()]
+    labels = {case: ReferenceLabel(None, "fagaceae", ("target",)) for case in cases}
+    labels["unverified-family"] = replace(labels["family"], family=None)
+    labels["known"] = LABEL
+    reports = asyncio.run(
+        build_reports(paths, knowledge, config=config, root=repo_root, labels=labels)
+    )
+    result = json.loads(render_json(reports))["summary"]["labelled_stored"]
+    assert result["grading"]["indeterminate_genus"] == {
+        "records": 7,
+        "genus_offered": 2,
+        "acceptable_abstentions": 2,
+        "outcomes": {
+            "unsupported_genus": 1,
+            "unsupported_alternatives": 1,
+            "no_name": 1,
+            "broader_only": 1,
+            "unverified_broader": 1,
+            "wrong_broader": 1,
+            "missing_target": 1,
+        },
+    }
+    assert result["grading"]["all"]["names_with_known_reference_genus"] == 1
+    assert result["grading"]["all"]["conditional_accuracy"] == 1.0
+    assert "label genus: indeterminate" in render_text(reports)
+
+
 def test_coverage_reports_grade_every_record_with_targets_and_inferred_families(
     tmp_path, knowledge, config, repo_root
 ):

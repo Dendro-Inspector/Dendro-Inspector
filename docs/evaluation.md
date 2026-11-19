@@ -686,6 +686,19 @@ the two latest reviews agree. Only `reviewed` and `resolved` units are release-r
 `coverage-audit --labels` reads; `--include-preliminary` writes every unit's. Submit each unit
 under its `unit_id` so its records match.
 
+Use an explicit `genus: null` when the genus cannot be established. Include `family` if
+the specialist can establish it. A missing genus field is a manifest error. A reviewer
+who disagrees with a genus identification can also explicitly record `genus: null`.
+Reserve `unknown_taxon` for an established genus that has no reference card.
+`heldout-check` warns when one tree or lot has units with `genus: null` and units with a
+named genus: the protocol keeps `null` for a tree that no evidence names.
+
+In the coverage audit, `grading.indeterminate_genus` counts how often an answer offers
+a genus on these targets, including a list of alternatives. Giving no name or giving
+only the reference family counts as an acceptable abstention. A missing target and a
+broader name the reference cannot verify have their own outcomes. Conditional genus
+accuracy uses names with a known reference genus.
+
 Report wrong-genus rates per group as well as per unit when groups hold several units, and
 always with the denominator ([`AGENTS.md` §16](../AGENTS.md#16-benchmark-governance)). The
 wrong-genus target of under 5% among named genera is a planning target, not a guarantee.
