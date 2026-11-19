@@ -23,6 +23,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -835,6 +836,45 @@ def _vibe_output(stdout: str) -> tuple[str, frozenset[str]]:
     return answer, frozenset(opened)
 
 
+#: The fastest thinking each Vibe 3.1.3 model alias accepts (its own thinking_levels).
+_VIBE_FASTEST_THINKING = {"mistral-large-4-0": "low", "mistral-medium-3.5": "off"}
+_PIL_FORMATS = {".jpg": "JPEG", ".jpeg": "JPEG", ".png": "PNG", ".webp": "WEBP"}
+
+
+def vibe_thinking(model: str, requested: str | None) -> str | None:
+    """The level to pass as ``--thinking``, or None to keep the model's own default."""
+    if not requested or requested == "default":
+        return None
+    if requested == "fastest":
+        return _VIBE_FASTEST_THINKING.get(model)
+    return requested
+
+
+def copy_photo(source: Path, target: Path, max_edge: int) -> None:
+    """Copy a photograph, downscaled to ``max_edge`` on its longest side when larger.
+
+    The format follows the file name, so Vibe reads the copy as the type it is named. Without
+    Pillow, or for a format it cannot write, the photograph is copied as received.
+    """
+    form = _PIL_FORMATS.get(source.suffix.lower())
+    if max_edge > 0 and form:
+        try:
+            from PIL import Image, ImageOps
+
+            with Image.open(source) as opened:
+                if max(opened.size) > max_edge:
+                    image = ImageOps.exif_transpose(opened)
+                    image.thumbnail((max_edge, max_edge), Image.Resampling.LANCZOS)
+                    if form == "JPEG":
+                        image.convert("RGB").save(target, form, quality=90)
+                    else:
+                        image.save(target, form)
+                    return
+        except (ImportError, OSError, ValueError):
+            pass
+    shutil.copyfile(source, target)
+
+
 def _read_json_object(path: Path) -> dict[str, Any]:
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
@@ -875,6 +915,8 @@ class VibeBackend:
         timeout_seconds: float,
         root: Path,
         max_price: float | None = None,
+        thinking: str | None = None,
+        max_edge: int = 0,
     ) -> None:
         resolved = shutil.which(executable) or executable
         if not Path(resolved).is_file():
@@ -883,6 +925,8 @@ class VibeBackend:
         self._model = model
         self._timeout = timeout_seconds
         self._max_price = max_price
+        self._thinking = vibe_thinking(model, thinking)
+        self._max_edge = max_edge
         self._home = root / ".vibe"
         self._jobs = root / "jobs"
         self._home.mkdir(parents=True, exist_ok=True)
@@ -908,7 +952,7 @@ class VibeBackend:
         photos = []
         for image_path in job.image_paths:
             copy = workdir / image_path.name
-            shutil.copyfile(image_path, copy)
+            copy_photo(image_path, copy, self._max_edge)
             photos.append(copy)
         command = [
             self._executable,
@@ -936,6 +980,8 @@ class VibeBackend:
         ]
         if self._max_price is not None:
             command.extend(("--max-price", f"{self._max_price:g}"))
+        if self._thinking:
+            command.extend(("--thinking", self._thinking))
         environment = utf8_subprocess_environment()
         environment["VIBE_HOME"] = str(self._home)
         try:
@@ -989,6 +1035,8 @@ class VibeBackend:
                 "cost_usd": export.get("cost_usd"),
                 "steps": export.get("steps"),
                 "outcome": export.get("outcome"),
+                "thinking": self._thinking or "model default",
+                "image_max_edge": self._max_edge or None,
                 "images_opened": len(photos),
                 "warnings": export.get("warnings"),
             },
@@ -1132,74 +1180,128 @@ def main() -> int:
         metavar="FEATURE",
         help="Codex feature to enable (repeatable), e.g. image_detail_original.",
     )
+    parser.add_argument(
+        "--vibe-thinking",
+        metavar="LEVEL",
+        help="Vibe thinking level: 'fastest' (the lowest the model has: low for "
+        "mistral-large-4-0, off for mistral-medium-3.5), 'default' (the model's own), or a "
+        "level Vibe passes on as written (off, low, medium, high)",
+    )
+    parser.add_argument(
+        "--vibe-max-edge",
+        type=int,
+        default=0,
+        metavar="PX",
+        help="downscale the copies Vibe opens to this longest edge (0 = send as received)",
+    )
+    parser.add_argument(
+        "--parallel",
+        type=int,
+        default=1,
+        metavar="N",
+        help="run N worker loops in this process, each with its own id <worker-id>-<i>, "
+        "capacity group <group>-<i> and, for Vibe, root <vibe-root>/w<i>",
+    )
     parser.add_argument("--once", action="store_true")
     args = parser.parse_args()
+    if args.parallel > 1 and args.once:
+        parser.error("--once runs a single worker loop; drop --parallel")
 
     state_dir = args.state_dir.resolve()
     for name in ("pending", "answers", "claims", "capacity", "failures"):
         (state_dir / name).mkdir(parents=True, exist_ok=True)
     load_env_file(args.env_file.resolve())
+    group = args.capacity_group or args.worker_id
+    if args.parallel <= 1:
+        return run_worker(args, state_dir, args.worker_id, group, make_backend(args, 0))
+    threads = []
+    for index in range(1, args.parallel + 1):
+        worker_id = f"{args.worker_id}-{index}"
+        thread = threading.Thread(
+            target=run_worker,
+            args=(args, state_dir, worker_id, f"{group}-{index}", make_backend(args, index)),
+            name=worker_id,
+            daemon=True,
+        )
+        thread.start()
+        threads.append(thread)
+    for thread in threads:
+        thread.join()
+    return 0
+
+
+Backend = (
+    OpenCodeBackend | OpenRouterBackend | CodexBackend | ClaudeBackend | ClineBackend | VibeBackend
+)
+
+
+def make_backend(args: argparse.Namespace, index: int) -> Backend:
+    """The upstream for one worker loop; ``index`` is its number under --parallel, else 0."""
     if args.backend == "opencode":
-        backend: (
-            OpenCodeBackend
-            | OpenRouterBackend
-            | CodexBackend
-            | ClaudeBackend
-            | ClineBackend
-            | VibeBackend
-        ) = OpenCodeBackend(
+        return OpenCodeBackend(
             executable=args.executable,
             model=args.model,
             timeout_seconds=args.timeout,
         )
-    elif args.backend == "openrouter":
-        backend = OpenRouterBackend(
+    if args.backend == "openrouter":
+        return OpenRouterBackend(
             model=args.model,
             api_key_env=args.api_key_env,
             base_url=args.base_url,
             timeout_seconds=args.timeout,
         )
-    elif args.backend == "codex":
-        backend = CodexBackend(
+    if args.backend == "codex":
+        return CodexBackend(
             executable=args.executable,
             model=args.model,
             timeout_seconds=args.timeout,
             enable_features=tuple(args.codex_enable),
         )
-    elif args.backend == "claude":
-        backend = ClaudeBackend(
+    if args.backend == "claude":
+        return ClaudeBackend(
             executable=args.executable,
             model=args.model,
             timeout_seconds=args.timeout,
         )
-    elif args.backend == "vibe":
-        backend = VibeBackend(
+    if args.backend == "vibe":
+        root = args.vibe_root or Path(tempfile.gettempdir()) / f"dendro-vibe-{args.worker_id}"
+        if index:
+            root = root / f"w{index}"
+        return VibeBackend(
             executable=args.executable,
             model=args.model,
             timeout_seconds=args.timeout,
-            root=(
-                args.vibe_root or Path(tempfile.gettempdir()) / f"dendro-vibe-{args.worker_id}"
-            ).resolve(),
+            root=root.resolve(),
             max_price=args.vibe_max_price,
+            thinking=args.vibe_thinking,
+            max_edge=args.vibe_max_edge,
         )
-    else:
-        backend = ClineBackend(
-            executable=args.executable,
-            provider=args.provider,
-            model=args.model,
-            timeout_seconds=args.timeout,
-        )
+    return ClineBackend(
+        executable=args.executable,
+        provider=args.provider,
+        model=args.model,
+        timeout_seconds=args.timeout,
+    )
 
+
+def run_worker(
+    args: argparse.Namespace,
+    state_dir: Path,
+    worker_id: str,
+    capacity_group: str,
+    backend: Backend,
+) -> int:
+    """Claim and answer requests for one route until stopped (or once, with --once)."""
     print(
-        f"[worker:{args.worker_id}] watching {state_dir} route={args.route} "
+        f"[worker:{worker_id}] watching {state_dir} route={args.route} "
         f"backend={args.backend} model={args.model}",
         flush=True,
     )
     while True:
         capacity_path = claim_capacity(
             state_dir=state_dir,
-            capacity_group=args.capacity_group or args.worker_id,
-            worker_id=args.worker_id,
+            capacity_group=capacity_group,
+            worker_id=worker_id,
             claim_ttl_seconds=args.claim_ttl,
         )
         if capacity_path is None:
@@ -1210,7 +1312,7 @@ def main() -> int:
         job = claim_next_job(
             state_dir=state_dir,
             route=args.route,
-            worker_id=args.worker_id,
+            worker_id=worker_id,
             claim_ttl_seconds=args.claim_ttl,
         )
         if job is None:
@@ -1221,19 +1323,19 @@ def main() -> int:
             continue
         started = time.time()
         print(
-            f"[worker:{args.worker_id}] claimed req-{job.request_id:03d} "
+            f"[worker:{worker_id}] claimed req-{job.request_id:03d} "
             f"images: {describe_images(job.image_paths) or 'none'}",
             flush=True,
         )
         try:
             result = backend.generate(job)
-            publish(job, worker_id=args.worker_id, result=result, started=started)
+            publish(job, worker_id=worker_id, result=result, started=started)
         except WorkerTerminalError as exc:
-            record_terminal_failure(state_dir, job, args.worker_id, exc)
+            record_terminal_failure(state_dir, job, worker_id, exc)
             job.claim_path.unlink(missing_ok=True)
             capacity_path.unlink(missing_ok=True)
             print(
-                f"[worker:{args.worker_id}] terminal failure: {exc}",
+                f"[worker:{worker_id}] terminal failure: {exc}",
                 file=sys.stderr,
                 flush=True,
             )
@@ -1241,26 +1343,26 @@ def main() -> int:
                 return 4
             continue
         except WorkerRateLimitError as exc:
-            _record_failure(state_dir, job, args.worker_id, exc)
+            _record_failure(state_dir, job, worker_id, exc)
             job.claim_path.unlink(missing_ok=True)
             capacity_path.unlink(missing_ok=True)
             cooldown = exc.retry_after or args.rate_limit_cooldown
-            print(f"[worker:{args.worker_id}] rate-limited; cooldown={cooldown}s", flush=True)
+            print(f"[worker:{worker_id}] rate-limited; cooldown={cooldown}s", flush=True)
             if args.once:
                 return 3
             time.sleep(cooldown)
             continue
         except (OSError, UnicodeError, subprocess.SubprocessError, WorkerError) as exc:
-            _record_failure(state_dir, job, args.worker_id, exc)
+            _record_failure(state_dir, job, worker_id, exc)
             job.claim_path.unlink(missing_ok=True)
             capacity_path.unlink(missing_ok=True)
-            print(f"[worker:{args.worker_id}] failed: {exc}", file=sys.stderr, flush=True)
+            print(f"[worker:{worker_id}] failed: {exc}", file=sys.stderr, flush=True)
             if args.once:
                 return 4
             time.sleep(args.failure_cooldown)
             continue
         capacity_path.unlink(missing_ok=True)
-        print(f"[worker:{args.worker_id}] published {job.cache_key}", flush=True)
+        print(f"[worker:{worker_id}] published {job.cache_key}", flush=True)
         if args.once:
             return 0
 

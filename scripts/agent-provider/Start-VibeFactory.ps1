@@ -26,10 +26,15 @@ param(
     [string]$StateDir = '.bridge',
     [string]$Model = 'mistral-large-4-0',
     [string]$Vibe = '',
-    [ValidateRange(1, 8)]
+    [ValidateRange(1, 32)]
     [int]$Workers = 3,
     [int]$TimeoutSeconds = 1200,
     [double]$MaxPricePerCall = 0,
+    # 'fastest' = the lowest thinking the model has (low for Large 4, off for Medium 3.5);
+    # 'default' keeps the model's own (high for Large 4: about 3 minutes a call).
+    [string]$Thinking = 'fastest',
+    # Longest edge of the copies Vibe opens; 0 sends the photographs as received.
+    [int]$MaxEdge = 1600,
     [string]$Python = '',
     [switch]$WithoutBridge
 )
@@ -91,6 +96,8 @@ foreach ($index in 1..$Workers) {
         '--executable', $Vibe,
         '--timeout', "$TimeoutSeconds",
         '--vibe-root', (Join-Path $resolvedState "vibe-roots\$name"),
+        '--vibe-thinking', $Thinking,
+        '--vibe-max-edge', "$MaxEdge",
         '--env-file', (Join-Path $root '.env')
     )
     if ($MaxPricePerCall -gt 0) {
@@ -102,7 +109,7 @@ foreach ($index in 1..$Workers) {
 $manifest = Join-Path $resolvedState 'vibe-processes.json'
 $processes | ConvertTo-Json | Set-Content -Encoding UTF8 $manifest
 
-Write-Host "Route: vibe-main ($Model, $Workers workers)" -ForegroundColor Cyan
+Write-Host "Route: vibe-main ($Model, $Workers workers, thinking $Thinking, max edge $MaxEdge)" -ForegroundColor Cyan
 Write-Host "Bridge: http://127.0.0.1:$Port" -ForegroundColor Cyan
 $processes | Format-Table -AutoSize
 Write-Host "Process manifest: $manifest" -ForegroundColor DarkGray

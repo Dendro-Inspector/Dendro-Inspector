@@ -12,6 +12,14 @@ get entries.
 
 ### Added
 
+- **The Vibe worker can be made fast.** `worker.py` gains `--vibe-thinking` (`fastest` is the
+  lowest level the model has: `low` for Mistral Large 4, `off` for Medium 3.5),
+  `--vibe-max-edge` (Vibe opens copies downscaled to that edge) and `--parallel N` (N worker
+  loops in one process, so a round's three reviews are answered at once).
+  `Start-VibeFactory.ps1` uses `fastest` and 1600 px by default. With Vibe's defaults a
+  Large 4 call took a median of 183 s; a probe at `low` with 1600 px took 11 s. Answer
+  quality at the lower level is not measured yet.
+
 - **Mistral Vibe can answer bridge routes.** `scripts/agent-provider/worker.py --backend vibe`
   runs Vibe's headless mode as a read-only vision worker: the request's photographs are
   copied into an empty folder Vibe is confined to, Vibe opens each with `read_file` (the only

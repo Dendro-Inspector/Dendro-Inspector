@@ -165,6 +165,23 @@ account without credit, is a terminal failure; a 429 is a rate limit. Usage, est
 (`cost_usd`, from Vibe's own price table), steps and outcome come from Vibe's `export.json`
 and are recorded beside the answer. `--vibe-max-price` stops one call above a cost.
 
+Speed. With Vibe's defaults a Mistral Large 4 call took a median of 183 s (19 calls,
+2026-11-19): the model thinks at "high" (about 6,000 output tokens a call at roughly 36 a
+second), every call is two model turns (open the photographs, then answer) over about 80K
+input tokens, and the photographs arrive at full size. Three settings cut that:
+
+- `--vibe-thinking fastest` passes the lowest level the model has (`low` for
+  `mistral-large-4-0`, `off` for `mistral-medium-3.5`); `default` keeps the model's own, and
+  any other word is passed as written. A synthetic-image probe answered in 11 s at `low`.
+- `--vibe-max-edge 1600` gives Vibe copies downscaled to 1600 px on the longest edge (the
+  bridge's own copies are untouched), in the format the file name says.
+- `--parallel N` runs N worker loops in one process, each with its own id, capacity group
+  and Vibe root, so the three review nodes of a round are answered at once.
+
+`Start-VibeFactory.ps1` uses `fastest` and 1600 px unless told otherwise (`-Thinking default
+-MaxEdge 0` restores Vibe's behaviour). Whether lower thinking changes the answers has not
+been measured yet.
+
 For the private sequential dataset workflow—one immutable run and trace per photograph,
 canary-first execution, resume and exact-process cleanup—follow
 [Running individual private-photo experiments](individual-photo-experiments.md).

@@ -937,6 +937,67 @@ def test_vibe_backend_keeps_a_rate_limit_retryable(tmp_path: Path, monkeypatch) 
         backend.generate(job)
 
 
+def test_vibe_thinking_fastest_follows_the_model() -> None:
+    worker = _load_script("worker")
+
+    assert worker.vibe_thinking("mistral-large-4-0", "fastest") == "low"
+    assert worker.vibe_thinking("mistral-medium-3.5", "fastest") == "off"
+    assert worker.vibe_thinking("some-new-model", "fastest") is None
+    assert worker.vibe_thinking("mistral-large-4-0", "default") is None
+    assert worker.vibe_thinking("mistral-large-4-0", None) is None
+    assert worker.vibe_thinking("mistral-large-4-0", "high") == "high"
+
+
+def test_vibe_backend_passes_thinking_and_downscales_copies(tmp_path: Path, monkeypatch) -> None:
+    pil_image = pytest.importorskip("PIL.Image")  # the optional `images` extra
+
+    worker = _load_script("worker")
+    job = _vibe_job(worker, tmp_path / "bridge")
+    pil_image.new("RGB", (4000, 3000), (10, 120, 40)).save(job.image_paths[0], "JPEG")
+    seen: dict[str, Any] = {}
+    fake = _fake_vibe(seen)
+
+    def recording_run(command, **kwargs):
+        workdir = Path(command[command.index("--workdir") + 1])
+        with pil_image.open(workdir / "req-001-img1.jpg") as copy:
+            seen["size"] = copy.size
+        return fake(command, **kwargs)
+
+    monkeypatch.setattr(worker.subprocess, "run", recording_run)
+    backend = worker.VibeBackend(
+        executable=sys.executable,
+        model="mistral-large-4-0",
+        timeout_seconds=600,
+        root=tmp_path / "vibe",
+        thinking="fastest",
+        max_edge=1600,
+    )
+
+    result = backend.generate(job)
+
+    command = seen["command"]
+    assert command[command.index("--thinking") + 1] == "low"
+    assert max(seen["size"]) == 1600
+    assert result.upstream["thinking"] == "low"
+    assert result.upstream["image_max_edge"] == 1600
+    with pil_image.open(job.image_paths[0]) as original:
+        assert original.size == (4000, 3000)  # the bridge's own copy is untouched
+
+
+def test_copy_photo_keeps_a_small_or_unknown_file_as_received(tmp_path: Path) -> None:
+    pil_image = pytest.importorskip("PIL.Image")  # the optional `images` extra
+
+    worker = _load_script("worker")
+    small = tmp_path / "small.png"
+    pil_image.new("RGB", (800, 600)).save(small, "PNG")
+    worker.copy_photo(small, tmp_path / "small-copy.png", 1600)
+    assert (tmp_path / "small-copy.png").read_bytes() == small.read_bytes()
+    odd = tmp_path / "photo.heic"
+    odd.write_bytes(b"not decoded here")
+    worker.copy_photo(odd, tmp_path / "photo-copy.heic", 1600)
+    assert (tmp_path / "photo-copy.heic").read_bytes() == b"not decoded here"
+
+
 def test_describe_images_reports_size_and_missing_files(tmp_path: Path) -> None:
     worker = _load_script("worker")
     image = tmp_path / "a.jpg"
