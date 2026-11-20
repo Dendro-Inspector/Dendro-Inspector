@@ -410,6 +410,27 @@ def replay_matches(stored: Mapping[str, Any], knowledge: KnowledgeBase) -> bool:
     return replayed == list(stored["result"]["response"]["decisions"])
 
 
+def setup_failure(*, unit_id: str, error: str, started_at: str) -> dict[str, Any]:
+    """The record of a planned unit refused before it started, so no unit goes uncounted."""
+    return {
+        "unit": unit_id,
+        "arm": ARM,
+        "started_at": started_at,
+        "wall_seconds": 0.0,
+        "exit_code": 1,
+        "error": error,
+        "failure": {"stage": "setup"},
+    }
+
+
+def decided(path: Path) -> bool:
+    """Whether ``path`` holds an arm V record with a decision (not a failure)."""
+    if not path.exists():
+        return False
+    stored = json.loads(path.read_text(encoding="utf-8"))
+    return stored.get("arm") == ARM and "result" in stored
+
+
 @dataclass(frozen=True, slots=True)
 class ReplaySummary:
     """What ``--replay`` found in a run folder."""

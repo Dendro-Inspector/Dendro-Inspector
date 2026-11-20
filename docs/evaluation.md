@@ -760,8 +760,11 @@ python scripts/eval/validated.py --replay runs/<name>    # 0 identical, 1 any di
 
 `--answers` uses an earlier answer only if it was given to the same question: the same
 photographs in the same order (answers cite them by position), the same field-context
-statement, request, answer schema and domain prompt. Otherwise that unit fails alone and no
-record is written.
+statement, request, answer schema and domain prompt. Otherwise that unit fails alone.
+
+Every planned unit ends with a record: a decision, a failed run, or a unit refused before it
+started (`failure.stage: setup`), so a score can count every unit, not only the answered
+ones. A rerun skips decided units and tries failed ones again.
 
 Each record keeps the stored-case layout and adds `result.validated`: the rules version, the
 answer and its source, every card check, the evidence-quality verdict, wall time for the

@@ -14,7 +14,9 @@ No candidate generation, review, arbitration, correction retry or graph fallback
 Production settings are whatever the environment holds; this script changes none.
 
 Units as for model_alone.py (``--manifest`` or ``--units``). Writes ``<out>/cases/<unit_id>.json``
-in the stored-case layout. Resumable: a unit with a record is skipped unless ``--force``.
+in the stored-case layout for every planned unit: a decided one, a failed run, or a unit
+refused before it started (``failure.stage == "setup"``), so a scorer can count every unit.
+Resumable: a decided unit is skipped unless ``--force``; a failed one is tried again.
 
 ``--replay DIR`` re-decides every arm V record in ``DIR/cases`` from its recorded answer and
 evidence, offline and without a provider, and exits 1 if any decision differs.
@@ -46,7 +48,8 @@ def case_id_for(unit_id: str) -> str:
     """Inspection IDs are lower-case ``[a-z0-9_-]``; held-out unit IDs may not be."""
     case_id = re.sub(r"[^a-z0-9_-]", "-", unit_id.lower()).strip("-")
     if not case_id:
-        raise SystemExit(f"unit {unit_id!r} has no usable case ID")
+        msg = f"unit {unit_id!r} has no usable case ID"
+        raise ValueError(msg)
     return case_id
 
 
@@ -86,7 +89,8 @@ async def run(args: argparse.Namespace) -> int:
             raise SystemExit(f"not in the unit list: {sorted(missing)}")
     out = args.out / "cases"
     out.mkdir(parents=True, exist_ok=True)
-    todo = [u for u in units if args.force or not (out / f"{u['unit_id']}.json").exists()]
+    # Every planned unit ends with a record; a failed one is tried again on the next run.
+    todo = [u for u in units if args.force or not validated.decided(out / f"{u['unit_id']}.json")]
 
     config = load_config()
     domain = load_domain_prompt(resolve_prompt_path(ROOT, config.prompts.domain_prompt_path))
@@ -104,11 +108,19 @@ async def run(args: argparse.Namespace) -> int:
 
     async def one(unit: dict[str, Any]) -> None:
         nonlocal failures
+        started = datetime.now(UTC).isoformat(timespec="seconds")
         try:
             await one_unit(unit)
-        except Exception as exc:  # a unit that cannot even start fails alone; no record
+        except Exception as exc:  # a unit that cannot start fails alone, with its own record
             failures += 1
-            print(f"{unit['unit_id']}: SETUP FAILED {type(exc).__name__}: {exc}"[:300], flush=True)
+            error = f"{type(exc).__name__}: {exc}"[:2000]
+            stored = validated.setup_failure(
+                unit_id=unit["unit_id"], error=error, started_at=started
+            )
+            (out / f"{unit['unit_id']}.json").write_text(
+                json.dumps(stored, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+            )
+            print(f"{unit['unit_id']}: SETUP FAILED {error}"[:300], flush=True)
 
     async def one_unit(unit: dict[str, Any]) -> None:
         nonlocal failures

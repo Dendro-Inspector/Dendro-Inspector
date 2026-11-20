@@ -481,3 +481,20 @@ def test_replay_of_a_folder_passes_identical_records_and_names_changed_ones(
     assert summary.checked == 2
     assert summary.differing == ("changed",)
     assert summary.exit_code == 1
+
+
+def test_a_unit_refused_before_it_started_still_has_a_record(tmp_path, knowledge):
+    cases = tmp_path / "cases"
+    cases.mkdir()
+    refused = validated.setup_failure(
+        unit_id="u-9", error="AnswerMismatchError: other photographs", started_at="t"
+    )
+    assert refused["arm"] == validated.ARM
+    assert refused["exit_code"] == 1
+    assert refused["failure"] == {"stage": "setup"}
+    assert "result" not in refused
+    path = cases / "u-9.json"
+    path.write_text(json.dumps(refused), encoding="utf-8")
+    assert not validated.decided(path)
+    assert not validated.decided(cases / "absent.json")
+    assert validated.replay_run(tmp_path, knowledge).checked == 0
