@@ -13,12 +13,13 @@ establishes subject identity, not botanical truth: the genus stays the namer's, 
 the evidence supports it stays the card check's.
 
 A model proposes, code adjudicates (AGENTS.md section 4.6). :func:`verify` accepts a reply
-only when every identifier exists in the packet and the reply cites a reference that tells
-the selected organism apart from every other one (see :func:`verify` for the rules). Anything
-else keeps arm V's abstention. A verified binding names at most that one organism, after
-:func:`validated.decide` checks the genus's cards on that organism's own evidence (its root
-and attached components, unchanged), with arm V's contradiction rule. Every other organism
-keeps its ``unbound_subjects`` abstention.
+only when every identifier exists in the packet, the answer cites no photograph that shows
+only another organism, and a photograph the answer cites shows the selected organism and no
+other (see :func:`verify` for the rules). Anything else keeps arm V's abstention. A
+verified binding names at most that one organism, after :func:`validated.decide` checks the
+genus's cards on that organism's own evidence (its root and attached components,
+unchanged), with arm V's contradiction rule. Every other organism keeps its
+``unbound_subjects`` abstention.
 
 Records keep the binding request, the reply and the call, so :func:`replay_status` re-decides
 a record offline with no provider, and reports a record made under other rules or from other
@@ -58,7 +59,7 @@ ARM = "validated_bound"
 NODE = "subject_binding"
 #: Bumped whenever a rule in :func:`ineligible_reason`, :func:`verify` or
 #: :func:`decide_bound` changes; every record names the version it used.
-RULES_VERSION = 1
+RULES_VERSION = 2
 
 REQUEST = """## Task: say which listed organism an answer is about
 
@@ -76,17 +77,20 @@ Rules:
 - Do not identify any plant or wood, and do not judge whether the answer is right. The genus
   is shown only so you know which entry is meant. Never change or suggest a genus.
 - Select a root `subject_id` from the list: never a component's ID and never a new ID.
-- Select one organism only. If the entry describes several listed organisms as one subject,
-  select the organism its subject names as the main one; if it names none as the main one,
-  abstain with `describes_several`.
+- Select one organism only, and only when the entry is about that organism alone. If the
+  entry describes or cites several listed organisms (for example a standing tree and its
+  felled log, or two groups of logs in one pile), abstain with `describes_several`: never
+  pick one of them as the main one.
 - A detached part (a fallen leaf, a cone or needles on the ground) is its own organism. Never
   treat it as part of a tree unless the list shows it as that tree's component.
 - Do not decide by the order of the photographs or of the list, or by how many photographs
   show an organism. A photograph that shows several organisms proves nothing on its own.
-- `supporting_image_ids`: photographs in which you can see the selected organism with what the
-  entry describes on it. Include at least one in which it is told apart from the others.
+- `supporting_image_ids`: photographs the entry cites in which you can see the selected
+  organism with what the entry describes on it, including at least one that shows no other
+  listed organism.
 - `supporting_observation_ids`: listed observations of the selected organism (or of its
-  components) that correspond to features the entry cites; empty if none corresponds.
+  components) that record the same feature the entry cites, in a photograph the entry cites
+  for it; empty if none does. An observation of some other feature is not support.
 - `distinguishing_evidence`: what in those photographs shows that the entry is about this
   organism and not each of the others; when abstaining, why it cannot be told.
 - If you cannot tell from that kind of evidence, set `status` to `abstain`, `subject_id` to
@@ -172,7 +176,9 @@ class Outcome(StrEnum):
     IMAGE_DOES_NOT_SHOW_SUBJECT = "image_does_not_show_subject"
     UNKNOWN_OBSERVATION = "unknown_observation"
     OBSERVATION_OF_ANOTHER_ORGANISM = "observation_of_another_organism"
+    OBSERVATION_OUTSIDE_ANSWER = "observation_outside_answer"
     DISAGREES_WITH_ANSWER = "disagrees_with_answer"
+    ANSWER_DESCRIBES_ANOTHER = "answer_describes_another"
     NOT_DISTINGUISHED = "not_distinguished"
 
 
@@ -186,7 +192,9 @@ REJECTED = frozenset(
         Outcome.IMAGE_DOES_NOT_SHOW_SUBJECT,
         Outcome.UNKNOWN_OBSERVATION,
         Outcome.OBSERVATION_OF_ANOTHER_ORGANISM,
+        Outcome.OBSERVATION_OUTSIDE_ANSWER,
         Outcome.DISAGREES_WITH_ANSWER,
+        Outcome.ANSWER_DESCRIBES_ANOTHER,
         Outcome.NOT_DISTINGUISHED,
     }
 )
@@ -331,14 +339,18 @@ def verify(
       ``abstain`` with a reason and no subject;
     * the subject exists and is a root (an independent organism, never a component);
     * it cites at least one photograph; each is one of the unit's and shows the organism;
-    * each cited observation exists and was recorded on the organism or its components;
+    * each cited observation exists, was recorded on the organism or its components, and was
+      made in a photograph the answer cites;
     * the organism is visible in a photograph the answer itself cites (else the binder
       disagrees with the answer it was asked about);
-    * a reference tells the organism apart from every other one: a cited photograph that
-      the answer also cites and that shows no other organism, or a cited observation made in
-      a photograph the answer cites whose feature and value no other organism has.
+    * no photograph the answer cites shows another organism without this one: such an
+      answer describes another organism too, and choosing one of them would be arbitrary;
+    * a photograph tells the organism apart: one the binder cites, the answer cites, and
+      that shows no other organism.
 
-    Photograph order, shared photographs and the binder's own wording authorise nothing.
+    Observations never authorise a binding on their own: code cannot tell whether an
+    observation records the feature the answer cites, only where and on what it was made.
+    Photograph order, shared photographs and the binder's wording authorise nothing either.
     """
     if reply.status is BindingStatus.ABSTAIN:
         if reply.subject_id is not None or reply.abstention_reason is None:
@@ -368,20 +380,16 @@ def verify(
     if any(o.subject_id not in members for o in cited_observations):
         return Outcome.OBSERVATION_OF_ANOTHER_ORGANISM, None
     answered = {i for s in named_subjects(answer) for e in s.evidence for i in e.image_ids}
+    if any(o.image_id not in answered for o in cited_observations):
+        return Outcome.OBSERVATION_OUTSIDE_ANSWER, None
     if not mine & answered:
         return Outcome.DISAGREES_WITH_ANSWER, None
     others = set().union(
         *(organism_images(packet, group) for root, group in groups.items() if root != subject_id)
     )
-    elsewhere = {
-        (o.feature, str(o.value)) for o in packet.observations if o.subject_id not in members
-    }
-    exclusive_image = any(i in answered and i not in others for i in cited_images)
-    distinct_observation = any(
-        o.image_id in answered and (o.feature, str(o.value)) not in elsewhere
-        for o in cited_observations
-    )
-    if not (exclusive_image or distinct_observation):
+    if (answered & others) - mine:
+        return Outcome.ANSWER_DESCRIBES_ANOTHER, None
+    if not (cited_images & answered) - others:
         return Outcome.NOT_DISTINGUISHED, None
     return Outcome.BOUND, subject_id
 
@@ -610,6 +618,7 @@ def run_identity(
     binder: str,
     code_commit_sha: str | None,
     image_max_edge_px: int | None,
+    max_retries: int,
 ) -> dict[str, Any]:
     """What makes two binding records comparable; a run never resumes into another's folder."""
     return {
@@ -619,6 +628,7 @@ def run_identity(
         "binder": binder,
         "code_commit_sha": code_commit_sha,
         "image_max_edge_px": image_max_edge_px,
+        "max_retries": max_retries,
         "source": source,
         "arm_v": dict(arm_v) if arm_v is not None else None,
     }

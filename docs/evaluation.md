@@ -805,31 +805,37 @@ unless the script is invoked.
   image and observation IDs, a free-text distinguishing statement and an abstention reason.
   It has no genus, species, family or confidence field.
 - **What code accepts.** A consistent reply whose subject exists and is a root, whose cited
-  photographs are the unit's and show that organism, and whose cited observations exist and
-  were recorded on it. The organism must be visible in a photograph the answer cites.
-  Something must tell it apart from every other organism: a cited photograph the answer also
-  cites that shows no other organism, or a cited observation, made in a photograph the
-  answer cites, whose feature and value no other organism has. Photograph order and shared
-  photographs prove nothing. Any failure keeps arm V's abstention and records why
-  (`unknown_subject`, `not_a_root`, `image_does_not_show_subject`,
-  `observation_of_another_organism`, `disagrees_with_answer`, `not_distinguished`, ...).
+  photographs are the unit's and show that organism, and whose cited observations exist,
+  were recorded on it and were made in a photograph the answer cites. The organism must be
+  visible in a photograph the answer cites. No photograph the answer cites may show another
+  organism without this one: the answer then describes several organisms, and the binder is
+  told to abstain rather than pick a main one. A photograph the binder and the answer both
+  cite must show this organism and no other. Observations never authorise a binding on their
+  own, because code cannot tell whether one records the feature the answer cites. Photograph
+  order and shared photographs prove nothing. Any failure keeps arm V's abstention and
+  records why (`unknown_subject`, `not_a_root`, `image_does_not_show_subject`,
+  `observation_of_another_organism`, `observation_outside_answer`, `disagrees_with_answer`,
+  `answer_describes_another`, `not_distinguished`, ...).
 - **What a binding does.** It names at most the bound organism, after arm V's own decision
   runs on that organism's evidence alone (root plus attached components), so a contradiction
   on any part blocks it. Every other organism keeps `unbound_subjects`. A detached part is
   its own organism; binding a tree never borrows its evidence.
 
-Binding establishes which organism was meant, not what it is. Code cannot check that the
-binder chose the organism the answer meant, only that the reply is consistent and cites
-something distinguishing. A wrong choice names an organism only if that organism's own
-evidence confirms the genus. Binding never runs on a single organism, so it cannot touch a
+Binding establishes which organism was meant, not what it is. With these rules code admits
+at most one organism per unit: the one shown alone in a photograph the answer cites, when no
+other organism is. The binder can agree with it or abstain; its reply is recorded either
+way, so whether it chose the organism a person would choose is measured separately from what
+code accepted. That correspondence rests on the extractor's subject photograph lists: a
+missed organism in a photograph makes the photograph look exclusive. Binding never runs on a single organism, so it cannot touch a
 misreading that the namer and the extractor share (the oak read as *Acer*).
 
 ```bash
 # feasibility, no provider: who is eligible, what each organism would reach, whether the
 # strongest possible reply verifies (upper bounds), graded where --labels names the genus
 python scripts/eval/bind_subjects.py --from runs/<arm-v> --labels labels.json
-# paid: one binding call per eligible unit on the configured primary model
-python scripts/eval/bind_subjects.py --from runs/<arm-v> --units units.json     --out runs/<name> --live [--rounds 3]
+# paid: one binding call per eligible unit on the configured primary model; --max-retries 0
+# makes each call one request, --max-requests caps the whole invocation
+python scripts/eval/bind_subjects.py --from runs/<arm-v> --units units.json     --out runs/<name> --live [--rounds 3] [--max-retries 0] [--max-requests 18]
 # re-decide every bound record from its recorded reply, no provider
 python scripts/eval/bind_subjects.py --replay runs/<name>  # 0 identical, 1 any not, 2 none
 ```

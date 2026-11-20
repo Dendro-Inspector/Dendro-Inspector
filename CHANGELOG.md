@@ -30,7 +30,8 @@ get entries.
   several organisms (`unbound_subjects`), asks the primary model once which listed root
   subject the answer is about. The reply carries a subject ID and supporting photograph and
   observation IDs, never a genus or a confidence. Code accepts it only when every reference
-  exists in the evidence and something tells the organism apart from the others. It then
+  exists in the evidence, the answer cites no photograph showing only another organism, and
+  a photograph the answer cites shows the chosen organism alone. It then
   checks that organism alone with arm V's own card rules; every other organism stays
   abstained. Without `--live` the script makes no call and reports eligibility and upper
   bounds; `--replay` re-decides bound records from their recorded replies with no provider

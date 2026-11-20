@@ -231,9 +231,77 @@ def test_a_shared_photograph_alone_does_not_distinguish_an_organism(knowledge):
     # img-2 shows both trees: neither its position nor its sharing proves which one is meant.
     shared = _decide(_two_trees(), _reply("tree_a", ("img-2",)), knowledge, answer)
     assert shared.outcome is Outcome.NOT_DISTINGUISHED
-    # An observation only tree_a has, made in a photograph the answer cites, does.
-    observed = _decide(_two_trees(), _reply("tree_a", ("img-2",), ("obs-a",)), knowledge, answer)
-    assert (observed.outcome, observed.subject_id) == (Outcome.BOUND, "tree_a")
+    # Citing a photograph that shows tree_a alone does.
+    alone = _decide(_two_trees(), _reply("tree_a", ("img-1", "img-2")), knowledge, answer)
+    assert (alone.outcome, alone.subject_id) == (Outcome.BOUND, "tree_a")
+
+
+def _bark_answer(images: tuple[str, ...]) -> model_alone.ModelAloneAnswer:
+    named = _named("Pinus", images)
+    named["evidence"] = [{"feature": "thick plated bark", "image_ids": list(images)}]
+    return model_alone.ModelAloneAnswer.model_validate({"subjects": [named]})
+
+
+def test_a_unique_observation_of_another_feature_cannot_bind(knowledge):
+    """A wrong binding the first rules accepted: the answer describes bark, and a detached
+    leaf in the same photographs has an observation no other organism has. That observation
+    does not record the feature the answer cites, so it cannot make the leaf the answer's
+    subject; code cannot read that correspondence, so no observation authorises a binding."""
+    packet = EvidencePacket(
+        subjects=(
+            _subject("tree_p", SubjectKind.STANDING_TREE, ("img-1", "img-2", "img-3")),
+            _subject("leaf_x", SubjectKind.DETACHED_PART, ("img-2", "img-3")),
+        ),
+        observations=(
+            _obs("obs-p", "bark.texture", "scaly_plates", "tree_p", "img-2"),
+            _obs(
+                "obs-x",
+                "leaf.shape",
+                "rounded",
+                "leaf_x",
+                "img-3",
+                AttachmentStatus.CONFIRMED_DETACHED,
+            ),
+        ),
+    )
+    leaf = _reply("leaf_x", ("img-3",), ("obs-x",))
+    assert _decide(packet, leaf, knowledge, _bark_answer(("img-2", "img-3"))).outcome is (
+        Outcome.NOT_DISTINGUISHED
+    )
+    # Where the answer also cites a photograph of the tree alone, the leaf cannot be its
+    # subject at all, and the tree binds on that photograph.
+    wider = _bark_answer(("img-1", "img-2", "img-3"))
+    assert _decide(packet, leaf, knowledge, wider).outcome is Outcome.ANSWER_DESCRIBES_ANOTHER
+    tree = _decide(packet, _reply("tree_p", ("img-1",), ("obs-p",)), knowledge, wider)
+    assert (tree.outcome, tree.subject_id) == (Outcome.BOUND, "tree_p")
+
+
+def test_an_observation_outside_the_answers_photographs_is_no_support(knowledge):
+    packet = _two_trees()
+    packet = packet.model_copy(
+        update={
+            "observations": (
+                *packet.observations,
+                _obs("obs-a2", "bark.texture", "smooth_grey", "tree_a", "img-2"),
+            )
+        }
+    )
+    # The answer cites img-1 only; obs-a2 was made in img-2.
+    bound = _decide(packet, _reply("tree_a", ("img-1",), ("obs-a2",)), knowledge)
+    assert bound.outcome is Outcome.OBSERVATION_OUTSIDE_ANSWER
+
+
+def test_an_answer_about_several_organisms_binds_none_of_them(knowledge):
+    """A tree and its felled log described as one subject: picking a main one is arbitrary."""
+    packet = _two_trees(b_leaf=True)
+    # img-1 shows tree_a alone and img-3 tree_b alone: the answer describes both.
+    answer = _answer("Acer", ("img-1", "img-3"))
+    for reply in (_reply("tree_a", ("img-1",)), _reply("tree_b", ("img-3",))):
+        bound = _decide(packet, reply, knowledge, answer)
+        assert bound.outcome is Outcome.ANSWER_DESCRIBES_ANOTHER
+        assert _said(bound) == {"tree_a": UNBOUND, "tree_b": UNBOUND}
+    abstained = _reply(None, (), status="abstain", reason="describes_several")
+    assert _decide(packet, abstained, knowledge, answer).outcome is Outcome.BINDER_ABSTAINED
 
 
 def test_a_binding_the_answer_does_not_support_is_rejected(knowledge):
@@ -248,14 +316,14 @@ def test_a_binding_the_answer_does_not_support_is_rejected(knowledge):
 
 def test_two_organisms_sharing_one_genus_name_only_the_bound_one(knowledge):
     packet = _two_trees(b_leaf=True)
-    answer = _answer("Acer", ("img-1", "img-3"))
+    answer = _answer("Acer", ("img-1", "img-2"))
     bound = _decide(packet, _reply("tree_a", ("img-1",)), knowledge, answer)
     # tree_b's own evidence would confirm Acer, but one answer is bound to one organism.
     assert _said(bound) == {"tree_a": "acer", "tree_b": UNBOUND}
 
 
 def test_binding_identifies_a_subject_and_does_not_confirm_its_genus(knowledge):
-    answer = _answer("Acer", ("img-1", "img-3"))
+    answer = _answer("Acer", ("img-2", "img-3"))
     bound = _decide(_two_trees(), _reply("tree_b", ("img-3",)), knowledge, answer)
     assert (bound.outcome, bound.subject_id) == (Outcome.BOUND, "tree_b")
     assert _said(bound) == {"tree_a": UNBOUND, "tree_b": Reason.NOT_CONFIRMED.value}

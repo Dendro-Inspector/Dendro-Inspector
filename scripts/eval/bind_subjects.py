@@ -20,7 +20,8 @@ Three modes:
   list the arm V run used; each photograph is checked against the SHA-256 its record holds.
   Resumable: a reused record is never asked again; a failed call or unit is; records of
   another run refuse the run. ``--rounds N`` repeats the whole run N times independently,
-  into ``<out>/r<k>/``.
+  into ``<out>/r<k>/``. ``--max-retries 0`` makes each call exactly one provider request, and
+  ``--max-requests N`` caps the provider requests of the whole invocation.
 * ``--replay DIR``: re-decides every planned bound record from its recorded reply, with no
   provider. Exit 1 if any decision differs or a record was made under other rules or inputs,
   2 if nothing was replayed.
@@ -28,6 +29,7 @@ Three modes:
 Usage:
   bind_subjects.py --from DIR [--labels FILE]
   bind_subjects.py --from DIR --units U --out DIR --live [--rounds 1] [--concurrency 4]
+                   [--max-retries N] [--max-requests N]
   bind_subjects.py --replay DIR
 """
 
@@ -44,6 +46,32 @@ from typing import Any
 
 # The arm M script's unit loader, so every arm reads units and photographs the same way.
 from model_alone import ROOT, commit_sha, load_units
+
+
+class RequestBudget:
+    """Caps provider requests across the whole run, repairs included: past it, a call fails
+    (``call_failed``) without reaching the provider."""
+
+    def __init__(self, provider: Any, limit: int) -> None:
+        self._provider = provider
+        self.limit = limit
+        self.used = 0
+
+    @property
+    def adapter_name(self) -> str:
+        return str(self._provider.adapter_name)
+
+    @property
+    def model(self) -> str | None:
+        model: str | None = self._provider.model
+        return model
+
+    async def generate_structured(self, **kwargs: Any) -> Any:
+        if self.used >= self.limit:
+            msg = f"the run's budget of {self.limit} provider requests is spent"
+            raise RuntimeError(msg)
+        self.used += 1
+        return await self._provider.generate_structured(**kwargs)
 
 
 def _knowledge() -> Any:
@@ -95,6 +123,7 @@ def feasibility(args: argparse.Namespace) -> int:
     reasons: Counter[str] = Counter()
     baseline: Counter[str] = Counter()
     best: Counter[str] = Counter()
+    verifiable: Counter[str] = Counter()
     eligible = 0
     for unit, stored in source.records.items():
         if stored is None or "result" not in stored:
@@ -109,13 +138,14 @@ def feasibility(args: argparse.Namespace) -> int:
             reasons[binding["ineligible_reason"]] += 1
             baseline[before] += 1
             best[before] += 1
+            verifiable[before] += 1
             continue
         eligible += 1
         reasons["eligible"] += 1
         baseline[before] += 1
         answer, packet, image_ids, _ = subject_binding.inputs_of(stored)
         print(f"{unit}: eligible, label {label or 'none'}, arm V {before}")
-        reached = []
+        reached, passed = [], []
         for root, decision in subject_binding.oracle(answer, packet, knowledge).items():
             bound = [
                 decision.model_dump(mode="json") if d["subject_id"] == root else d
@@ -127,8 +157,11 @@ def feasibility(args: argparse.Namespace) -> int:
             check, _ = subject_binding.verify(
                 strongest_reply(answer, packet, root), packet, answer, image_ids
             )
+            if check is subject_binding.Outcome.BOUND:
+                passed.append(after)
             print(f"  bound to {root}: {said}  -> {after}; strongest reply verifies as {check}")
         best[next((o for o in ("correct", "wrong") if o in reached), before)] += 1
+        verifiable[next((o for o in ("correct", "wrong") if o in passed), before)] += 1
     print(f"\n{args.source}: {len(source.records)} planned units")
     for reason, count in sorted(reasons.items()):
         print(f"  {reason:<28} {count}")
@@ -137,6 +170,7 @@ def feasibility(args: argparse.Namespace) -> int:
         print("graded over all subjects (labels name no target subject):")
         print(f"  arm V as recorded           {dict(sorted(baseline.items()))}")
         print(f"  oracle binding upper bound  {dict(sorted(best.items()))}")
+        print(f"  ... that a reply can pass   {dict(sorted(verifiable.items()))}")
     return 0
 
 
@@ -172,9 +206,16 @@ async def live(args: argparse.Namespace) -> int:
     config = load_config()
     knowledge = _knowledge()
     registry = ProviderRegistry.from_config(config, root=ROOT)
-    provider = registry.get(Role.PRIMARY)
+    provider: Any = registry.get(Role.PRIMARY)
+    budget = RequestBudget(provider, args.max_requests) if args.max_requests is not None else None
+    if budget is not None:
+        provider = budget
     max_edge = config.graph.image_max_edge_px
-    retries = config.provider_for(Role.PRIMARY).max_structured_retries
+    retries = (
+        args.max_retries
+        if args.max_retries is not None
+        else config.provider_for(Role.PRIMARY).max_structured_retries
+    )
     plan_path = args.source / validated.PLAN
     identity = subject_binding.run_identity(
         # A run written before plans existed has none; its records still name their commit.
@@ -187,6 +228,7 @@ async def live(args: argparse.Namespace) -> int:
         binder=f"{provider.adapter_name}:{provider.model}",
         code_commit_sha=commit_sha(),
         image_max_edge_px=max_edge,
+        max_retries=retries,
     )
     gate = asyncio.Semaphore(max(1, args.concurrency))
 
@@ -276,6 +318,8 @@ async def live(args: argparse.Namespace) -> int:
             print(f"{out_dir}: {dict(sorted(counts.items()))}", flush=True)
     finally:
         await registry.aclose()
+    if budget is not None:
+        print(f"provider requests: {budget.used} of at most {budget.limit}", flush=True)
     return 0
 
 
@@ -288,6 +332,14 @@ def main() -> int:
     parser.add_argument("--out", type=Path, help="--live: the folder to write")
     parser.add_argument("--rounds", type=int, default=1)
     parser.add_argument("--concurrency", type=int, default=4)
+    parser.add_argument(
+        "--max-retries",
+        type=int,
+        help="--live: structured-output repairs (0: one request per call)",
+    )
+    parser.add_argument(
+        "--max-requests", type=int, help="--live: hard cap on provider requests for the whole run"
+    )
     parser.add_argument("--replay", type=Path, help="re-decide the bound records in DIR")
     args = parser.parse_args()
     args.manifest = None
