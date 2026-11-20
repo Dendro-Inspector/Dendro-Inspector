@@ -48,9 +48,21 @@ def _obs(observation_id: str, feature: str, value: str, subject: str = SUBJECT) 
     )
 
 
-def _packet(*observations: Observation, subjects: tuple[str, ...] = (SUBJECT,)) -> EvidencePacket:
+def _packet(
+    *observations: Observation,
+    subjects: tuple[str, ...] = (SUBJECT,),
+    parents: dict[str, str] | None = None,
+) -> EvidencePacket:
+    parents = parents or {}
     return EvidencePacket(
-        subjects=tuple(Subject(subject_id=s, kind=SubjectKind.STANDING_TREE) for s in subjects),
+        subjects=tuple(
+            Subject(
+                subject_id=s,
+                kind=SubjectKind.BRANCH if s in parents else SubjectKind.STANDING_TREE,
+                parent_subject_id=parents.get(s),
+            )
+            for s in subjects
+        ),
         observations=observations,
     )
 
@@ -182,28 +194,67 @@ def test_several_genera_name_no_tree_rather_than_guess_which_tree_is_which(knowl
     assert {d.subject_id for d in decisions} == {"tree_a", "tree_b"}
     for decision in decisions:
         assert decision.selected_taxon is None
-        assert decision.abstention_reason is validated.AbstentionReason.UNBOUND
+        assert decision.abstention_reason is validated.AbstentionReason.UNBOUND_GENERA
         assert decision.visual_hypothesis is None
 
 
-def test_one_genus_is_named_only_on_trees_whose_own_evidence_confirms_it(knowledge):
-    _, decisions = validated.decide(
+def test_one_genus_and_two_organisms_name_neither_without_a_binding(knowledge):
+    # The model named one genus, but nothing says which of the two trees it meant: naming
+    # tree_a because its leaves fit would be the model's name given to a tree it may not
+    # have been about. The checks are still recorded, so a later binding can be measured.
+    checks, decisions = validated.decide(
         _answer("Acer"),
         _packet(
             _obs("obs-a", "leaf.shape", "palmate_lobed", subject="tree_a"),
-            _obs("obs-b", "leaf.shape", "palmate_lobed", subject="tree_b"),
-            _obs("obs-c", "bark.pattern", "shallow_fissures", subject="tree_c"),
-            subjects=("tree_a", "tree_b", "tree_c"),
+            _obs("obs-b", "bark.pattern", "shallow_fissures", subject="tree_b"),
+            subjects=("tree_a", "tree_b"),
         ),
         knowledge,
         evidence_sufficient=True,
     )
-    by_subject = {d.subject_id: d for d in decisions}
-    assert by_subject["tree_a"].selected_taxon == "acer"
-    assert [r.observation_id for r in by_subject["tree_a"].evidence] == ["obs-a"]
-    assert [r.observation_id for r in by_subject["tree_b"].evidence] == ["obs-b"]
-    assert by_subject["tree_c"].selected_taxon is None
-    assert by_subject["tree_c"].abstention_reason is validated.AbstentionReason.NOT_CONFIRMED
+    assert {d.subject_id for d in decisions} == {"tree_a", "tree_b"}
+    for decision in decisions:
+        assert decision.selected_taxon is None
+        assert decision.abstention_reason is validated.AbstentionReason.UNBOUND_SUBJECTS
+        assert decision.visual_hypothesis is None
+    assert any(
+        c.subject_id == "tree_a" and c.verdict is validated.Verdict.CONFIRMED for c in checks
+    )
+
+
+def test_an_attached_part_counts_for_its_organism(knowledge):
+    _, decisions = validated.decide(
+        _answer("Acer"),
+        _packet(
+            _obs("obs-bark", "bark.pattern", "shallow_fissures"),
+            _obs("obs-leaf", "leaf.shape", "palmate_lobed", subject="branch_1"),
+            subjects=(SUBJECT, "branch_1"),
+            parents={"branch_1": SUBJECT},
+        ),
+        knowledge,
+        evidence_sufficient=True,
+    )
+    decision = _only(decisions)
+    assert decision.subject_id == SUBJECT
+    assert decision.selected_taxon == "acer"
+    assert [r.observation_id for r in decision.evidence] == ["obs-leaf"]
+
+
+def test_a_contradiction_on_an_attached_part_blocks_the_card(knowledge):
+    _, decisions = validated.decide(
+        _answer("Acer"),
+        _packet(
+            _obs("obs-leaf", "leaf.shape", "palmate_lobed"),
+            _obs("obs-arr", "leaf.arrangement", "alternate", subject="branch_1"),
+            subjects=(SUBJECT, "branch_1"),
+            parents={"branch_1": SUBJECT},
+        ),
+        knowledge,
+        evidence_sufficient=True,
+    )
+    decision = _only(decisions)
+    assert decision.selected_taxon is None
+    assert decision.abstention_reason is validated.AbstentionReason.CONTRADICTED
 
 
 def test_a_shared_misreading_is_confirmed_which_is_the_checks_known_limit(knowledge):
@@ -223,22 +274,6 @@ def test_a_shared_misreading_is_confirmed_which_is_the_checks_known_limit(knowle
         _answer("Acer"), read_by_another, knowledge, evidence_sufficient=True
     )
     assert _only(decisions).selected_taxon is None
-
-
-def test_only_the_confirming_subject_is_named_and_no_hypothesis_is_spread(knowledge):
-    _, decisions = validated.decide(
-        _answer("Acer"),
-        _packet(
-            _obs("obs-leaf", "leaf.shape", "palmate_lobed", subject="tree_a"),
-            subjects=("tree_a", "tree_b"),
-        ),
-        knowledge,
-        evidence_sufficient=True,
-    )
-    by_subject = {d.subject_id: d for d in decisions}
-    assert by_subject["tree_a"].selected_taxon == "acer"
-    assert by_subject["tree_b"].selected_taxon is None
-    assert by_subject["tree_b"].visual_hypothesis is None
 
 
 def test_no_subject_in_the_evidence_abstains_for_the_case(knowledge):

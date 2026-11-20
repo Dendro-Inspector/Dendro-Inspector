@@ -7,16 +7,18 @@ after them. No candidate generation, review, arbitration, correction retry or gr
 runs. Code then decides, with no model call, whether the observations confirm the model's
 genus:
 
-* The model's answer binds to the evidence only when it names exactly one genus. Its
-  subjects are free text with no evidence subject ID, so when it names several genera for
-  several trees nothing says which tree each belongs to, and every subject abstains
-  (``unbound_genera``) rather than give one tree another's name.
+* The model's answer binds to the evidence only when it names exactly one genus and the
+  evidence shows exactly one organism: one root subject and the components attached to it.
+  The model's subjects are free text with no evidence subject ID, so with several genera
+  (``unbound_genera``) or several organisms (``unbound_subjects``) nothing says which tree
+  the answer was about, and nothing is named.
 * For every card of that genus, ``match_card`` (the admission boundary the graph itself
-  uses) matches each subject's own evidence; no observation is borrowed from another
-  subject. The pairing is ``confirmed`` when a strong-positive feature of the card was
-  observed with no contradicting or disqualifying observation, ``contradicted`` when such an
-  observation exists, ``unsupported`` otherwise.
-* Each subject with a confirmed pairing is named with the genus, citing the observations
+  uses) matches each subject of the organism on its own evidence. The pairing is
+  ``confirmed`` when a strong-positive feature of the card was observed with no
+  contradicting or disqualifying observation, ``contradicted`` when such an observation
+  exists, ``unsupported`` otherwise. A card contradicted on any part of the organism
+  confirms nothing.
+* The organism is named with the genus when a card is confirmed, citing the observations
   that confirmed it (feature, value, image).
 * Otherwise the subject abstains with a reason. Where nothing in the case was named, the
   model's first genus is kept as an *unconfirmed* hypothesis beside the abstention, with the
@@ -86,7 +88,8 @@ class AbstentionReason(StrEnum):
     NO_CARD = "no_card_for_genus"
     NOT_CONFIRMED = "not_confirmed"
     CONTRADICTED = "contradicted"
-    UNBOUND = "unbound_genera"
+    UNBOUND_GENERA = "unbound_genera"
+    UNBOUND_SUBJECTS = "unbound_subjects"
     EVIDENCE_INSUFFICIENT = "evidence_insufficient"
     NO_EVIDENCE = "no_evidence"
 
@@ -199,6 +202,30 @@ def check(knowledge: KnowledgeBase, packet: EvidencePacket, genus: str) -> tuple
     return tuple(checks)
 
 
+def organisms(packet: EvidencePacket) -> dict[str, tuple[str, ...]]:
+    """Each root subject with the components that visibly belong to it, root first.
+
+    A root (no ``parent_subject_id``) is an independent identity scope: a tree, a log, a
+    detached part or a material sample (:class:`~dendro_inspector.schemas.evidence.Subject`).
+    """
+    parent = {subject.subject_id: subject.parent_subject_id for subject in packet.subjects}
+
+    def root_of(subject_id: str) -> str:
+        seen: set[str] = set()
+        while parent.get(subject_id) and subject_id not in seen:
+            seen.add(subject_id)
+            subject_id = parent[subject_id] or subject_id
+        return subject_id
+
+    groups: dict[str, list[str]] = {}
+    for subject in packet.subjects:
+        root = root_of(subject.subject_id)
+        members = groups.setdefault(root, [root])
+        if subject.subject_id != root:
+            members.append(subject.subject_id)
+    return {root: tuple(members) for root, members in groups.items()}
+
+
 def decide(
     answer: model_alone.ModelAloneAnswer | None,
     packet: EvidencePacket | None,
@@ -206,7 +233,13 @@ def decide(
     *,
     evidence_sufficient: bool,
 ) -> tuple[tuple[CardCheck, ...], tuple[Decision, ...]]:
-    """Arm V's deterministic decision: the card checks made, and one decision per subject."""
+    """Arm V's deterministic decision: the card checks made, and one decision per organism.
+
+    The model's answer is bound to the evidence only when it names one genus and the evidence
+    shows one organism (a root subject and the components attached to it). The model's
+    subjects are free text with no evidence subject ID, so with several genera or several
+    organisms nothing says which tree the answer was about, and nothing is named.
+    """
     genera = model_genera(answer)
     first = genera[0] if genera else None
     first_cards = genus_cards(knowledge, first) if first else ()
@@ -223,51 +256,51 @@ def decide(
 
     if packet is None or not packet.subjects:
         return (), (abstain(CASE_SUBJECT, AbstentionReason.NO_EVIDENCE, hypothesis=True),)
-    subject_ids = tuple(subject.subject_id for subject in packet.subjects)
+    groups = organisms(packet)
+    roots = tuple(groups)
     if not evidence_sufficient:
         reason = AbstentionReason.EVIDENCE_INSUFFICIENT
-        return (), tuple(abstain(s, reason, hypothesis=True) for s in subject_ids)
+        return (), tuple(abstain(r, reason, hypothesis=True) for r in roots)
     if not genera:
         reason = AbstentionReason.MODEL_NAMED_NO_GENUS
-        return (), tuple(abstain(s, reason, hypothesis=True) for s in subject_ids)
-
+        return (), tuple(abstain(r, reason, hypothesis=True) for r in roots)
     if len(genera) > 1:
-        # Several genera for several trees, and nothing that says which tree is which:
-        # checking each genus against every subject could give one tree another's name.
-        reason = AbstentionReason.UNBOUND
-        return (), tuple(abstain(s, reason, hypothesis=False) for s in subject_ids)
+        reason = AbstentionReason.UNBOUND_GENERA
+        return (), tuple(abstain(r, reason, hypothesis=False) for r in roots)
 
     genus = genera[0]
     checks = check(knowledge, packet, genus)
-    named = {c.subject_id for c in checks if c.verdict is Verdict.CONFIRMED}
-    decisions = []
-    for subject_id in subject_ids:
-        mine = [c for c in checks if c.subject_id == subject_id]
-        if subject_id in named:
-            cited: dict[str, EvidenceRef] = {}
-            for c in mine:
-                if c.verdict is Verdict.CONFIRMED:
-                    for ref in c.strong:
-                        cited.setdefault(ref.observation_id, ref)
-            decisions.append(
-                Decision(
-                    subject_id=subject_id,
-                    selected_taxon=genus,
-                    resolution="genus",
-                    status="card_confirmed",
-                    abstained=False,
-                    evidence=tuple(cited.values()),
-                )
-            )
-            continue
-        if not checks:
-            reason = AbstentionReason.NO_CARD
-        elif any(c.verdict is Verdict.CONTRADICTED for c in mine):
-            reason = AbstentionReason.CONTRADICTED
-        else:
-            reason = AbstentionReason.NOT_CONFIRMED
-        decisions.append(abstain(subject_id, reason, hypothesis=not named))
-    return checks, tuple(decisions)
+    if len(roots) > 1:
+        # Recorded so that a later subject binding can be measured; nothing is named.
+        reason = AbstentionReason.UNBOUND_SUBJECTS
+        return checks, tuple(abstain(r, reason, hypothesis=False) for r in roots)
+
+    root = roots[0]
+    members = set(groups[root])
+    mine = [c for c in checks if c.subject_id in members]
+    contradicted_cards = {c.card for c in mine if c.verdict is Verdict.CONTRADICTED}
+    cited: dict[str, EvidenceRef] = {}
+    for c in mine:
+        if c.verdict is Verdict.CONFIRMED and c.card not in contradicted_cards:
+            for ref in c.strong:
+                cited.setdefault(ref.observation_id, ref)
+    if cited:
+        named = Decision(
+            subject_id=root,
+            selected_taxon=genus,
+            resolution="genus",
+            status="card_confirmed",
+            abstained=False,
+            evidence=tuple(cited.values()),
+        )
+        return checks, (named,)
+    if not checks:
+        reason = AbstentionReason.NO_CARD
+    elif contradicted_cards:
+        reason = AbstentionReason.CONTRADICTED
+    else:
+        reason = AbstentionReason.NOT_CONFIRMED
+    return checks, (abstain(root, reason, hypothesis=True),)
 
 
 def _tokens(events: Sequence[Mapping[str, Any]]) -> int:

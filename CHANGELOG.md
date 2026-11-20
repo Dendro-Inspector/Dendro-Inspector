@@ -18,7 +18,8 @@ get entries.
   strong feature of the model's genus with nothing contradicting it, cites those
   observations, and otherwise abstains with a reason and keeps the genus as an unconfirmed
   hypothesis with the next photograph to take (`dendro_inspector.evaluation.validated`). An
-  answer naming several genera binds to no tree. `--answers` takes the names from an earlier
+  answer binds only when it names one genus and the evidence shows one organism (a root
+  subject and its attached components); otherwise nothing is named. `--answers` takes the names from an earlier
   arm M run given to the same photographs, statement and prompts, so one model can name and
   another check; `--replay` re-decides stored records offline and fails when it finds none.
   `run_graph` gains `stop_before`, used only by this arm. Evaluation only: no inspection

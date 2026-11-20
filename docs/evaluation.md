@@ -717,21 +717,29 @@ extractor, evidence quality. Nothing after them runs: no candidate generation, r
 arbitration, correction retry or graph fallback. Code then decides
 ([`validated.py`](../src/dendro_inspector/evaluation/validated.py)):
 
-- The answer binds to the evidence only when the model names exactly one genus. Its
-  subjects are free text with no evidence subject ID, so when it names different genera for
-  different trees, nothing says which tree each belongs to: every subject abstains
-  (`unbound_genera`) rather than give one tree another's name.
-- Every card of that genus is matched against each subject's own evidence with
-  `match_card`, the admission boundary the graph uses; no observation is borrowed from
-  another subject. A pairing is `confirmed` when a feature the card calls strong was
-  observed and nothing contradicts or disqualifies it.
-- Each subject with a confirmed pairing is named with the genus. The decision cites the
+- The answer binds to the evidence only when the model names exactly one genus and the
+  evidence shows exactly one organism: one root subject and the components attached to it.
+  A root is any independent tree, log, detached part or material sample. The model's
+  subjects are free text with no evidence subject ID, so with several genera
+  (`unbound_genera`) or several organisms (`unbound_subjects`) nothing says which tree the
+  answer was about, and nothing is named. The card checks are still recorded for several
+  organisms, so a later subject binding can be measured against them.
+- Every card of that genus is matched against each subject of the organism with
+  `match_card`, the admission boundary the graph uses. A pairing is `confirmed` when a
+  feature the card calls strong was observed and nothing contradicts or disqualifies it. A
+  card contradicted on any part of the organism confirms nothing.
+- The organism is named with the genus when a card is confirmed. The decision cites the
   observations that confirmed it: feature, value, image.
-- Otherwise the subject abstains with a reason (`not_confirmed`, `contradicted`,
-  `no_card_for_genus`, `unbound_genera`, `evidence_insufficient`, `model_named_no_genus`,
-  `no_evidence`). Where nothing in the case was named, the model's genus is kept as an
-  unconfirmed `visual_hypothesis`, with the follow-up photographs its cards list. A
-  hypothesis is never an answer and is never graded.
+- Otherwise the organism abstains with a reason (`not_confirmed`, `contradicted`,
+  `no_card_for_genus`, `unbound_genera`, `unbound_subjects`, `evidence_insufficient`,
+  `model_named_no_genus`, `no_evidence`). Where the answer is bound and unconfirmed, the
+  model's genus is kept as an unconfirmed `visual_hypothesis`, with the follow-up
+  photographs its cards list. A hypothesis is never an answer and is never graded.
+
+Scenes with several organisms are therefore never named by arm V. On the development units
+that cost correct names (a tree with a loose leaf beside it, a standing tree and its felled
+log); recovering them needs an explicit binding between the model's answer and one
+organism, not a looser rule.
 
 `card_confirmed` means the recorded observations match a feature the card calls strong for
 that genus. It is not a botanical identification. The check catches a model that reads the
