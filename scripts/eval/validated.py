@@ -56,17 +56,17 @@ def replay(directory: Path) -> int:
     from dendro_inspector.knowledge.loader import KnowledgeBase
 
     knowledge = KnowledgeBase(load_config().knowledge, root=ROOT)
-    differ = checked = 0
-    for path in sorted((directory / "cases").glob("*.json")):
-        stored = json.loads(path.read_text(encoding="utf-8"))
-        if stored.get("arm") != validated.ARM or "result" not in stored:
-            continue
-        checked += 1
-        if not validated.replay_matches(stored, knowledge):
-            differ += 1
-            print(f"{path.stem}: replayed decisions differ from the record", flush=True)
-    print(f"replayed {checked} records: {checked - differ} identical, {differ} differ")
-    return 1 if differ else 0
+    summary = validated.replay_run(directory, knowledge)
+    for name in summary.differing:
+        print(f"{name}: replayed decisions differ from the record", flush=True)
+    if not summary.checked:
+        print(f"no arm V record with a decision in {directory / 'cases'}: nothing was replayed")
+    else:
+        print(
+            f"replayed {summary.checked} records: "
+            f"{summary.checked - len(summary.differing)} identical, {len(summary.differing)} differ"
+        )
+    return summary.exit_code
 
 
 async def run(args: argparse.Namespace) -> int:
@@ -132,21 +132,26 @@ async def run(args: argparse.Namespace) -> int:
                 user_has_field_context=unit["field_context"],
                 metadata={"locale": "en"},
             )
-            ctx = build_context(config, root=ROOT, case_id=case_id)
-            provider = ctx.providers.get(Role.PRIMARY)
-            namer_call = None
+            recorded = None
             if args.answers:
                 earlier = json.loads(
                     (args.answers / "cases" / f"{unit['unit_id']}.json").read_text(encoding="utf-8")
                 )
-                if earlier.get("arm") != "model_alone" or "result" not in earlier:
-                    raise SystemExit(f"{unit['unit_id']}: --answers holds no arm M answer for it")
-                stored_answer = model_alone.ModelAloneAnswer.model_validate(
-                    earlier["result"]["model_alone"]["answer"]
+                # Refuses (this unit fails alone) unless the earlier answer was given to these
+                # photographs, in this order, under the same statement, request and prompt.
+                recorded = validated.answer_from_record(
+                    earlier,
+                    photo_sha256=[photo["sha256"] for photo in photos],
+                    field_context=unit["field_context"],
+                    domain_prompt_sha256=domain.sha256,
                 )
-                adapter, _, model = earlier["models"]["primary"].partition(":")
-                namer_call = earlier["result"]["trace"]["events"][0]["provider_calls"][0]
-                source = f"record:{earlier['models']['primary']}:{earlier.get('started_at')}"
+            ctx = build_context(config, root=ROOT, case_id=case_id)
+            provider = ctx.providers.get(Role.PRIMARY)
+            namer_call = None
+            if recorded is not None:
+                stored_answer = recorded.answer
+                adapter, model, source = recorded.adapter, recorded.model, recorded.source
+                namer_call = recorded.call
 
                 async def namer() -> Any:
                     return stored_answer, None, 0.0

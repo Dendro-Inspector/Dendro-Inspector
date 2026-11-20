@@ -717,14 +717,19 @@ extractor, evidence quality. Nothing after them runs: no candidate generation, r
 arbitration, correction retry or graph fallback. Code then decides
 ([`validated.py`](../src/dendro_inspector/evaluation/validated.py)):
 
-- Every card of every genus the model named is matched against each subject's evidence with
-  `match_card`, the admission boundary the graph uses. A pairing is `confirmed` when a
-  feature the card calls strong was observed and nothing contradicts or disqualifies it.
-- A subject is named with a genus when exactly one of the model's genera is confirmed on it.
-  The decision cites the observations that confirmed it: feature, value, image.
+- The answer binds to the evidence only when the model names exactly one genus. Its
+  subjects are free text with no evidence subject ID, so when it names different genera for
+  different trees, nothing says which tree each belongs to: every subject abstains
+  (`unbound_genera`) rather than give one tree another's name.
+- Every card of that genus is matched against each subject's own evidence with
+  `match_card`, the admission boundary the graph uses; no observation is borrowed from
+  another subject. A pairing is `confirmed` when a feature the card calls strong was
+  observed and nothing contradicts or disqualifies it.
+- Each subject with a confirmed pairing is named with the genus. The decision cites the
+  observations that confirmed it: feature, value, image.
 - Otherwise the subject abstains with a reason (`not_confirmed`, `contradicted`,
-  `no_card_for_genus`, `ambiguous`, `evidence_insufficient`, `model_named_no_genus`,
-  `no_evidence`). Where nothing in the case was named, the model's first genus is kept as an
+  `no_card_for_genus`, `unbound_genera`, `evidence_insufficient`, `model_named_no_genus`,
+  `no_evidence`). Where nothing in the case was named, the model's genus is kept as an
   unconfirmed `visual_hypothesis`, with the follow-up photographs its cards list. A
   hypothesis is never an answer and is never graded.
 
@@ -732,7 +737,8 @@ arbitration, correction retry or graph fallback. Code then decides
 that genus. It is not a botanical identification. The check catches a model that reads the
 features correctly and names the wrong genus. It cannot catch a misreading the same model
 makes both when naming and when describing: an oak's lobed leaves read as `palmate_lobed`
-confirm *Acer*. Checking one model's names with another model's evidence is the experimental
+confirm *Acer* (`test_a_shared_misreading_is_confirmed_which_is_the_checks_known_limit`
+states this). Checking one model's names with another model's evidence is the experimental
 variant below.
 
 ```bash
@@ -740,9 +746,14 @@ variant below.
 python scripts/eval/validated.py --units units.json --out runs/<name>
 # V x: an earlier arm M run (possibly another model) names; the primary model's evidence checks
 python scripts/eval/validated.py --units units.json --answers runs/<arm-m> --out runs/<name>
-# re-decide every stored record offline from its recorded answer and evidence; 1 if any differs
-python scripts/eval/validated.py --replay runs/<name>
+# re-decide every stored record offline from its recorded answer and evidence
+python scripts/eval/validated.py --replay runs/<name>    # 0 identical, 1 any differs, 2 none found
 ```
+
+`--answers` uses an earlier answer only if it was given to the same question: the same
+photographs in the same order (answers cite them by position), the same field-context
+statement, request, answer schema and domain prompt. Otherwise that unit fails alone and no
+record is written.
 
 Each record keeps the stored-case layout and adds `result.validated`: the rules version, the
 answer and its source, every card check, the evidence-quality verdict, wall time for the

@@ -9,6 +9,9 @@ from __future__ import annotations
 
 import asyncio
 import copy
+import json
+
+import pytest
 
 from dendro_inspector.evaluation import model_alone, validated
 from dendro_inspector.evaluation.label_scoring import Outcome, ReferenceLabel
@@ -162,19 +165,64 @@ def test_insufficient_evidence_abstains_even_where_a_card_would_confirm(knowledg
     assert _only(decisions).abstention_reason is validated.AbstentionReason.EVIDENCE_INSUFFICIENT
 
 
-def test_two_of_the_models_genera_confirmed_on_one_subject_name_neither(knowledge):
-    _, decisions = validated.decide(
+def test_several_genera_name_no_tree_rather_than_guess_which_tree_is_which(knowledge):
+    # The model's subjects are free text: "the maple" and "the lime" carry no evidence
+    # subject ID, so even evidence that would confirm each genus on one tree binds nothing.
+    checks, decisions = validated.decide(
         _answer("Acer", "Tilia"),
         _packet(
-            _obs("obs-1", "leaf.shape", "palmate_lobed"),
-            _obs("obs-2", "fruit.type", "nutlet_with_bract"),
+            _obs("obs-1", "leaf.shape", "palmate_lobed", subject="tree_a"),
+            _obs("obs-2", "fruit.type", "nutlet_with_bract", subject="tree_b"),
+            subjects=("tree_a", "tree_b"),
         ),
         knowledge,
         evidence_sufficient=True,
     )
-    decision = _only(decisions)
-    assert decision.selected_taxon is None
-    assert decision.abstention_reason is validated.AbstentionReason.AMBIGUOUS
+    assert checks == ()
+    assert {d.subject_id for d in decisions} == {"tree_a", "tree_b"}
+    for decision in decisions:
+        assert decision.selected_taxon is None
+        assert decision.abstention_reason is validated.AbstentionReason.UNBOUND
+        assert decision.visual_hypothesis is None
+
+
+def test_one_genus_is_named_only_on_trees_whose_own_evidence_confirms_it(knowledge):
+    _, decisions = validated.decide(
+        _answer("Acer"),
+        _packet(
+            _obs("obs-a", "leaf.shape", "palmate_lobed", subject="tree_a"),
+            _obs("obs-b", "leaf.shape", "palmate_lobed", subject="tree_b"),
+            _obs("obs-c", "bark.pattern", "shallow_fissures", subject="tree_c"),
+            subjects=("tree_a", "tree_b", "tree_c"),
+        ),
+        knowledge,
+        evidence_sufficient=True,
+    )
+    by_subject = {d.subject_id: d for d in decisions}
+    assert by_subject["tree_a"].selected_taxon == "acer"
+    assert [r.observation_id for r in by_subject["tree_a"].evidence] == ["obs-a"]
+    assert [r.observation_id for r in by_subject["tree_b"].evidence] == ["obs-b"]
+    assert by_subject["tree_c"].selected_taxon is None
+    assert by_subject["tree_c"].abstention_reason is validated.AbstentionReason.NOT_CONFIRMED
+
+
+def test_a_shared_misreading_is_confirmed_which_is_the_checks_known_limit(knowledge):
+    # Recorded on a development oak: one model named Acer and its own extraction read the
+    # lobed leaves as palmate_lobed, opposite. The check confirms that; it cannot see that
+    # both readings are wrong. Another model's reading of the same leaves (simple_lobed)
+    # does not confirm Acer, which is why --answers lets one model's evidence check another.
+    misread = _packet(
+        _obs("obs-shape", "leaf.shape", "palmate_lobed"),
+        _obs("obs-arr", "leaf.arrangement", "opposite"),
+    )
+    _, decisions = validated.decide(_answer("Acer"), misread, knowledge, evidence_sufficient=True)
+    assert _only(decisions).selected_taxon == "acer"
+
+    read_by_another = _packet(_obs("obs-shape", "leaf.shape", "simple_lobed"))
+    _, decisions = validated.decide(
+        _answer("Acer"), read_by_another, knowledge, evidence_sufficient=True
+    )
+    assert _only(decisions).selected_taxon is None
 
 
 def test_only_the_confirming_subject_is_named_and_no_hypothesis_is_spread(knowledge):
@@ -315,3 +363,86 @@ def test_a_failed_namer_fails_the_unit_without_a_response(simple_case, node_cont
     assert stored["exit_code"] == 1
     assert "result" not in stored
     assert "provider unavailable" in stored["error"]
+
+
+def _arm_m(photo_sha256, *, field_context=False, domain="d" * 64):
+    stored = model_alone.record(
+        answer=_answer("Pinus"),
+        usage=None,
+        wall_seconds=1.0,
+        adapter="vibe",
+        model="large",
+        unit_id="unit-1",
+        photos=[{"name": f"{n}.jpg", "sha256": s} for n, s in enumerate(photo_sha256)],
+        field_context=field_context,
+        domain_prompt_sha256=domain,
+        image_max_edge_px=1600,
+        code_commit_sha=None,
+        started_at="2026-11-20T00:00:00+00:00",
+    )
+    return json.loads(json.dumps(stored))
+
+
+def test_an_earlier_answer_is_used_only_for_the_same_question():
+    photos = ["a" * 64, "b" * 64]
+    recorded = validated.answer_from_record(
+        _arm_m(photos), photo_sha256=photos, field_context=False, domain_prompt_sha256="d" * 64
+    )
+    assert validated.model_genera(recorded.answer) == ("pinus",)
+    assert (recorded.adapter, recorded.model) == ("vibe", "large")
+    assert recorded.source.startswith("record:vibe:large:")
+
+
+@pytest.mark.parametrize(
+    ("earlier", "photos", "field_context", "domain"),
+    [
+        (["a" * 64, "b" * 64], ["a" * 64, "c" * 64], False, "d" * 64),
+        (["a" * 64, "b" * 64], ["b" * 64, "a" * 64], False, "d" * 64),
+        (["a" * 64], ["a" * 64, "b" * 64], False, "d" * 64),
+        (["a" * 64], ["a" * 64], True, "d" * 64),
+        (["a" * 64], ["a" * 64], False, "e" * 64),
+    ],
+    ids=["other-photo", "other-order", "fewer-photos", "field-context", "domain-prompt"],
+)
+def test_an_earlier_answer_to_another_question_is_refused(earlier, photos, field_context, domain):
+    with pytest.raises(validated.AnswerMismatchError):
+        validated.answer_from_record(
+            _arm_m(earlier),
+            photo_sha256=photos,
+            field_context=field_context,
+            domain_prompt_sha256=domain,
+        )
+
+
+def test_a_failed_arm_m_record_holds_no_answer_to_use():
+    failed = _arm_m(["a" * 64])
+    failed["failure"] = failed.pop("result")
+    with pytest.raises(validated.AnswerMismatchError):
+        validated.answer_from_record(
+            failed, photo_sha256=["a" * 64], field_context=False, domain_prompt_sha256="d" * 64
+        )
+
+
+def test_replay_of_a_folder_fails_when_there_is_nothing_to_replay(tmp_path, knowledge):
+    (tmp_path / "cases").mkdir()
+    summary = validated.replay_run(tmp_path, knowledge)
+    assert summary.checked == 0
+    assert summary.exit_code == 2
+
+
+def test_replay_of_a_folder_passes_identical_records_and_names_changed_ones(
+    tmp_path, simple_case, node_context, knowledge
+):
+    stored = _run(simple_case, node_context, "Pinus")
+    cases = tmp_path / "cases"
+    cases.mkdir()
+    (cases / "same.json").write_text(json.dumps(stored), encoding="utf-8")
+    assert validated.replay_run(tmp_path, knowledge).exit_code == 0
+
+    changed = copy.deepcopy(stored)
+    changed["result"]["response"]["decisions"][0]["selected_taxon"] = "picea"
+    (cases / "changed.json").write_text(json.dumps(changed), encoding="utf-8")
+    summary = validated.replay_run(tmp_path, knowledge)
+    assert summary.checked == 2
+    assert summary.differing == ("changed",)
+    assert summary.exit_code == 1

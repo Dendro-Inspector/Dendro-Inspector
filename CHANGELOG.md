@@ -17,10 +17,12 @@ get entries.
   evidence quality) extract evidence; code names a subject only where `match_card` finds a
   strong feature of the model's genus with nothing contradicting it, cites those
   observations, and otherwise abstains with a reason and keeps the genus as an unconfirmed
-  hypothesis with the next photograph to take (`dendro_inspector.evaluation.validated`).
-  `--answers` takes the names from an earlier arm M run, so one model can name and another
-  check; `--replay` re-decides stored records offline. `run_graph` gains `stop_before`, used
-  only by this arm. Evaluation only: no inspection default changes.
+  hypothesis with the next photograph to take (`dendro_inspector.evaluation.validated`). An
+  answer naming several genera binds to no tree. `--answers` takes the names from an earlier
+  arm M run given to the same photographs, statement and prompts, so one model can name and
+  another check; `--replay` re-decides stored records offline and fails when it finds none.
+  `run_graph` gains `stop_before`, used only by this arm. Evaluation only: no inspection
+  default changes.
 
 - **Arm M of the held-out protocol, the model alone.** `scripts/eval/model_alone.py` asks the
   configured primary model once per unit, through the graph's own provider layer and image

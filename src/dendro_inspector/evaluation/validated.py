@@ -7,13 +7,17 @@ after them. No candidate generation, review, arbitration, correction retry or gr
 runs. Code then decides, with no model call, whether the observations confirm the model's
 genus:
 
-* For every genus the model named and every card of that genus, ``match_card`` (the
-  admission boundary the graph itself uses) matches each subject's evidence. The pairing is
-  ``confirmed`` when a strong-positive feature of the card was observed with no
-  contradicting or disqualifying observation, ``contradicted`` when such an observation
-  exists, ``unsupported`` otherwise.
-* A subject is named with a genus when exactly one of the model's genera is confirmed on it.
-  The answer cites the observations that confirmed it (feature, value, image).
+* The model's answer binds to the evidence only when it names exactly one genus. Its
+  subjects are free text with no evidence subject ID, so when it names several genera for
+  several trees nothing says which tree each belongs to, and every subject abstains
+  (``unbound_genera``) rather than give one tree another's name.
+* For every card of that genus, ``match_card`` (the admission boundary the graph itself
+  uses) matches each subject's own evidence; no observation is borrowed from another
+  subject. The pairing is ``confirmed`` when a strong-positive feature of the card was
+  observed with no contradicting or disqualifying observation, ``contradicted`` when such an
+  observation exists, ``unsupported`` otherwise.
+* Each subject with a confirmed pairing is named with the genus, citing the observations
+  that confirmed it (feature, value, image).
 * Otherwise the subject abstains with a reason. Where nothing in the case was named, the
   model's first genus is kept as an *unconfirmed* hypothesis beside the abstention, with the
   follow-up photographs its cards list. A hypothesis is never an answer and is never graded.
@@ -31,9 +35,12 @@ graph's own scorer (:func:`grade`).
 from __future__ import annotations
 
 import asyncio
+import json
 import time
 from collections.abc import Awaitable, Callable, Mapping, Sequence
+from dataclasses import dataclass
 from enum import StrEnum
+from pathlib import Path
 from typing import Any, Literal
 
 from dendro_inspector.config import Role
@@ -62,6 +69,8 @@ RULES_VERSION = 1
 #: Arm V runs the graph up to, not including, these nodes: candidate generation, or the
 #: photo planner the graph turns to when evidence quality is insufficient.
 STOP_BEFORE = frozenset({NodeName.CANDIDATE_GENERATOR, NodeName.PHOTO_PLANNER})
+#: The arm name and result key of an arm M record (``model_alone.record``).
+_ARM_M = "model_alone"
 #: The subject a decision belongs to when the evidence names no subject at all.
 CASE_SUBJECT = "case"
 
@@ -77,7 +86,7 @@ class AbstentionReason(StrEnum):
     NO_CARD = "no_card_for_genus"
     NOT_CONFIRMED = "not_confirmed"
     CONTRADICTED = "contradicted"
-    AMBIGUOUS = "ambiguous"
+    UNBOUND = "unbound_genera"
     EVIDENCE_INSUFFICIENT = "evidence_insufficient"
     NO_EVIDENCE = "no_evidence"
 
@@ -222,26 +231,22 @@ def decide(
         reason = AbstentionReason.MODEL_NAMED_NO_GENUS
         return (), tuple(abstain(s, reason, hypothesis=True) for s in subject_ids)
 
-    checks = tuple(c for genus in genera for c in check(knowledge, packet, genus))
-    confirmed_on = {
-        s: [
-            g
-            for g in genera
-            if any(
-                c.genus == g and c.subject_id == s for c in checks if c.verdict is Verdict.CONFIRMED
-            )
-        ]
-        for s in subject_ids
-    }
-    named = {s for s, found in confirmed_on.items() if len(found) == 1}
+    if len(genera) > 1:
+        # Several genera for several trees, and nothing that says which tree is which:
+        # checking each genus against every subject could give one tree another's name.
+        reason = AbstentionReason.UNBOUND
+        return (), tuple(abstain(s, reason, hypothesis=False) for s in subject_ids)
+
+    genus = genera[0]
+    checks = check(knowledge, packet, genus)
+    named = {c.subject_id for c in checks if c.verdict is Verdict.CONFIRMED}
     decisions = []
     for subject_id in subject_ids:
         mine = [c for c in checks if c.subject_id == subject_id]
         if subject_id in named:
-            genus = confirmed_on[subject_id][0]
             cited: dict[str, EvidenceRef] = {}
             for c in mine:
-                if c.genus == genus and c.verdict is Verdict.CONFIRMED:
+                if c.verdict is Verdict.CONFIRMED:
                     for ref in c.strong:
                         cited.setdefault(ref.observation_id, ref)
             decisions.append(
@@ -255,9 +260,7 @@ def decide(
                 )
             )
             continue
-        if len(confirmed_on[subject_id]) > 1:
-            reason = AbstentionReason.AMBIGUOUS
-        elif not checks:
+        if not checks:
             reason = AbstentionReason.NO_CARD
         elif any(c.verdict is Verdict.CONTRADICTED for c in mine):
             reason = AbstentionReason.CONTRADICTED
@@ -372,6 +375,90 @@ def replay_matches(stored: Mapping[str, Any], knowledge: KnowledgeBase) -> bool:
     """Whether today's rules reach exactly the decisions the record stores."""
     replayed = [d.model_dump(mode="json") for d in replay(stored, knowledge)]
     return replayed == list(stored["result"]["response"]["decisions"])
+
+
+@dataclass(frozen=True, slots=True)
+class ReplaySummary:
+    """What ``--replay`` found in a run folder."""
+
+    checked: int
+    differing: tuple[str, ...]
+
+    @property
+    def exit_code(self) -> int:
+        """0 only when records were replayed and all matched; 2 when there was nothing."""
+        if not self.checked:
+            return 2
+        return 1 if self.differing else 0
+
+
+def replay_run(directory: Path, knowledge: KnowledgeBase) -> ReplaySummary:
+    """Replay every arm V record in ``directory/cases``; failed records hold no decision."""
+    checked, differing = 0, []
+    for path in sorted((directory / "cases").glob("*.json")):
+        stored = json.loads(path.read_text(encoding="utf-8"))
+        if stored.get("arm") != ARM or "result" not in stored:
+            continue
+        checked += 1
+        if not replay_matches(stored, knowledge):
+            differing.append(path.stem)
+    return ReplaySummary(checked=checked, differing=tuple(differing))
+
+
+class AnswerMismatchError(ValueError):
+    """An earlier arm M record does not answer the unit as arm V would ask it."""
+
+
+@dataclass(frozen=True, slots=True)
+class RecordedAnswer:
+    answer: model_alone.ModelAloneAnswer
+    call: Mapping[str, Any]
+    adapter: str
+    model: str
+    source: str
+
+
+def answer_from_record(
+    earlier: Mapping[str, Any],
+    *,
+    photo_sha256: Sequence[str],
+    field_context: bool,
+    domain_prompt_sha256: str,
+) -> RecordedAnswer:
+    """The answer an earlier arm M run gave, if it was given to exactly this question.
+
+    The photographs must be the same files in the same order (the answer cites them by
+    position, ``img-N``), under the same field-context statement, request, answer schema and
+    domain prompt. Anything else would check one question's answer against another
+    question's evidence, so it is refused rather than recorded.
+    """
+    if earlier.get("arm") != _ARM_M or "result" not in earlier:
+        msg = "the record holds no arm M answer"
+        raise AnswerMismatchError(msg)
+    arm = earlier["result"][_ARM_M]
+    recorded = [photo.get("sha256") for photo in arm.get("photos") or ()]
+    if recorded != list(photo_sha256):
+        msg = "the answer was given for other photographs, or in another order"
+        raise AnswerMismatchError(msg)
+    if bool(arm.get("field_context")) != field_context:
+        msg = "the answer was given under another field-context statement"
+        raise AnswerMismatchError(msg)
+    for key, expected in (
+        ("request_sha256", model_alone.REQUEST_SHA256),
+        ("schema_sha256", model_alone.SCHEMA_SHA256),
+        ("domain_prompt_sha256", domain_prompt_sha256),
+    ):
+        if arm.get(key) != expected:
+            msg = f"the answer was given to another {key.removesuffix('_sha256')}"
+            raise AnswerMismatchError(msg)
+    adapter, _, model = str(earlier["models"]["primary"]).partition(":")
+    return RecordedAnswer(
+        answer=model_alone.ModelAloneAnswer.model_validate(arm["answer"]),
+        call=earlier["result"]["trace"]["events"][0]["provider_calls"][0],
+        adapter=adapter,
+        model=model,
+        source=f"record:{earlier['models']['primary']}:{earlier.get('started_at')}",
+    )
 
 
 def subject_answers(stored: Mapping[str, Any]) -> tuple[SubjectAnswer, ...]:
