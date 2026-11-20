@@ -59,7 +59,7 @@ ARM = "validated_bound"
 NODE = "subject_binding"
 #: Bumped whenever a rule in :func:`ineligible_reason`, :func:`verify` or
 #: :func:`decide_bound` changes; every record names the version it used.
-RULES_VERSION = 2
+RULES_VERSION = 3
 
 REQUEST = """## Task: say which listed organism an answer is about
 
@@ -162,6 +162,8 @@ class Outcome(StrEnum):
     """What became of the binding step for one unit."""
 
     NOT_ELIGIBLE = "not_eligible"
+    #: Eligible, but :func:`preflight` proved no reply could change arm V's decision; no call.
+    SKIPPED_IMPOSSIBLE = "skipped_binding_impossible"
     BOUND = "bound"
     NO_REPLY = "no_reply"
     CALL_FAILED = "call_failed"
@@ -430,6 +432,75 @@ def oracle(
     }
 
 
+class Preflight(StrEnum):
+    """Before any call: can a binding change arm V's decision? Never decided from labels."""
+
+    POSSIBLE = "binding_possible"
+    AMBIGUOUS = "binding_ambiguous"
+    IMPOSSIBLE = "binding_impossible"
+
+
+def admissible(
+    answer: model_alone.ModelAloneAnswer,
+    packet: EvidencePacket,
+    image_ids: Sequence[str],
+    root: str,
+) -> bool:
+    """Whether any reply binding ``root`` could pass :func:`verify`.
+
+    Only the cited photographs and observations depend on the reply. Observations can only
+    fail a reply, so the reply that cites every photograph of ``root`` the answer cites,
+    exclusive ones first, is the one most able to pass.
+    """
+    shown = organism_images(packet, validated.organisms(packet)[root])
+    answered = {i for s in named_subjects(answer) for e in s.evidence for i in e.image_ids}
+    others = set().union(
+        *(
+            organism_images(packet, group)
+            for r, group in validated.organisms(packet).items()
+            if r != root
+        )
+    )
+    cited = sorted(shown & answered & set(image_ids), key=lambda i: (i in others, i))
+    reply = BindingReply(
+        status=BindingStatus.BOUND,
+        subject_id=root,
+        supporting_image_ids=tuple(cited[:16]),
+        distinguishing_evidence="",
+        abstention_reason=None,
+    )
+    return verify(reply, packet, answer, image_ids)[0] is Outcome.BOUND
+
+
+def preflight(
+    answer: model_alone.ModelAloneAnswer,
+    packet: EvidencePacket,
+    knowledge: KnowledgeBase,
+    image_ids: Sequence[str],
+) -> tuple[Preflight, tuple[str, ...]]:
+    """Which organisms a binding could name, from the namer's genus, the evidence and the rules.
+
+    A candidate is an organism that some reply could bind (:func:`admissible`) and whose own
+    evidence confirms the genus under arm V's unchanged card rules (:func:`organism_decision`).
+    No candidate: ``binding_impossible``, no reply could change arm V's decision, so no call
+    is needed. One: ``binding_possible``. Several: ``binding_ambiguous``; only the model can
+    say which one is meant, and code may still refuse it. Under these verification rules an
+    answer admits at most one organism, so ``binding_ambiguous`` does not arise; it is kept so
+    that such a unit would be asked, never skipped.
+    """
+    candidates = tuple(
+        root
+        for root in validated.organisms(packet)
+        if admissible(answer, packet, image_ids, root)
+        and organism_decision(answer, packet, knowledge, root).selected_taxon is not None
+    )
+    if not candidates:
+        return Preflight.IMPOSSIBLE, ()
+    if len(candidates) == 1:
+        return Preflight.POSSIBLE, candidates
+    return Preflight.AMBIGUOUS, candidates
+
+
 @dataclass(frozen=True, slots=True)
 class BoundDecision:
     checks: tuple[validated.CardCheck, ...]
@@ -437,6 +508,7 @@ class BoundDecision:
     ineligible: Ineligible | None
     outcome: Outcome
     subject_id: str | None
+    preflight: Preflight | None = None
 
 
 def decide_bound(
@@ -448,21 +520,29 @@ def decide_bound(
     reply: BindingReply | None,
     image_ids: Sequence[str],
 ) -> BoundDecision:
-    """Arm V's decision, with the one organism a verified reply binds checked on its own."""
+    """Arm V's decision, with the one organism a verified reply binds checked on its own.
+
+    Without a reply, an eligible unit is ``skipped_binding_impossible`` when the preflight
+    proves no reply could change the decision, else ``no_reply``. A reply is always verified,
+    also one asked for in the research mode where the preflight said impossible.
+    """
     checks, decisions = validated.decide(
         answer, packet, knowledge, evidence_sufficient=evidence_sufficient
     )
     reason = ineligible_reason(answer, packet, decisions, evidence_sufficient=evidence_sufficient)
     if reason is not None or answer is None or packet is None:
         return BoundDecision(checks, decisions, reason, Outcome.NOT_ELIGIBLE, None)
+    check, _ = preflight(answer, packet, knowledge, image_ids)
     if reply is None:
-        return BoundDecision(checks, decisions, None, Outcome.NO_REPLY, None)
+        skipped = check is Preflight.IMPOSSIBLE
+        outcome = Outcome.SKIPPED_IMPOSSIBLE if skipped else Outcome.NO_REPLY
+        return BoundDecision(checks, decisions, None, outcome, None, check)
     outcome, root = verify(reply, packet, answer, image_ids)
     if outcome is not Outcome.BOUND or root is None:
-        return BoundDecision(checks, decisions, None, outcome, None)
+        return BoundDecision(checks, decisions, None, outcome, None, check)
     own = organism_decision(answer, packet, knowledge, root)
     decided = tuple(own if d.subject_id == root else d for d in decisions)
-    return BoundDecision(checks, decided, None, Outcome.BOUND, root)
+    return BoundDecision(checks, decided, None, Outcome.BOUND, root, check)
 
 
 def record_sha256(stored: Mapping[str, Any]) -> str:
@@ -535,6 +615,7 @@ def record(
         "schema_sha256": SCHEMA_SHA256,
         "eligible": eligible,
         "ineligible_reason": bound.ineligible.value if bound.ineligible else None,
+        "preflight": bound.preflight.value if bound.preflight else None,
         "asked": reply is not None or error is not None,
         "binder": binder,
         "context": text,
@@ -564,11 +645,14 @@ async def bind_unit(
     images: Callable[[], Sequence[ImageInput]],
     max_retries: int = 2,
     identity: Mapping[str, Any] | None = None,
+    call_when_impossible: bool = False,
 ) -> dict[str, Any]:
     """Bind one arm V record: at most one provider call, and only for an eligible unit.
 
-    ``images`` gives the unit's photographs; it is called only when a call will be made, and
-    may raise (a changed photograph), which fails the call and keeps arm V's abstention.
+    No call is made where :func:`preflight` proves no reply could change the decision, unless
+    ``call_when_impossible`` (a research benchmark measuring the binder itself). ``images``
+    gives the unit's photographs; it is called only when a call will be made, and may raise
+    (a changed photograph), which fails the call and keeps arm V's abstention.
     """
     unit_id = str(arm_v.get("unit"))
     if "result" not in arm_v:
@@ -582,7 +666,9 @@ async def bind_unit(
         reply=None,
         image_ids=image_ids,
     )
-    if base.ineligible is not None:
+    if base.ineligible is not None or (
+        base.preflight is Preflight.IMPOSSIBLE and not call_when_impossible
+    ):
         return record(arm_v, knowledge=knowledge, identity=identity)
     binder = f"{provider.adapter_name}:{provider.model}"
     reply: BindingReply | None = None
@@ -634,6 +720,7 @@ def run_identity(
     code_commit_sha: str | None,
     image_max_edge_px: int | None,
     max_retries: int,
+    call_when_impossible: bool = False,
 ) -> dict[str, Any]:
     """What makes two binding records comparable; a run never resumes into another's folder."""
     return {
@@ -644,6 +731,7 @@ def run_identity(
         "code_commit_sha": code_commit_sha,
         "image_max_edge_px": image_max_edge_px,
         "max_retries": max_retries,
+        "call_when_impossible": call_when_impossible,
         "source": source,
         "arm_v": dict(arm_v) if arm_v is not None else None,
     }

@@ -799,6 +799,14 @@ unless the script is invoked.
 - **When it asks.** Evidence quality is sufficient, exactly one answer entry names a genus,
   the packet has several organisms, and every arm V decision is `unbound_subjects`.
   Otherwise there is no call (`not_eligible`, with the reason). At most one call per unit.
+- **When it does not need to ask.** A deterministic preflight, from the namer's genus, the
+  evidence and these rules (never labels), finds the organisms a binding could name: some
+  reply could bind it, and its own evidence confirms the genus under arm V's card rules.
+  None: `binding_impossible`, no reply could change arm V's decision, and no call is made
+  (`skipped_binding_impossible`). One: `binding_possible`. Several: `binding_ambiguous`,
+  asked (under these verification rules an answer admits at most one organism, so it does
+  not arise). `--call-impossible` asks every eligible unit, for a research benchmark of the
+  binder itself.
 - **What it sends.** The photographs, the unchanged answer, the image IDs, and every
   organism: root and components with IDs, kinds, parents, descriptions, photographs and
   observations. The reply schema has a status, one root `subject_id` or null, supporting
@@ -826,16 +834,20 @@ at most one organism per unit: the one shown alone in a photograph the answer ci
 other organism is. The binder can agree with it or abstain; its reply is recorded either
 way, so whether it chose the organism a person would choose is measured separately from what
 code accepted. That correspondence rests on the extractor's subject photograph lists: a
-missed organism in a photograph makes the photograph look exclusive. Binding never runs on a single organism, so it cannot touch a
-misreading that the namer and the extractor share (the oak read as *Acer*).
+missed organism in a photograph makes the photograph look exclusive. Binding never runs on a
+single organism, so it cannot touch a misreading that the namer and the extractor share (the
+oak read as *Acer*).
 
 ```bash
 # feasibility, no provider: who is eligible, what each organism would reach, whether the
 # strongest possible reply verifies (upper bounds), graded where --labels names the genus
 python scripts/eval/bind_subjects.py --from runs/<arm-v> --labels labels.json
-# paid: one binding call per eligible unit on the configured primary model; --max-retries 0
-# makes each call one request, --max-requests caps the whole invocation
-python scripts/eval/bind_subjects.py --from runs/<arm-v> --units units.json     --out runs/<name> --live [--rounds 3] [--max-retries 0] [--max-requests 18]
+# paid: one binding call per eligible unit the preflight does not rule out, on the configured
+# primary model; --max-retries 0 makes each call one request, --max-requests caps the run
+python scripts/eval/bind_subjects.py --from runs/<arm-v> --units units.json \
+    --out runs/<name> --live [--rounds 3] [--max-retries 0] [--max-requests 18]
+# research benchmark of the binder: ask also where the preflight proves binding impossible
+python scripts/eval/bind_subjects.py ... --live --call-impossible
 # re-decide every bound record from its recorded reply, no provider
 python scripts/eval/bind_subjects.py --replay runs/<name>  # 0 identical, 1 any not, 2 none
 ```
@@ -844,8 +856,8 @@ Bound records have arm `validated_bound`, the stored-case layout and `result.bin
 holds the rules version, the request and schema hashes, eligibility, the request context and
 its input hash (context plus photograph hashes), the reply, the outcome, the accepted subject
 and references, any error, the provider call (tokens, latency), the binder, the hash of the
-arm V record it came from and the run identity (code commit, binder, rules, image edge, the
-source run). The call is also appended to the trace's events, so token readers count it.
+arm V record it came from, the preflight class and the run identity (code commit, binder,
+rules, image edge, retry setting, preflight mode, the source run). The call is also appended to the trace's events, so token readers count it.
 Every planned unit gets a record; the run prints them by outcome, with failed units
 (`failed`) and failed calls (`call_failed`) apart from binder and code abstentions. A rerun
 reuses records of the same run, asks again only for a failed call, a failed unit or a

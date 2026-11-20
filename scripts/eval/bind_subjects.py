@@ -21,7 +21,10 @@ Three modes:
   Resumable: a reused record is never asked again; a failed call or unit is; records of
   another run refuse the run. ``--rounds N`` repeats the whole run N times independently,
   into ``<out>/r<k>/``. ``--max-retries 0`` makes each call exactly one provider request, and
-  ``--max-requests N`` caps the provider requests of the whole invocation.
+  ``--max-requests N`` caps the provider requests of the whole invocation. No call is made
+  where the deterministic preflight proves no reply could change arm V's decision
+  (``skipped_binding_impossible``); ``--call-impossible`` asks there too, for a research
+  benchmark of the binder itself.
 * ``--replay DIR``: re-decides every planned bound record from its recorded reply, with no
   provider. Exit 1 if any decision differs or a record was made under other rules or inputs,
   2 if nothing was replayed.
@@ -124,7 +127,7 @@ def feasibility(args: argparse.Namespace) -> int:
     baseline: Counter[str] = Counter()
     best: Counter[str] = Counter()
     verifiable: Counter[str] = Counter()
-    eligible = 0
+    eligible = impossible = 0
     for unit, stored in source.records.items():
         if stored is None or "result" not in stored:
             reasons["arm V failed or not run"] += 1
@@ -142,9 +145,10 @@ def feasibility(args: argparse.Namespace) -> int:
             continue
         eligible += 1
         reasons["eligible"] += 1
+        impossible += binding["preflight"] == subject_binding.Preflight.IMPOSSIBLE
         baseline[before] += 1
         answer, packet, image_ids, _ = subject_binding.inputs_of(stored)
-        print(f"{unit}: eligible, label {label or 'none'}, arm V {before}")
+        print(f"{unit}: eligible, {binding['preflight']}, label {label or 'none'}, arm V {before}")
         reached, passed = [], []
         for root, decision in subject_binding.oracle(answer, packet, knowledge).items():
             bound = [
@@ -165,7 +169,11 @@ def feasibility(args: argparse.Namespace) -> int:
     print(f"\n{args.source}: {len(source.records)} planned units")
     for reason, count in sorted(reasons.items()):
         print(f"  {reason:<28} {count}")
-    print(f"binding calls a live run would make: {eligible} (one per eligible unit)")
+    print(
+        f"binding calls a live run would make: {eligible - impossible} "
+        f"({eligible} eligible, {impossible} skipped as binding_impossible; "
+        f"--call-impossible asks those too)"
+    )
     if labels:
         print("graded over all subjects (labels name no target subject):")
         print(f"  arm V as recorded           {dict(sorted(baseline.items()))}")
@@ -229,6 +237,7 @@ async def live(args: argparse.Namespace) -> int:
         code_commit_sha=commit_sha(),
         image_max_edge_px=max_edge,
         max_retries=retries,
+        call_when_impossible=args.call_impossible,
     )
     gate = asyncio.Semaphore(max(1, args.concurrency))
 
@@ -263,6 +272,7 @@ async def live(args: argparse.Namespace) -> int:
                     images=lambda: images_for(unit_id, arm_v),
                     max_retries=retries,
                     identity=identity,
+                    call_when_impossible=args.call_impossible,
                 )
         (out / f"{unit_id}.json").write_text(
             json.dumps(bound, ensure_ascii=False, indent=1) + "\n", encoding="utf-8"
@@ -339,6 +349,11 @@ def main() -> int:
     )
     parser.add_argument(
         "--max-requests", type=int, help="--live: hard cap on provider requests for the whole run"
+    )
+    parser.add_argument(
+        "--call-impossible",
+        action="store_true",
+        help="--live: research mode, ask also where the preflight proves binding impossible",
     )
     parser.add_argument("--replay", type=Path, help="re-decide the bound records in DIR")
     args = parser.parse_args()

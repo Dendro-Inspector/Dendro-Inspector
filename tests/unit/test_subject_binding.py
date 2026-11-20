@@ -424,10 +424,17 @@ def _arm_v_record(
     )
 
 
-def _bind(arm_v, knowledge, provider, *, identity=None, images=lambda: ()) -> dict[str, Any]:
+def _bind(
+    arm_v, knowledge, provider, *, identity=None, images=lambda: (), call_when_impossible=False
+) -> dict[str, Any]:
     return asyncio.run(
         subject_binding.bind_unit(
-            arm_v, knowledge=knowledge, provider=provider, images=images, identity=identity
+            arm_v,
+            knowledge=knowledge,
+            provider=provider,
+            images=images,
+            identity=identity,
+            call_when_impossible=call_when_impossible,
         )
     )
 
@@ -476,6 +483,66 @@ def test_several_named_answer_subjects_or_weak_evidence_cost_no_call(knowledge):
                 "evidence": "evidence_insufficient",
             }[reason]
         )
+
+
+# --- preflight: no paid call where no reply could change the decision -------------------------
+
+Preflight = subject_binding.Preflight
+
+
+def _preflight(packet, answer, knowledge):
+    return subject_binding.preflight(answer, packet, knowledge, IMAGES)
+
+
+def test_preflight_names_the_one_organism_a_binding_could_name(knowledge):
+    assert _preflight(_two_trees(), _answer(), knowledge) == (Preflight.POSSIBLE, ("tree_a",))
+
+
+def test_preflight_proves_impossible_by_the_cards_or_by_verification(knowledge):
+    # No card of the genus can confirm anything, whichever organism is bound.
+    assert _preflight(_two_trees(), _answer("Salix"), knowledge)[0] is Preflight.IMPOSSIBLE
+    # Both trees would confirm Acer, but the answer cites a photograph of each alone: no
+    # reply can pass verification, so a call could not change the decision either.
+    both = _answer("Acer", ("img-1", "img-3"))
+    assert _preflight(_two_trees(b_leaf=True), both, knowledge)[0] is Preflight.IMPOSSIBLE
+
+
+def test_several_candidates_are_ambiguous_and_still_asked(knowledge, monkeypatch):
+    # Today's verification admits at most one organism per answer; were it looser, several
+    # confirmable organisms would go to the model, never be skipped.
+    monkeypatch.setattr(subject_binding, "admissible", lambda *_: True)
+    both = _answer("Acer", ("img-1", "img-3"))
+    packet = _two_trees(b_leaf=True)
+    assert _preflight(packet, both, knowledge) == (Preflight.AMBIGUOUS, ("tree_a", "tree_b"))
+    provider = ScriptedProvider({"primary:subject_binding": _reply("tree_a", ("img-1",))})
+    bound = _bind(_arm_v_record(packet, knowledge, both), knowledge, provider)
+    assert provider.calls == ["primary:subject_binding"]
+    assert bound["result"]["binding"]["preflight"] == "binding_ambiguous"
+
+
+def test_an_impossible_binding_costs_no_call_unless_research_asks(knowledge):
+    arm_v = _arm_v_record(_two_trees(), knowledge, _answer("Salix"))
+    provider = ScriptedProvider({})
+    skipped = _bind(arm_v, knowledge, provider)
+    assert provider.calls == []
+    binding = skipped["result"]["binding"]
+    assert (binding["outcome"], binding["preflight"]) == (
+        "skipped_binding_impossible",
+        "binding_impossible",
+    )
+    assert binding["eligible"] is True and binding["asked"] is False
+    assert skipped["result"]["response"]["decisions"] == arm_v["result"]["response"]["decisions"]
+    assert subject_binding.replay_status(skipped, knowledge) is ReplayStatus.IDENTICAL
+
+    research = ScriptedProvider({"primary:subject_binding": _reply("tree_a", ("img-1",))})
+    asked = _bind(arm_v, knowledge, research, call_when_impossible=True)
+    assert research.calls == ["primary:subject_binding"]
+    assert asked["result"]["binding"]["outcome"] == "bound"
+    # Bound, and still nothing named: the preflight was right that no card can confirm it.
+    said = {
+        d["subject_id"]: d["abstention_reason"] for d in asked["result"]["response"]["decisions"]
+    }
+    assert said == {"tree_a": Reason.NO_CARD.value, "tree_b": UNBOUND}
 
 
 # --- the live path, with a scripted provider -------------------------------------------------
