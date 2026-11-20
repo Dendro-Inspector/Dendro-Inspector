@@ -857,8 +857,9 @@ holds the rules version, the request and schema hashes, eligibility, the request
 its input hash (context plus photograph hashes), the reply, the outcome, the accepted subject
 and references, any error, the provider call (tokens, latency), the binder, the hash of the
 arm V record it came from, the preflight class and the run identity (code commit, binder,
-rules, image edge, retry setting, preflight mode, the source run). The call is also appended to the trace's events, so token readers count it.
-Every planned unit gets a record; the run prints them by outcome, with failed units
+rules, image edge, retry setting, preflight mode, the source run). The call is also
+appended to the trace's events, so token readers count it. Every planned unit gets a
+record; the run prints them by outcome, with failed units
 (`failed`) and failed calls (`call_failed`) apart from binder and code abstentions. A rerun
 reuses records of the same run, asks again only for a failed call, a failed unit or a
 changed arm V record, and refuses a folder holding another run's records. `--replay` reports
