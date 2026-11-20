@@ -498,3 +498,73 @@ def test_a_unit_refused_before_it_started_still_has_a_record(tmp_path, knowledge
     assert not validated.decided(path)
     assert not validated.decided(cases / "absent.json")
     assert validated.replay_run(tmp_path, knowledge).checked == 0
+
+
+def _identity(**changes):
+    base = {
+        "code_commit_sha": "c" * 40,
+        "config_sha256": "f" * 64,
+        "knowledge_sha256": "k" * 64,
+        "namer": "live:openai:gpt-5-mini",
+        "extractor": "openai:gpt-5-mini",
+        "domain_prompt_sha256": "d" * 64,
+        "image_max_edge_px": 8192,
+    }
+    return validated.run_identity(**{**base, **changes})
+
+
+def test_a_record_names_its_commit_and_run_identity(simple_case, node_context):
+    async def namer():
+        return _answer("Pinus"), None, 0.0
+
+    stored = asyncio.run(
+        validated.run_unit(
+            simple_case,
+            node_context,
+            namer,
+            unit_id="unit-1",
+            answer_source="test",
+            namer_model="scripted",
+            namer_adapter="test",
+            photos=[{"name": "log.jpg", "sha256": "0" * 64}],
+            field_context=False,
+            domain_prompt_sha256="d" * 64,
+            image_max_edge_px=8192,
+            code_commit_sha="c" * 40,
+            started_at="t",
+            identity=_identity(),
+        )
+    )
+    assert stored["code_commit_sha"] == "c" * 40
+    assert stored["result"][validated.ARM]["run_identity"] == _identity()
+    refused = validated.setup_failure(
+        unit_id="u", error="e", started_at="t", code_commit_sha="c" * 40
+    )
+    assert refused["code_commit_sha"] == "c" * 40
+
+
+def test_a_decided_record_is_reused_only_by_the_same_run():
+    stored = {
+        "result": {
+            validated.ARM: {
+                "run_identity": _identity(),
+                "photos": [{"name": "a.jpg", "sha256": "a" * 64}],
+                "field_context": False,
+            }
+        }
+    }
+
+    def conflicts(identity, photos=("a" * 64,), field_context=False):
+        return validated.resume_conflicts(
+            stored, identity, photo_sha256=list(photos), field_context=field_context
+        )
+
+    assert conflicts(_identity()) == ()
+    assert conflicts(_identity(code_commit_sha="e" * 40)) == ("code_commit_sha",)
+    assert conflicts(_identity(namer="answers:runs/vibe-m")) == ("namer",)
+    assert conflicts(_identity(), photos=("b" * 64,)) == ("photos",)
+    assert conflicts(_identity(), field_context=True) == ("field_context",)
+    legacy = {"result": {validated.ARM: {"photos": [], "field_context": False}}}
+    assert "code_commit_sha" in validated.resume_conflicts(
+        legacy, _identity(), photo_sha256=[], field_context=False
+    )

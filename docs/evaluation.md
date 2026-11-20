@@ -763,8 +763,12 @@ photographs in the same order (answers cite them by position), the same field-co
 statement, request, answer schema and domain prompt. Otherwise that unit fails alone.
 
 Every planned unit ends with a record: a decision, a failed run, or a unit refused before it
-started (`failure.stage: setup`), so a score can count every unit, not only the answered
-ones. A rerun skips decided units and tries failed ones again.
+started (`failure.stage: setup`: a missing or changed photograph, an answer for another
+question), so a score can count every unit, not only the answered ones. Every record names
+the code commit. A decided record also carries the run's identity: commit, configuration
+and card hashes, prompt and schema hashes, image edge, namer and extractor. A rerun skips
+decided units and tries failed ones again, but refuses to resume into a folder whose decided
+records came from another run or other photographs, and names what differs.
 
 Each record keeps the stored-case layout and adds `result.validated`: the rules version, the
 answer and its source, every card check, the evidence-quality verdict, wall time for the

@@ -41,7 +41,7 @@ from pathlib import Path
 from typing import Any
 
 # The arm M script's unit loader, so both arms read units and photographs the same way.
-from model_alone import ROOT, commit_sha, load_units
+from model_alone import ROOT, check_photos, commit_sha, load_units
 
 
 def case_id_for(unit_id: str) -> str:
@@ -51,6 +51,11 @@ def case_id_for(unit_id: str) -> str:
         msg = f"unit {unit_id!r} has no usable case ID"
         raise ValueError(msg)
     return case_id
+
+
+def _photo_sha256(path: Path) -> str:
+    """The photograph as it is now; a missing one cannot match any record."""
+    return hashlib.sha256(path.read_bytes()).hexdigest() if path.is_file() else "missing"
 
 
 def replay(directory: Path) -> int:
@@ -75,12 +80,13 @@ def replay(directory: Path) -> int:
 async def run(args: argparse.Namespace) -> int:
     from dendro_inspector.config import Role, load_config
     from dendro_inspector.evaluation import model_alone, validated
+    from dendro_inspector.observability.identity import runtime_identity
     from dendro_inspector.prompts.library import load_domain_prompt, resolve_prompt_path
     from dendro_inspector.providers.base import ImageInput
     from dendro_inspector.runner import build_context
     from dendro_inspector.schemas.input import CaseInput, ImageRef
 
-    units = load_units(args)
+    units = load_units(args, check=False)  # photographs are checked per unit, below
     if args.unit_ids:
         wanted = set(args.unit_ids)
         units = [unit for unit in units if unit["unit_id"] in wanted]
@@ -89,14 +95,49 @@ async def run(args: argparse.Namespace) -> int:
             raise SystemExit(f"not in the unit list: {sorted(missing)}")
     out = args.out / "cases"
     out.mkdir(parents=True, exist_ok=True)
-    # Every planned unit ends with a record; a failed one is tried again on the next run.
-    todo = [u for u in units if args.force or not validated.decided(out / f"{u['unit_id']}.json")]
 
     config = load_config()
     domain = load_domain_prompt(resolve_prompt_path(ROOT, config.prompts.domain_prompt_path))
     max_edge = config.graph.image_max_edge_px
     retries = config.provider_for(Role.PRIMARY).max_structured_retries
     sha = commit_sha()
+    probe = build_context(config, root=ROOT, case_id="identity")
+    primary = probe.providers.get(Role.PRIMARY)
+    extractor = f"{primary.adapter_name}:{primary.model}"
+    await probe.providers.aclose()
+    settings = runtime_identity(config, root=ROOT)
+    identity = validated.run_identity(
+        code_commit_sha=sha,
+        config_sha256=settings.config_sha256,
+        knowledge_sha256=settings.knowledge_sha256,
+        namer=f"answers:{args.answers.resolve()}" if args.answers else f"live:{extractor}",
+        extractor=extractor,
+        domain_prompt_sha256=domain.sha256,
+        image_max_edge_px=max_edge,
+    )
+
+    # Every planned unit ends with a record; a failed one is tried again on the next run. A
+    # decided one is kept only if it came from this same run, so a folder never mixes runs.
+    todo, conflicts = [], []
+    for unit in units:
+        path = out / f"{unit['unit_id']}.json"
+        if args.force or not validated.decided(path):
+            todo.append(unit)
+            continue
+        differ = validated.resume_conflicts(
+            json.loads(path.read_text(encoding="utf-8")),
+            identity,
+            photo_sha256=[_photo_sha256(p) for p in unit["photos"]],
+            field_context=unit["field_context"],
+        )
+        if differ:
+            conflicts.append(f"{unit['unit_id']}: {', '.join(differ)}")
+    if conflicts:
+        shown = "\n  ".join(conflicts[:10])
+        raise SystemExit(
+            f"{out} holds decided records from another run ({len(conflicts)} units):\n"
+            f"  {shown}\nUse a new --out, or --force to run every unit again."
+        )
     print(
         f"{len(units)} units, {len(todo)} to run, {args.concurrency} at a time; rules "
         f"v{validated.RULES_VERSION}; namer "
@@ -115,7 +156,7 @@ async def run(args: argparse.Namespace) -> int:
             failures += 1
             error = f"{type(exc).__name__}: {exc}"[:2000]
             stored = validated.setup_failure(
-                unit_id=unit["unit_id"], error=error, started_at=started
+                unit_id=unit["unit_id"], error=error, started_at=started, code_commit_sha=sha
             )
             (out / f"{unit['unit_id']}.json").write_text(
                 json.dumps(stored, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
@@ -126,6 +167,7 @@ async def run(args: argparse.Namespace) -> int:
         nonlocal failures
         async with gate:
             started = datetime.now(UTC).isoformat(timespec="seconds")
+            check_photos(unit)
             case_id = case_id_for(unit["unit_id"])
             photos = [
                 {"name": path.name, "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
@@ -200,6 +242,7 @@ async def run(args: argparse.Namespace) -> int:
                     image_max_edge_px=max_edge,
                     code_commit_sha=sha,
                     started_at=started,
+                    identity=identity,
                 )
             finally:
                 await ctx.providers.aclose()

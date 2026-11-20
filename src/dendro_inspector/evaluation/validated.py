@@ -333,6 +333,7 @@ def record(
     wall_seconds: Mapping[str, float],
     knowledge: KnowledgeBase,
     error: str | None = None,
+    identity: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """A stored-case record for one unit; ``error`` makes it a failed case.
 
@@ -348,6 +349,7 @@ def record(
     trace["events"] = events
     arm: dict[str, Any] = {
         "rules_version": RULES_VERSION,
+        "run_identity": dict(identity) if identity is not None else None,
         "request_sha256": model_alone.REQUEST_SHA256,
         "schema_sha256": model_alone.SCHEMA_SHA256,
         "domain_prompt_sha256": domain_prompt_sha256,
@@ -381,6 +383,7 @@ def record(
         "unit": unit_id,
         "case_id": case_id,
         "arm": ARM,
+        "code_commit_sha": code_commit_sha,
         "models": {"namer": namer_model, "extractor": extractor_model},
         "started_at": started_at,
         "wall_seconds": wall_seconds.get("total", 0.0),
@@ -410,11 +413,62 @@ def replay_matches(stored: Mapping[str, Any], knowledge: KnowledgeBase) -> bool:
     return replayed == list(stored["result"]["response"]["decisions"])
 
 
-def setup_failure(*, unit_id: str, error: str, started_at: str) -> dict[str, Any]:
+def run_identity(
+    *,
+    code_commit_sha: str | None,
+    config_sha256: str,
+    knowledge_sha256: str,
+    namer: str,
+    extractor: str,
+    domain_prompt_sha256: str,
+    image_max_edge_px: int | None,
+) -> dict[str, Any]:
+    """What makes two arm V records comparable: code, configuration, cards, prompts, models.
+
+    ``namer`` is ``live:<adapter:model>`` or ``answers:<folder>``. A run resumes into a folder
+    only when every decided record there has the same identity, so one result never mixes
+    records from different code, settings or namers.
+    """
+    return {
+        "rules_version": RULES_VERSION,
+        "code_commit_sha": code_commit_sha,
+        "config_sha256": config_sha256,
+        "knowledge_sha256": knowledge_sha256,
+        "request_sha256": model_alone.REQUEST_SHA256,
+        "schema_sha256": model_alone.SCHEMA_SHA256,
+        "domain_prompt_sha256": domain_prompt_sha256,
+        "image_max_edge_px": image_max_edge_px,
+        "namer": namer,
+        "extractor": extractor,
+    }
+
+
+def resume_conflicts(
+    stored: Mapping[str, Any],
+    identity: Mapping[str, Any],
+    *,
+    photo_sha256: Sequence[str],
+    field_context: bool,
+) -> tuple[str, ...]:
+    """What differs between a decided record and the run that would reuse it."""
+    arm = stored["result"][ARM]
+    recorded = arm.get("run_identity") or {}
+    differ = [key for key in identity if recorded.get(key) != identity[key]]
+    if [photo.get("sha256") for photo in arm.get("photos") or ()] != list(photo_sha256):
+        differ.append("photos")
+    if bool(arm.get("field_context")) != field_context:
+        differ.append("field_context")
+    return tuple(differ)
+
+
+def setup_failure(
+    *, unit_id: str, error: str, started_at: str, code_commit_sha: str | None = None
+) -> dict[str, Any]:
     """The record of a planned unit refused before it started, so no unit goes uncounted."""
     return {
         "unit": unit_id,
         "arm": ARM,
+        "code_commit_sha": code_commit_sha,
         "started_at": started_at,
         "wall_seconds": 0.0,
         "exit_code": 1,
@@ -555,6 +609,7 @@ async def run_unit(
     code_commit_sha: str | None,
     started_at: str,
     namer_call: Mapping[str, Any] | None = None,
+    identity: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Name and extract concurrently, then decide. A failure on either side fails the unit.
 
@@ -619,4 +674,5 @@ async def run_unit(
         wall_seconds=walls,
         knowledge=ctx.knowledge,
         error=error,
+        identity=identity,
     )
