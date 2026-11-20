@@ -2,7 +2,7 @@
 
 - **Status:** Current
 - **Owner:** Dendro Inspector maintainers
-- **Date:** 2026-09-05
+- **Date:** 2026-11-20
 - **Last-verified:** 2026-09-05
 
 ```bash
@@ -707,6 +707,52 @@ How the run on this set is carried out for v1.0.0, what is counted, and which re
 to which decision is fixed in advance in
 [`docs/specs/v1-heldout-protocol.md`](specs/v1-heldout-protocol.md). It compares the graph
 with the model alone on the same units and has to be signed before any result is read.
+
+## Arm V: the model checked against its card
+
+Arm V asks the model alone for a genus (arm M's request,
+[`model_alone.py`](../src/dendro_inspector/evaluation/model_alone.py)) and, concurrently, runs
+the graph's first stages exactly as an inspection does: input guard, planner, evidence
+extractor, evidence quality. Nothing after them runs: no candidate generation, review,
+arbitration, correction retry or graph fallback. Code then decides
+([`validated.py`](../src/dendro_inspector/evaluation/validated.py)):
+
+- Every card of every genus the model named is matched against each subject's evidence with
+  `match_card`, the admission boundary the graph uses. A pairing is `confirmed` when a
+  feature the card calls strong was observed and nothing contradicts or disqualifies it.
+- A subject is named with a genus when exactly one of the model's genera is confirmed on it.
+  The decision cites the observations that confirmed it: feature, value, image.
+- Otherwise the subject abstains with a reason (`not_confirmed`, `contradicted`,
+  `no_card_for_genus`, `ambiguous`, `evidence_insufficient`, `model_named_no_genus`,
+  `no_evidence`). Where nothing in the case was named, the model's first genus is kept as an
+  unconfirmed `visual_hypothesis`, with the follow-up photographs its cards list. A
+  hypothesis is never an answer and is never graded.
+
+`card_confirmed` means the recorded observations match a feature the card calls strong for
+that genus. It is not a botanical identification. The check catches a model that reads the
+features correctly and names the wrong genus. It cannot catch a misreading the same model
+makes both when naming and when describing: an oak's lobed leaves read as `palmate_lobed`
+confirm *Acer*. Checking one model's names with another model's evidence is the experimental
+variant below.
+
+```bash
+# arm V on the configured primary model (records in runs/<name>/cases/)
+python scripts/eval/validated.py --units units.json --out runs/<name>
+# V x: an earlier arm M run (possibly another model) names; the primary model's evidence checks
+python scripts/eval/validated.py --units units.json --answers runs/<arm-m> --out runs/<name>
+# re-decide every stored record offline from its recorded answer and evidence; 1 if any differs
+python scripts/eval/validated.py --replay runs/<name>
+```
+
+Each record keeps the stored-case layout and adds `result.validated`: the rules version, the
+answer and its source, every card check, the evidence-quality verdict, wall time for the
+namer, the extraction and the whole unit, and tokens for each. The decision is taken from
+the evidence packet as the trace records it, which is why `--replay` reproduces it exactly.
+`DENDRO_IMAGE_MAX_EDGE_PX` is recorded; a downscale applied outside the engine (a bridge
+worker's own edge limit) is not visible to it and has to be recorded with the run.
+
+Arm V is an evaluation arm. It changes no inspection default, and the held-out protocol
+names its arms separately.
 
 ## Measuring cost and latency
 
