@@ -33,7 +33,19 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[2]
 
 
-def load_units(args: argparse.Namespace) -> list[dict[str, Any]]:
+def check_photos(unit: dict[str, Any]) -> None:
+    """Raise ValueError if a photograph is missing or is not the one the unit list recorded."""
+    for path, expected in zip(unit["photos"], unit.get("expected_sha256") or (), strict=False):
+        if not path.is_file():
+            msg = f"{unit['unit_id']}: {path.name} is missing"
+            raise ValueError(msg)
+        if expected and hashlib.sha256(path.read_bytes()).hexdigest() != expected:
+            msg = f"{unit['unit_id']}: {path.name} is not the photograph recorded"
+            raise ValueError(msg)
+
+
+def load_units(args: argparse.Namespace, *, check: bool = True) -> list[dict[str, Any]]:
+    """The units to run. ``check=False`` leaves the photograph check to the caller, per unit."""
     if args.manifest:
         from dendro_inspector.evaluation import heldout
 
@@ -51,20 +63,22 @@ def load_units(args: argparse.Namespace) -> list[dict[str, Any]]:
     units = json.loads(args.units.read_text(encoding="utf-8"))
     found = []
     for unit in units:
-        photos = []
+        photos, expected = [], []
         for photo in unit["photos"]:
-            path = Path(photo["path"] if isinstance(photo, dict) else photo)
-            expected = photo.get("sha256") if isinstance(photo, dict) else None
-            if expected and hashlib.sha256(path.read_bytes()).hexdigest() != expected:
-                raise SystemExit(f"{unit['unit_id']}: {path.name} is not the photograph recorded")
-            photos.append(path)
-        found.append(
-            {
-                "unit_id": unit["unit_id"],
-                "photos": photos,
-                "field_context": bool(unit.get("field_context")),
-            }
-        )
+            photos.append(Path(photo["path"] if isinstance(photo, dict) else photo))
+            expected.append(photo.get("sha256") if isinstance(photo, dict) else None)
+        entry = {
+            "unit_id": unit["unit_id"],
+            "photos": photos,
+            "field_context": bool(unit.get("field_context")),
+            "expected_sha256": expected,
+        }
+        if check:
+            try:
+                check_photos(entry)
+            except ValueError as exc:
+                raise SystemExit(str(exc)) from exc
+        found.append(entry)
     return found
 
 

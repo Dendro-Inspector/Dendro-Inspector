@@ -2,7 +2,7 @@
 
 - **Status:** Current
 - **Owner:** Dendro Inspector maintainers
-- **Date:** 2026-09-05
+- **Date:** 2026-11-20
 - **Last-verified:** 2026-09-05
 
 ```bash
@@ -707,6 +707,84 @@ How the run on this set is carried out for v1.0.0, what is counted, and which re
 to which decision is fixed in advance in
 [`docs/specs/v1-heldout-protocol.md`](specs/v1-heldout-protocol.md). It compares the graph
 with the model alone on the same units and has to be signed before any result is read.
+
+## Arm V: the model checked against its card
+
+Arm V asks the model alone for a genus (arm M's request,
+[`model_alone.py`](../src/dendro_inspector/evaluation/model_alone.py)) and, concurrently, runs
+the graph's first stages exactly as an inspection does: input guard, planner, evidence
+extractor, evidence quality. Nothing after them runs: no candidate generation, review,
+arbitration, correction retry or graph fallback. Code then decides
+([`validated.py`](../src/dendro_inspector/evaluation/validated.py)):
+
+- The answer binds to the evidence only when the model names exactly one genus and the
+  evidence shows exactly one organism: one root subject and the components attached to it.
+  A root is any independent tree, log, detached part or material sample. The model's
+  subjects are free text with no evidence subject ID, so with several genera
+  (`unbound_genera`) or several organisms (`unbound_subjects`) nothing says which tree the
+  answer was about, and nothing is named. The card checks are still recorded for several
+  organisms, so a later subject binding can be measured against them.
+- Every card of that genus is matched against each subject of the organism with
+  `match_card`, the admission boundary the graph uses. A pairing is `confirmed` when a
+  feature the card calls strong was observed and nothing contradicts or disqualifies it. A
+  card contradicted on any part of the organism confirms nothing.
+- The organism is named with the genus when a card is confirmed. The decision cites the
+  observations that confirmed it: feature, value, image.
+- Otherwise the organism abstains with a reason (`not_confirmed`, `contradicted`,
+  `no_card_for_genus`, `unbound_genera`, `unbound_subjects`, `evidence_insufficient`,
+  `model_named_no_genus`, `no_evidence`). Where the answer is bound and unconfirmed, the
+  model's genus is kept as an unconfirmed `visual_hypothesis`, with the follow-up
+  photographs its cards list. A hypothesis is never an answer and is never graded.
+
+Scenes with several organisms are therefore never named by arm V. On the development units
+that cost correct names (a tree with a loose leaf beside it, a standing tree and its felled
+log); recovering them needs an explicit binding between the model's answer and one
+organism, not a looser rule.
+
+`card_confirmed` means the recorded observations match a feature the card calls strong for
+that genus. It is not a botanical identification. The check catches a model that reads the
+features correctly and names the wrong genus. It cannot catch a misreading the same model
+makes both when naming and when describing: an oak's lobed leaves read as `palmate_lobed`
+confirm *Acer* (`test_a_shared_misreading_is_confirmed_which_is_the_checks_known_limit`
+states this). Checking one model's names with another model's evidence is the experimental
+variant below.
+
+```bash
+# arm V on the configured primary model (records in runs/<name>/cases/)
+python scripts/eval/validated.py --units units.json --out runs/<name>
+# V x: an earlier arm M run (possibly another model) names; the primary model's evidence checks
+python scripts/eval/validated.py --units units.json --answers runs/<arm-m> --out runs/<name>
+# re-decide every stored record offline from its recorded answer and evidence
+python scripts/eval/validated.py --replay runs/<name>    # 0 identical, 1 any differs, 2 none found
+```
+
+`--answers` uses an earlier answer only if it was given to the same question: the same
+photographs in the same order (answers cite them by position), the same field-context
+statement, request, answer schema and domain prompt. Otherwise that unit fails alone.
+
+Every planned unit ends with a record: a decision, a failed run, or a unit refused before it
+started (`failure.stage: setup`: a missing or changed photograph, an answer for another
+question), so a score can count every unit, not only the answered ones. Every record names
+the code commit. A decided record also carries the run's identity: commit, configuration
+and card hashes, prompt and schema hashes, image edge, namer and extractor. A rerun skips
+decided units and tries failed ones again. A decided unit whose photographs or field-context
+statement changed is run again on its own (a missing photograph then fails that unit
+alone); a folder whose decided records came from another run (other code, settings, cards,
+prompts or models) is refused, naming what differs. Each run writes `plan.json` with its
+full unit list, also when only some unit IDs are run: replay and scoring count planned units
+only, records left by an earlier plan are reported, not counted and not deleted, and both the
+run and `--replay` print how many planned units are decided, failed or not run yet, marking
+the plan INCOMPLETE until every unit has a record.
+
+Each record keeps the stored-case layout and adds `result.validated`: the rules version, the
+answer and its source, every card check, the evidence-quality verdict, wall time for the
+namer, the extraction and the whole unit, and tokens for each. The decision is taken from
+the evidence packet as the trace records it, which is why `--replay` reproduces it exactly.
+`DENDRO_IMAGE_MAX_EDGE_PX` is recorded; a downscale applied outside the engine (a bridge
+worker's own edge limit) is not visible to it and has to be recorded with the run.
+
+Arm V is an evaluation arm. It changes no inspection default, and the held-out protocol
+names its arms separately.
 
 ## Measuring cost and latency
 

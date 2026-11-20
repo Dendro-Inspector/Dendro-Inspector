@@ -68,6 +68,8 @@ class NodeRunner(Protocol):
 class GraphRunResult:
     state: GraphState
     trace: RunTrace
+    #: The node the walk reached and did not run, when ``stop_before`` ended it.
+    stopped_before: NodeName | None = None
 
 
 def _context_for_node(node: NodeName, state: GraphState, ctx: NodeContext) -> NodeContext:
@@ -160,15 +162,23 @@ async def run_graph(
     case: CaseInput,
     ctx: NodeContext,
     registry: Mapping[NodeName, NodeRunner],
+    *,
+    stop_before: frozenset[NodeName] = frozenset(),
 ) -> GraphRunResult:
-    """Execute the graph for one case, within the configured wall-clock deadline."""
+    """Execute the graph for one case, within the configured wall-clock deadline.
+
+    ``stop_before`` is for evaluation arms that use only the graph's first stages
+    (``dendro_inspector.evaluation.validated``): the walk returns, without running it, at
+    the first node in the set it reaches, with the state and trace so far. Inspections
+    never pass it, so their walk is unchanged.
+    """
     logger = get_logger("graph")
     deadline = ctx.config.graph.deadline_seconds
     scope = asyncio.timeout(deadline)
     try:
         try:
             async with scope:
-                state = await _walk(case, ctx, registry)
+                state, stopped_before = await _walk(case, ctx, registry, stop_before)
         except TimeoutError as exc:
             # Only the run's own deadline becomes a graph failure; a node's TimeoutError is
             # its own.
@@ -204,7 +214,7 @@ async def run_graph(
             "arbiter_used": trace.arbiter_used,
         },
     )
-    return GraphRunResult(state=state, trace=trace)
+    return GraphRunResult(state=state, trace=trace, stopped_before=stopped_before)
 
 
 #: Where a failed run's partial trace rides on the exception it raised.
@@ -231,7 +241,8 @@ async def _walk(
     case: CaseInput,
     ctx: NodeContext,
     registry: Mapping[NodeName, NodeRunner],
-) -> GraphState:
+    stop_before: frozenset[NodeName] = frozenset(),
+) -> tuple[GraphState, NodeName | None]:
     """Follow the routing function from entry to terminal, one recorded event per node."""
     logger = get_logger("graph")
     state = GraphState(case=case)
@@ -240,6 +251,8 @@ async def _walk(
     max_steps = ctx.config.graph.max_steps
 
     while current is not TERMINAL_NODE:
+        if current in stop_before:
+            return state, current
         if steps >= max_steps:
             msg = (
                 f"graph exceeded max_steps={max_steps} at node {current.value!r}; "
@@ -281,4 +294,4 @@ async def _walk(
             duration_ms=(time.perf_counter() - started) * 1000.0,
         )
         current = next_step(current, state, ctx.config.graph)
-    return state
+    return state, None

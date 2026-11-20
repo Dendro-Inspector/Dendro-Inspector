@@ -170,24 +170,11 @@ async def ask(
     return answer, usage, round(time.monotonic() - started, 1)
 
 
-def record(
-    *,
-    answer: ModelAloneAnswer | None,
-    usage: UsageSink | None,
-    wall_seconds: float,
-    adapter: str,
-    model: str | None,
-    unit_id: str,
-    photos: Sequence[Mapping[str, Any]],
-    field_context: bool,
-    domain_prompt_sha256: str,
-    image_max_edge_px: int | None,
-    code_commit_sha: str | None,
-    started_at: str,
-    error: str | None = None,
+def provider_call(
+    *, usage: UsageSink | None, wall_seconds: float, adapter: str, model: str | None
 ) -> dict[str, Any]:
-    """A stored-case record for one unit; ``error`` makes it a failed case."""
-    call = {
+    """The call as a trace's ``provider_calls`` entry, so token readers count it like any other."""
+    return {
         "role": "primary",
         "node": NODE,
         "model": model,
@@ -205,6 +192,26 @@ def record(
             else {}
         ),
     }
+
+
+def record(
+    *,
+    answer: ModelAloneAnswer | None,
+    usage: UsageSink | None,
+    wall_seconds: float,
+    adapter: str,
+    model: str | None,
+    unit_id: str,
+    photos: Sequence[Mapping[str, Any]],
+    field_context: bool,
+    domain_prompt_sha256: str,
+    image_max_edge_px: int | None,
+    code_commit_sha: str | None,
+    started_at: str,
+    error: str | None = None,
+) -> dict[str, Any]:
+    """A stored-case record for one unit; ``error`` makes it a failed case."""
+    call = provider_call(usage=usage, wall_seconds=wall_seconds, adapter=adapter, model=model)
     trace = {
         "case_id": unit_id,
         "code_commit_sha": code_commit_sha,
