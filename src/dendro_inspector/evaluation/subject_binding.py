@@ -132,7 +132,6 @@ class BindingReply(Contract):
         description="Listed observations of the selected organism matching the answer's features.",
     )
     distinguishing_evidence: str = Field(
-        min_length=1,
         max_length=600,
         description="What separates the selected organism from every other listed one.",
     )
@@ -308,9 +307,13 @@ async def ask(
     text: str,
     images: Sequence[ImageInput],
     max_retries: int = 2,
+    usage: UsageSink | None = None,
 ) -> tuple[BindingReply, UsageSink, float]:
-    """The one binding call: its reply, its token accounting and its wall time in seconds."""
-    usage = UsageSink()
+    """The one binding call: its reply, its token accounting and its wall time in seconds.
+
+    Pass ``usage`` to keep the token accounting of a call that raises.
+    """
+    usage = usage if usage is not None else UsageSink()
     started = time.monotonic()
     reply = await request_structured(
         provider=provider,
@@ -586,20 +589,32 @@ async def bind_unit(
     call: dict[str, Any] | None = None
     error: str | None = None
     try:
-        reply, usage, wall = await ask(
-            provider,
-            text=context(answer, packet, image_ids),
-            images=images(),
-            max_retries=max_retries,
-        )
+        photos = images()
+    except Exception as exc:  # no request was made; recorded as call_failed
+        photos, error = None, f"{type(exc).__name__}: {exc}"[:2000]
+    if photos is not None:
+        usage = UsageSink()
+        started = time.monotonic()
+        try:
+            reply, _, _ = await ask(
+                provider,
+                text=context(answer, packet, image_ids),
+                images=photos,
+                max_retries=max_retries,
+                usage=usage,
+            )
+        except Exception as exc:  # recorded as call_failed; arm V's abstention stands
+            error = f"{type(exc).__name__}: {exc}"[:2000]
+        # A failed call is recorded too, so its tokens and latency are counted.
         call = {
             **model_alone.provider_call(
-                usage=usage, wall_seconds=wall, adapter=provider.adapter_name, model=provider.model
+                usage=usage,
+                wall_seconds=round(time.monotonic() - started, 1),
+                adapter=provider.adapter_name,
+                model=provider.model,
             ),
             "node": NODE,
         }
-    except Exception as exc:  # recorded as call_failed; arm V's abstention stands
-        error = f"{type(exc).__name__}: {exc}"[:2000]
     return record(
         arm_v,
         knowledge=knowledge,

@@ -158,6 +158,21 @@ def test_the_reply_cannot_carry_a_taxon_a_score_or_several_organisms():
         )
 
 
+def test_an_empty_explanation_does_not_fail_the_reply(knowledge):
+    # Code never reads the binder's wording; a strict-mode provider may leave it empty.
+    reply = subject_binding.BindingReply.model_validate(
+        {
+            "status": "abstain",
+            "subject_id": None,
+            "supporting_image_ids": [],
+            "supporting_observation_ids": [],
+            "distinguishing_evidence": "",
+            "abstention_reason": "describes_several",
+        }
+    )
+    assert _decide(_two_trees(), reply, knowledge).outcome is Outcome.BINDER_ABSTAINED
+
+
 def test_the_binder_sees_the_answer_unchanged_and_every_listed_subject():
     packet = _two_trees()
     text = subject_binding.context(_answer(), packet, IMAGES)
@@ -495,6 +510,9 @@ def test_a_failed_binding_call_abstains_safely_and_says_so(knowledge):
     binding = bound["result"]["binding"]
     assert binding["outcome"] == "call_failed" and binding["error"]
     assert binding["asked"] is True
+    # The failed request is still recorded, so its tokens and latency are counted.
+    assert binding["call"]["node"] == subject_binding.NODE
+    assert provider.calls == ["primary:subject_binding"]
     assert bound["result"]["response"]["decisions"] == arm_v["result"]["response"]["decisions"]
 
 
@@ -507,6 +525,7 @@ def test_changed_photographs_fail_the_call_before_any_request(knowledge):
     bound = _bind(_arm_v_record(_two_trees(), knowledge), knowledge, provider, images=changed)
     assert provider.calls == []
     assert bound["result"]["binding"]["outcome"] == "call_failed"
+    assert bound["result"]["binding"]["call"] is None  # no request was made
 
 
 # --- replay and resume -----------------------------------------------------------------------
