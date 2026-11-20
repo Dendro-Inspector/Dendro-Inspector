@@ -551,6 +551,46 @@ class ReplaySummary:
         return 1 if self.differing else 0
 
 
+@dataclass(frozen=True, slots=True)
+class PlanProgress:
+    """How far a run folder got through its plan, so a partial run never reads as finished."""
+
+    planned: int
+    decided: tuple[str, ...]
+    failed: tuple[str, ...]
+    not_run: tuple[str, ...]
+
+    @property
+    def complete(self) -> bool:
+        """Every planned unit has a record: a decision or a counted failure."""
+        return not self.not_run
+
+    def line(self) -> str:
+        state = "complete" if self.complete else "INCOMPLETE"
+        return (
+            f"plan {state}: {self.planned} units, {len(self.decided)} decided, "
+            f"{len(self.failed)} failed, {len(self.not_run)} not run yet"
+        )
+
+
+def plan_progress(directory: Path) -> PlanProgress:
+    """Planned units by state: decided, failed (a record without a decision), not run."""
+    decided, failed, not_run = [], [], []
+    for unit, stored in planned_records(directory).records.items():
+        if stored is None:
+            not_run.append(unit)
+        elif stored.get("arm") == ARM and "result" in stored:
+            decided.append(unit)
+        else:
+            failed.append(unit)
+    return PlanProgress(
+        planned=len(decided) + len(failed) + len(not_run),
+        decided=tuple(decided),
+        failed=tuple(failed),
+        not_run=tuple(not_run),
+    )
+
+
 def replay_run(directory: Path, knowledge: KnowledgeBase) -> ReplaySummary:
     """Replay every planned arm V record with a decision; failed and unplanned ones are not."""
     checked, differing = 0, []

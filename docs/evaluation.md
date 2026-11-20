@@ -771,8 +771,10 @@ decided units and tries failed ones again. A decided unit whose photographs or f
 statement changed is run again on its own (a missing photograph then fails that unit
 alone); a folder whose decided records came from another run (other code, settings, cards,
 prompts or models) is refused, naming what differs. Each run writes `plan.json` with its
-full unit list: replay and scoring count planned units only, and records left by an earlier
-plan are reported, not counted and not deleted.
+full unit list, also when only some unit IDs are run: replay and scoring count planned units
+only, records left by an earlier plan are reported, not counted and not deleted, and both the
+run and `--replay` print how many planned units are decided, failed or not run yet, marking
+the plan INCOMPLETE until every unit has a record.
 
 Each record keeps the stored-case layout and adds `result.validated`: the rules version, the
 answer and its source, every card check, the evidence-quality verdict, wall time for the

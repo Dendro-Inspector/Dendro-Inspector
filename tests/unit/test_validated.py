@@ -610,3 +610,19 @@ def test_records_outside_the_plan_are_not_counted(tmp_path, simple_case, node_co
     summary = validated.replay_run(tmp_path, knowledge)
     assert summary.checked == 1
     assert summary.exit_code == 0
+
+
+def test_a_partial_run_reports_the_planned_units_it_has_not_run(tmp_path):
+    cases = tmp_path / "cases"
+    cases.mkdir()
+    (cases / "a.json").write_text(
+        json.dumps({"arm": validated.ARM, "result": {}}), encoding="utf-8"
+    )
+    refused = validated.setup_failure(unit_id="b", error="e", started_at="t")
+    (cases / "b.json").write_text(json.dumps(refused), encoding="utf-8")
+    validated.write_plan(tmp_path, ["a", "b", "c"], _identity())
+
+    progress = validated.plan_progress(tmp_path)
+    assert (progress.decided, progress.failed, progress.not_run) == (("a",), ("b",), ("c",))
+    assert not progress.complete
+    assert progress.line().startswith("plan INCOMPLETE: 3 units, 1 decided, 1 failed, 1 not run")

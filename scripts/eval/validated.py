@@ -64,6 +64,7 @@ def replay(directory: Path) -> int:
     from dendro_inspector.knowledge.loader import KnowledgeBase
 
     knowledge = KnowledgeBase(load_config().knowledge, root=ROOT)
+    print(validated.plan_progress(directory).line(), flush=True)
     summary = validated.replay_run(directory, knowledge)
     for name in summary.differing:
         print(f"{name}: replayed decisions differ from the record", flush=True)
@@ -279,6 +280,7 @@ async def run(args: argparse.Namespace) -> int:
 
     await asyncio.gather(*(one(unit) for unit in todo))
     print(f"done: {len(todo) - failures} decided, {failures} failed", flush=True)
+    print(validated.plan_progress(args.out).line(), flush=True)
     return 4 if failures else 0
 
 
