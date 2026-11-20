@@ -461,6 +461,57 @@ def resume_conflicts(
     return tuple(differ)
 
 
+#: Differences that concern one unit's inputs, not the run: that unit is run again (and a
+#: missing photograph then fails it alone); any other difference refuses the whole run.
+UNIT_LEVEL = frozenset({"photos", "field_context"})
+
+
+def resume_action(differ: Sequence[str]) -> Literal["reuse", "rerun", "refuse"]:
+    """What a run does with an existing decided record, given :func:`resume_conflicts`."""
+    if not differ:
+        return "reuse"
+    return "rerun" if set(differ) <= UNIT_LEVEL else "refuse"
+
+
+PLAN = "plan.json"
+
+
+def write_plan(directory: Path, unit_ids: Sequence[str], identity: Mapping[str, Any]) -> None:
+    """Record which units this run planned, so readers ignore records left by other plans."""
+    directory.mkdir(parents=True, exist_ok=True)
+    plan = {"arm": ARM, "run_identity": dict(identity), "units": list(unit_ids)}
+    (directory / PLAN).write_text(json.dumps(plan, indent=1) + "\n", encoding="utf-8")
+
+
+@dataclass(frozen=True, slots=True)
+class PlannedRecords:
+    """A run folder read against its plan: every planned unit, and what lies outside it."""
+
+    records: Mapping[str, Mapping[str, Any] | None]
+    outside_plan: tuple[str, ...]
+
+
+def planned_records(directory: Path) -> PlannedRecords:
+    """Every planned unit's record (None when it has none) and the records not planned.
+
+    A folder without a plan (written before plans existed) counts every record it holds.
+    """
+    files = {path.stem: path for path in sorted((directory / "cases").glob("*.json"))}
+    plan_path = directory / PLAN
+    planned = (
+        list(json.loads(plan_path.read_text(encoding="utf-8"))["units"])
+        if plan_path.exists()
+        else list(files)
+    )
+    records = {
+        unit: json.loads(files[unit].read_text(encoding="utf-8")) if unit in files else None
+        for unit in planned
+    }
+    return PlannedRecords(
+        records=records, outside_plan=tuple(stem for stem in files if stem not in records)
+    )
+
+
 def setup_failure(
     *, unit_id: str, error: str, started_at: str, code_commit_sha: str | None = None
 ) -> dict[str, Any]:
@@ -501,15 +552,14 @@ class ReplaySummary:
 
 
 def replay_run(directory: Path, knowledge: KnowledgeBase) -> ReplaySummary:
-    """Replay every arm V record in ``directory/cases``; failed records hold no decision."""
+    """Replay every planned arm V record with a decision; failed and unplanned ones are not."""
     checked, differing = 0, []
-    for path in sorted((directory / "cases").glob("*.json")):
-        stored = json.loads(path.read_text(encoding="utf-8"))
-        if stored.get("arm") != ARM or "result" not in stored:
+    for unit, stored in planned_records(directory).records.items():
+        if stored is None or stored.get("arm") != ARM or "result" not in stored:
             continue
         checked += 1
         if not replay_matches(stored, knowledge):
-            differing.append(path.stem)
+            differing.append(unit)
     return ReplaySummary(checked=checked, differing=tuple(differing))
 
 

@@ -87,6 +87,7 @@ async def run(args: argparse.Namespace) -> int:
     from dendro_inspector.schemas.input import CaseInput, ImageRef
 
     units = load_units(args, check=False)  # photographs are checked per unit, below
+    planned = [unit["unit_id"] for unit in units]  # the plan is the whole list, always
     if args.unit_ids:
         wanted = set(args.unit_ids)
         units = [unit for unit in units if unit["unit_id"] in wanted]
@@ -130,13 +131,25 @@ async def run(args: argparse.Namespace) -> int:
             photo_sha256=[_photo_sha256(p) for p in unit["photos"]],
             field_context=unit["field_context"],
         )
-        if differ:
+        action = validated.resume_action(differ)
+        if action == "rerun":  # this unit's inputs changed: run it again, alone
+            print(f"{unit['unit_id']}: {', '.join(differ)} changed since its record", flush=True)
+            todo.append(unit)
+        elif action == "refuse":
             conflicts.append(f"{unit['unit_id']}: {', '.join(differ)}")
     if conflicts:
         shown = "\n  ".join(conflicts[:10])
         raise SystemExit(
             f"{out} holds decided records from another run ({len(conflicts)} units):\n"
             f"  {shown}\nUse a new --out, or --force to run every unit again."
+        )
+    validated.write_plan(args.out, planned, identity)
+    outside = validated.planned_records(args.out).outside_plan
+    if outside:
+        print(
+            f"{len(outside)} records in {out} are not in this plan; replay and scoring ignore "
+            f"them: {', '.join(outside[:10])}",
+            flush=True,
         )
     print(
         f"{len(units)} units, {len(todo)} to run, {args.concurrency} at a time; rules "

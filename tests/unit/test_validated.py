@@ -568,3 +568,45 @@ def test_a_decided_record_is_reused_only_by_the_same_run():
     assert "code_commit_sha" in validated.resume_conflicts(
         legacy, _identity(), photo_sha256=[], field_context=False
     )
+
+
+def test_changed_photographs_rerun_that_unit_while_other_differences_refuse_the_run():
+    stored = {
+        "result": {
+            validated.ARM: {
+                "run_identity": _identity(),
+                "photos": [{"name": "a.jpg", "sha256": "a" * 64}],
+                "field_context": False,
+            }
+        }
+    }
+
+    def action(identity, photos, field_context=False):
+        differ = validated.resume_conflicts(
+            stored, identity, photo_sha256=list(photos), field_context=field_context
+        )
+        return validated.resume_action(differ)
+
+    assert action(_identity(), ["a" * 64]) == "reuse"
+    # A photograph gone since the record: only this unit runs again, and fails alone.
+    assert action(_identity(), ["missing"]) == "rerun"
+    assert action(_identity(), ["a" * 64], field_context=True) == "rerun"
+    assert action(_identity(code_commit_sha="e" * 40), ["a" * 64]) == "refuse"
+    assert action(_identity(code_commit_sha="e" * 40), ["missing"]) == "refuse"
+
+
+def test_records_outside_the_plan_are_not_counted(tmp_path, simple_case, node_context, knowledge):
+    cases = tmp_path / "cases"
+    cases.mkdir()
+    stored = _run(simple_case, node_context, "Pinus")
+    (cases / "kept.json").write_text(json.dumps(stored), encoding="utf-8")
+    (cases / "dropped.json").write_text(json.dumps(stored), encoding="utf-8")
+    validated.write_plan(tmp_path, ["kept", "not-run-yet"], _identity())
+
+    planned = validated.planned_records(tmp_path)
+    assert set(planned.records) == {"kept", "not-run-yet"}
+    assert planned.records["not-run-yet"] is None
+    assert planned.outside_plan == ("dropped",)
+    summary = validated.replay_run(tmp_path, knowledge)
+    assert summary.checked == 1
+    assert summary.exit_code == 0
