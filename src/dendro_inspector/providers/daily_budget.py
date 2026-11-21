@@ -62,6 +62,18 @@ def reserve(path: Path, model: str, tokens: int) -> int:
         return row.lastrowid
 
 
+def remaining(path: Path, model: str) -> int:
+    """Tokens of ``model``'s cap for the current UTC day not yet used or reserved."""
+    if model not in LIMITS:
+        raise ProviderUnavailableError(f"Model outside AKS allowlist: {model}")
+    with transaction(path) as db:
+        db.execute("DELETE FROM reservations WHERE finished_day < date('now')")
+        used = db.execute(
+            "SELECT coalesce(sum(tokens), 0) FROM reservations WHERE model = ?", (model,)
+        ).fetchone()[0]
+    return max(0, LIMITS[model] - int(used))
+
+
 async def capped_response(client: Any, path: Path, request: dict[str, Any]) -> Any:
     model = request["model"]
     if model not in LIMITS:

@@ -12,6 +12,15 @@ get entries.
 
 ### Added
 
+- **Daily sample on the OpenAI allowance.** `scripts/batch/run_daily_sample.py`, started once
+  a day on AKS by the control function, runs labelled units from `_datasets/known-units/` on
+  the results share in a random order seeded by the day: one `gpt-5.4` unit, then as many
+  `gpt-5.4-mini` units as the day's allowance can finish (keeping 500,000 tokens), each only
+  when the token ledger's remaining allowance covers its estimated cost. Each unit is an
+  ordinary upload record (`od<yyyymmdd>-<f|m>-<unit>`); one line per unit goes to
+  `_daily/history.jsonl` with a rough genus outcome. `daily_budget.remaining()` reports a
+  model's tokens left for the UTC day.
+
 - **Daily token caps for OpenAI platform calls on AKS.** When `DENDRO_OPENAI_BUDGET_DB`
   names a ledger file, the `openai` adapter calls only `gpt-5.4` (250,000 tokens a UTC day)
   and `gpt-5.4-mini` (2,500,000), with file transport. Before each call it counts the input,
