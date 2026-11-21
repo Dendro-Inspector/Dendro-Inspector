@@ -12,6 +12,16 @@ get entries.
 
 ### Added
 
+- **Daily token caps for OpenAI platform calls on AKS.** When `DENDRO_OPENAI_BUDGET_DB`
+  names a ledger file, the `openai` adapter calls only `gpt-5.4` (250,000 tokens a UTC day)
+  and `gpt-5.4-mini` (2,500,000), with file transport. Before each call it counts the input,
+  reserves it plus 16,384 output tokens, and refuses the call when the day's cap would be
+  passed; the reservation is then replaced by the reported usage. A call that never reports
+  usage keeps its full reservation through the next day. The deploy workflow publishes the
+  `OPENAI_SHARED_APIKEY` repository secret to the cluster through the control function
+  (`PUT /api/secrets/openai`), whose `openai` route sets the ledger up. Without the variable
+  the adapter behaves as before.
+
 - **Arm V, the model checked against its card.** `scripts/eval/validated.py` asks the model
   alone for a genus while the graph's first stages (input guard, planner, evidence extractor,
   evidence quality) extract evidence; code names a subject only where `match_card` finds a

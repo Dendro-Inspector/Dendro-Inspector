@@ -11,6 +11,7 @@ import base64
 import json
 import os
 from collections.abc import Mapping, Sequence
+from pathlib import Path
 from typing import Any
 
 from pydantic import ValidationError
@@ -24,6 +25,7 @@ from dendro_inspector.providers.base import (
     cache_prefix_of,
     usage_sink_of,
 )
+from dendro_inspector.providers.daily_budget import LIMITS, capped_response
 from dendro_inspector.providers.image_files import ImageTransport, SDKImageFiles, image_transport
 from dendro_inspector.providers.schema_compat import to_strict_openai_schema
 
@@ -96,6 +98,11 @@ class OpenAIProvider:
         self._client: Any | None = None
         self._image_mode = image_transport("OPENAI_IMAGE_TRANSPORT", image_mode)
         self._image_files = image_files if image_files is not None else SDKImageFiles("openai")
+        self._budget_path = os.environ.get("DENDRO_OPENAI_BUDGET_DB")
+        if self._budget_path and (self.model not in LIMITS or self._image_mode != "files"):
+            raise ProviderUnavailableError(
+                "Capped OpenAI jobs require a permitted model and file transport"
+            )
 
     def _ensure_client(self) -> Any:
         if self._client is not None:
@@ -183,7 +190,10 @@ class OpenAIProvider:
         if _accepts_metadata(client):
             request["metadata"] = {"node": str(metadata.get("node", "")), "logical_role": role}
         try:
-            response = await responses.create(**request)
+            if self._budget_path:
+                response = await capped_response(client, Path(self._budget_path), request)
+            else:
+                response = await responses.create(**request)
         except Exception as exc:
             if _is_content_policy_refusal(exc):
                 raise _content_policy_error(exc, metadata) from exc
