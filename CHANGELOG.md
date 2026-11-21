@@ -25,6 +25,21 @@ get entries.
   `run_graph` gains `stop_before`, used only by this arm. Evaluation only: no inspection
   default changes.
 
+- **Explicit subject binding for arm V (experimental, opt-in).**
+  `scripts/eval/bind_subjects.py` takes a finished arm V run and, only where one answer met
+  several organisms (`unbound_subjects`), asks the primary model once which listed root
+  subject the answer is about. The reply carries a subject ID and supporting photograph and
+  observation IDs, never a genus or a confidence. Code accepts it only when every reference
+  exists in the evidence, the answer cites no photograph showing only another organism, and
+  a photograph the answer cites shows the chosen organism alone. It then checks that
+  organism alone with arm V's own card rules; every other organism stays abstained. A
+  deterministic preflight skips the call where no reply could change the decision
+  (`binding_impossible`; `--call-impossible` asks anyway, for research). Without `--live`
+  the script makes no call and reports eligibility, the preflight and upper bounds;
+  `--replay` re-decides bound records from their recorded replies with no provider
+  (`dendro_inspector.evaluation.subject_binding`). Arm V and inspection defaults are
+  unchanged.
+
 - **Arm M of the held-out protocol, the model alone.** `scripts/eval/model_alone.py` asks the
   configured primary model once per unit, through the graph's own provider layer and image
   preparation, for a genus or an explicit "cannot be determined", a family and a confidence

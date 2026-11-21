@@ -739,7 +739,7 @@ arbitration, correction retry or graph fallback. Code then decides
 Scenes with several organisms are therefore never named by arm V. On the development units
 that cost correct names (a tree with a loose leaf beside it, a standing tree and its felled
 log); recovering them needs an explicit binding between the model's answer and one
-organism, not a looser rule.
+organism, not a looser rule. That binding is the experimental arm below.
 
 `card_confirmed` means the recorded observations match a feature the card calls strong for
 that genus. It is not a botanical identification. The check catches a model that reads the
@@ -785,6 +785,86 @@ worker's own edge limit) is not visible to it and has to be recorded with the ru
 
 Arm V is an evaluation arm. It changes no inspection default, and the held-out protocol
 names its arms separately.
+
+### Experimental: explicit subject binding (opt-in)
+
+[`subject_binding.py`](../src/dendro_inspector/evaluation/subject_binding.py) asks one more
+question of a finished arm V record, and only where arm V abstained because one answer met
+several organisms: which listed root subject is the answer about? It runs from
+[`bind_subjects.py`](../scripts/eval/bind_subjects.py) over an existing arm V run folder, so
+the answers and evidence are that run's own and the binding step is measured alone. Arm V's
+own decisions, the cards, `match_card` and evidence quality are unchanged, and nothing runs
+unless the script is invoked.
+
+- **When it asks.** Evidence quality is sufficient, exactly one answer entry names a genus,
+  the packet has several organisms, and every arm V decision is `unbound_subjects`.
+  Otherwise there is no call (`not_eligible`, with the reason). At most one call per unit.
+- **When it does not need to ask.** A deterministic preflight, from the namer's genus, the
+  evidence and these rules (never labels), finds the organisms a binding could name: some
+  reply could bind it, and its own evidence confirms the genus under arm V's card rules.
+  None: `binding_impossible`, no reply could change arm V's decision, and no call is made
+  (`skipped_binding_impossible`). One: `binding_possible`. Several: `binding_ambiguous`,
+  asked (under these verification rules an answer admits at most one organism, so it does
+  not arise). `--call-impossible` asks every eligible unit, for a research benchmark of the
+  binder itself.
+- **What it sends.** The photographs, the unchanged answer, the image IDs, and every
+  organism: root and components with IDs, kinds, parents, descriptions, photographs and
+  observations. The reply schema has a status, one root `subject_id` or null, supporting
+  image and observation IDs, a free-text distinguishing statement and an abstention reason.
+  It has no genus, species, family or confidence field.
+- **What code accepts.** A consistent reply whose subject exists and is a root, whose cited
+  photographs are the unit's and show that organism, and whose cited observations exist,
+  were recorded on it and were made in a photograph the answer cites. The organism must be
+  visible in a photograph the answer cites. No photograph the answer cites may show another
+  organism without this one: the answer then describes several organisms, and the binder is
+  told to abstain rather than pick a main one. A photograph the binder and the answer both
+  cite must show this organism and no other. Observations never authorise a binding on their
+  own, because code cannot tell whether one records the feature the answer cites. Photograph
+  order and shared photographs prove nothing. Any failure keeps arm V's abstention and
+  records why (`unknown_subject`, `not_a_root`, `image_does_not_show_subject`,
+  `observation_of_another_organism`, `observation_outside_answer`, `disagrees_with_answer`,
+  `answer_describes_another`, `not_distinguished`, ...).
+- **What a binding does.** It names at most the bound organism, after arm V's own decision
+  runs on that organism's evidence alone (root plus attached components), so a contradiction
+  on any part blocks it. Every other organism keeps `unbound_subjects`. A detached part is
+  its own organism; binding a tree never borrows its evidence.
+
+Binding establishes which organism was meant, not what it is. With these rules code admits
+at most one organism per unit: the one shown alone in a photograph the answer cites, when no
+other organism is. The binder can agree with it or abstain; its reply is recorded either
+way, so whether it chose the organism a person would choose is measured separately from what
+code accepted. That correspondence rests on the extractor's subject photograph lists: a
+missed organism in a photograph makes the photograph look exclusive. Binding never runs on a
+single organism, so it cannot touch a misreading that the namer and the extractor share (the
+oak read as *Acer*).
+
+```bash
+# feasibility, no provider: who is eligible, what each organism would reach, whether the
+# strongest possible reply verifies (upper bounds), graded where --labels names the genus
+python scripts/eval/bind_subjects.py --from runs/<arm-v> --labels labels.json
+# paid: one binding call per eligible unit the preflight does not rule out, on the configured
+# primary model; --max-retries 0 makes each call one request, --max-requests caps the run
+python scripts/eval/bind_subjects.py --from runs/<arm-v> --units units.json \
+    --out runs/<name> --live [--rounds 3] [--max-retries 0] [--max-requests 18]
+# research benchmark of the binder: ask also where the preflight proves binding impossible
+python scripts/eval/bind_subjects.py ... --live --call-impossible
+# re-decide every bound record from its recorded reply, no provider
+python scripts/eval/bind_subjects.py --replay runs/<name>  # 0 identical, 1 any not, 2 none
+```
+
+Bound records have arm `validated_bound`, the stored-case layout and `result.binding`. That
+holds the rules version, the request and schema hashes, eligibility, the request context and
+its input hash (context plus photograph hashes), the reply, the outcome, the accepted subject
+and references, any error, the provider call (tokens, latency), the binder, the hash of the
+arm V record it came from, the preflight class and the run identity (code commit, binder,
+rules, image edge, retry setting, preflight mode, the source run). The call is also
+appended to the trace's events, so token readers count it. Every planned unit gets a
+record; the run prints them by outcome, with failed units
+(`failed`) and failed calls (`call_failed`) apart from binder and code abstentions. A rerun
+reuses records of the same run, asks again only for a failed call, a failed unit or a
+changed arm V record, and refuses a folder holding another run's records. `--replay` reports
+a record made under other rules (`rules_changed`) or from another input (`input_changed`)
+instead of re-deciding it as if it were current.
 
 ## Measuring cost and latency
 
