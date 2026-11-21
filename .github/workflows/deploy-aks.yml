@@ -168,6 +168,28 @@ jobs:
               --data-binary @- -o secret.json
           jq . secret.json
 
+      # The OpenAI platform key for `openai` routes (free daily usage for traffic shared with
+      # OpenAI). The control function writes it as the dendro-openai secret; its route allows
+      # only gpt-5.4 and gpt-5.4-mini, and the engine's token ledger
+      # (providers/daily_budget.py) caps them per UTC day. Only maintainers' main or manual
+      # runs send it: it is a repository secret, so aks-review runs could read it too.
+      - name: Publish OpenAI API key to the cluster
+        if: env.SOURCE != 'pr' && needs.authorize.outputs.maintainer == 'true'
+        env:
+          OPENAI_SHARED_APIKEY: ${{ secrets.OPENAI_SHARED_APIKEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${OPENAI_SHARED_APIKEY:-}" ]; then
+            echo "OPENAI_SHARED_APIKEY is not set; openai routes keep the key already in the cluster"
+            exit 0
+          fi
+          # Key on stdin, never on a command line.
+          jq -n '{api_key: env.OPENAI_SHARED_APIKEY}' |
+            curl -sS --fail-with-body -X PUT "$CONTROL_URL/api/secrets/openai" \
+              -H "x-functions-key: $CONTROL_KEY" -H "Content-Type: application/json" \
+              --data-binary @- -o secret.json
+          jq . secret.json
+
       - name: Register deployment and start smoke run
         env:
           PR: ${{ github.event.pull_request.number }}

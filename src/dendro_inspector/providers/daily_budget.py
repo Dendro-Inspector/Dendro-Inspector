@@ -1,4 +1,9 @@
-"""Persistent reservations for the dedicated AKS OpenAI inspection job."""
+"""Daily token ledger for OpenAI platform calls on AKS.
+
+The control function's "openai" route sets DENDRO_OPENAI_BUDGET_DB to a SQLite file on a
+ReadWriteOncePod disk, so every capped call on the cluster goes through one ledger. Only the
+models in LIMITS may be called, each up to its own number of tokens per UTC day.
+"""
 
 import sqlite3
 from collections.abc import Iterator
@@ -9,7 +14,9 @@ from typing import Any
 from dendro_inspector.providers.base import ProviderUnavailableError
 
 LIMITS = {"gpt-5.4": 250_000, "gpt-5.4-mini": 2_500_000}
-MAX_OUTPUT = 8192
+# Reasoning tokens count against max_output_tokens. On the live graph about 2% of calls
+# wrote more than 8,192 output tokens (max 14,362), so a lower cap would cut answers short.
+MAX_OUTPUT = 16_384
 
 
 @contextmanager
@@ -23,6 +30,12 @@ def transaction(path: Path) -> Iterator[sqlite3.Connection]:
                 "(id INTEGER PRIMARY KEY, model TEXT NOT NULL, tokens INTEGER NOT NULL, "
                 "finished_day TEXT)"
             )
+            # finished_day is the last UTC day a row counts against the limit. Rows written
+            # before it was always set (NULL) would otherwise count forever.
+            db.execute(
+                "UPDATE reservations SET finished_day = date('now', '+1 day') "
+                "WHERE finished_day IS NULL"
+            )
             yield db
     finally:
         db.close()
@@ -32,14 +45,19 @@ def reserve(path: Path, model: str, tokens: int) -> int:
     if model not in LIMITS or tokens <= 0:
         raise ProviderUnavailableError("Unsupported model or invalid token reservation")
     with transaction(path) as db:
-        # Pending calls count across midnight. A lost response keeps its full reservation.
+        # A call that never reports its usage (an error, a timeout, a killed pod) keeps its
+        # full reservation through tomorrow: OpenAI may still bill it after midnight.
         db.execute("DELETE FROM reservations WHERE finished_day < date('now')")
         used = db.execute(
             "SELECT coalesce(sum(tokens), 0) FROM reservations WHERE model = ?", (model,)
         ).fetchone()[0]
         if tokens + used > LIMITS[model]:
             raise ProviderUnavailableError(f"Daily token limit reached for {model}")
-        row = db.execute("INSERT INTO reservations(model,tokens) VALUES (?,?)", (model, tokens))
+        row = db.execute(
+            "INSERT INTO reservations(model,tokens,finished_day) "
+            "VALUES (?,?,date('now', '+1 day'))",
+            (model, tokens),
+        )
         assert row.lastrowid is not None
         return row.lastrowid
 

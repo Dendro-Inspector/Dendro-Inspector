@@ -90,11 +90,34 @@ def test_lost_response_keeps_full_reservation_after_reopening(tmp_path):
     with pytest.raises(TimeoutError):
         asyncio.run(capped_response(client, path, request))
     with transaction(path) as db:
-        assert db.execute("SELECT tokens, finished_day FROM reservations").fetchone() == (
-            100 + MAX_OUTPUT,
-            None,
-        )
+        row = db.execute(
+            "SELECT tokens, finished_day = date('now', '+1 day') FROM reservations"
+        ).fetchone()
+    assert row == (100 + MAX_OUTPUT, 1)
     reserve(path, model, LIMITS[model] - 100 - MAX_OUTPUT)
     with pytest.raises(ProviderUnavailableError):
         asyncio.run(capped_response(client, path, request))
     api.create.assert_awaited_once()
+
+
+def test_lost_reservation_is_released_after_tomorrow(tmp_path):
+    path = tmp_path / "usage.db"
+    model = "gpt-5.4"
+    lost = reserve(path, model, LIMITS[model])
+    with pytest.raises(ProviderUnavailableError):
+        reserve(path, model, 1)
+    with transaction(path) as db:
+        db.execute(
+            "UPDATE reservations SET finished_day = date('now', '-1 day') WHERE id=?", (lost,)
+        )
+    reserve(path, model, LIMITS[model])
+
+
+def test_legacy_pending_rows_stop_counting_after_tomorrow(tmp_path):
+    path = tmp_path / "usage.db"
+    with transaction(path) as db:
+        db.execute("INSERT INTO reservations(model,tokens) VALUES ('gpt-5.4', 250000)")
+    with transaction(path) as db:
+        assert db.execute(
+            "SELECT finished_day = date('now', '+1 day') FROM reservations"
+        ).fetchone() == (1,)
