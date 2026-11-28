@@ -11,6 +11,7 @@ import pytest
 
 from dendro_inspector.graph.state import GraphState
 from dendro_inspector.nodes.final_decision import (
+    decide_subject_base,
     normalise_claim,
     resolve_user_claim,
     rule_on_user_claim,
@@ -186,6 +187,22 @@ class TestRestraint:
             "pinus",
         )
         assert verdict is UserClaimVerdict.REJECTED
+
+
+class TestEveryDecisionPathRules:
+    """A claim the user gave is ruled on whatever path the decision takes.
+
+    A subject with no admitted candidate used to leave the verdict at its default,
+    `not_provided`, which told the user they had offered no version when they had.
+    """
+
+    def test_a_subject_with_no_admitted_candidate_still_rules_on_the_claim(self, node_context):
+        state = _state(user_claim="oak").evolve(
+            evidence=_evidence(_obs("o1", "bark.texture", "smooth_grey"))
+        )
+        empty = CandidateSet(subject_id="log_1", candidates=())
+        decision = decide_subject_base(state, node_context, empty, record=False)
+        assert decision.user_claim_verdict is not UserClaimVerdict.NOT_PROVIDED
 
 
 class TestNotEvaluable:
