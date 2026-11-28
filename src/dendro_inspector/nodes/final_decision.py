@@ -2043,6 +2043,9 @@ def decide_subject_base(
             best_next_photo=choose_request(state, ctx, subject_id),
             arbiter_used=state.arbiter_used,
             open_world_candidates=open_world,
+            # No admitted leader is still a ruling on the user's version, not the absence
+            # of one: left unset, the default said "no claim given" to a user who gave one.
+            user_claim_verdict=rule_on_user_claim(state, ctx, subject_id, reranked, evidence, None),
         )
 
     card = ctx.knowledge.try_taxon(leader.taxon)
